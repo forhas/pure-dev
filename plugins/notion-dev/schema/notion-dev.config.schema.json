@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/forhas/pure-dev/main/plugins/notion-dev/schema/notion-dev.config.schema.json",
+  "title": "notion-dev Plugin Config",
+  "type": "object",
+  "required": ["project", "ticketSystem", "git", "verify", "dependencies"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "project": {
+      "type": "object",
+      "required": ["key", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "description": "Ticket ID prefix, e.g. STO. Uppercase letters and digits only, must start with a letter, 2-10 characters. Used to extract numeric IDs from branch names and tickets."
+        },
+        "name": {
+          "type": "string",
+          "description": "Short project name used in the worktree prefix template."
+        }
+      }
+    },
+    "ticketSystem": {
+      "type": "object",
+      "required": ["databaseId"],
+      "additionalProperties": false,
+      "properties": {
+        "databaseId": { "type": "string" },
+        "dataSourceId": { "type": "string" },
+        "idProperty": { "type": "string", "default": "ID" },
+        "statusProperty": { "type": "string", "default": "Status" },
+        "typeProperty": {
+          "type": "string",
+          "default": "Type",
+          "description": "Property name holding the ticket type. Plugin tolerates either Select or Multi-Select on the live DB; when Multi-Select, it reads the first value and writes a single-item array."
+        },
+        "prProperty": {
+          "type": "string",
+          "default": "PR",
+          "description": "Property name (URL) where /notion-dev:ticket writes the PR link. When absent from the live DB, the plugin skips the write with a warning rather than aborting."
+        },
+        "statusMap": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Maps logical statuses (inProgress, implemented, delivered) to Notion option names."
+        },
+        "typeMap": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Maps logical type keys (feature, bug, improvement, research) to Notion option labels. Defaults: feature→Feature, bug→Bug, improvement→Improvement, research→Research."
+        },
+        "staticProperties": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Extra Notion properties to set on every new ticket. Keyed by property name; value is the option name (for Select/Status) or text value. Set once at ticket creation; never modified by updateTicket or upsertSection."
+        },
+        "epicProperty": {
+          "type": "string",
+          "default": "Epic",
+          "description": "Select property holding the Epic tag in multi-task missions. Absence-tolerant — writes skip with a warning if the live DB has no such property."
+        },
+        "phaseProperty": {
+          "type": "string",
+          "default": "Phase",
+          "description": "Select property holding the Phase tag when a mission groups tasks into sequential stages. Absence-tolerant."
+        },
+        "stepProperty": {
+          "type": "string",
+          "default": "Step",
+          "description": "Number property holding the sequence position within a Phase. Absence-tolerant."
+        },
+        "dependsOnProperty": {
+          "type": "string",
+          "default": "Depends on",
+          "description": "Self-referential Relation property used to express blocking dependencies between tickets in a mission. Written in a Pass-2 after all mission tickets exist. Absence-tolerant."
+        }
+      }
+    },
+    "inputSources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["prompt", "existing-ticket", "notion-page"]
+      },
+      "default": ["prompt", "existing-ticket", "notion-page"],
+      "uniqueItems": true
+    },
+    "git": {
+      "type": "object",
+      "required": ["baseBranch"],
+      "additionalProperties": false,
+      "properties": {
+        "baseBranch": { "type": "string", "default": "main" },
+        "prTargetBranch": {
+          "type": "string",
+          "description": "PR target branch. Defaults to baseBranch when omitted."
+        },
+        "mergeStrategy": {
+          "type": "string",
+          "enum": ["squash", "merge", "rebase"],
+          "default": "squash"
+        },
+        "preMergeChecks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Ordered list of skill names invoked before merge. Empty in simple flow."
+        },
+        "postMergeHooks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Ordered list of skill names invoked after merge. Empty in simple flow."
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["superpowers", "featureDev"],
+      "properties": {
+        "superpowers": {
+          "type": "boolean",
+          "description": "Set true by /notion-dev:init after verifying the superpowers plugin is installed. Required for /notion-dev:ticket."
+        },
+        "featureDev": {
+          "type": "boolean",
+          "description": "Set true by /notion-dev:init after verifying the feature-dev plugin is installed. Required for /notion-dev:ticket."
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "default": "{name}-{key}-{id}",
+          "description": "Template for worktree dir name. Tokens: {name}, {key}, {id}."
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "required": ["steps"],
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "cmd"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "cmd": { "type": "string" },
+              "retries": { "type": "integer", "minimum": 0, "default": 3 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
