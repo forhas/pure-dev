@@ -108,6 +108,8 @@ If still unclear, ask `AskUserQuestion` with the four options.
 
 For `mission` results, `type` is per-task on the breakdown output; apply the same inference per task when a task's `type` is absent.
 
+Before any ticket-system call, normalize `type` to its **logical key** — lowercase the label (`Feature` → `feature`, `Bug` → `bug`, `Improvement` → `improvement`, `Research` → `research`). `notion-dev:ticket-system` translates logical keys through `typeMap`; passing the display label misses the map entry, and `/notion-dev:ticket`'s bug hard-rule depends on the normalized value round-tripping through the DB.
+
 ### 3.2 Write to the ticket system
 
 #### Single-ticket path
@@ -119,6 +121,8 @@ Invoke `notion-dev:ticket-system`:
 Capture the returned `{ id, url }`.
 
 #### Mission path (two-pass)
+
+**Pass 0 — reconcile Phase options** (mirrors the Epic reconciliation in 2.5.2, but non-interactive — phase labels are generated per-mission structure, not user taxonomy, so missing options are auto-added rather than prompted): invoke `notion-dev:ticket-system` operation `getSelectOptions(<phaseProperty>)` (the configured name, default `"Phase"`). If the return is `null` → set `phase = undefined` on all tasks. Otherwise, rebind case-insensitive matches to the exact live casing, and for each distinct `task.phase` absent from the returned options invoke `addSelectOption(<phaseProperty>, "<phase>")`. `createTicket` requires an exact option match and raises otherwise — reconcile before the first create, or Pass 1 fails partway through.
 
 **Pass 1 — create all tickets** (in declaration order, so each task is visible in the DB before its potential dependents are written):
 
