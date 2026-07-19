@@ -7,7 +7,7 @@ description: Use when a notion-dev command needs to read or write a ticket in th
 
 Provides the ticket operations for the notion-dev commands over the configured Notion database. Commands invoke this skill by naming an operation; this file defines the operation contract and how each operation is fulfilled with the Notion MCP (`mcp__notion__*` tools).
 
-If `.claude/notion-dev.config.json` is missing or has no `ticketSystem.databaseId`, fail clearly and tell the user to run `/notion-dev:init`. Resolve the config path against the **primary checkout** (`git rev-parse --show-toplevel` of the main repo, not a worktree cwd) — callers often invoke this skill from inside a ticket worktree, which may not contain the config file.
+If `.claude/notion-dev.config.json` is missing or has no `ticketSystem.databaseId`, fail clearly and tell the user to run `/notion-dev:init`. Resolve the config path against the **primary checkout**: use the caller's recorded `$REPO_ROOT` when provided, else the first path listed by `git worktree list` — never `git rev-parse --show-toplevel`, which returns the *worktree* root when run inside one. Callers often invoke this skill from inside a ticket worktree, which may not contain the config file.
 
 ## Logical operations
 

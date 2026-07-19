@@ -7,7 +7,7 @@ Use this when the user has a design doc, meeting notes, or spec page in Notion t
 ## Steps
 
 1. Normalize `ref`:
-   - If it looks like a URL (`https://notion.so/... ` or `https://www.notion.so/...`), extract the page ID from the URL (the 32-char hex after the last `-` in the path, ignoring dashes).
+   - If it looks like a Notion URL (any of `notion.so`, `www.notion.so`, `notion.com`, `app.notion.com` — e.g. `https://app.notion.com/p/...`), extract the page ID: the last 32-char hex segment in the path (typically after the final `-`), ignoring dashes.
    - If it's already a bare page ID (with or without dashes), use as-is.
 2. Fetch the page via `mcp__notion__notion-fetch`.
 3. Convert the page blocks to markdown:

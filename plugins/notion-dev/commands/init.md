@@ -67,6 +67,7 @@ Notion is the plugin's ticket backend — no selection to make.
   }
   ```
   This is Notion's **hosted** MCP server (OAuth on first connect). Its tool vocabulary — `notion-fetch`, `notion-search`, `notion-create-pages`, `notion-update-page`, `notion-create-database`, `notion-create-comment`, `notion-update-data-source` — is what `skills/ticket-system/SKILL.md` calls. Do not swap in the self-hosted `@notionhq/notion-mcp-server`: it exposes different tool names and the adapter's calls would fail.
+- **Reload gate**: everything from 3a-i onward calls `mcp__notion__*` tools, but a freshly added project-scope MCP server only starts (and gets approved/OAuth'd) after Claude Code reloads — the same constraint the GitHub-MCP section notes below. If the Notion tools are not present in the current session (no `mcp__notion__*` in the available tools — always the case when this step just created the entry), stop here with: "Notion MCP added to `.mcp.json`. Run `/reload-plugins` (approve the server and complete the Notion OAuth if prompted), then re-run `/notion-dev:init`." Init is idempotent — the rerun detects the existing entry, skips this patch, and continues into 3a-i/3a-ii. When the tools are already available (entry pre-existed the session), continue directly.
 
 #### 3a-i. Create new
 
