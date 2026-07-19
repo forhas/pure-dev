@@ -239,7 +239,7 @@ Also call `postComment(id, <one-line PR URL + "ready for review">)` so watchers 
 
 ### 6.6 Remove PLAN.md
 
-`FLOW=superpowers` path: `rm -f PLAN.md` at the worktree root (`-f` keeps the step idempotent when the file is already gone, e.g. on re-entry). Its durable summary now lives in the ticket's `## Implementation` section (6.5), and the worktree must be clean before entering Phase 7 — review-and-merge's clean-tree gate (`git status --porcelain` empty) would otherwise deadlock on the untracked file, and its `git add -A` fix-commits would sweep PLAN.md into the PR. This is why Phase 1.2's resume logic treats "worktree with no `PLAN.md` + open PR" as the jump-to-Phase-7 state.
+`FLOW=superpowers` path: `rm -f PLAN.md` at the worktree root (`-f` keeps the step idempotent when the file is already gone, e.g. on re-entry). Its durable summary now lives in the ticket's `## Implementation` section (6.5), and the worktree must be clean before entering Phase 7 — review-and-merge's clean-tree gate (`git status --porcelain` empty) would otherwise deadlock on the untracked file, and its `git add -A` fix-commits would sweep PLAN.md into the PR. After the `rm`, check `git status --porcelain -- PLAN.md`: a ` D` entry means an earlier commit swept the file in (`superpowers:subagent-driven-development` commits as it goes and doesn't know 6.2's exclusion rule) — commit the removal (`git commit -m "chore(<KEY>-<id>): remove PLAN.md" -- PLAN.md`) and push, or the same clean-tree gate deadlocks on the tracked deletion. This is why Phase 1.2's resume logic treats "worktree with no `PLAN.md` + open PR" as the jump-to-Phase-7 state.
 
 `FLOW=feature-dev` path: no-op — there is no PLAN.md.
 

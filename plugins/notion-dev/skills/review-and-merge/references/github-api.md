@@ -73,7 +73,7 @@ gh pr checks <pr>                       # nothing failing anywhere; pending opti
 Merge and confirm:
 
 ```bash
-gh pr merge <pr> --squash --delete-branch
+gh pr merge <pr> --<strategy> --delete-branch   # <strategy> = git.mergeStrategy from .claude/notion-dev.config.json, default squash
 gh pr view <pr> --json state            # must report MERGED
 ```
 
