@@ -48,7 +48,7 @@ For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true
 
 **Non-inline feedback has no thread-resolution state and must not be skipped**: review summary bodies and PR-level issue comments with actionable requests (e.g. "add tests") get the same agree/partially/disagree treatment, with the reply posted via `gh pr comment <pr> --body "..."`. Track them by comment ID — that tracking is their only "resolved" marker. Ignore non-actionable bot boilerplate (e.g. Codex "About" blocks).
 
-Never respond twice to the same comment — track handled comment IDs. If code changed, first re-run the project's verification when the repo configures it (`verify.steps` in `.claude/notion-dev.config.json`, honoring per-step `retries`) — a broken fix would surface as red CI next round, but repos without covering CI have only this gate — then commit and push:
+Never respond twice to the same comment — track handled comment IDs. If code changed, first re-run the project's verification when the repo configures it (`verify.steps` in `.claude/notion-dev.config.json` — read from the primary checkout, not the worktree, honoring per-step `retries`) — a broken fix would surface as red CI next round, but repos without covering CI have only this gate — then commit and push:
 `git add -A && git commit -m "review: address PR feedback" && git push`
 
 ## 3. Trigger a Codex review
@@ -112,7 +112,7 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
 2. **All threads resolved**: re-run the GraphQL thread query, paging through every page, and verify every thread has `isResolved: true`.
 
 3. **Config pre-merge checks**: read `git.preMergeChecks` from
-   `.claude/notion-dev.config.json` (an ordered list of skill names; empty by default).
+   `.claude/notion-dev.config.json` in the primary checkout (an ordered list of skill names; empty by default).
    Invoke each skill in order via the Skill tool. If any skill signals failure, stop
    and report which check failed and why — never merge past a failing configured check.
 

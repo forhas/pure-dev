@@ -23,7 +23,7 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 
 - **Superpowers and feature-dev (required).** `dependencies.superpowers` **and** `dependencies.featureDev` in the config must both be `true` — if either is missing or false, abort and tell the user to re-run `/notion-dev:init` (which verifies and records both). Confirm `superpowers:writing-plans`, `superpowers:subagent-driven-development`, `superpowers:receiving-code-review`, and `feature-dev:feature-dev` are all available; this command delegates planning, execution, and review to them.
 - **GitHub access**: authenticated `gh` CLI is **required** — the Phase 7 review loop (`notion-dev:review-and-merge`) depends on `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform. Probe `gh auth status` at the top of the command; abort with "Install and authenticate `gh` (`gh auth login`), then re-run" if unavailable. The GitHub MCP (`mcp__github__create_pull_request` etc.) is optional: when present, prefer it for the operations it supports (PR create, metadata reads, merge) and fall back to `gh` when it fails or is absent.
-- `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`.
+- `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. All config reads — here and in every later phase or invoked skill — resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never the worktree: the worktree is cut from `origin/<git.baseBranch>`, which lacks the config whenever it is uncommitted, unpushed, or gitignored.
 - The repo has an `origin` remote.
 - The working tree is clean, OR the user is resuming inside an existing worktree for this ticket.
 
@@ -228,7 +228,7 @@ Write a persistent `## Implementation` section onto the ticket so the ticket its
 - `upsertSection(id, "Implementation", { ... })` with this content:
   - **Plan** — a 2-4 sentence summary of the resolution approach, distilled from PLAN.md's Goal / Architecture / top-level Tasks. Not a copy of PLAN.md; a scan-readable overview. For the feature-dev path (no PLAN.md), distill this instead from the architecture summary feature-dev produced.
   - **Implementation** — what was actually done. Include: the ordered list of task headings completed, any notable decisions made during execution (e.g. a library chosen, a pattern introduced, an approach that replaced the planned one), and any deliberate deviations from the plan with the reason.
-  - **Files Changed** — the list from `git diff --name-only origin/<git.baseBranch>...HEAD`, grouped by directory.
+  - **Files Changed** — the list from `git diff --name-only origin/<PR_BASE>...HEAD` (6.1's `<PR_BASE>` — the branch the PR actually targets; `git.baseBranch` would misstate the PR's contents when `prTargetBranch` differs), grouped by directory.
   - **PR** — the PR URL.
   - **Branch** — the branch name.
   - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope.
