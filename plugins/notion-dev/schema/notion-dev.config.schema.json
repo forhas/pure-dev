@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/forhas/pure-dev/plugins/notion-dev/schema/notion-dev.config.schema.json",
+  "$id": "https://raw.githubusercontent.com/forhas/pure-dev/main/plugins/notion-dev/schema/notion-dev.config.schema.json",
   "title": "notion-dev Plugin Config",
   "type": "object",
   "required": ["project", "ticketSystem", "git", "verify", "dependencies"],

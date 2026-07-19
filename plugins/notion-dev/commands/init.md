@@ -232,7 +232,7 @@ Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` w
 
 ```json
 {
-  "$schema": "https://github.com/forhas/pure-dev/plugins/notion-dev/schema/notion-dev.config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/forhas/pure-dev/main/plugins/notion-dev/schema/notion-dev.config.schema.json",
   ...
   "dependencies": { "superpowers": true, "featureDev": true }
 }
