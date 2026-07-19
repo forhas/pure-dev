@@ -230,7 +230,7 @@ Write a persistent `## Implementation` section onto the ticket so the ticket its
 - `upsertSection(id, "Implementation", { ... })` with this content:
   - **Plan** — a 2-4 sentence summary of the resolution approach, distilled from PLAN.md's Goal / Architecture / top-level Tasks. Not a copy of PLAN.md; a scan-readable overview. For the feature-dev path (no PLAN.md), distill this instead from the architecture summary feature-dev produced.
   - **Implementation** — what was actually done. Include: the ordered list of task headings completed, any notable decisions made during execution (e.g. a library chosen, a pattern introduced, an approach that replaced the planned one), and any deliberate deviations from the plan with the reason.
-  - **Files Changed** — the list from `git diff --name-only origin/<PR_BASE>...HEAD` (6.1's `<PR_BASE>` — the branch the PR actually targets; `git.baseBranch` would misstate the PR's contents when `prTargetBranch` differs), grouped by directory.
+  - **Files Changed** — the list from `git diff --name-only origin/<PR_BASE>...HEAD` (6.1's `<PR_BASE>` — the branch the PR actually targets; `git.baseBranch` would misstate the PR's contents when `prTargetBranch` differs), grouped by directory — excluding `PLAN.md` if present: 6.6 removes it before review, so it never survives into the final PR diff even when an interim commit swept it in.
   - **PR** — the PR URL.
   - **Branch** — the branch name.
   - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope.

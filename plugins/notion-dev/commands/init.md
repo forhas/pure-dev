@@ -78,7 +78,7 @@ Notion is the plugin's ticket backend — no selection to make.
   | Property | Type | Options |
   |---|---|---|
   | `Name` | Title | — |
-  | `ID` | Number | unique ticket id |
+  | `ID` | Unique ID (`unique_id`) | auto-assigned ticket id; prefix = `project.key`. Atomic — two concurrent `createTicket` calls can never collide, unlike the adapter's max+1 fallback for Number columns. If the create API cannot declare a `unique_id` property, fall back to Number and warn that concurrent create-task runs may race on IDs. |
   | `Status` | Status (or Select) | `Backlog`, `In Progress`, `Implemented` (add `Delivered` / other shipped states yourself if you have a release flow — the plugin doesn't manage them) |
   | `Type` | Select | `Feature`, `Bug`, `Improvement`, `Research` |
   | `PR` | URL | filled by `/notion-dev:ticket` |
