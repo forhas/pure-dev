@@ -1,0 +1,8 @@
+# Claude Code local session state — not part of the marketplace
+.claude/
+
+node_modules/
+.DS_Store
+*.log
+.env
+.env.local

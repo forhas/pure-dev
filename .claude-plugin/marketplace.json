@@ -1,0 +1,23 @@
+{
+  "name": "pure-dev",
+  "owner": {
+    "name": "Yogev",
+    "email": "forhas@gmail.com"
+  },
+  "metadata": {
+    "description": "Claude Code plugin marketplace: opinionated, end-to-end development flows.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "quick-dev",
+      "source": "./plugins/quick-dev",
+      "description": "One-command feature development: /develop takes a feature description from a single sentence to a squash-merged commit on main — isolated worktree, PR review loop, full cleanup."
+    },
+    {
+      "name": "notion-dev",
+      "source": "./plugins/notion-dev",
+      "description": "Opinionated development workflow: create-task → ticket → finalize with Notion-backed tickets and pluggable input sources."
+    }
+  ]
+}
