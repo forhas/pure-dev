@@ -56,7 +56,7 @@ If the worktree already exists:
 - **Worktree, no `PLAN.md`**: inspect state.
   - Commits ahead of base **and** an open PR exists for the branch → offer to jump straight to Phase 7 (or suggest running `/notion-dev:finalize <pr>` instead).
   - Commits ahead of base but no PR → ask (via `AskUserQuestion`) with three options: continue implementing (re-invoke the build flow with the existing diff as context), treat the implementation as complete (the build finished before the interrupt — resume at Phase 5 verify and ship; the feature-dev twin of the all-boxes-checked `PLAN.md` state), or start over.
-  - Neither commits nor a PR → treat as fresh; continue into Phase 2 as normal.
+  - Neither commits nor a PR → treat as fresh, but **reuse the existing worktree and branch**: skip 2.1's `git worktree add` (path and branch both exist — re-running it fails), `cd` into the existing worktree, run 2.1's status update (idempotent), and continue from there.
 
 Otherwise, continue with a fresh setup.
 

@@ -81,8 +81,14 @@ Notion is the plugin's ticket backend — no selection to make.
   | `Status` | Status (or Select) | `Backlog`, `In Progress`, `Implemented` (add `Delivered` / other shipped states yourself if you have a release flow — the plugin doesn't manage them) |
   | `Type` | Select | `Feature`, `Bug`, `Improvement`, `Research` |
   | `PR` | URL | filled by `/notion-dev:ticket` |
+  | `Epic` | Select | no preset options — mission creation adds them |
+  | `Phase` | Select | no preset options — mission creation adds them |
+  | `Step` | Number | position within a Phase |
+  | `Depends on` | Relation (self-referential) | blocking dependencies between mission tasks |
 
   Database title: `Tasks - <project.name>`.
+
+  The last four are the structural-mission properties (`/notion-dev:create-task` mission path); without them a fresh install silently loses mission grouping, order, and dependency edges — the same properties 3a-ii actively detects on existing DBs. If the create API cannot declare the self-referential `Depends on` relation at creation time (the DB's own ID is only known afterwards), add it immediately after via a schema update (`mcp__notion__notion-update-data-source`) pointing the relation at the new database.
 
 - Capture the returned `databaseId` and `dataSourceId`.
 

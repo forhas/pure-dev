@@ -95,8 +95,8 @@ Only start cleanup after confirming the merge landed: `gh pr view <pr> --json st
 From `$REPO_ROOT`:
 
 1. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull origin <baseRefName>`. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
-2. Confirm `<worktree-path>` is the worktree resolved/created in Phase 1, then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`.
-3. `git branch -D <headRefName>` using the branch name recorded in Phase 1 (`<slug>` is never defined in this command — use the actual `headRefName`) (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above).
+2. If `<worktree-path>` is a registered worktree (`git worktree list` contains it — on the post-merge recovery path Phase 1 deliberately does not recreate a missing one, and a prior interrupted run may have already removed it), confirm it is the worktree resolved/created in Phase 1, then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`. Absent → skip; only bookkeeping remains.
+3. `git branch -D <headRefName>` using the branch name recorded in Phase 1 (`<slug>` is never defined in this command — use the actual `headRefName`) (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above; skip silently when the local branch no longer exists).
 4. Verify the remote branch is gone (`git ls-remote --heads origin <headRefName>`); if not, `git push origin --delete <headRefName>` (swallow "already deleted" errors).
 5. Remove the worktrees parent directory if now empty: `rmdir` (not `rm -rf`).
 
