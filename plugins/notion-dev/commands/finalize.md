@@ -17,7 +17,7 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 - **Superpowers (required)**: confirm `superpowers:receiving-code-review` is available — the Phase 2 review loop evaluates every finding with it. If missing, abort before any Phase 1 side effects: "workflow requires the `superpowers` plugin — run `/notion-dev:init`". (feature-dev is not needed here; finalize runs no build flow.)
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list` — the **primary checkout** root, never a worktree path. (Correct from anywhere: `finalize` is most commonly invoked with no args from inside the ticket worktree itself, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. As in `/notion-dev:ticket`, all config reads resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never a worktree — the worktree may lack the config when it is uncommitted, unpushed, or gitignored.
-- The branch has an open PR.
+- A PR exists for the work: **open** when `<pr-number>` was omitted (the no-arg path infers it from the current branch, and there is nothing to infer otherwise); with an explicit `<pr-number>`, `MERGED` is also acceptable — that is Phase 1's post-merge recovery path, which this gate must not block. `CLOSED`-without-merge or draft still aborts (Phase 1 step 2).
 - The PR's head branch follows the `ticket/<project.key>-<n>-*` convention, so the numeric ticket id is recoverable from it. (PRs opened by `/notion-dev:ticket` always do.)
 
 ---

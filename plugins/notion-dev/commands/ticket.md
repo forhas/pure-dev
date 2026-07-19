@@ -26,7 +26,7 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list`, i.e. the **primary checkout** root, never a worktree path. (This recipe is correct from anywhere, including the no-arg resume path invoked from inside the ticket worktree, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. All config reads — here and in every later phase or invoked skill — resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never the worktree: the worktree is cut from `origin/<git.baseBranch>`, which lacks the config whenever it is uncommitted, unpushed, or gitignored.
 - The repo has an `origin` remote.
-- The working tree is clean, OR the user is resuming inside an existing worktree for this ticket.
+- The working tree is clean, OR the only dirt is the init-generated setup files (`.claude/notion-dev.config.json`, `.mcp.json` — init's commit step is optional, and this command must stay usable when it was declined; all implementation happens in the worktree and config is read from `$REPO_ROOT`, so these files never contaminate the ticket branch), OR the user is resuming inside an existing worktree for this ticket. Any other dirt: stop and ask the user to commit or stash first (non-interactive: stop and report).
 
 ---
 
