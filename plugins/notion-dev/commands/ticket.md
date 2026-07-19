@@ -1,6 +1,7 @@
 ---
 description: Implement a single ticket end-to-end. Creates a worktree, triages the build flow, implements (feature-dev or superpowers), verifies, ships a PR, runs the review-and-merge loop, merges, and cleans up. Updates the ticket status at each checkpoint.
 argument-hint: "<ticket-id> [--non-interactive] [--flow=feature-dev|superpowers] [| <optional guidance>]"
+disable-model-invocation: true
 ---
 
 # /notion-dev:ticket

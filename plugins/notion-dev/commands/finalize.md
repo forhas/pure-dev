@@ -1,6 +1,7 @@
 ---
 description: Drive an already-open ticket PR to merged — review loop (Codex or local fallback), merge, ticket record, cleanup. Standalone entry point for resuming after /notion-dev:ticket was interrupted.
 argument-hint: "[<pr-number>] [--non-interactive]"
+disable-model-invocation: true
 ---
 
 # /notion-dev:finalize

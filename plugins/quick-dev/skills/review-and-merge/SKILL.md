@@ -28,7 +28,7 @@ All GitHub interaction uses the `gh` CLI against the current repository. Run `gh
 
 ## 2. Process existing review comments
 
-**Before touching any comment**, run the green-CI gate: `gh pr checks <pr>`. If any check is **failing** (not merely pending), fixing it is the first priority — diagnose, push a fix, wait for green. Never process review feedback while a check is red.
+**Before touching any comment**, run the green-CI gate: `gh pr checks <pr>`. If any check is **failing** (not merely pending), fixing it is the first priority — diagnose, push a fix, wait for green. Never process review feedback while a check is red. In this and **every** green-CI gate in this skill (start of each Codex round, local-loop step 1): `gh pr checks` exiting non-zero with `no checks reported` means the repo defines no checks — the gate passes; treat only actually failing checks as red (same caveat as the step-5 merge gate).
 
 Handle all review feedback with the `quick-dev:receiving-code-review` skill (shipped with this plugin) — verify each point against the code with technical rigor; no performative agreement, no blind implementation.
 
