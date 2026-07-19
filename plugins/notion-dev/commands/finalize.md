@@ -15,6 +15,7 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 
 - **GitHub access**: authenticated `gh` CLI is **required** — the Phase 2 review loop (`notion-dev:review-and-merge`) depends on `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform. Probe `gh auth status` at the top of the command; abort with "Install and authenticate `gh` (`gh auth login`), then re-run" if unavailable. The GitHub MCP (`mcp__github__get_pull_request` etc.) is optional: when present, prefer it for the operations it supports (metadata reads, merge) and fall back to `gh` when it fails or is absent.
 - **Superpowers (required)**: confirm `superpowers:receiving-code-review` is available — the Phase 2 review loop evaluates every finding with it. If missing, abort before any Phase 1 side effects: "workflow requires the `superpowers` plugin — run `/notion-dev:init`". (feature-dev is not needed here; finalize runs no build flow.)
+- Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list` — the **primary checkout** root, never a worktree path. (Correct from anywhere: `finalize` is most commonly invoked with no args from inside the ticket worktree itself, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. As in `/notion-dev:ticket`, all config reads resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never a worktree — the worktree may lack the config when it is uncommitted, unpushed, or gitignored.
 - The branch has an open PR.
 - The PR's head branch follows the `ticket/<project.key>-<n>-*` convention, so the numeric ticket id is recoverable from it. (PRs opened by `/notion-dev:ticket` always do.)
@@ -23,12 +24,9 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 
 ## Phase 1 — Resolve
 
-Before anything else — record two values:
+Before anything else — record `RUN_START` = `date -u +%FT%TZ`. (`REPO_ROOT` was already recorded at the preconditions gate, before the first config read.)
 
-- `REPO_ROOT` = the first path listed by `git worktree list` — the **primary checkout** root, never a worktree path. (This recipe is correct from anywhere: `finalize` is most commonly invoked with no args from inside the ticket worktree itself, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
-- `RUN_START` = `date -u +%FT%TZ`.
-
-Recording these now, before any worktree resolution or `cd` below, keeps Phase 4's cleanup and the ledger write anchored to the primary checkout even after this command `cd`s into a worktree (mirrors ticket.md Phase 1.1's pattern).
+These anchors, taken before any worktree resolution or `cd` below, keep Phase 4's cleanup and the ledger write pinned to the primary checkout even after this command `cd`s into a worktree (mirrors ticket.md's pattern).
 
 Work PR-first — the PR number is the entry point, and the ticket id is derived from it:
 
