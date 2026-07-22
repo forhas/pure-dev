@@ -28,12 +28,11 @@ Run this wherever the reviewer must be known.
      answer.
    - **Non-interactive mode:** use `codex` and record in the run report that the reviewer was
      defaulted (not chosen).
-4. **Persist** the resolved value to `REPO_ROOT/.claude/quick-dev/config.json`, preserving any
-   other keys already in the file:
+4. **Persist** the resolved value by writing the whole file `{ "reviewer": "<value>" }` to `REPO_ROOT/.claude/quick-dev/config.json` (reviewer-only — overwrite or create it; there are no other keys to preserve), after ensuring the self-ignored directory exists:
    ```bash
-   mkdir -p "$REPO_ROOT/.claude/quick-dev"
-   [ -f "$REPO_ROOT/.claude/quick-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/quick-dev/.gitignore"
-   # write {"reviewer":"<value>"} into $REPO_ROOT/.claude/quick-dev/config.json (merge, don't clobber other keys)
+   # self-ignore bootstrap — the ledger's pattern, adapted to target the primary checkout ($REPO_ROOT) rather than the current directory:
+   mkdir -p "$REPO_ROOT/.claude/quick-dev" && { [ -f "$REPO_ROOT/.claude/quick-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/quick-dev/.gitignore"; }
+   # then write {"reviewer":"<value>"} to $REPO_ROOT/.claude/quick-dev/config.json
    ```
    The write is side-effect-free with respect to git: the file is gitignored, so it never
    dirties the tree, never enters `git add -A`, and never diverges the base branch.
