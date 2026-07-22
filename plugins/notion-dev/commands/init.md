@@ -200,6 +200,16 @@ Ask `AskUserQuestion` (multi-select) if the user wants to adjust this list.
 - `mergeStrategy`: default `"squash"`. Don't prompt unless the user asks to customize.
 - `preMergeChecks: []`, `postMergeHooks: []`. Do not prompt — these are phase-2 seams and empty is correct for the simple flow.
 
+### 6a. Code reviewer
+
+Ask `AskUserQuestion`: "Which code reviewer should the review loop use?"
+- **Codex** — triggers via an `@codex review` comment (`chatgpt-codex-connector[bot]`).
+- **Copilot** — requests the `copilot-pull-request-reviewer[bot]` reviewer via the REST API
+  (the repo/org must have Copilot code review enabled).
+
+Default/prefill **Codex**. In reconfigure mode, prefill with the existing `reviewer` value.
+Record the answer as `reviewer` (`"codex"` or `"copilot"`).
+
 ### 7. Worktree prefix
 
 Default to `"{name}-{key}-{id}"`. Do not prompt unless the user explicitly asks to customize.
@@ -240,10 +250,13 @@ Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` w
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/forhas/pure-dev/main/plugins/notion-dev/schema/notion-dev.config.schema.json",
+  "reviewer": "codex",
   ...
   "dependencies": { "superpowers": true, "featureDev": true }
 }
 ```
+
+Always write `reviewer` explicitly (unlike the omit-when-default properties above) — it is exempt from the "omit when equal to default" convention, so it appears in the config even when the answer was the default `codex`.
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 
@@ -262,13 +275,14 @@ Print a short summary:
 - Ticket system configured
 - Input sources enabled
 - Verify steps
+- Code reviewer: <codex|copilot>.
 - Build-flow plugins verified: superpowers + feature-dev (required dependencies)
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."
 
 ## Re-configuration behavior
 
 If `.claude/notion-dev.config.json` existed on entry, `/notion-dev:init` runs in **reconfigure mode**:
-- Prefill every `AskUserQuestion` with the current value.
+- Prefill every `AskUserQuestion` with the current value — including the code reviewer question (step 6a), which prefills with the existing `reviewer` value instead of the `codex` default.
 - Never silently overwrite existing config — every change goes through explicit confirmation.
 - After collecting any updates, run the **schema-drift check** below before writing.
 
