@@ -16,8 +16,10 @@ procedure below.
 
 Run this wherever the reviewer must be known.
 
-1. **Resolve the primary checkout root** — `REPO_ROOT` = the first path printed by
-   `git worktree list`. This is correct whether the caller sits in the primary checkout or in
+1. **Resolve the primary checkout root** — `REPO_ROOT` = the path on the first `worktree ` line
+   of `git worktree list --porcelain` (the `--porcelain` form prints `worktree <path>` on its
+   own line, so it is unambiguous even when the path contains spaces; the plain `git worktree
+   list` columns are not). This is correct whether the caller sits in the primary checkout or in
    a feature worktree (the gitignored config lives only in the primary checkout).
 2. **Read** `REPO_ROOT/.claude/quick-dev/config.json` if it exists.
    - Valid `reviewer` (`codex` or `copilot`) present → use it. Done.

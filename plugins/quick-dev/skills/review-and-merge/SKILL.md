@@ -171,3 +171,4 @@ Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success
 ## Additional Resources
 
 - **`references/github-api.md`** — exact `gh` commands: paginated comment reads, the GraphQL reviewThreads query and its cursor rules, thread-to-comment mapping, reply and resolve mutations.
+- **`references/reviewer-config.md`** — the configurable-reviewer config location and the read-or-prompt-and-persist resolution procedure (shared with `quick-dev:develop`).
