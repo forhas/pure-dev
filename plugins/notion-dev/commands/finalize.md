@@ -1,5 +1,5 @@
 ---
-description: Drive an already-open ticket PR to merged — review loop (Codex or local fallback), merge, ticket record, cleanup. Standalone entry point for resuming after /notion-dev:ticket was interrupted.
+description: Drive an already-open ticket PR to merged — review loop (configured code reviewer or local fallback), merge, ticket record, cleanup. Standalone entry point for resuming after /notion-dev:ticket was interrupted.
 argument-hint: "[<pr-number>] [--non-interactive]"
 disable-model-invocation: true
 ---
@@ -57,7 +57,8 @@ plugin, check passes) — if equal or lower, the base moved: first update the br
 from the current base, then recompute the semver bump, commit, and push"`.
 
 Remain in the worktree while it runs so review fixes land on the branch. It owns:
-existing-comment processing, Codex rounds, the local fallback
+existing-comment processing, rounds with the configured code reviewer (Codex or Copilot,
+resolved from `.claude/notion-dev.config.json`), the local fallback
 (`notion-dev:local-code-review`), merge gates (including config `git.preMergeChecks`),
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
 report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
@@ -116,7 +117,7 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 Print a summary covering:
 - Flow: `n/a — finalize entry point`, unless the ledger has a recorded `flow_chosen` for this `run_id`, in which case report that value instead.
 - PR URL.
-- Review summary — which loop ran (Codex or local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
+- Review summary — which loop ran (the configured code reviewer, Codex or Copilot, or the local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
 - Ticket end state (`implemented`).
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).

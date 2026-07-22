@@ -131,6 +131,16 @@ Key fields:
 - `dependencies.{superpowers, featureDev}` — set by `/notion-dev:init` after verifying both build-flow plugins are installed. Both must be `true` for `/notion-dev:ticket` to run.
 - `worktree.prefix` — template for worktree directory names. Tokens: `{name}`, `{key}`, `{id}`. Default: `"{name}-{key}-{id}"`.
 - `verify.steps[]` — ordered list of `{ name, cmd, retries }` commands run after implementation and before PR.
+- `reviewer` — PR reviewer selection: `"codex"` (default) or `"copilot"`. Set during `/notion-dev:init`; can be changed by re-running that command.
+
+### Reviewer configuration
+
+The PR review loop uses your configured reviewer. Both options fall back to the local fresh-agent review loop if unavailable.
+
+- **Codex** (`"codex"`, the default): Requires the **Codex GitHub app** to be installed. Codex reviews are triggered by an `@codex review` comment on the PR.
+- **Copilot** (`"copilot"`): Requires GitHub Copilot code review to be enabled on your repository or organization. Copilot reviews are requested via the REST API.
+
+Projects upgraded from earlier versions of notion-dev (whose config predates the `reviewer` key) will be prompted to choose a reviewer the next time you run `/notion-dev:ticket` or `/notion-dev:finalize`; that choice applies to the current run only. To persist it, re-run `/notion-dev:init` — the review loop never writes the config itself.
 
 Secrets never belong in this file; MCP auth handles credentials.
 
