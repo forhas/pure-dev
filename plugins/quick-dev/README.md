@@ -18,8 +18,9 @@ One-command feature development for Claude Code. `/develop <description>` takes 
    ├─ 3. Ship           commit, push, open PR against main
    │                    (plugin repos: semver-bump .claude-plugin/plugin.json —
    │                     major/minor/patch judged from the change, stated in the PR)
-   ├─ 4. Review & merge review-and-merge skill: resolve comments, @codex review rounds
-   │                    (local code-reviewer fallback if Codex is absent), squash-merge
+   ├─ 4. Review & merge review-and-merge skill: resolve comments, configured-reviewer
+   │                    rounds (Codex or Copilot; local code-reviewer fallback if
+   │                    unavailable), squash-merge
    ├─ 5. Clean up       delete worktree, local + remote branch; pull main
    └─ 6. Verify         clean tree on up-to-date main, nothing left behind
 ```
@@ -42,11 +43,28 @@ The review phase is also usable standalone on any open PR:
 /quick-dev:review-and-merge <pr-number>
 ```
 
+## Code reviewer (GitHub mode)
+
+In GitHub mode the review loop drives a configurable reviewer:
+
+- **`codex`** (default) — triggers a review via an `@codex review` comment (requires the Codex GitHub app).
+- **`copilot`** — requests the `copilot-pull-request-reviewer[bot]` reviewer via the GitHub API (requires Copilot code review enabled for the repo/org).
+
+Either falls back to the local fresh-agent reviewer when the chosen reviewer is unavailable.
+
+The choice is stored per-clone in `.claude/quick-dev/config.json` (gitignored, alongside the ledger):
+
+```json
+{ "reviewer": "codex" }
+```
+
+The first `/develop` or `/quick-dev:review-and-merge` run in a repo prompts for it (interactive) or defaults to `codex` (non-interactive) and saves it. To change it later, edit the file — or delete the `reviewer` key (or the file) to be prompted again on the next run. Local mode ignores this setting (it always uses the local reviewer).
+
 ## Requirements
 
 - `git` and, for the PR flow, the `gh` CLI authenticated against the repo's GitHub remote.
 - The [feature-dev](https://github.com/anthropics/claude-code/tree/main/plugins/feature-dev) and [superpowers](https://github.com/obra/superpowers) plugins — installed automatically at **project scope** on first run if missing (a `/reload-plugins` is required after auto-install).
-- Optional: the Codex GitHub app for `@codex review` rounds. Without it (or when Codex is out of quota, misconfigured, or silent), the review loop falls back to a local review loop — a fresh agent per round applying the plugin's `local-code-review` skill.
+- Optional: a GitHub code reviewer — the Codex app (`@codex review` rounds, the default) or Copilot code review (`reviewer: copilot`). See [Code reviewer](#code-reviewer-github-mode). Without one (or when the chosen reviewer is out of quota, misconfigured, or silent), the review loop falls back to a local review loop — a fresh agent per round applying the plugin's `local-code-review` skill.
 
 Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same flow and same end state, but review runs locally and the branch is squash-merged without a PR.
 
@@ -56,7 +74,7 @@ Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same 
 |-------|-----------|---------|
 | `develop` | `/quick-dev:develop [--non-interactive] [--flow=<flow>] <description>` | End-to-end orchestrator: preflight → worktree → triage → build flow → ship → review → cleanup |
 | `flow-triage` | `/quick-dev:flow-triage [--advise-only] <description>` | Recommend feature-dev vs superpowers for a task: scout probe → scorecard → ledger tie-break; standalone or invoked by `develop` |
-| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, Codex/local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
+| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
 | `receiving-code-review` | (invoked by the flows above) | Technical-rigor rules for evaluating review feedback — verify before implementing, reasoned pushback, no performative agreement |
 
 ## Safety guarantees

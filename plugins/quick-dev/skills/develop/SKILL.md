@@ -32,6 +32,7 @@ Run all checks before creating anything:
    - The installs write enablement to `.claude/settings.json` — commit that change once with `git add .claude/settings.json && git commit --only .claude/settings.json -m "chore: enable build-flow plugins"` so the bootstrap does not trip the dirty-tree gate on the re-run. The `add` is required: a freshly created settings file is untracked and `git commit --only` errors on untracked paths; `--only` still keeps any paths the user had staged out of the bootstrap commit. Exception: if the repo gitignores the path (`git check-ignore -q .claude/settings.json` succeeds), skip the add/commit entirely — an ignored file never shows in `git status`, so it cannot trip the dirty-tree gate the commit exists to protect; do not force-add over the project's ignore rules.
    - Then STOP with **one** combined message naming everything that was installed: "<plugin(s)> installed at project scope (settings change committed). Run `/reload-plugins`, then re-run `/quick-dev:develop <description>`." Newly installed plugins only load after a reload — do not attempt to continue without them, and never stop twice when both were missing.
    - For marketplace edge cases and install troubleshooting, consult `references/environment-setup.md`.
+6. **Reviewer (GitHub mode only)**: run the **reviewer resolution procedure** in `../review-and-merge/references/reviewer-config.md` now, so the choice is made before the build rather than mid-review. It reads the gitignored per-clone config (`$REPO_ROOT/.claude/quick-dev/config.json`); if `reviewer` is unset it prompts (interactive) or defaults to `codex` (non-interactive) and persists it. Record the resolved reviewer for the final summary. **Skip entirely in local mode** — there is no GitHub reviewer to configure; the local fresh-agent reviewer is always used.
 
 ## Phase 1 — Branch and worktree
 
@@ -99,7 +100,7 @@ Commit any remaining uncommitted work in the worktree with a clear conventional 
 
 ## Phase 4 — Review and merge
 
-**GitHub mode**: invoke the `quick-dev:review-and-merge` skill via the Skill tool with args `<pr-number>` (append `--non-interactive` if set). It handles review comments, Codex review rounds with a local-reviewer fallback, the squash-merge, and remote branch deletion. Remain in `$WORKTREE` while it runs so review fixes land on the branch.
+**GitHub mode**: invoke the `quick-dev:review-and-merge` skill via the Skill tool with args `<pr-number>` (append `--non-interactive` if set). It resolves the configured reviewer (Codex or Copilot — already set in Phase 0 for this flow), handles review comments, reviewer rounds with a local-reviewer fallback, the squash-merge, and remote branch deletion. Remain in `$WORKTREE` while it runs so review fixes land on the branch.
 
 **Plugin repos — stale-bump guard**: the base branch can move while the review loop runs, and git merges identical version-line changes without conflict — so the bump computed in Phase 3 can go stale. Since review-and-merge performs the merge itself, pass the guard through its `--pre-merge-check` argument, e.g.:
 
