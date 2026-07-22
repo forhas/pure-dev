@@ -13,7 +13,7 @@
 - Scope is `plugins/quick-dev/` only. Do not touch `plugins/notion-dev/`.
 - Config file is **gitignored**, primary-checkout-only, reviewer-only: `{"reviewer": "codex"}` or `{"reviewer": "copilot"}`. No other keys (YAGNI).
 - Config path: `<primary-checkout>/.claude/quick-dev/config.json`; primary checkout = first entry of `git worktree list`.
-- Self-ignore bootstrap (reuse the ledger pattern, verbatim): `mkdir -p .claude/quick-dev && [ -f .claude/quick-dev/.gitignore ] || printf '*\n' > .claude/quick-dev/.gitignore`.
+- Self-ignore bootstrap: adapt the ledger's self-ignore pattern, `$REPO_ROOT`-relative (review-and-merge runs in a worktree, so it must target the primary checkout, not cwd): `mkdir -p "$REPO_ROOT/.claude/quick-dev" && { [ -f "$REPO_ROOT/.claude/quick-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/quick-dev/.gitignore"; }`.
 - Reviewer values: exactly `codex` (default) and `copilot`. Response-author logins (exact match, never substring): `chatgpt-codex-connector[bot]` (codex), `copilot-pull-request-reviewer[bot]` (copilot).
 - Prompting happens only in **GitHub mode** and only in **interactive** mode. Local mode and `--non-interactive` never prompt; non-interactive defaults to `codex` and records it.
 - The review flow, gates, round cap (10), merge, and local-fallback loop are unchanged except for the reviewer-identity swap.
