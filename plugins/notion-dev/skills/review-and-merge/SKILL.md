@@ -29,6 +29,15 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
    `.claude/notion-dev.config.json` (preserve all other keys; add `"reviewer": "<choice>"`).
    In non-interactive mode, default to `codex` and record it in the report. Always persist
    the `reviewer` key explicitly.
+
+   **This migration must complete before the step-1 clean-tree gate**, and must not leave
+   the primary checkout dirty (`.claude/notion-dev.config.json` is normally tracked — see
+   `commands/init.md`). So immediately after writing the key, commit just that file:
+   `git commit --only .claude/notion-dev.config.json -m "chore(notion-dev): persist reviewer choice"`.
+   Exception: if the repo gitignores the path (`git check-ignore -q .claude/notion-dev.config.json`),
+   the write touches no tracked state — skip the commit. Either way the working tree is clean
+   for the step-1 gate, the write is never swept into a later `review:` fix commit, and the
+   caller's post-merge `git pull` cleanup is never blocked by a stray unstaged edit.
 3. Bind the **reviewer profile** below; every trigger / re-trigger / reviewer-response /
    unavailability reference in steps 3–5 means the bound profile's row.
 
