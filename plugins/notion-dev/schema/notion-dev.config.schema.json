@@ -162,6 +162,12 @@
           }
         }
       }
+    },
+    "reviewer": {
+      "type": "string",
+      "enum": ["codex", "copilot"],
+      "default": "codex",
+      "description": "Code reviewer the review-and-merge loop drives. 'codex' triggers via an @codex review comment; 'copilot' requests the copilot-pull-request-reviewer[bot] reviewer via the REST API. Either falls back to the local fresh-agent review loop when unavailable. Written explicitly by /notion-dev:init (and lazily by review-and-merge when absent on an upgraded project)."
     }
   }
 }
