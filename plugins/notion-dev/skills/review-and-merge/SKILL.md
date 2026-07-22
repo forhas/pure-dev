@@ -85,6 +85,12 @@ After all current comments are handled, trigger the bound reviewer per its profi
   review not enabled for this repo/org), treat it as `reason=not-configured` immediately:
   post the unavailability note (step 4) and enter the local review loop — do not count a round.
 
+**Record the trigger timestamp** — the poll baseline used in step 4. It must be well-defined for both reviewers, since only codex leaves a comment to key off:
+- **codex** → the `created_at` of the `@codex review` comment just posted.
+- **copilot** → the current UTC time captured **immediately before** the reviewer-request call (the REST request creates no comment). Capture it before the call so a review that lands during the request is not excluded.
+
+Every re-trigger (the silence retry in step 4, and the next-round trigger in the loop) **refreshes** this timestamp per the same rule.
+
 Set the round counter to **1** when posting this first trigger (also when the PR had no
 reviews at all: run the green-CI gate first, then trigger).
 
@@ -94,7 +100,7 @@ Rounds are counted from the first reviewer trigger. **Hard cap: 10 rounds.** Aft
 
 **At the start of every round**: `gh pr checks <pr>` — fix any failing check and re-green before handling any review comment.
 
-Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment whose author login **exactly equals** the bound profile's response-author login — `chatgpt-codex-connector[bot]` (codex) or `copilot-pull-request-reviewer[bot]` (copilot) — created after the trigger comment's timestamp. An exact match, never a substring test. Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
+Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment whose author login **exactly equals** the bound profile's response-author login — `chatgpt-codex-connector[bot]` (codex) or `copilot-pull-request-reviewer[bot]` (copilot) — created after the round's **trigger timestamp** (step 3: the `@codex review` comment's timestamp for codex, the captured request-start time for copilot). An exact match, never a substring test. Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
 
 ### Reviewer unavailability detection
 
