@@ -18,8 +18,9 @@ One-command feature development for Claude Code. `/develop <description>` takes 
    ├─ 3. Ship           commit, push, open PR against main
    │                    (plugin repos: semver-bump .claude-plugin/plugin.json —
    │                     major/minor/patch judged from the change, stated in the PR)
-   ├─ 4. Review & merge review-and-merge skill: resolve comments, @codex review rounds
-   │                    (local code-reviewer fallback if Codex is absent), squash-merge
+   ├─ 4. Review & merge review-and-merge skill: resolve comments, configured-reviewer
+   │                    rounds (Codex or Copilot; local code-reviewer fallback if
+   │                    unavailable), squash-merge
    ├─ 5. Clean up       delete worktree, local + remote branch; pull main
    └─ 6. Verify         clean tree on up-to-date main, nothing left behind
 ```
@@ -73,7 +74,7 @@ Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same 
 |-------|-----------|---------|
 | `develop` | `/quick-dev:develop [--non-interactive] [--flow=<flow>] <description>` | End-to-end orchestrator: preflight → worktree → triage → build flow → ship → review → cleanup |
 | `flow-triage` | `/quick-dev:flow-triage [--advise-only] <description>` | Recommend feature-dev vs superpowers for a task: scout probe → scorecard → ledger tie-break; standalone or invoked by `develop` |
-| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, Codex/local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
+| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
 | `receiving-code-review` | (invoked by the flows above) | Technical-rigor rules for evaluating review feedback — verify before implementing, reasoned pushback, no performative agreement |
 
 ## Safety guarantees
