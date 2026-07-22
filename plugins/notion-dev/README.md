@@ -140,7 +140,7 @@ The PR review loop uses your configured reviewer. Both options fall back to the 
 - **Codex** (`"codex"`, the default): Requires the **Codex GitHub app** to be installed. Codex reviews are triggered by an `@codex review` comment on the PR.
 - **Copilot** (`"copilot"`): Requires GitHub Copilot code review to be enabled on your repository or organization. Copilot reviews are requested via the REST API.
 
-Projects upgraded from earlier versions of notion-dev will be prompted to choose a reviewer the next time you run `/notion-dev:ticket` or `/notion-dev:finalize` — no need to re-run `/notion-dev:init`.
+Projects upgraded from earlier versions of notion-dev (whose config predates the `reviewer` key) will be prompted to choose a reviewer the next time you run `/notion-dev:ticket` or `/notion-dev:finalize`; that choice applies to the current run only. To persist it, re-run `/notion-dev:init` — the review loop never writes the config itself.
 
 Secrets never belong in this file; MCP auth handles credentials.
 

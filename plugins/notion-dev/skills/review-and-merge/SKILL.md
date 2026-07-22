@@ -23,18 +23,19 @@ All GitHub interaction uses the `gh` CLI against the current repository. Run `gh
 This skill drives one of two configured reviewers. Resolve which **before step 3**:
 
 1. Read `reviewer` from `.claude/notion-dev.config.json` (primary checkout).
-2. If the file has no `reviewer` key (e.g. a project configured before this field existed):
-   in interactive mode, ask via `AskUserQuestion` — "Which code reviewer should the review
-   loop use?" (**Codex** / **Copilot**); in non-interactive mode, default to `codex` and
-   record it in the report. Mark the `reviewer` key as a **pending migration** to be
-   persisted in step 1 — do not write the config here.
+2. If the file has no `reviewer` key (e.g. a project configured before this field existed),
+   resolve one **for this run only**: in interactive mode, ask via `AskUserQuestion` —
+   "Which code reviewer should the review loop use?" (**Codex** / **Copilot**) — and tell the
+   user the choice applies to this run; to persist it, re-run `/notion-dev:init` (which writes
+   `reviewer` to the config). In non-interactive mode, default to `codex` and note in the
+   report that the choice was resolved but **not** persisted. Carry the value forward in memory.
 
-   **Resolve the value here, but do not write or commit it on the primary checkout.**
-   The primary checkout ($REPO_ROOT) sits on the **base branch**, and the caller cleans up
-   with `git pull origin <base>` there (see `commands/finalize.md`): a local base-branch
-   commit would diverge from the remote base and break that pull, and the choice would never
-   reach remote. Persistence is therefore deferred to **step 1**, which runs on the PR branch
-   — see the migration bullet there. Carry the resolved value forward in memory for this run.
+   **This skill never writes `.claude/notion-dev.config.json`.** Persisting the reviewer key
+   is `/notion-dev:init`'s job, not the review loop's. The config lives on the primary
+   checkout ($REPO_ROOT, the base branch), where the caller later runs `git pull origin <base>`
+   during cleanup; a mid-run config write there would dirty or diverge that checkout, and a
+   write on the PR branch would inject an unrelated config commit into the PR. Resolving in
+   memory keeps the loop side-effect-free and sidesteps both hazards.
 3. Bind the **reviewer profile** below; every trigger / re-trigger / reviewer-response /
    unavailability reference in steps 3–5 means the bound profile's row.
 
@@ -56,7 +57,6 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 - Fetch all existing review comments with `--paginate` (inline comments, review summaries, issue comments) and the review-thread resolution state via GraphQL — exact commands, the thread query, and the pagination rules are in **`references/github-api.md`**. Read it before the first API call; the pagination and thread-mapping rules there are load-bearing (unpaginated reads silently miss comments; REST alone cannot resolve threads).
 - Ensure the PR branch is checked out locally so fixes can be applied: if the current directory is already on `headRefName` (the calling command's worktree), stay there; otherwise `gh pr checkout <pr>`.
 - Require a clean working tree before proceeding (`git status --porcelain` empty): review fixes are committed with `git add -A`, which would sweep pre-existing uncommitted changes into the automated commit and push them. If dirty, stop and ask the user to commit or stash first (non-interactive: stop and report).
-- **Persist a pending reviewer migration now** (only if the Reviewer step resolved a value because the `reviewer` key was absent). We are on the PR branch with a clean tree, so this lands where it can reach remote: write the key into `.claude/notion-dev.config.json` (preserve other keys; add `"reviewer": "<choice>"`) — creating the file if the worktree lacks it (the config may live only in the primary checkout, uncommitted/unpushed; see `commands/finalize.md`) — then commit **only that file**, staging it explicitly first so the command works whether the file is a tracked modification or a brand-new untracked file (`git commit --only` / bare `git commit <path>` fails with a pathspec error on an unstaged new file): `git add .claude/notion-dev.config.json && git commit -m "chore(notion-dev): persist reviewer choice" && git push`. Because the tree was clean at the gate above, only this file is staged, so the commit stays dedicated — never swept into a `review:` fix commit. **Guard the commit on an actual staged diff** (`git diff --cached --quiet` — true means nothing staged): on the resume path a prior interrupted run may have already pushed this migration to the PR branch, so the just-written key matches what the branch already has and nothing stages; a bare `git commit` would then abort with "nothing to commit" and break the resume. When nothing staged, the key is already persisted — skip the commit and push. It reaches the base remote via the PR merge, and the caller's post-merge `git pull origin <base>` propagates it into the primary checkout for future runs; the base checkout is never directly committed to. Exception: if the path is gitignored (`git check-ignore -q .claude/notion-dev.config.json`) it cannot and need not reach remote — instead write it to the **primary checkout's** config file locally and do not commit (a gitignored file neither dirties `git status --porcelain` nor blocks the cleanup pull).
 - Push any local commits the remote is missing before processing anything: if `git rev-list --count @{upstream}..HEAD` is non-zero (e.g. a prior run committed fixes but its push failed), `git push` first — otherwise the already-replied skip path could resolve threads and merge while the remote head lacks those fixes.
 
 ## 2. Process existing review comments
