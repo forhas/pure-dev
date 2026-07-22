@@ -30,14 +30,12 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
    In non-interactive mode, default to `codex` and record it in the report. Always persist
    the `reviewer` key explicitly.
 
-   **This migration must complete before the step-1 clean-tree gate**, and must not leave
-   the primary checkout dirty (`.claude/notion-dev.config.json` is normally tracked — see
-   `commands/init.md`). So immediately after writing the key, commit just that file:
-   `git commit --only .claude/notion-dev.config.json -m "chore(notion-dev): persist reviewer choice"`.
-   Exception: if the repo gitignores the path (`git check-ignore -q .claude/notion-dev.config.json`),
-   the write touches no tracked state — skip the commit. Either way the working tree is clean
-   for the step-1 gate, the write is never swept into a later `review:` fix commit, and the
-   caller's post-merge `git pull` cleanup is never blocked by a stray unstaged edit.
+   **Resolve the value here, but do not write or commit it on the primary checkout.**
+   The primary checkout ($REPO_ROOT) sits on the **base branch**, and the caller cleans up
+   with `git pull origin <base>` there (see `commands/finalize.md`): a local base-branch
+   commit would diverge from the remote base and break that pull, and the choice would never
+   reach remote. Persistence is therefore deferred to **step 1**, which runs on the PR branch
+   — see the migration bullet there. Carry the resolved value forward in memory for this run.
 3. Bind the **reviewer profile** below; every trigger / re-trigger / reviewer-response /
    unavailability reference in steps 3–5 means the bound profile's row.
 
@@ -59,6 +57,7 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 - Fetch all existing review comments with `--paginate` (inline comments, review summaries, issue comments) and the review-thread resolution state via GraphQL — exact commands, the thread query, and the pagination rules are in **`references/github-api.md`**. Read it before the first API call; the pagination and thread-mapping rules there are load-bearing (unpaginated reads silently miss comments; REST alone cannot resolve threads).
 - Ensure the PR branch is checked out locally so fixes can be applied: if the current directory is already on `headRefName` (the calling command's worktree), stay there; otherwise `gh pr checkout <pr>`.
 - Require a clean working tree before proceeding (`git status --porcelain` empty): review fixes are committed with `git add -A`, which would sweep pre-existing uncommitted changes into the automated commit and push them. If dirty, stop and ask the user to commit or stash first (non-interactive: stop and report).
+- **Persist a pending reviewer migration now** (only if the Reviewer step resolved a value because the `reviewer` key was absent). We are on the PR branch with a clean tree, so this lands where it can reach remote: write the key into `.claude/notion-dev.config.json` (preserve other keys; add `"reviewer": "<choice>"`) and commit it as a **dedicated** commit — not swept into any `review:` fix commit — then push: `git commit --only .claude/notion-dev.config.json -m "chore(notion-dev): persist reviewer choice" && git push`. It reaches the base remote via the PR merge, and the caller's post-merge `git pull origin <base>` propagates it into the primary checkout for future runs; the base checkout is never directly committed to. Exception: if the path is gitignored (`git check-ignore -q .claude/notion-dev.config.json`) it cannot and need not reach remote — instead write it to the **primary checkout's** config file locally and do not commit (a gitignored file neither dirties `git status --porcelain` nor blocks the cleanup pull).
 - Push any local commits the remote is missing before processing anything: if `git rev-list --count @{upstream}..HEAD` is non-zero (e.g. a prior run committed fixes but its push failed), `git push` first — otherwise the already-replied skip path could resolve threads and merge while the remote head lacks those fixes.
 
 ## 2. Process existing review comments
