@@ -82,6 +82,7 @@ Notion is the plugin's ticket backend — no selection to make.
   | `Status` | Status (or Select) | `Backlog`, `In Progress`, `Implemented` (add `Delivered` / other shipped states yourself if you have a release flow — the plugin doesn't manage them) |
   | `Type` | Select | `Feature`, `Bug`, `Improvement`, `Research` |
   | `PR` | URL | filled by `/notion-dev:ticket` |
+  | `Assignee` | People | default assignee target for `/notion-dev:create-task` |
   | `Epic` | Select | no preset options — mission creation adds them |
   | `Phase` | Select | no preset options — mission creation adds them |
   | `Step` | Number | position within a Phase |
@@ -102,6 +103,7 @@ Notion is the plugin's ticket backend — no selection to make.
   - **Status** — same pattern: prefer `"Status"`, otherwise offer any `status` or `select` property that looks like a status column.
   - **Type** — prefer `"Type"`, otherwise offer any `select` or **`multi_select`** property. Record the chosen name in `typeProperty`. When the resolved property is `multi_select`, announce: *"Type is multi-select on this DB — the plugin will read the first value and write a single-item list."*
   - **PR** — prefer `"PR"` (URL). If missing, ask `AskUserQuestion`: *"Add a `PR` (URL) property so `/notion-dev:ticket` can write the PR link as a first-class Notion field?"* (options: **Add `PR` (URL)** / **Use existing URL property `<name>`** if one exists / **Skip** — plugin will only record the PR URL in the body's `## Implementation` section). Record the chosen name in `prProperty` when it is not the default, or omit `prProperty` and skip writes when the user picks Skip.
+  - **Assignee** — prefer a `people` property named `"Assignee"` (case-insensitive). If absent, and exactly one `people` property exists, offer it via `AskUserQuestion`: *"Use `<found>` as the assignee property?"* (options: the candidate, or "Add a new `Assignee` People property"). If no `people` property exists at all, ask `AskUserQuestion`: **Add `Assignee` (People)** / **Skip** (assignment writes will warn-and-skip at runtime). Record the chosen name in `assigneeProperty` only when it is not the default `"Assignee"`. Remember whether an assignee slot exists — step 3b keys off it.
   - For any still-missing required slot (ID/Status/Type), offer via `AskUserQuestion` to auto-create it as an addition to the existing database. If the user declines, warn that some operations may fail; continue.
 - **Type options**: after Type is resolved, compare its option list against `typeMap` values (default: `Feature`/`Bug`/`Improvement`/`Research`). For each mismatch, ask `AskUserQuestion`: **Patch** (add the missing option) / **Update config to match live** (rebind `typeMap[<key>]` to an existing option) / **Skip**. *Prefer rebinding over renaming when the live label differs only cosmetically — e.g. `"Feature request"` vs `"Feature"` — to preserve existing ticket data.*
 - **Detect structural-mission properties** — probe the live schema for the four optional properties used by multi-task missions. **No user prompts** here; pure detection. For each, record an override in config only when the resolved live name differs from the default:
@@ -149,6 +151,28 @@ If the user bound any `staticProperties` in step 3a-ii, include them:
 ```
 
 Omit the key entirely when empty.
+
+### 3b. Default assignee
+
+Applies to both create-new and use-existing. **Skip this step entirely** (write
+neither `assigneeProperty` nor `defaultAssignee`) only when the assignee slot was
+skipped in 3a-ii — i.e. the DB has no People column and the user declined to add
+one. Otherwise:
+
+Ask `AskUserQuestion`: "Set a default assignee for new tickets?"
+- **Pick a user** — call `mcp__notion__notion-get-users`, filter to
+  `type == "person"`, present display names as sub-choices. Write the chosen
+  user's **id** to `ticketSystem.defaultAssignee`.
+- **No default** — write `ticketSystem.defaultAssignee: ""`. `/notion-dev:create-task`
+  will prompt each run.
+
+In **reconfigure mode**, prefill this question with the current `defaultAssignee`
+(show "No default" when it is `""` or absent).
+
+`defaultAssignee` is written **explicitly** in both cases — a deliberate exception
+to the "omit when equal to default" rule in 3a-iii, so the knob is discoverable in
+the config file. `assigneeProperty` still follows the omit-when-default convention
+(written only when the resolved People column name differs from `"Assignee"`).
 
 ### 3c. If Cancel
 
@@ -298,6 +322,7 @@ Compare the configured ticket system against its live backend state. This runs a
    - **Status slot** (`statusProperty`): must exist and be `status` or `select`. Report missing.
    - **Type slot** (`typeProperty`): must exist and be `select` or `multi_select`. Report missing.
    - **PR slot** (`prProperty`): if config has `prProperty`, must exist and be `url`; informational only, not a hard drift.
+   - **Assignee slot** (`assigneeProperty`): if config has `assigneeProperty` (or the default `"Assignee"` column is expected), it should exist and be `people`-typed; **informational only**, not a hard drift (mirrors the PR slot).
    - **Status options**: expected = `statusMap` values plus `"Backlog"`. Report any expected option missing; extras are informational.
    - **Type options**: expected = `typeMap` values (defaults `Feature`/`Bug`/`Improvement`/`Research` when the key is absent). Report any expected option missing; extras are informational.
 3. For each drift item, ask `AskUserQuestion`:
