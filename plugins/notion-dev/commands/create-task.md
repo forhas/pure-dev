@@ -94,6 +94,34 @@ Ask `AskUserQuestion`: **Approve / Revise / Collapse to single ticket**.
 
 ---
 
+## Phase 2.75 — Resolve assignee
+
+Decide **who** the new ticket(s) get assigned to. Produces a single `assignee`
+value — a resolved Notion user id, or the sentinel "unassigned" — reused for
+every `createTicket` in Phase 3. Runs once, even for a mission.
+
+1. Read `ticketSystem.defaultAssignee` from config.
+   - **Set and non-empty** → invoke `notion-dev:ticket-system` operation
+     `resolveAssignee(defaultAssignee)`.
+     - Unique match → `assignee = <id>`; continue to Phase 3 silently.
+     - `null` (no match / ambiguous) → warn
+       (`"defaultAssignee '<value>' did not resolve to a unique user; pick manually"`)
+       and fall through to step 2.
+   - **Absent or empty string (`""`)** → go to step 2.
+2. **Interactive pick.** Fetch person-users via `notion-dev:ticket-system`
+   `resolveAssignee`'s underlying source is not reused here — instead call
+   `mcp__notion__notion-get-users`, filter to `type == "person"`, and present
+   their display names with `AskUserQuestion`: "Assign this ticket to whom?".
+   Include a final **"Leave unassigned"** option.
+   - A named pick → resolve to that user's id → `assignee = <id>`.
+   - "Leave unassigned" → `assignee = unassigned` (pass no `assignee` in Phase 3).
+3. **Missions:** the single `assignee` decided here applies to **every** task —
+   pass it into each `createTicket` in Pass 1. "Leave unassigned" applies to all.
+
+This choice is used for the current run only — never written back to config.
+
+---
+
 ## Phase 3 — Write
 
 ### 3.1 Classify the type
@@ -116,7 +144,7 @@ Before any ticket-system call, normalize `type` to its **logical key** — lower
 
 Invoke `notion-dev:ticket-system`:
 - If source was `existing-ticket`, operation is `updateTicket(id, { title, body, type })` — update in place. (Treat this as a `createTicket`-style call with the existing id; the ticket-system skill handles the distinction.)
-- Otherwise, operation is `createTicket({ title, body, type })` — new ticket.
+- Otherwise, operation is `createTicket({ title, body, type, assignee })` — new ticket. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `existing-ticket` `updateTicket` never sets an assignee (assignment is creation-only).
 
 Capture the returned `{ id, url }`.
 
@@ -130,12 +158,13 @@ Capture the returned `{ id, url }`.
 taskMap = []
 for task in mission.tasks:
   result = ticket-system.createTicket({
-    title: task.title,
-    body:  task.body,
-    type:  task.type,
-    epic:  mission.epic,        // reconciled name from 2.5.2
-    phase: task.phase,          // omitted fields pass through as absent
-    step:  task.step,
+    title:    task.title,
+    body:     task.body,
+    type:     task.type,
+    epic:     mission.epic,     // reconciled name from 2.5.2
+    phase:    task.phase,       // omitted fields pass through as absent
+    step:     task.step,
+    assignee: assignee,         // from Phase 2.75; omit when "unassigned"
   })
   taskMap.push({ id: result.id, url: result.url, title: task.title })
 ```
