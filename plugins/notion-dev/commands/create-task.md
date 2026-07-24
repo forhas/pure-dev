@@ -108,10 +108,10 @@ every `createTicket` in Phase 3. Runs once, even for a mission.
        (`"defaultAssignee '<value>' did not resolve to a unique user; pick manually"`)
        and fall through to step 2.
    - **Absent or empty string (`""`)** → go to step 2.
-2. **Interactive pick.** Fetch person-users via `notion-dev:ticket-system`
-   `resolveAssignee`'s underlying source is not reused here — instead call
-   `mcp__notion__notion-get-users`, filter to `type == "person"`, and present
-   their display names with `AskUserQuestion`: "Assign this ticket to whom?".
+2. **Interactive pick.** This needs the full user *list* to display, so call
+   `mcp__notion__notion-get-users` directly (not `resolveAssignee`, which
+   resolves a single value). Filter to `type == "person"` and present their
+   display names with `AskUserQuestion`: "Assign this ticket to whom?".
    Include a final **"Leave unassigned"** option.
    - A named pick → resolve to that user's id → `assignee = <id>`.
    - "Leave unassigned" → `assignee = unassigned` (pass no `assignee` in Phase 3).
