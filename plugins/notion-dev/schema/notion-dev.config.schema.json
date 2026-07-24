@@ -42,6 +42,15 @@
           "default": "PR",
           "description": "Property name (URL) where /notion-dev:ticket writes the PR link. When absent from the live DB, the plugin skips the write with a warning rather than aborting."
         },
+        "assigneeProperty": {
+          "type": "string",
+          "default": "Assignee",
+          "description": "People property that create-task assigns new tickets to. Absence-tolerant — when missing or not People-typed on the live DB, the assignment write is skipped with a warning rather than aborting."
+        },
+        "defaultAssignee": {
+          "type": "string",
+          "description": "Default assignee for new tickets: a Notion user id, email, or display name, resolved via notion-get-users at create time. Empty string or absent means create-task prompts interactively. Written explicitly by /notion-dev:init (including \"\" when the user declines a default)."
+        },
         "statusMap": {
           "type": "object",
           "additionalProperties": { "type": "string" },
