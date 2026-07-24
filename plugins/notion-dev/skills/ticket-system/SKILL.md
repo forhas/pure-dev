@@ -191,7 +191,7 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
 
 ## resolveAssignee(value)
 
-Read-only. Turns a human-supplied value into a concrete Notion user id. Used by `/notion-dev:init` (to validate a chosen/typed default) and `/notion-dev:create-task` (to resolve `defaultAssignee` and interactive picks).
+Read-only. Turns a human-supplied value into a concrete Notion user id. Used by `/notion-dev:create-task` to resolve a configured `defaultAssignee` before writing a ticket.
 
 1. Fetch workspace users via `mcp__notion__notion-get-users`. Filter to entries whose `type` is `"person"` — skip bots and integrations.
 2. Match `value` against the filtered list in this order, stopping at the first rule that yields matches:
@@ -200,7 +200,7 @@ Read-only. Turns a human-supplied value into a concrete Notion user id. Used by 
    3. exact display-name equality (case-insensitive)
 3. Resolve the result:
    - exactly one match → return `{ id, name }` (the canonical id and display name).
-   - zero matches, or **more than one** match at the matching rule (ambiguous) → return `null`. Callers decide what to do (create-task falls back to the interactive picker with a warning; init re-prompts).
+   - zero matches, or **more than one** match at the matching rule (ambiguous) → return `null`. The caller decides what to do (create-task falls back to the interactive picker with a warning).
 
 Never writes config or the database. When `mcp__notion__notion-get-users` is unavailable, fail with the standard MCP-unavailability message (see "MCP unavailability").
 

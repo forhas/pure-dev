@@ -322,7 +322,7 @@ Compare the configured ticket system against its live backend state. This runs a
    - **Status slot** (`statusProperty`): must exist and be `status` or `select`. Report missing.
    - **Type slot** (`typeProperty`): must exist and be `select` or `multi_select`. Report missing.
    - **PR slot** (`prProperty`): if config has `prProperty`, must exist and be `url`; informational only, not a hard drift.
-   - **Assignee slot** (`assigneeProperty`): if config has `assigneeProperty` (or the default `"Assignee"` column is expected), it should exist and be `people`-typed; **informational only**, not a hard drift (mirrors the PR slot).
+   - **Assignee slot** (`assigneeProperty`): if config has `assigneeProperty`, it should exist and be `people`-typed; **informational only**, not a hard drift (mirrors the PR slot). Skip the check when `assigneeProperty` is absent from config.
    - **Status options**: expected = `statusMap` values plus `"Backlog"`. Report any expected option missing; extras are informational.
    - **Type options**: expected = `typeMap` values (defaults `Feature`/`Bug`/`Improvement`/`Research` when the key is absent). Report any expected option missing; extras are informational.
 3. For each drift item, ask `AskUserQuestion`:
