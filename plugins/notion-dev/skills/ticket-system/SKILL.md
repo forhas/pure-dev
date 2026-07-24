@@ -16,7 +16,8 @@ The caller names the operation and passes the arguments; the sections below desc
 | Operation | Arguments | Returns |
 |---|---|---|
 | `fetchTicket` | `id` (numeric or prefixed string, or a Notion page id/URL) | `{ title, body, status, type, url, metadata }` — `type` is the logical key (`feature`/`bug`/…) when the DB has a mapped type property, else absent |
-| `createTicket` | `{ title, body, type?, epic?, phase?, step? }` | `{ id, url }` — `epic`/`phase`/`step` are optional mission metadata; each is absence-tolerant when the corresponding configured property is missing from the live DB |
+| `createTicket` | `{ title, body, type?, epic?, phase?, step?, assignee? }` | `{ id, url }` — `epic`/`phase`/`step` are optional mission metadata; `assignee` is a resolved Notion user id. Each is absence-tolerant when the corresponding configured property is missing from the live DB |
+| `resolveAssignee` | `value` (user id, email, or display name) | `{ id, name }` on a unique person match; `null` on no match or ambiguity. Read-only — never mutates config or the DB |
 | `updateTicket` | `id`, `{ title?, body?, type? }` | `{ id, url }` — only the provided fields change |
 | `updateStatus` | `id`, `logicalStatus` ∈ `{ inProgress, implemented }` (plugin-invoked set) plus any custom key present in the user's `statusMap` | `void` — the plugin never invokes `delivered` / `done` / shipped-style states; those are reserved for host-project commands |
 | `setPullRequest` | `id`, `url` | `void` — persists the PR URL into the configured PR property. No-op when the live DB has no such property. Does not touch body sections. |
@@ -43,6 +44,8 @@ Config (from `.claude/notion-dev.config.json` → `ticketSystem`):
 - `statusProperty` — property name holding the status select (default `"Status"`)
 - `typeProperty` — property name holding the ticket type (default `"Type"`). The live property may be either Select or Multi-Select; the adapter normalizes both.
 - `prProperty` — property name (URL) that `/notion-dev:ticket` writes the PR link to (default `"PR"`). When the property doesn't exist on the live DB, skip the write with a warning rather than aborting.
+- `assigneeProperty` — People property that `/notion-dev:create-task` assigns new tickets to (default `"Assignee"`). When the property doesn't exist on the live DB or isn't a People type, skip the write with a warning rather than aborting.
+- `defaultAssignee` — default assignee as a Notion user id, email, or display name, resolved via `resolveAssignee` at create time. Empty string or absent → `/notion-dev:create-task` prompts interactively. `/notion-dev:init` writes it explicitly (including `""`).
 - `statusMap` — logical → Notion option name; defaults below
 - `typeMap` — logical type key → Notion option label; defaults below
 - `staticProperties` — optional dict of extra properties to set on every new ticket (e.g. `{ "Project": "BTC-Gateway" }`). Set once at creation; never modified by `updateTicket` or `upsertSection`.
@@ -78,6 +81,7 @@ The adapter normalizes the following shape differences between the canonical sch
 - **Epic / Phase** (Select) — write as the option name string. When the configured property is absent from the live DB, skip with a one-time warning. When the property exists but the option doesn't, raise a clear error telling the caller to add the option first (via `addSelectOption` or manually in Notion). Never silently mutate the DB's option list from a write path — option creation is an explicit, user-confirmed action.
 - **Step** (Number) — write as a number. Integers and floats both accepted; adapter passes through the caller's value.
 - **Depends on** (Relation) — write as a list of page IDs. When the caller passes titles, resolve each to a page ID by DB-scoped title search (same mechanism `existing-ticket` uses on numeric IDs) before writing. Unresolved titles raise a clear error naming the offender. Absence-tolerant when the property is missing.
+- **Assignee** (People) — write as a single-item list of `{ id }` user references to the `assigneeProperty` column. Read is not implemented (the plugin never reads assignee back). When the configured property is absent from the live DB or is not a `people` type, skip the write and log **one** warning per run (`"assigneeProperty '<name>' not found or not a People property on DB; skipping assignee write"`) — never abort. `assignee` is caller-supplied creation state, not a `staticProperty`: `updateTicket` and `upsertSection` never touch it.
 
 ## Project scoping guardrail
 
@@ -185,7 +189,22 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
 4. Read `typeProperty` (if present): normalize to a logical key via reverse lookup through `typeMap` (defaults above). For `multi_select`, the first option wins.
 5. Return `{ title, body, status, type, url, metadata: { pageId, idProperty value } }`. The `idProperty value` (the numeric key) is read off the **resolved page** regardless of which branch resolved it — callers rely on it for branch/worktree naming.
 
-## createTicket({ title, body, type?, epic?, phase?, step? })
+## resolveAssignee(value)
+
+Read-only. Turns a human-supplied value into a concrete Notion user id. Used by `/notion-dev:init` (to validate a chosen/typed default) and `/notion-dev:create-task` (to resolve `defaultAssignee` and interactive picks).
+
+1. Fetch workspace users via `mcp__notion__notion-get-users`. Filter to entries whose `type` is `"person"` — skip bots and integrations.
+2. Match `value` against the filtered list in this order, stopping at the first rule that yields matches:
+   1. exact `id` equality
+   2. exact email equality (case-insensitive), where the user exposes an email
+   3. exact display-name equality (case-insensitive)
+3. Resolve the result:
+   - exactly one match → return `{ id, name }` (the canonical id and display name).
+   - zero matches, or **more than one** match at the matching rule (ambiguous) → return `null`. Callers decide what to do (create-task falls back to the interactive picker with a warning; init re-prompts).
+
+Never writes config or the database. When `mcp__notion__notion-get-users` is unavailable, fail with the standard MCP-unavailability message (see "MCP unavailability").
+
+## createTicket({ title, body, type?, epic?, phase?, step?, assignee? })
 
 1. Determine the next ID: query the database ordered by `idProperty` desc; take `max + 1`. If `idProperty` is `unique_id`, skip this step — Notion auto-assigns on create; read the assigned id back from the created page.
 2. Create the page via `mcp__notion__notion-create-pages`:
@@ -193,6 +212,7 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
    - Properties: `idProperty` = new id (omit when `unique_id`), the **title-typed property** (discovered from the live schema — see Property type handling above) = `title`, `statusProperty` = `"Backlog"` (or the first option if Backlog not present).
    - If the live DB has `typeProperty` AND `type` was provided, set it: translate the logical key through `typeMap` to the Notion option label, then write it as a scalar (Select) or single-item list (Multi-Select) depending on the live property type.
    - For each `[name, value]` in `staticProperties` (if configured), set that property on the page. Property type is inferred from the live database schema (Select/Status → option name match; Multi-Select → single-item list unless the value is already a list; text → verbatim). Skip silently with a warning if the property doesn't exist on the DB.
+   - **Assignee** (absence-tolerant): if `assignee` (a resolved user id) is provided AND the live DB has the `assigneeProperty` column AND it is a `people` type, set it to a single-item people list `[{ id: assignee }]`. If the column is absent or not People-typed, skip with the one-time warning from "Property type handling". `assignee` absent → set nothing.
    - **Mission metadata** (absence-tolerant, independent of each other):
      - If `epic` is provided AND `epicProperty` exists on the live DB, set that Select to `epic` (exact option-name match required; if the option doesn't exist, raise an error — the caller should have resolved it via `getSelectOptions` / `addSelectOption` first).
      - If `phase` is provided AND `phaseProperty` exists, set that Select to `phase` (same option-match rule).
