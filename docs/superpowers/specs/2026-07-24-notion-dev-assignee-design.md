@@ -17,11 +17,18 @@ as `prProperty` / `epicProperty`):
 
 - `assigneeProperty` — the Notion **People** column name. Default `"Assignee"`.
 - `defaultAssignee` — a user **id, email, or display name**. Resolved to a concrete
-  user id at ticket-creation time via `notion-get-users`. Optional; when absent the
-  flow prompts interactively.
+  user id at ticket-creation time via `notion-get-users`. When **absent OR an empty
+  string** (`""`), the create-task flow prompts interactively — `""` and "key missing"
+  are treated identically by the runtime.
 
-Neither key is required. A project that sets neither behaves exactly as today
-(no assignment).
+Neither key is required by the schema. A project that sets neither behaves exactly as
+today (no assignment prompt is still shown at create time; see the flow below).
+
+**Init writes `defaultAssignee` explicitly**, including `""` when the user declines a
+default — a deliberate exception to init's "omit when equal to default" convention, so
+the knob is discoverable in the config file. `assigneeProperty` still follows the
+omit-when-default rule (written only when the live People column name differs from
+`"Assignee"`).
 
 ## New `ticket-system` operation: `resolveAssignee(value)`
 
@@ -74,11 +81,41 @@ Runs **after** the Phase 2.2 confirm gate and **before** Phase 3 write.
 | Situation | Behavior |
 |---|---|
 | No `defaultAssignee`, no `assigneeProperty` on DB | Prompt still runs; write skipped with one-time warning |
+| `defaultAssignee` is `""` or key absent | Prompt interactively (identical handling) |
 | `defaultAssignee` resolves uniquely | Silent assignment |
 | `defaultAssignee` no/ambiguous match | Warn, fall back to picker |
 | User picks "Leave unassigned" | No assignment; no warning |
 | `assigneeProperty` absent / not people-typed | One-time warning, ticket still created |
 | `notion-get-users` unavailable | Same MCP-unavailable failure path as the rest of the skill |
+
+## `/notion-dev:init` — default assignee setup
+
+Init both provisions the People column and offers to record a default.
+
+**Create-new DB (3a-i):** add an `Assignee` (People) property to the created schema.
+Since the name matches the default, `assigneeProperty` is not written to config.
+
+**Use-existing DB (3a-ii):** detect a People-typed property for the assignee slot —
+prefer one named `"Assignee"` (case-insensitive); otherwise, if exactly one `people`
+property exists, offer it via `AskUserQuestion`. Record `assigneeProperty` only when the
+resolved name differs from `"Assignee"`. If no People property exists, offer to add an
+`Assignee` (People) column, or skip (assignment writes will warn-and-skip at runtime).
+
+**New step 3b — Default assignee (both paths):** ask `AskUserQuestion`:
+"Set a default assignee for new tickets?" Options:
+- **Pick a user** — list `type == "person"` users (via `notion-get-users`) as
+  sub-choices; the chosen user's **id** is written to `defaultAssignee`.
+- **No default** — write `defaultAssignee: ""`; create-task will prompt each run.
+
+Skip step 3b silently only when the assignee slot was skipped entirely (no People
+column and the user declined to add one) — in that case write neither key.
+
+**Reconfigure mode:** prefill the 3b question with the current `defaultAssignee` (or
+"No default" when it is `""`/absent).
+
+**Schema-drift check:** treat the assignee slot as **informational only** (like PR): if
+`assigneeProperty` is configured but missing or not `people`-typed on the live DB, report
+it; never a hard drift.
 
 ## Files touched
 
@@ -88,6 +125,9 @@ Runs **after** the Phase 2.2 confirm gate and **before** Phase 3 write.
   the `assignee` arg on `createTicket`, People property-type handling, config keys.
 - `plugins/notion-dev/commands/create-task.md` — add Phase 2.75, thread `assignee`
   into single-ticket and mission write paths.
+- `plugins/notion-dev/commands/init.md` — add `Assignee` (People) to the create-new
+  schema, detect the People slot for use-existing, add step 3b (default assignee), and
+  the drift-check line.
 - `plugins/notion-dev/README.md` — mention the two config keys.
 
 ## Out of scope (YAGNI)
@@ -95,4 +135,3 @@ Runs **after** the Phase 2.2 confirm gate and **before** Phase 3 write.
 - Persisting an interactively chosen assignee back to config (explicitly declined).
 - Multi-assignee (People columns can hold many; we write a single user).
 - Reassigning existing tickets / an assignee arg on `updateTicket`.
-- `/notion-dev:init` prompting for a default assignee (config-only for now).
