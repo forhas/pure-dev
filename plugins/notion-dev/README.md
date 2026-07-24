@@ -125,7 +125,7 @@ Then:
 Key fields:
 
 - `project.{key, name}` — ticket ID prefix (e.g. `STO`) and short project name (used in worktree naming).
-- `ticketSystem` — the Notion ticket-database config: `databaseId` (required) plus optional property-name overrides and `statusMap` / `typeMap` / `staticProperties`.
+- `ticketSystem` — the Notion ticket-database config: `databaseId` (required) plus optional property-name overrides and `statusMap` / `typeMap` / `staticProperties`. Assignee support adds `assigneeProperty` (the People column, default `"Assignee"`) and `defaultAssignee` (a user id, email, or display name; `""` means create-task prompts each run). `/notion-dev:init` sets both.
 - `inputSources` — enabled source adapters: any of `"prompt"`, `"existing-ticket"`, `"notion-page"`.
 - `git.{baseBranch, prTargetBranch, mergeStrategy, preMergeChecks, postMergeHooks}` — git-flow config; `preMergeChecks` runs as a merge gate inside the review loop (`notion-dev:review-and-merge`), `postMergeHooks` is a phase-2 seam (empty by default).
 - `dependencies.{superpowers, featureDev}` — set by `/notion-dev:init` after verifying both build-flow plugins are installed. Both must be `true` for `/notion-dev:ticket` to run.
@@ -148,6 +148,7 @@ Secrets never belong in this file; MCP auth handles credentials.
 
 - `/notion-dev:init` offers to create a new Notion database with the exact schema, or validate/patch an existing one.
 - Required properties: `Name` (title), `ID` (number), `Status` (select/status), `Type` (select), `PR` (URL).
+- Optional: `Assignee` (People) — `/notion-dev:create-task` assigns new tickets to a configured default, or prompts you to pick a workspace user when no default is set.
 - Status options: `Backlog`, `In Progress`, `Implemented`. (The plugin only ever sets `In Progress` and `Implemented`; add `Delivered` or other shipped states yourself if you run a release flow — the plugin doesn't manage them.)
 - Type options: `Feature`, `Bug`, `Improvement`, `Research`.
 
