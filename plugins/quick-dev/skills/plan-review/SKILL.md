@@ -1,0 +1,143 @@
+---
+name: plan-review
+description: This skill should be used when an orchestrating flow needs an independent review of a written implementation plan before execution begins — invoked by quick-dev:develop on the superpowers build path, or directly when the user asks to "review this plan", "check the plan before implementing", or "is this plan sound". Dispatches a fresh review-only agent that verifies the plan against the actual codebase, triages its findings, revises the plan, and returns a machine-parseable verdict. Superpowers-path only; not for the feature-dev flow, which produces no plan artifact.
+argument-hint: "--plan=<path> [--auto] [--spec-file=<path>]"
+---
+
+# plan-review — independent review of a plan before implementation
+
+Review a written implementation plan with a **fresh agent that did not write it**, verify the plan against the **actual codebase**, revise it, and return a verdict the caller can gate on.
+
+This exists because nothing else checks a plan against reality. `superpowers:writing-plans` self-reviews its own output against the spec; `local-code-review` reviews the diff two phases later, after the implementation has already been paid for. Neither reads the repo at plan time.
+
+**This review must never block development on its own failure.** If the reviewer cannot run, degrade and let the build continue.
+
+## Input
+
+Arguments: `$ARGUMENTS`
+
+Flags:
+
+- `--plan=<path>` — **required.** Path to the plan file. If missing, unreadable, or empty, **stop with an error naming the path** — that is a caller bug, not something to degrade around.
+- `--auto` — non-interactive: the caller will not present a human gate. Changes the end behaviour (see "Non-interactive outcome").
+- `--spec-file=<path>` — optional path to the spec the plan implements. Use when the intent lives in a file rather than inline.
+
+Everything after the flags is the **context packet**, in labelled blocks:
+
+```
+INTENT:
+<the requirement text the plan must satisfy — a ticket body, a spec, or "(see --spec-file)">
+SCOUT-FINDINGS:
+<flow-triage's SCOUT-FINDINGS block verbatim, or "NONE — not available">
+MICRO-PLAN:
+<flow-triage's MICRO-PLAN block verbatim, or "NONE — not available">
+VERIFY:
+<the project's verify/test commands, one per line, or NONE>
+```
+
+`SCOUT-FINDINGS` and `MICRO-PLAN` are legitimately absent when the caller skipped triage (for example a resumed run). When they are, tell the reviewer they are unavailable — never fabricate a stand-in.
+
+## Step 1 — Build the reviewer prompt
+
+Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empty conversation; it inherits nothing. Include:
+
+1. The full text of `references/reviewer-rubric.md` — instruct the reviewer to apply it exactly, including its output contract.
+2. The plan file's absolute path and its full current contents.
+3. The plan's identity for the echo line: the current HEAD sha if the plan is committed, otherwise `uncommitted`.
+4. The `INTENT` block (or the contents of `--spec-file`) — this is what the plan is judged against.
+5. The `SCOUT-FINDINGS` and `MICRO-PLAN` blocks, labelled as precomputed context from triage, or explicitly marked unavailable.
+6. The `VERIFY` commands, so the reviewer knows what verification exists in this repo.
+7. The repo root as the codebase to verify against, plus a pointer to `CLAUDE.md` and `.claude/rules/` if present.
+8. An explicit statement that it is **review-only**: it must not edit files, commit, or push.
+
+## Step 2 — Round 1
+
+Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (This matches how `../develop/SKILL.md` Phase 4 already spawns its local-mode reviewer.)
+
+Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
+
+**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, stop the loop and emit the output block with `PLAN-REVIEW: degraded`, `ROUNDS: 1`, all counts `0`, `PLAN-CHANGED: no`, and a one-line reason on the `UNRESOLVED:` line. Do not block the build.
+
+## Step 3 — Triage the findings
+
+Apply the `quick-dev:receiving-code-review` skill to the findings: agree, partially agree, or disagree with each one, with reasoning. Never apply a finding blindly, and never perform agreement you do not hold.
+
+Verify before accepting. The reviewer was told to check the repo, but it can still be wrong — if it claims a file does not exist, look. A well-reasoned decline beats a low-confidence plan edit.
+
+Classify every finding as exactly one of:
+
+- **accepted** — you agree; you will edit the plan.
+- **declined** — you disagree, with a stated reason. **A declined finding is resolved and does not block.** (Same rule `../develop/SKILL.md` Phase 4 already applies to code review.)
+- **unresolved** — you agree, but it cannot be fixed in the plan (it needs a decision you do not own, or information nobody has). These are the only findings that count toward the blocking rule.
+
+Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at your discretion; they never produce an `unresolved` entry.
+
+## Step 4 — Revise the plan
+
+Edit the plan file in place for every accepted finding. Keep edits surgical — fix the finding, do not rewrite the plan. Preserve its structure, its task numbering where possible, and every `- [ ]` checkbox: callers rely on unchecked boxes for resume detection.
+
+If accepted findings identified deferrable work and the plan has no `## Not in scope` section, add one with those items and a one-line rationale each.
+
+If task numbering must change, update every cross-reference to the renumbered tasks in the same edit.
+
+Record whether the plan file changed at all — that is `PLAN-CHANGED`.
+
+## Step 5 — Round 2 (conditional)
+
+**Run round 2 only if `PLAN-CHANGED: yes`.** If the plan did not change, there is nothing new to review: end at `ROUNDS: 1`.
+
+Dispatch a **new** fresh `general-purpose` agent — never reuse the round-1 agent — with the same prompt rebuilt against the **revised** plan. Triage its findings exactly as in Step 3.
+
+**Hard cap: 2 rounds.** Never a third, whatever round 2 returns. Remaining blockers are reported, not iterated on.
+
+## Step 6 — Compute status and emit the output block
+
+Status is computed from the **unresolved counts, not from the reviewer's raw verdict**:
+
+| Status | Condition |
+|---|---|
+| `blocked` | ≥1 unresolved **Critical** |
+| `proceed-with-warnings` | 0 unresolved Critical, ≥1 unresolved **Required** |
+| `clean` | 0 unresolved Critical and 0 unresolved Required |
+| `degraded` | reviewer unavailable after one retry (Step 2) |
+
+A round whose `VERDICT` was `NOT-CLEAN` but whose findings were **all declined with reasoning** therefore yields `PLAN-REVIEW: clean`. That is correct, not a contradiction — the declines are listed under `DECLINED-WITH-REASONING` for the human to overrule.
+
+End with exactly this block so callers can parse it:
+
+```
+PLAN-REVIEW: <clean | proceed-with-warnings | blocked | degraded>
+ROUNDS: <1|2>
+FINDINGS: <total across all rounds>
+ACCEPTED: <n>
+DECLINED: <n>
+UNRESOLVED-CRITICAL: <n>
+UNRESOLVED-REQUIRED: <n>
+PLAN-CHANGED: <yes|no>
+NOT-IN-SCOPE:
+<deferred items, one per line with a one-line rationale, or NONE>
+DECLINED-WITH-REASONING:
+<finding — why it was declined, one per line, or NONE>
+UNRESOLVED:
+<accepted-but-unfixed blockers, one per line, or NONE>
+```
+
+## Non-interactive outcome
+
+Without `--auto`, the caller presents a human gate and this skill simply returns.
+
+With `--auto` there is no human gate, so the status decides and **the caller acts on it**:
+
+- `blocked` — the caller **stops the run**, leaving the worktree and branch intact. Building a full implementation on a known-Critical plan wastes the entire run.
+- `proceed-with-warnings` — the caller proceeds and logs the blockers. A plan flaw is recoverable, and the PR review loop and merge gate still guard the actual landing.
+- `clean` / `degraded` — the caller proceeds.
+
+State the applicable outcome explicitly in your final message so the caller does not have to infer it.
+
+## Ledger
+
+This skill writes **nothing** to the ledger. The counts in the output block are folded into the outcome line the caller already writes at the end of its run (`plan_review_*` fields — see `../flow-triage/references/ledger.md`). One writer per event, and no worktree-versus-primary-checkout root confusion here.
+
+## Additional Resources
+
+- **`references/reviewer-rubric.md`** — the four review axes, the mandatory codebase-verification clause, severity definitions, the coverage map, and the reviewer's output contract.
