@@ -30,7 +30,7 @@ Field notes:
 - `scores` and `flow_recommended` are `null` on a forced decision (`--forced-flow`), with `"confidence":"forced"`. On a decision made with a **scout degraded** (scout probe failed twice), the unscored dimensions and `total` are `null` (a partial `scores` object) — decision lines with `total: null` are excluded from the gray-zone ±3 score matching.
 - `flow_chosen` ≠ `flow_recommended` records a user override — the strongest calibration signal.
 - `result` is one of `"merged"`, `"stopped"`, `"failed"`.
-- `plan_review_*` — written by the `plan-review` step on the `superpowers` build path (rounds run, total findings, accepted, declined, and accepted-but-unfixed). All `null` on the `feature-dev` path, which has no plan artifact to review, and when the review degraded. Added after the original schema; readers must tolerate their absence in older lines.
+- `plan_review_*` — written by the `plan-review` step on the `superpowers` build path (rounds run, total findings, accepted, declined, and accepted-but-unfixed). All `null` wherever there is no review signal: the `feature-dev` path, which has no plan artifact to review, and a degraded review, where the reviewer never ran — `null` rather than the zeros a degraded output block carries, since `0` findings would be indistinguishable from a review that ran clean. Added after the original schema; readers must tolerate their absence in older lines.
 - Any outcome metric that cannot be determined is `null`, never guessed.
 
 ## Reading rules (tolerance)
