@@ -56,7 +56,7 @@ Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (
 
 Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
 
-**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, stop the loop and emit the output block with `PLAN-REVIEW: degraded`, `ROUNDS: 1`, all counts `0`, `PLAN-CHANGED: no`, and a one-line reason on the `UNRESOLVED:` line. Do not block the build.
+**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, stop the loop and emit the output block with `PLAN-REVIEW: degraded`, `ROUNDS: 1`, all counts `0`, `PLAN-CHANGED: no`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the eleven keys must be present even in this path — callers parse the whole block. Do not block the build.
 
 ## Step 3 — Triage the findings
 
@@ -70,7 +70,7 @@ Classify every finding as exactly one of:
 - **declined** — you disagree, with a stated reason. **A declined finding is resolved and does not block.** (Same rule `../develop/SKILL.md` Phase 4 already applies to code review.)
 - **unresolved** — you agree, but it cannot be fixed in the plan (it needs a decision you do not own, or information nobody has). These are the only findings that count toward the blocking rule.
 
-Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at your discretion; they never produce an `unresolved` entry.
+Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at your discretion; they never produce an `unresolved` entry. A non-blocking finding you skip counts as **declined**, with `discretionary skip` as its reason — so the three buckets stay exhaustive and `FINDINGS` always equals `ACCEPTED + DECLINED + UNRESOLVED`.
 
 ## Step 4 — Revise the plan
 
