@@ -685,7 +685,7 @@ Replace with:
 Then, in the sentence that follows, after "duration from `RUN_START` to now.", insert:
 
 ```
-Plan-review metrics come from `PLAN_REVIEW_REPORT` (Phase 4.2 step (b)); all five are `null` on the `feature-dev` path, which has no plan to review, on a `degraded` review, and on a resume that skipped the review.
+Plan-review metrics come from `PLAN_REVIEW_REPORT` (Phase 4.2 step (b)); all five are `null` wherever there is no review signal to record — the `feature-dev` path, which has no plan to review, a `degraded` review, where the reviewer never ran, and a resume that skipped the review. On a degraded review write `null`, **not** the zeros its output block carries: `0` findings would be indistinguishable from a review that ran and found nothing, and that is exactly the distinction this ledger exists to preserve.
 ```
 
 - [ ] **Step 4: Document the fields in notion-dev's ledger schema**
