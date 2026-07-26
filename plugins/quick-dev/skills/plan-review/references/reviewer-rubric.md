@@ -100,6 +100,8 @@ Use `(no test suite in this repo)` as the whole map when the repo has none.
 - **Nit** — cosmetic; non-blocking.
 - **FYI** — informational; non-blocking.
 
+When a finding fits both Critical and Required, choose **Required** — unless the flaw blocks the plan as a whole, in which case it is Critical.
+
 Be conservative with Critical. It stops unattended runs outright. Reserve it for "implementing this plan wastes the entire run."
 
 ## Lead with what matters
@@ -112,9 +114,15 @@ Every finding must say what to change **in the plan** — not in the eventual co
 
 ## Deferred work
 
-If your review identifies work the plan could reasonably defer, check whether the plan has a `## Not in scope` section listing it. If it has deferrable work and no such section, raise one Required finding asking for the section with those items and a one-line rationale each. Report this in the `NOT-IN-SCOPE-PRESENT:` line.
+If your review identifies work the plan could reasonably defer, check whether the plan has a `## Not in scope` section listing it.
 
-If you identified nothing to defer, `NOT-IN-SCOPE-PRESENT: yes` is correct regardless of whether the heading exists. Requiring the heading for its own sake is exactly the cosmetic finding this rubric forbids.
+Emit the `NOT-IN-SCOPE-PRESENT:` line per these three cases:
+
+- **Deferrable work found, no such section** — raise one Required finding asking for the section with those items and a one-line rationale each, and emit `NOT-IN-SCOPE-PRESENT: no`.
+- **Deferrable work found, the section already covers it** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`.
+- **Nothing to defer** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`, regardless of whether the heading exists. Requiring the heading for its own sake is exactly the cosmetic finding this rubric forbids.
+
+The line reports whether the deferred-work requirement is *satisfied*, not merely whether the heading exists.
 
 ## Output contract (MUST follow exactly)
 
