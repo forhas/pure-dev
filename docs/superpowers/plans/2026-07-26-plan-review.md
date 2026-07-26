@@ -4,7 +4,7 @@
 
 **Goal:** Add a `plan-review` skill to both `quick-dev` and `notion-dev` that dispatches a fresh review-only agent against a written implementation plan — verifying it against the actual codebase — before `subagent-driven-development` executes it, with a bounded revise-and-re-review loop and a machine-parseable verdict.
 
-**Architecture:** An orchestrator skill (`SKILL.md`) owns the loop, severity split, and output block; a reference file (`references/reviewer-rubric.md`) holds the contract the fresh agent applies. Authored once in `quick-dev`, then vendored verbatim into `notion-dev` with exactly three documented deltas. Callers (`quick-dev:develop` Phase 2b, `notion-dev:ticket` Phase 4.2) invoke it and parse its output block.
+**Architecture:** An orchestrator skill (`SKILL.md`) owns the loop, severity split, and output block; a reference file (`references/reviewer-rubric.md`) holds the contract the fresh agent applies. Authored once in `quick-dev`, then vendored into `notion-dev` with exactly four documented deltas (see Global Constraints). Callers (`quick-dev:develop` Phase 2b, `notion-dev:ticket` Phase 4.2) invoke it and parse its output block.
 
 **Tech Stack:** Markdown prompt files and JSON manifests only. Claude Code plugin conventions: `skills/<name>/SKILL.md` with YAML frontmatter, `references/*.md` for progressive disclosure.
 
