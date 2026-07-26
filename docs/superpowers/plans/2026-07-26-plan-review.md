@@ -554,7 +554,7 @@ git commit -m "feat(quick-dev): run plan-review and a plan gate before implement
 - Consumes: both files authored in Tasks 1 and 2.
 - Produces: `notion-dev:plan-review`, with an identical invocation signature and output block, for Task 5 to wire in.
 
-The three permitted deltas, and nothing else: skill prefix, `receiving-code-review` reference, ledger path. `notion-dev` has no vendored `receiving-code-review` — it uses the superpowers one, as its README documents.
+The four permitted deltas, and nothing else — all inside `SKILL.md`: the frontmatter `description`'s calling flow, the `receiving-code-review` reference, and two sibling-skill cross-references. `references/reviewer-rubric.md` must be byte-identical in both. `notion-dev` has no vendored `receiving-code-review` (it uses the superpowers one, as its README documents) and no `develop` skill, which is why the cross-references must move to `../review-and-merge/`. The ledger-path delta from the spec's table does not apply here — see Global Constraints.
 
 - [ ] **Step 1: Copy both files verbatim**
 
