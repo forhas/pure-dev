@@ -107,9 +107,11 @@ The two vendored copies differ **only** in:
 
 | | quick-dev | notion-dev |
 |---|---|---|
-| skill prefix | `quick-dev:plan-review` | `notion-dev:plan-review` |
+| frontmatter calling flow | `quick-dev:develop` | `notion-dev:ticket` |
 | triage skill | `quick-dev:receiving-code-review` | `superpowers:receiving-code-review` |
-| ledger path | `.claude/quick-dev/` | `.claude/notion-dev/` |
+| sibling cross-reference (×2) | `../develop/SKILL.md` | `../review-and-merge/SKILL.md` |
+
+Four deltas, all inside `SKILL.md`; `references/reviewer-rubric.md` is byte-identical in both. The ledger directory (`.claude/quick-dev/` vs `.claude/notion-dev/`) is **not** among them — `plan-review` writes nothing to the ledger and names no ledger path. That difference lives in the two `flow-triage/references/ledger.md` copies, which already differ that way.
 
 `notion-dev` has no vendored `receiving-code-review`; it uses the superpowers one, as its
 README already documents.
@@ -370,8 +372,7 @@ or a degraded review.
 Prompt files have no unit-test surface, so three checks:
 
 1. **`claude plugin validate`** on both plugins.
-2. **Parity diff** between the two vendored copies, asserting they differ *only* in the three
-   rows of the packaging table above. Worth having as a repeatable check given four skills are
+2. **Parity diff** between the two vendored copies, asserting `references/reviewer-rubric.md` is byte-identical and `SKILL.md` differs *only* in the four deltas of the packaging table above. Compare the set of differing lines, not the hunk count — `diff` may group two of the four together, since both live in the skill's Step 3. Worth having as a repeatable check given four skills are
    already vendored in duplicate.
 3. **Smoke run against a deliberately flawed plan** — one task naming a nonexistent file, one
    task depending on a later task. Confirm: the reviewer catches both, the plan is edited,

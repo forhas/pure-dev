@@ -279,7 +279,7 @@ Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empt
 1. The full text of `references/reviewer-rubric.md` — instruct the reviewer to apply it exactly, including its output contract.
 2. The plan file's absolute path and its full current contents.
 3. The plan's identity for the echo line: the current HEAD sha if the plan is committed, otherwise `uncommitted`.
-4. The `INTENT` block (or the contents of `--spec-file`) — this is what the plan is judged against.
+4. The `INTENT` block and, when `--spec-file` was given, that file's contents — together these are what the plan is judged against. When the caller supplies both they are complementary, not alternatives: the spec file carries the full requirement, `INTENT` the caller's framing of it. Include both; neither overrides the other.
 5. The `SCOUT-FINDINGS` and `MICRO-PLAN` blocks, labelled as precomputed context from triage, or explicitly marked unavailable.
 6. The `VERIFY` commands, so the reviewer knows what verification exists in this repo.
 7. The repo root as the codebase to verify against, plus a pointer to `CLAUDE.md` and `.claude/rules/` if present.
