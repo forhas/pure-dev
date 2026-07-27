@@ -50,13 +50,13 @@ Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empt
 7. The repo root as the codebase to verify against, plus a pointer to `CLAUDE.md` and `.claude/rules/` if present.
 8. An explicit statement that it is **review-only**: it must not edit files, commit, or push.
 
-## Step 2 — Round 1
+## Step 2 — Dispatch the reviewer
 
 Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (This matches how `../develop/SKILL.md` Phase 4 already spawns its local-mode reviewer.)
 
 Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
 
-**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, stop the loop and emit the output block with `PLAN-REVIEW: degraded`, `ROUNDS: 1`, all counts `0`, `PLAN-CHANGED: no`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the eleven keys must be present even in this path — callers parse the whole block. Do not block the build.
+**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
 
 ## Step 3 — Triage the findings
 
@@ -72,7 +72,7 @@ Classify every finding as exactly one of:
 
 Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at your discretion; they never produce an `unresolved` entry. A non-blocking finding you skip counts as **declined**, with `discretionary skip` as its reason — so the three buckets stay exhaustive and `FINDINGS` always equals `ACCEPTED + DECLINED + UNRESOLVED`.
 
-## Step 4 — Revise the plan
+## Step 4 — Revise the plan and verify your edits
 
 Edit the plan file in place for every accepted finding. Keep edits surgical — fix the finding, do not rewrite the plan. Preserve its structure, its task numbering where possible, and every `- [ ]` checkbox: callers rely on unchecked boxes for resume detection.
 
@@ -80,17 +80,13 @@ If accepted findings identified deferrable work and the plan has no `## Not in s
 
 If task numbering must change, update every cross-reference to the renumbered tasks in the same edit.
 
-Record whether the plan file changed at all — that is `PLAN-CHANGED`.
+**Then verify your own edits.** Applied review feedback frequently fails to resolve the finding it was meant to resolve, and nothing downstream checks this. Walk the list of accepted findings and confirm for each one that the plan now contains the change you made for it — read the edited region; do not trust your memory of having edited it. `git diff -- <plan path>` shows everything you changed at once (when the plan is uncommitted, compare against the contents the reviewer was given).
 
-## Step 5 — Round 2 (conditional)
+Any accepted finding whose fix is missing, or which the edit does not actually address, is **reclassified as `unresolved`** and counts toward the blocking rule in Step 5. Never leave such a finding as `accepted` — an accepted-but-unapplied finding is precisely the failure this check exists to catch.
 
-**Run round 2 only if `PLAN-CHANGED: yes`.** If the plan did not change, there is nothing new to review: end at `ROUNDS: 1`.
+This self-check stands in for a second review round. A fresh second reviewer would arrive with no knowledge of what the first round found, so it could only re-review the whole plan and infer success from a finding's absence — expensive, and not a verification. You know exactly which edits you made and why, so you are the right party to check them.
 
-Dispatch a **new** fresh `general-purpose` agent — never reuse the round-1 agent — with the same prompt rebuilt against the **revised** plan. Triage its findings exactly as in Step 3.
-
-**Hard cap: 2 rounds.** Never a third, whatever round 2 returns. Remaining blockers are reported, not iterated on.
-
-## Step 6 — Compute status and emit the output block
+## Step 5 — Compute status and emit the output block
 
 Status is computed from the **unresolved counts, not from the reviewer's raw verdict**:
 
@@ -101,19 +97,17 @@ Status is computed from the **unresolved counts, not from the reviewer's raw ver
 | `clean` | 0 unresolved Critical and 0 unresolved Required |
 | `degraded` | reviewer unavailable after one retry (Step 2) |
 
-A round whose `VERDICT` was `NOT-CLEAN` but whose findings were **all declined with reasoning** therefore yields `PLAN-REVIEW: clean`. That is correct, not a contradiction — the declines are listed under `DECLINED-WITH-REASONING` for the human to overrule.
+A review whose `VERDICT` was `NOT-CLEAN` but whose findings were **all declined with reasoning** therefore yields `PLAN-REVIEW: clean`. That is correct, not a contradiction — the declines are listed under `DECLINED-WITH-REASONING` for the human to overrule.
 
 End with exactly this block so callers can parse it:
 
 ```
 PLAN-REVIEW: <clean | proceed-with-warnings | blocked | degraded>
-ROUNDS: <1|2>
-FINDINGS: <total across all rounds>
+FINDINGS: <total>
 ACCEPTED: <n>
 DECLINED: <n>
 UNRESOLVED-CRITICAL: <n>
 UNRESOLVED-REQUIRED: <n>
-PLAN-CHANGED: <yes|no>
 NOT-IN-SCOPE:
 <deferred items, one per line with a one-line rationale, or NONE>
 DECLINED-WITH-REASONING:
@@ -121,6 +115,8 @@ DECLINED-WITH-REASONING:
 UNRESOLVED:
 <accepted-but-unfixed blockers, one per line, or NONE>
 ```
+
+`ACCEPTED` counts findings whose fix was applied **and verified** in Step 4; anything reclassified there moves to `UNRESOLVED`. `FINDINGS` always equals `ACCEPTED + DECLINED + UNRESOLVED`.
 
 ## Non-interactive outcome
 

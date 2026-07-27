@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `plan-review` skill to both `quick-dev` and `notion-dev` that dispatches a fresh review-only agent against a written implementation plan — verifying it against the actual codebase — before `subagent-driven-development` executes it, with a bounded revise-and-re-review loop and a machine-parseable verdict.
+**Goal:** Add a `plan-review` skill to both `quick-dev` and `notion-dev` that dispatches a fresh review-only agent against a written implementation plan — verifying it against the actual codebase — before `subagent-driven-development` executes it, with a revise-and-self-verify step and a machine-parseable verdict.
 
 **Architecture:** An orchestrator skill (`SKILL.md`) owns the loop, severity split, and output block; a reference file (`references/reviewer-rubric.md`) holds the contract the fresh agent applies. Authored once in `quick-dev`, then vendored into `notion-dev` with exactly four documented deltas (see Global Constraints). Callers (`quick-dev:develop` Phase 2b, `notion-dev:ticket` Phase 4.2) invoke it and parse its output block.
 
 **Tech Stack:** Markdown prompt files and JSON manifests only. Claude Code plugin conventions: `skills/<name>/SKILL.md` with YAML frontmatter, `references/*.md` for progressive disclosure.
+
+> **Post-implementation change (2026-07-27):** round 2 was removed after review in favour of an orchestrator self-verification pass, dropping the `ROUNDS` and `PLAN-CHANGED` output keys and the `plan_review_rounds` ledger field. The task text below is the historical record of what was originally built; the spec's "Revision history" section explains the change.
 
 ## Global Constraints
 
@@ -444,7 +446,7 @@ Replace with:
 3. `quick-dev:plan-review` — independent review of the plan before any of it is built. Invoke via the Skill tool with `--plan="$PLAN_PATH" --spec-file="$SPEC_PATH"` (add `--auto` in non-interactive mode), and a context packet whose `INTENT:` block is the feature description, `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 2a, and `VERIFY:` lists the project's test/build commands if any exist — discover them from the repo at this point (the same suite Phase 2c will run); no earlier phase records them. It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises the plan, and returns a `PLAN-REVIEW:` output block. Record its whole output block — `PLAN-REVIEW`, `ROUNDS`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `PLAN-CHANGED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger (Phase 6) and the final report; carry `NOT-IN-SCOPE` into the PR body in Phase 3.
 
    **`--auto` and `PLAN-REVIEW: blocked`** (≥1 unresolved Critical): STOP per "Failure handling" below — leave the worktree, branch, and plan intact and report the blockers. Do not implement a plan already known to be Critically flawed. `proceed-with-warnings`, `clean`, and `degraded` all continue.
-4. **Hard gate — plan approval** (interactive only; skipped entirely under `--non-interactive`, where step 3's rule already decided). Present a short summary — not the whole plan file: what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Then ask via `AskUserQuestion`: **Approve** — proceed to step 5; **Revise** — capture the user's feedback, edit the plan, and re-ask **this gate**. Do not re-invoke `quick-dev:plan-review`: its two-round budget is already spent, and human iteration is deliberately outside it. Blocking: do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make Revise the recommended option.
+4. **Hard gate — plan approval** (interactive only; skipped entirely under `--non-interactive`, where step 3's rule already decided). Present a short summary — not the whole plan file: what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Then ask via `AskUserQuestion`: **Approve** — proceed to step 5; **Revise** — capture the user's feedback, edit the plan, and re-ask **this gate**. Do not re-invoke `quick-dev:plan-review`: it has already run, and human iteration is deliberately outside it. Blocking: do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make Revise the recommended option.
 5. `superpowers:subagent-driven-development` — executes the plan in-session, fresh subagent per task with per-task review.
 ```
 
@@ -645,7 +647,7 @@ It dispatches a fresh reviewer against the plan **and the codebase**, triages th
 
 (c) Hard gate — plan approval (**interactive only; skipped entirely in non-interactive mode**, where step (b)'s rule already decided — see 4.3). Present a short summary (not the whole file): what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
 - **Approve** — proceed.
-- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: its two-round budget is already spent, and human iteration is deliberately outside it.
+- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: it has already run, and human iteration is deliberately outside it.
 
 Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make **Revise** the recommended option.
 

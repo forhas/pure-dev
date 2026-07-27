@@ -2,6 +2,7 @@
 
 **Date:** 2026-07-26
 **Status:** approved design, not yet implemented
+**Revised:** 2026-07-27 — round 2 removed in favour of an orchestrator self-verification pass; see "Revision history" at the end.
 **Scope:** new `plan-review` skill vendored into both `quick-dev` and `notion-dev`
 
 ## Problem
@@ -60,7 +61,7 @@ against the alternative that was never built.
         │                                      │
         │  build context packet                │
         │       ▼                              │
-        │  ROUND 1 ── spawn fresh agent ───────┼──▶ general-purpose, synchronous,
+        │  REVIEW ── spawn fresh agent ────────┼──▶ general-purpose, synchronous,
         │       │     applies reviewer-rubric  │    review-only (no edit/commit/push)
         │       ▼                              │    reads the repo to verify claims
         │  findings + VERDICT: CLEAN|NOT-CLEAN │
@@ -70,7 +71,8 @@ against the alternative that was never built.
         │       ▼                              │
         │  edit the plan file in place         │
         │       ▼                              │
-        │  ROUND 2 ── fresh agent on revision  │  only if round 1 changed the plan
+        │  self-verify: git diff the plan,     │  reclassify any accepted-but-
+        │  confirm each accepted fix landed    │  unlanded finding to unresolved
         │       ▼                              │
         │  emit PLAN-REVIEW output block       │
         └──────────────┬───────────────────────┘
@@ -97,8 +99,8 @@ plugins/{quick-dev,notion-dev}/skills/plan-review/
   references/reviewer-rubric.md # the contract the fresh reviewer agent applies
 ```
 
-The loop is the non-trivial part — two bounded rounds, triage, the severity split,
-degradation, ledger counts. A rubric-only skill would force that logic to be written twice,
+The loop is the non-trivial part — a single review round, triage, an orchestrator
+self-verification pass, the severity split, degradation, ledger counts. A rubric-only skill would force that logic to be written twice,
 in `ticket.md` and in `develop/SKILL.md`, where it would drift. Splitting the rubric into
 `references/` mirrors how `review-and-merge` points at `local-code-review` for its reviewer
 contract, and keeps `SKILL.md` readable.
@@ -223,10 +225,11 @@ VERIFY:
 
 ```
 PLAN-REVIEW: <clean | proceed-with-warnings | blocked | degraded>
-ROUNDS: <1|2>
-FINDINGS: <n>       ACCEPTED: <n>       DECLINED: <n>
-UNRESOLVED-CRITICAL: <n>    UNRESOLVED-REQUIRED: <n>
-PLAN-CHANGED: <yes|no>
+FINDINGS: <n>
+ACCEPTED: <n>
+DECLINED: <n>
+UNRESOLVED-CRITICAL: <n>
+UNRESOLVED-REQUIRED: <n>
 NOT-IN-SCOPE:
 <deferred items with one-line rationale, or NONE>
 DECLINED-WITH-REASONING:
@@ -239,34 +242,40 @@ Status semantics:
 
 | Status | Meaning |
 |---|---|
-| `clean` | Final round `CLEAN`; zero unresolved Critical or Required |
+| `clean` | Review `CLEAN`; zero unresolved Critical or Required |
 | `proceed-with-warnings` | Unresolved Required only |
 | `blocked` | ≥1 unresolved Critical |
 | `degraded` | Reviewer unavailable after one retry; review did not run |
 
 Status is computed from the **unresolved counts, not from the reviewer's raw verdict.** A
-round-1 `VERDICT: NOT-CLEAN` whose findings were all declined with reasoning yields
-`PLAN-REVIEW: clean` with `ROUNDS: 1`, `PLAN-CHANGED: no`, and the declines listed under
-`DECLINED-WITH-REASONING`. This follows directly from the declined-is-resolved rule below and
-must not be treated as a contradiction.
+`VERDICT: NOT-CLEAN` whose findings were all declined with reasoning yields
+`PLAN-REVIEW: clean`, with the declines listed under `DECLINED-WITH-REASONING`. This follows
+directly from the declined-is-resolved rule below and must not be treated as a contradiction.
 
 ### Loop rules
 
-Two rules keep the loop from spinning, both taken from precedent already in these plugins:
+One rule keeps the loop honest, taken from precedent already in these plugins:
 
 1. **A declined finding is resolved.** `develop` Phase 4 already states that findings the
    flow declined with reasoning are resolved and do not block. Same here — `UNRESOLVED`
    counts only *accepted-but-unfixed* items. This is what makes an unresolved Critical rare
    enough to justify stopping on.
-2. **Round 2 runs only if round 1 changed the plan.** `PLAN-CHANGED: no` means there is
-   nothing new to review; the loop ends at `ROUNDS: 1`.
 
-Hard cap: **2 rounds.** Never a third. Remaining blockers go to the human gate as an explicit
-list.
+Triage of the reviewer's findings uses `receiving-code-review` (the vendored copy in
+quick-dev, the superpowers one in notion-dev): agree / partially agree / disagree per finding,
+never applied blindly. A well-reasoned decline beats a low-confidence plan edit.
 
-Triage of round-1 findings uses `receiving-code-review` (the vendored copy in quick-dev, the
-superpowers one in notion-dev): agree / partially agree / disagree per finding, never applied
-blindly. A well-reasoned decline beats a low-confidence plan edit.
+### Step 4 self-verification
+
+There is no second review round. Instead, after editing the plan for every accepted finding,
+the orchestrator **re-reads its own edits** — `git diff` on the plan file (or a comparison
+against the contents the reviewer was given, when the plan is uncommitted) — and confirms,
+finding by finding, that each accepted fix is actually present. Any accepted finding whose fix
+is missing, or whose edit does not actually address it, is **reclassified from `accepted` to
+`unresolved`**, so it counts toward the blocking rule in Step 5. An accepted-but-unapplied
+finding must never be left as `accepted` — that is precisely the failure this check exists to
+catch. The orchestrator made the edits, so it is the party positioned to verify them, at no
+extra agent cost.
 
 ### Non-interactive behavior
 
@@ -355,7 +364,7 @@ already say unknown metrics are `null`, so old readers and old ledger files keep
 
 ```json
 {"event":"outcome","run_id":"…","result":"merged","review_rounds":2,
- "plan_review_rounds":2,"plan_review_findings":5,"plan_review_accepted":3,
+ "plan_review_findings":5,"plan_review_accepted":3,
  "plan_review_declined":2,"plan_review_unresolved":0}
 ```
 
@@ -375,9 +384,9 @@ Prompt files have no unit-test surface, so three checks:
 2. **Parity diff** between the two vendored copies, asserting `references/reviewer-rubric.md` is byte-identical and `SKILL.md` differs *only* in the four deltas of the packaging table above. Compare the set of differing lines, not the hunk count — `diff` may group two of the four together, since both live in the skill's Step 3. Worth having as a repeatable check given four skills are
    already vendored in duplicate.
 3. **Smoke run against a deliberately flawed plan** — one task naming a nonexistent file, one
-   task depending on a later task. Confirm: the reviewer catches both, the plan is edited,
-   round 2 fires, the gate shows what changed, and `--auto` with an unresolved Critical stops
-   with the worktree intact.
+   task depending on a later task. Confirm: the reviewer catches both, the plan is edited, the
+   self-verification pass confirms both fixes landed, the gate shows what changed, and
+   `--auto` with an unresolved Critical stops with the worktree intact.
 
 The thing to watch in (3) is not whether findings appear — it is whether they are *real*. A
 reviewer asked to critique a document written by a capable model will manufacture plausible
@@ -387,7 +396,8 @@ support, the verification clause is not biting hard enough.
 ## Cost
 
 One fresh agent reading a plan plus the ~5–15 files it names ≈ one `flow-triage` scout probe;
-round 2 is usually smaller. Against a superpowers-path run that already pays for a multi-task
+the Step 4 self-verification pass costs no extra agent — the orchestrator re-reads its own
+edits. Against a superpowers-path run that already pays for a multi-task
 implementation with per-task reviews plus 2–3 code-review rounds, that is roughly 5–10% of run
 cost.
 
@@ -400,10 +410,43 @@ split earns its place.
 | Decision | Chosen | Why |
 |---|---|---|
 | Ordering | Review → triage → revise → human gate | Human attention goes to the plan that survived scrutiny, not the first draft |
-| Loop | Main agent revises; 2 rounds max; round 2 only if plan changed | Verifies the revision landed, without unbounded looping |
+| Loop | Main agent revises, then self-verifies its own edits via `git diff` | Verifies the revision landed, without a second fresh-agent round |
 | Context | Intent + scout findings inline; codebase verification mandatory | Precomputed context is cheap; verification is the value |
 | Rubric | 4 axes | Trimmed from 7 after finding overlap with writing-plans and local-code-review |
 | Non-interactive | Critical stops, Required proceeds | Plan flaws are recoverable; Critical wastes the whole run |
 | Ledger | Optional fields on existing outcome line | No new event kind; schema stays backward-compatible |
 | Packaging | Orchestrator + rubric reference, vendored per plugin | Loop logic lives in one place per plugin, not duplicated into callers |
 | Flow support | superpowers only | feature-dev has no plan artifact to review |
+
+## Revision history
+
+**2026-07-27 — round 2 removed, replaced with an orchestrator self-verification pass.**
+
+The original design's round 2 dispatched a *fresh* agent to re-review the plan after
+revision, on the theory that something had to confirm round 1's fixes actually landed. But a
+fresh agent has no knowledge of what round 1 found or why — it cannot check that a specific
+finding was resolved, only re-review the whole plan from scratch and infer success from that
+finding's absence. That is a full second review's cost for something that is not actually a
+verification.
+
+Worse, it barely changed outcomes. Status is computed from *unresolved* counts, not from
+raw verdicts: if round 2 rediscovered a fix that had not landed, that finding went back
+through the same triage as before, was accepted again, and the run proceeded exactly as it
+would have without round 2 ever running. The one thing round 2 gave that a single round
+could not was a second sample from a stochastic reviewer — a real but much weaker
+justification than "verify the revision landed," which is what it was designed for and could
+not actually do.
+
+The orchestrator is the party that made the edits in the first place, so it is also the party
+best positioned to check them, and doing so costs no extra agent: Step 4 now ends with a
+self-verification pass — `git diff` on the plan, finding by finding, confirming each accepted
+finding's fix is actually present. Anything missing is reclassified from `accepted` to
+`unresolved`, so it still counts toward the blocking rule in Step 5, exactly as an unresolved
+finding from round 2 would have.
+
+Consequences: the output block drops from eleven keys to nine (`ROUNDS` and `PLAN-CHANGED`
+gone); the ledger drops from five `plan_review_*` fields to four (`plan_review_rounds` gone);
+the orchestrator's steps are renumbered 1–5, with Step 4 now "Revise the plan and verify your
+edits" and Step 5 "Compute status and emit the output block." The reviewer rubric and the
+four review axes are unaffected — this change is entirely in the orchestrator's loop, not in
+what a single review pass checks for.
