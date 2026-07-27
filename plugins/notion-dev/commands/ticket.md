@@ -53,7 +53,9 @@ Before any resume decision that involves triage: read `$REPO_ROOT/.claude/notion
 
 If the worktree already exists:
 - Announce: "Found existing worktree at `<path>`; resuming."
-- **Worktree + `PLAN.md` with unchecked boxes**: this is the `FLOW=superpowers` path. Confirm via `AskUserQuestion` that the user wants to continue with the existing plan, then resume at Phase 4's `superpowers:subagent-driven-development` step, starting from the first unchecked task.
+- **Worktree + `PLAN.md` with unchecked boxes**: this is the `FLOW=superpowers` path. Confirm via `AskUserQuestion` that the user wants to continue with the existing plan, then pick the resume point from the checkbox evidence — **never assume the plan was reviewed**:
+  - **Some boxes already checked** — implementation began, so resume at step (d), `superpowers:subagent-driven-development`, from the first unchecked task, and do **not** run the plan review. For a run started on this version, reaching step (d) means the review and gate already cleared. For a worktree predating the review gate they did not — but the plan is already part-built, and `plan-review` has no way to review only the unchecked remainder: it judges the whole plan, so it could revise a task whose code has already shipped. That is worse than not reviewing. State plainly in the final report that this resumed plan was not reviewed by this version; Phase 7's review loop still examines the actual diff.
+  - **No boxes checked at all** — there is no evidence the plan ever cleared review. The prior run may have stopped *because* the review returned `PLAN-REVIEW: blocked`, or been interrupted before step (b) ran at all. Resume at step **(b)** and run the review, gate, and build normally. Re-reviewing an already-approved plan costs one review; skipping review on a plan known to be Critically flawed is the failure this gate exists to prevent.
 - **Worktree + `PLAN.md` with all boxes checked**: the build finished but the run was interrupted before ship (Phase 6.6 removes `PLAN.md` on a completed run). This is the `FLOW=superpowers` path. Confirm via `AskUserQuestion`, then resume at Phase 5 (verify) and continue the pipeline from there.
 - **Worktree, no `PLAN.md`**: inspect state.
   - Commits ahead of base **and** an open PR exists for the branch → offer to jump straight to Phase 7 (or suggest running `/notion-dev:finalize <pr>` instead).
@@ -140,13 +142,19 @@ Writing-plans produces a TDD-structured plan with bite-sized (2-5 minute) tasks,
 
 For tickets that are genuinely not TDD-shaped (docs-only edit, config bump, pure refactor with existing coverage), say so in the spec you hand to writing-plans — it will still structure tasks appropriately, just without red-then-green gating.
 
-(b) Hard gate — plan approval. Present a short summary of the plan (not the whole file). Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
+(b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — and `VERIFY:` lists the `verify.steps` commands from config. No `--spec-file`: the ticket body is the spec and travels inline.
+
+It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
+
+**Non-interactive mode and `PLAN-REVIEW: blocked`** (≥1 unresolved Critical): stop the run per the command's failure handling, leaving the worktree, branch, and `PLAN.md` intact, and report the blockers. Do not implement a plan already known to be Critically flawed. `proceed-with-warnings`, `clean`, and `degraded` all continue — with any blockers logged for the final report.
+
+(c) Hard gate — plan approval (**interactive only; skipped entirely in non-interactive mode**, where step (b)'s rule already decided — see 4.3). Present a short summary (not the whole file): what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
 - **Approve** — proceed.
-- **Revise** — capture the user's feedback, edit PLAN.md, re-ask.
+- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: it has already run, and human iteration is deliberately outside it. After each Revise iteration, refresh the recorded plan-review report before continuing: for every `UNRESOLVED` item record whether the revision addressed it, and recompute the status from what remains. Never carry pre-revision values into the ledger or the final report — a run whose blockers the user fixed at the gate must not be recorded as having proceeded past them, and one where the revision resolved nothing must not be recorded as clean. Write a status that only became clean through human revision as `clean (resolved at gate)`, so calibration keeps it distinguishable from a review that passed on its own.
 
-Blocking. Do not implement without approval.
+Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make **Revise** the recommended option.
 
-(c) Invoke `superpowers:subagent-driven-development` on `<worktree>/PLAN.md`. It walks the checkbox-tracked task list writing-plans produced, running a fresh subagent per task with per-task review. Two scoping instructions for this delegation, kept from the prior single-flow command:
+(d) Invoke `superpowers:subagent-driven-development` on `<worktree>/PLAN.md`. It walks the checkbox-tracked task list writing-plans produced, running a fresh subagent per task with per-task review. Two scoping instructions for this delegation, kept from the prior single-flow command:
 
 - **Tick the file checkboxes**: as each task completes, mark its `- [ ]` as `- [x]` in `PLAN.md`. This keeps execution resumable across sessions — if interrupted, the next run resumes from the first unchecked task (paired with the resume detection in Phase 1.2).
 - **Stop before `superpowers:finishing-a-development-branch`**: do not let the delegation proceed into it. Ship, review, merge, and cleanup are owned by Phases 6–9 below, not by this delegation.
@@ -233,7 +241,8 @@ Write a persistent `## Implementation` section onto the ticket so the ticket its
   - **Files Changed** — the list from `git diff --name-only origin/<PR_BASE>...HEAD` (6.1's `<PR_BASE>` — the branch the PR actually targets; `git.baseBranch` would misstate the PR's contents when `prTargetBranch` differs), grouped by directory — excluding `PLAN.md` if present: 6.6 removes it before review, so it never survives into the final PR diff even when an interim commit swept it in.
   - **PR** — the PR URL.
   - **Branch** — the branch name.
-  - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope.
+  - **Plan review** — `superpowers` path only, from `PLAN_REVIEW_REPORT`: the `PLAN-REVIEW` status, plus — when non-empty — the `UNRESOLVED` blockers the run proceeded past and the `DECLINED-WITH-REASONING` entries. Omit this bullet entirely on the `feature-dev` path, on a `degraded` review, and on a resume that skipped the review. This is the only durable home for that detail: `PLAN.md` is deleted in 6.6 and the ledger keeps only aggregate counts.
+  - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope — including the plan review's `NOT-IN-SCOPE` deferred items, which otherwise die with `PLAN.md` in 6.6.
 
 This section is the single source of truth for "what did this ticket do?" — it survives even if the PR is later squashed or comments are lost. Phase 8 will append a separate `## Merged` section later; the two coexist.
 
@@ -309,10 +318,10 @@ From `$REPO_ROOT`:
 Append one outcome line to `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` per the schema in `skills/flow-triage/references/ledger.md`:
 
 ```json
-{"event":"outcome","run_id":"<KEY>-<id>","ts":"<UTC now>","result":"merged","review_rounds":N,"fix_commits":N,"files_changed":N,"insertions":N,"deletions":N,"duration_minutes":N}
+{"event":"outcome","run_id":"<KEY>-<id>","ts":"<UTC now>","result":"merged","review_rounds":N,"fix_commits":N,"files_changed":N,"insertions":N,"deletions":N,"duration_minutes":N,"plan_review_findings":N,"plan_review_accepted":N,"plan_review_declined":N,"plan_review_unresolved":N}
 ```
 
-Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
+Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. Plan-review metrics come from `PLAN_REVIEW_REPORT` (Phase 4.2 step (b)); all four are `null` wherever there is no review signal to record — the `feature-dev` path, which has no plan to review, a `degraded` review, where the reviewer never ran, and a resume that skipped the review. On a degraded review write `null`, **not** the zeros its output block carries: `0` findings would be indistinguishable from a review that ran and found nothing, and that is exactly the distinction this ledger exists to preserve. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
 
 ---
 
@@ -322,6 +331,7 @@ Print a summary covering:
 - Flow chosen (score/confidence/override, or the bug hard rule) and why.
 - PR URL.
 - Review summary — which loop ran (the configured code reviewer, Codex or Copilot, or the local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
+- Plan-review outcome (`superpowers` path only) — status, findings, and accepted vs. declined counts from `PLAN_REVIEW_REPORT`. List any unresolved blockers the run proceeded past explicitly; a `proceed-with-warnings` run must not bury them. State `degraded` plainly when the reviewer could not run, and `skipped` when a resume bypassed the review.
 - Ticket end state (`implemented`).
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
@@ -334,4 +344,4 @@ Print a summary covering:
 - > 15 files touched unplanned → stop and ask whether to continue or re-plan.
 - Missing env vars or configuration → stop, never guess credentials.
 - Any hard gate not passed → stop, do not proceed.
-- **On any unrecoverable failure** (verify can't be made to pass, PR unmergeable, review loop stopped, unresolvable conflicts): STOP without running cleanup. Leave the worktree, branch, and PR (if one exists) intact for inspection. Report the exact remaining state (worktree path, branch name, PR number if any) and the exact commands to resume or clean up manually — including `/notion-dev:finalize <pr>` when a PR exists. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — never let ledger bookkeeping mask the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.
+- **On any unrecoverable failure** (verify can't be made to pass, PR unmergeable, review loop stopped, unresolvable conflicts): STOP without running cleanup. Leave the worktree, branch, and PR (if one exists) intact for inspection. Report the exact remaining state (worktree path, branch name, PR number if any) and the exact commands to resume or clean up manually — including `/notion-dev:finalize <pr>` when a PR exists. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — **except** the `plan_review_*` fields, which carry their real values from the plan-review output block whenever the review ran. A `blocked` exit is the single most valuable case to calibrate on, and the schema reserves `null` for *no review signal*, which is not what happened here — never let ledger bookkeeping mask the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.

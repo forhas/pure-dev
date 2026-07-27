@@ -2,7 +2,7 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.5.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.6.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
 
 ## Prerequisites
 
@@ -115,7 +115,7 @@ Then:
 |---|---|
 | `/notion-dev:init` | One-time (or re-runnable) setup. Writes config, patches `.mcp.json`, bootstraps the ticket database. |
 | `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). |
-| `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
+| `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → plan review (superpowers path) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → run post-merge hooks → update ticket → clean up. |
 
 ## Configuration
@@ -186,7 +186,8 @@ No v1 refactor required to adopt phase 2.
 │   ├── task-breakdown/       # single-vs-mission split analysis (used by create-task)
 │   ├── flow-triage/          # build-flow chooser: bug hard rule, scorecard, ledger (used by ticket)
 │   ├── review-and-merge/     # PR review loop: Codex rounds, local fallback, merge gates
-│   └── local-code-review/    # fallback reviewer contract (used by review-and-merge)
+│   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
+│   └── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
 ├── schema/
 │   └── notion-dev.config.schema.json
 ├── LICENSE
@@ -195,7 +196,7 @@ No v1 refactor required to adopt phase 2.
 
 ## Credits
 
-`skills/flow-triage/`, `skills/review-and-merge/`, and `skills/local-code-review/` are vendored and adapted from the `quick-dev` plugin. `local-code-review` was itself originally adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills/blob/main/skills/code-review-and-quality/SKILL.md) `code-review-and-quality` (MIT License, © 2025 Addy Osmani).
+`skills/flow-triage/`, `skills/review-and-merge/`, `skills/local-code-review/`, and `skills/plan-review/` are vendored and adapted from the `quick-dev` plugin. `local-code-review` was itself originally adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills/blob/main/skills/code-review-and-quality/SKILL.md) `code-review-and-quality` (MIT License, © 2025 Addy Osmani).
 
 ## License
 

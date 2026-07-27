@@ -14,7 +14,9 @@ One-command feature development for Claude Code. `/develop <description>` takes 
    │                    feature-dev (small–medium) or superpowers (medium-plus); per-repo
    │                    outcome ledger breaks gray-zone ties; confirm or override
    ├─ 2b. Build         feature-dev: explore → clarify → architect → implement → review
-   │                    or superpowers: brainstorm → write plan → subagent-driven execution
+   │                    or superpowers: brainstorm → write plan → plan-review (fresh agent
+   │                    checks the plan against the codebase; revises it) → approve →
+   │                    subagent-driven execution
    ├─ 3. Ship           commit, push, open PR against main
    │                    (plugin repos: semver-bump .claude-plugin/plugin.json —
    │                     major/minor/patch judged from the change, stated in the PR)
@@ -75,6 +77,7 @@ Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same 
 | `develop` | `/quick-dev:develop [--non-interactive] [--flow=<flow>] <description>` | End-to-end orchestrator: preflight → worktree → triage → build flow → ship → review → cleanup |
 | `flow-triage` | `/quick-dev:flow-triage [--advise-only] <description>` | Recommend feature-dev vs superpowers for a task: scout probe → scorecard → ledger tie-break; standalone or invoked by `develop` |
 | `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
+| `plan-review` | (invoked by `develop` on the superpowers path) | Independent pre-implementation review of a written plan: fresh agent verifies it against the actual codebase, findings triaged and applied with a self-verification pass, machine-parseable verdict |
 | `receiving-code-review` | (invoked by the flows above) | Technical-rigor rules for evaluating review feedback — verify before implementing, reasoned pushback, no performative agreement |
 
 ## Safety guarantees
