@@ -118,7 +118,7 @@ UNRESOLVED:
 <accepted-but-unfixed blockers, one per line, or NONE>
 ```
 
-`ACCEPTED` counts findings whose fix was applied **and verified** in Step 4; anything reclassified there moves to `UNRESOLVED`. `FINDINGS` always equals `ACCEPTED + DECLINED + UNRESOLVED`.
+`ACCEPTED` counts findings whose fix was applied **and verified** in Step 4. Anything reclassified there leaves `ACCEPTED`: a blocking severity moves to `UNRESOLVED`, a non-blocking one to `DECLINED`. `FINDINGS` always equals `ACCEPTED + DECLINED + UNRESOLVED`.
 
 ## Non-interactive outcome
 
