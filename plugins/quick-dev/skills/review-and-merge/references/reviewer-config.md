@@ -7,7 +7,10 @@ procedure below.
 ## Config file
 
 - **Path:** `<primary-checkout>/.claude/quick-dev/config.json`
-- **Shape:** `{ "reviewer": "codex" }` or `{ "reviewer": "copilot" }` — reviewer-only.
+- **Shape:** an object with a `reviewer` key (`"codex"` or `"copilot"`) and an optional
+  hand-edited `reviewsCap` key (integer ≥ 1, default 15 — see the review loop's round cap):
+  `{ "reviewer": "codex", "reviewsCap": 15 }`. Other keys may exist; treat the file as
+  extensible, never as reviewer-only.
 - **Tracking:** gitignored, in the primary checkout only (never a feature worktree). It shares
   the self-ignored `.claude/quick-dev/` directory used by the ledger, so it never appears in
   `git status`, is never swept by `git add -A`, and is never committed.
@@ -30,11 +33,17 @@ Run this wherever the reviewer must be known.
      answer.
    - **Non-interactive mode:** use `codex` and record in the run report that the reviewer was
      defaulted (not chosen).
-4. **Persist** the resolved value by writing the whole file `{ "reviewer": "<value>" }` to `REPO_ROOT/.claude/quick-dev/config.json` (reviewer-only — overwrite or create it; there are no other keys to preserve), after ensuring the self-ignored directory exists:
+4. **Persist** the resolved value into `REPO_ROOT/.claude/quick-dev/config.json` as a
+   **read-modify-write**: read the existing JSON if the file is present, set `reviewer` to the
+   resolved value, and write the whole object back, **preserving every other key** — notably a
+   hand-edited `reviewsCap`, which a blind overwrite would silently delete. If the file is
+   absent or unparseable, write `{ "reviewer": "<value>" }`. Ensure the self-ignored directory
+   exists first:
    ```bash
    # self-ignore bootstrap — the ledger's pattern, adapted to target the primary checkout ($REPO_ROOT) rather than the current directory:
    mkdir -p "$REPO_ROOT/.claude/quick-dev" && { [ -f "$REPO_ROOT/.claude/quick-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/quick-dev/.gitignore"; }
-   # then write {"reviewer":"<value>"} to $REPO_ROOT/.claude/quick-dev/config.json
+   # then read $REPO_ROOT/.claude/quick-dev/config.json (if any), set "reviewer":"<value>",
+   # and write the merged object back — every other key preserved
    ```
    The write is side-effect-free with respect to git: the file is gitignored, so it never
    dirties the tree, never enters `git add -A`, and never diverges the base branch.
