@@ -93,15 +93,19 @@ the switch happens, so a run that falls back can perform up to `2 × reviewsCap`
 is unchanged behavior, and it is deliberate: the two loops review with different reviewers,
 and the fallback exists precisely because the first one produced nothing usable.
 
-Five sites per plugin, in `plugins/{quick-dev,notion-dev}/skills/review-and-merge/SKILL.md`:
+Six sites per plugin, in `plugins/{quick-dev,notion-dev}/skills/review-and-merge/SKILL.md`:
 
 | site | quick-dev | notion-dev | current text |
 |---|---|---|---|
 | reviewer-loop header | 91 | 106 | "**Hard cap: 10 rounds.** After round 10 is handled…" |
 | re-trigger step 5 | 113 | 128 | "If the round counter is below 10 and the round **produced code changes**" |
+| reviewer-loop end conditions | 115 | 130 | "…or the **10-round cap**" |
 | local-loop header | 119 | 134 | "Round counter starts at 1; **hard cap: 10 rounds**" |
 | local-loop termination | 134 | 149 | "Round counter reaches 10 → stop" |
 | safety rule | 163 | 183 | "**Never** run more than 10 reviewer rounds or 10 local review rounds" |
+
+Plus one in prose outside the skill: `plugins/quick-dev/README.md:79`, the skills table's
+"local review loop (10-round cap, green-CI gates)".
 
 Each becomes a reference to the resolved cap — "the resolved cap", "below the cap", "reaches
 the cap" — with the header stating where the value comes from. Line numbers are as of commit
@@ -139,10 +143,11 @@ and `/notion-dev:init` runs in reconfigure mode reading the existing config firs
 
 No test suite exists for these markdown skills, so verification is grep-based and manual:
 
-1. `grep -n "10 rounds\|below 10\|reaches 10\|10 reviewer rounds\|10 local review" plugins/*/skills/review-and-merge/SKILL.md`
-   returns nothing.
+1. `grep -n "10" plugins/*/skills/review-and-merge/SKILL.md plugins/*/README.md` returns only
+   the unrelated silence-window matches (`~10 min`, `20×30s` polls) — no round-cap `10`
+   survives anywhere.
 2. Each `SKILL.md` states the resolution rule exactly once and references the resolved cap at
-   all five sites — read both files end to end; the two plugins' texts must stay structurally
+   all six sites — read both files end to end; the two plugins' texts must stay structurally
    parallel, as they are today.
 3. A sample config containing `reviewsCap` validates against the updated notion-dev schema,
    and one containing an unknown key still fails (`additionalProperties: false` intact).
