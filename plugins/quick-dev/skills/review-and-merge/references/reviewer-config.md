@@ -37,8 +37,8 @@ Run this wherever the reviewer must be known.
    **read-modify-write**: read the existing JSON if the file is present, set `reviewer` to the
    resolved value, and write the whole object back, **preserving every other key** — notably a
    hand-edited `reviewsCap`, which a blind overwrite would silently delete. If the file is
-   absent or unparseable, write `{ "reviewer": "<value>" }`. Ensure the self-ignored directory
-   exists first:
+   absent, unparseable, or does not parse to a JSON object (e.g. an array or a bare value),
+   write `{ "reviewer": "<value>" }`. Ensure the self-ignored directory exists first:
    ```bash
    # self-ignore bootstrap — the ledger's pattern, adapted to target the primary checkout ($REPO_ROOT) rather than the current directory:
    mkdir -p "$REPO_ROOT/.claude/quick-dev" && { [ -f "$REPO_ROOT/.claude/quick-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/quick-dev/.gitignore"; }
