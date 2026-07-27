@@ -56,10 +56,10 @@ Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (
 
 Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
 
-**Contract check.** The reviewer's output is only usable if it carries a `VERDICT` line, a `NOT-IN-SCOPE-PRESENT` line, and — when the verdict is `NOT-CLEAN` — at least one parseable Critical or Required finding. Two failure shapes get different treatment:
+**Contract check.** The reviewer's output is only usable if it carries **every** element the rubric's output contract mandates — the `Reviewed plan:` echo, a `COVERAGE-MAP:` block, a findings list (one or more `- [<Severity>] …` lines, or the literal `No findings.`), a `NOT-IN-SCOPE-PRESENT` line, and a `VERDICT` line — plus, when the verdict is `NOT-CLEAN`, at least one parseable Critical or Required finding. A `COVERAGE-MAP:` whose whole body is `(no test suite in this repo)` satisfies that element; the rubric permits exactly that. Two failure shapes get different treatment:
 
 - **Verdict contradicts its own findings** — `VERDICT: CLEAN` alongside a listed Critical or Required finding. Derive the verdict from the findings (`NOT-CLEAN`) and continue; the findings are what you triage. This is the safe direction and needs no retry.
-- **Output unusable** — no `VERDICT` line, no `NOT-IN-SCOPE-PRESENT` line, or `VERDICT: NOT-CLEAN` with no parseable blocking finding to triage. Never treat this as a clean plan: with nothing to triage the counts would come out zero and the status would compute to `clean`, silently inverting the verdict.
+- **Output unusable** — any mandatory element above is missing or malformed, or `VERDICT: NOT-CLEAN` carries no parseable blocking finding to triage. Never treat this as a clean plan: with nothing to triage the counts would come out zero and the status would compute to `clean`, silently inverting the verdict. A missing `COVERAGE-MAP:` is disqualifying for the same reason — it means the test-coverage axis was probably never performed, so a `clean` result would be unearned.
 
 **Degradation.** If the agent fails, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
 

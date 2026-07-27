@@ -241,7 +241,8 @@ Write a persistent `## Implementation` section onto the ticket so the ticket its
   - **Files Changed** — the list from `git diff --name-only origin/<PR_BASE>...HEAD` (6.1's `<PR_BASE>` — the branch the PR actually targets; `git.baseBranch` would misstate the PR's contents when `prTargetBranch` differs), grouped by directory — excluding `PLAN.md` if present: 6.6 removes it before review, so it never survives into the final PR diff even when an interim commit swept it in.
   - **PR** — the PR URL.
   - **Branch** — the branch name.
-  - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope.
+  - **Plan review** — `superpowers` path only, from `PLAN_REVIEW_REPORT`: the `PLAN-REVIEW` status, plus — when non-empty — the `UNRESOLVED` blockers the run proceeded past and the `DECLINED-WITH-REASONING` entries. Omit this bullet entirely on the `feature-dev` path, on a `degraded` review, and on a resume that skipped the review. This is the only durable home for that detail: `PLAN.md` is deleted in 6.6 and the ledger keeps only aggregate counts.
+  - **Notes** — optional. Any caveats for the reviewer or follow-up items discovered but out of scope — including the plan review's `NOT-IN-SCOPE` deferred items, which otherwise die with `PLAN.md` in 6.6.
 
 This section is the single source of truth for "what did this ticket do?" — it survives even if the PR is later squashed or comments are lost. Phase 8 will append a separate `## Merged` section later; the two coexist.
 
