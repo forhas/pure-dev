@@ -202,7 +202,6 @@ labeled-block shape `flow-triage` already emits, so callers paste what they alre
 
 ```
 plan-review --plan=<path> [--auto] [--spec-file=<path>]
-            [--ledger-root=<path>] [--run-id=<id>]
 
 INTENT:
 <ticket body, or spec text, or "(see --spec-file)">
@@ -314,7 +313,7 @@ No `TODOS.md`. That file does not exist in most repos.
 
 It returns counts in its output block; the **caller** folds them into the outcome line it
 already writes at the end of the run. One writer per event, and no
-worktree-versus-primary-checkout ledger-root confusion inside a new skill.
+worktree-versus-primary-checkout root confusion inside a new skill.
 
 ## Integration
 
@@ -327,7 +326,6 @@ gains the review summary.
 (a) writing-plans → <worktree>/PLAN.md                     [unchanged]
 (b) NEW: invoke notion-dev:plan-review
         --plan=<worktree>/PLAN.md
-        --ledger-root=$REPO_ROOT --run-id=<KEY>-<id>
         (+ --auto when non-interactive)
         INTENT = ticket body
         SCOUT-FINDINGS / MICRO-PLAN from Phase 3 (absent on resume)
@@ -347,8 +345,7 @@ not have today.**
 ```
 1. brainstorming → spec under docs/superpowers/specs/      [unchanged]
 2. writing-plans → docs/superpowers/plans/…                [+ record PLAN_PATH]
-3. NEW: quick-dev:plan-review --plan=$PLAN_PATH --spec-file=<spec path>
-        --ledger-root=$REPO_ROOT --run-id=$SLUG (+ --auto)
+3. NEW: quick-dev:plan-review --plan=$PLAN_PATH --spec-file=<spec path> (+ --auto)
 4. NEW: human plan gate (approve / revise) — skipped under --non-interactive
 5. subagent-driven-development                             [was 3]
 ```
@@ -432,10 +429,12 @@ verification.
 Worse, it barely changed outcomes. Status is computed from *unresolved* counts, not from
 raw verdicts: if round 2 rediscovered a fix that had not landed, that finding went back
 through the same triage as before, was accepted again, and the run proceeded exactly as it
-would have without round 2 ever running. The one thing round 2 gave that a single round
-could not was a second sample from a stochastic reviewer — a real but much weaker
-justification than "verify the revision landed," which is what it was designed for and could
-not actually do.
+would have without round 2 ever running. What round 2 gave that a single round could not was
+two things: a second sample from a stochastic reviewer, and a whole-artifact review of the
+plan *after* revision — both real but much weaker justifications than "verify the revision
+landed," which is what it was designed for and could not actually do. The second of those is
+now recovered by Step 4's added coherence check (see below); the stochastic second-sample is
+the one loss this change does not recover.
 
 The orchestrator is the party that made the edits in the first place, so it is also the party
 best positioned to check them, and doing so costs no extra agent: Step 4 now ends with a
