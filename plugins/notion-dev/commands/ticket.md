@@ -150,7 +150,7 @@ It dispatches a fresh reviewer against the plan **and the codebase**, triages th
 
 (c) Hard gate — plan approval (**interactive only; skipped entirely in non-interactive mode**, where step (b)'s rule already decided — see 4.3). Present a short summary (not the whole file): what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
 - **Approve** — proceed.
-- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: it has already run, and human iteration is deliberately outside it.
+- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: it has already run, and human iteration is deliberately outside it. After each Revise iteration, refresh the recorded plan-review report before continuing: for every `UNRESOLVED` item record whether the revision addressed it, and recompute the status from what remains. Never carry pre-revision values into the ledger or the final report — a run whose blockers the user fixed at the gate must not be recorded as having proceeded past them, and one where the revision resolved nothing must not be recorded as clean. Write a status that only became clean through human revision as `clean (resolved at gate)`, so calibration keeps it distinguishable from a review that passed on its own.
 
 Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make **Revise** the recommended option.
 
