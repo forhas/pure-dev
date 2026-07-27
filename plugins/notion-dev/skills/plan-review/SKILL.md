@@ -79,7 +79,7 @@ Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at 
 
 ## Step 4 — Revise the plan and verify your edits
 
-Edit the plan file in place for every accepted finding. Keep edits surgical — fix the finding, do not rewrite the plan. Preserve its structure, its task numbering where possible, and every `- [ ]` checkbox: callers rely on unchecked boxes for resume detection.
+Edit the plan file in place for every accepted finding. Keep edits surgical — fix the finding, do not rewrite the plan. Preserve its structure and its task numbering where possible, and keep every **remaining** task's `- [ ]` checkbox: callers rely on unchecked boxes for resume detection. A task an accepted finding deliberately merges away or deletes takes its checkbox with it — that is the fix landing, not a checkbox lost.
 
 If accepted findings identified deferrable work and the plan has no `## Not in scope` section, add one with those items and a one-line rationale each.
 
@@ -89,7 +89,7 @@ If task numbering must change, update every cross-reference to the renumbered ta
 
 Any accepted **Critical or Required** finding whose fix is missing, or which the edit does not actually address, is **reclassified as `unresolved`** and counts toward the blocking rule in Step 5. A non-blocking finding (`Optional`, `Nit`, `FYI`) whose edit did not land stays **declined** with `edit not applied` as its reason — consistent with Step 3, where non-blocking severities never produce an `unresolved` entry. Never leave such a finding as `accepted` — an accepted-but-unapplied finding is precisely the failure this check exists to catch.
 
-**Then check the revised plan as a whole**, not just the edited regions. Your own edits can introduce defects the per-finding check cannot see: a merged or renumbered task leaves a cross-reference pointing at the wrong content, a deleted step strands a later step that depended on it, a reworded task now contradicts its neighbour. Re-read the plan end to end and confirm task numbering is still sequential, every task cross-reference resolves to the task it means, every `- [ ]` checkbox survived, and no edit contradicts text you left in place. A defect **you** introduced is treated exactly like one the reviewer found: fix it, or record it as `unresolved`.
+**Then check the revised plan as a whole**, not just the edited regions. Your own edits can introduce defects the per-finding check cannot see: a merged or renumbered task leaves a cross-reference pointing at the wrong content, a deleted step strands a later step that depended on it, a reworded task now contradicts its neighbour. Re-read the plan end to end and confirm task numbering is still sequential, every task cross-reference resolves to the task it means, every task that remains still carries its `- [ ]` checkbox, and no edit contradicts text you left in place. A defect **you** introduced is treated exactly like one the reviewer found: fix it, or record it as `unresolved`.
 
 This self-check stands in for a second review round. A fresh second reviewer would arrive with no knowledge of what the first round found, so it could only re-review the whole plan and infer success from a finding's absence — expensive, and not a verification. You know exactly which edits you made and why, so you are the right party to check them.
 

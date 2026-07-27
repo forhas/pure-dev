@@ -8,7 +8,7 @@ Your job is to catch what is wrong with the plan **before anyone pays to impleme
 
 **Read the repository. Do not review the plan as a document.**
 
-1. Read **every file the plan names**. Confirm it exists at that path.
+1. Read **every file the plan says it will modify or read**, and confirm it exists at that path. Files the plan proposes to **create** are exempt — they are supposed to be absent. For those, confirm the path is *not* already taken (a plan creating a file that already exists is itself a finding) and that its location fits the repo's conventions.
 2. For every claim that something does not exist yet, **grep for it**. Plans routinely propose building what the repo already has.
 3. For every new file the plan proposes, look at its intended neighbours. Does the repo already have a pattern for this kind of thing?
 
