@@ -57,10 +57,17 @@ Either falls back to the local fresh-agent reviewer when the chosen reviewer is 
 The choice is stored per-clone in `.claude/quick-dev/config.json` (gitignored, alongside the ledger):
 
 ```json
-{ "reviewer": "codex" }
+{ "reviewer": "codex", "reviewsCap": 15 }
 ```
 
 The first `/develop` or `/quick-dev:review-and-merge` run in a repo prompts for it (interactive) or defaults to `codex` (non-interactive) and saves it. To change it later, edit the file — or delete the `reviewer` key (or the file) to be prompted again on the next run. Local mode ignores this setting (it always uses the local reviewer).
+
+`reviewsCap` caps how many review rounds the loop will run — default **15** when the key is
+absent or invalid. Nothing writes it; add it by hand to change the ceiling. It applies to the
+configured-reviewer loop and the local fallback loop independently, so a run that falls back
+can do up to twice that number in total. The cap is a runaway backstop — the loop normally
+ends far earlier, when the reviewer reports no meaningful issues or the remaining findings
+are declined with reasoning.
 
 ## Requirements
 
@@ -76,7 +83,7 @@ Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same 
 |-------|-----------|---------|
 | `develop` | `/quick-dev:develop [--non-interactive] [--flow=<flow>] <description>` | End-to-end orchestrator: preflight → worktree → triage → build flow → ship → review → cleanup |
 | `flow-triage` | `/quick-dev:flow-triage [--advise-only] <description>` | Recommend feature-dev vs superpowers for a task: scout probe → scorecard → ledger tie-break; standalone or invoked by `develop` |
-| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (10-round cap, green-CI gates), squash-merge, delete remote branch |
+| `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (`reviewsCap` rounds, default 15; green-CI gates), squash-merge, delete remote branch |
 | `plan-review` | (invoked by `develop` on the superpowers path) | Independent pre-implementation review of a written plan: fresh agent verifies it against the actual codebase, findings triaged and applied with a self-verification pass, machine-parseable verdict |
 | `receiving-code-review` | (invoked by the flows above) | Technical-rigor rules for evaluating review feedback — verify before implementing, reasoned pushback, no performative agreement |
 

@@ -177,6 +177,12 @@
       "enum": ["codex", "copilot"],
       "default": "codex",
       "description": "Code reviewer the review-and-merge loop drives. 'codex' triggers via an @codex review comment; 'copilot' requests the copilot-pull-request-reviewer[bot] reviewer via the REST API. Either falls back to the local fresh-agent review loop when unavailable. Written by /notion-dev:init. When absent on an upgraded project, review-and-merge resolves a value for that run only (prompt, or default 'codex' non-interactively) and does not write the config; re-run /notion-dev:init to persist it."
+    },
+    "reviewsCap": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 15,
+      "description": "Maximum review rounds the PR review loop will run. Default 15 when absent or invalid. Applies to the configured-reviewer loop and the local fallback loop independently, so a run that falls back can perform up to twice this number of rounds in total. Hand-edited: /notion-dev:init does not write this key and the review loop never writes the config."
     }
   }
 }

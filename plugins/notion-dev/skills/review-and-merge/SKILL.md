@@ -51,6 +51,23 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 | quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent request failure is treated as `not-configured` |
 | silence | no response within ~10 min (20×30s polls) → re-trigger once → `reason=silent` | same |
 
+### Round cap
+
+Both review loops in step 4 are capped by `reviewsCap`, read from
+`.claude/notion-dev.config.json` in the **primary checkout** (`$REPO_ROOT`, resolved as every
+other config read in this skill — never the worktree). Resolve it **once**, here, before the
+first trigger:
+
+- The value is an integer ≥ 1 → use it.
+- The key is absent, the file is missing, or the value is anything else (`0`, negative,
+  non-integer, non-numeric) → use **15**. When the value was present but unusable, say so in
+  the final report; never stop the loop over it.
+
+The resolved number caps the reviewer loop and the local fallback loop **independently** —
+the fallback restarts its counter at 1, so a run that falls back can perform up to twice the
+cap in total. As with `reviewer`, this skill never writes the config: `reviewsCap` is
+hand-edited, and `/notion-dev:init` does not write it either.
+
 ## 1. Load the pull request
 
 - `gh pr view <pr> --json number,title,body,state,isDraft,mergeable,mergeStateStatus,headRefName,baseRefName,reviewDecision,statusCheckRollup,url` (`body` is required later: the local fallback reviewer judges the diff against the PR title and body)
@@ -103,7 +120,7 @@ reviews at all: run the green-CI gate first, then trigger).
 
 ## 4. Review loop
 
-Rounds are counted from the first reviewer trigger. **Hard cap: 10 rounds.** After round 10 is handled, stop looping and go to merge (step 5) regardless of what the reviewer still finds.
+Rounds are counted from the first reviewer trigger. **Hard cap: the resolved `reviewsCap` (default 15).** After the capped round is handled, stop looping and go to merge (step 5) regardless of what the reviewer still finds.
 
 **At the start of every round**: `gh pr checks <pr>` — fix any failing check and re-green before handling any review comment.
 
@@ -125,13 +142,13 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled — this applies only to threads that actually exist (codex always creates inline threads for line-level findings; Copilot only when it has line-level findings).
 4. Re-run the step-2 verification (config `verify.steps`, when present), then commit and push applied changes.
-5. If the round counter is below 10 and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
+5. If the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
 
-The reviewer loop ends on whichever comes first: **the reviewer reports no meaningful issues** per its profile's "no meaningful issues" row, the **judgment-based stop** in item 5 above, or the **10-round cap**. Then merge (step 5). If unavailability was detected instead, the local review loop below takes over with its own termination rules.
+The reviewer loop ends on whichever comes first: **the reviewer reports no meaningful issues** per its profile's "no meaningful issues" row, the **judgment-based stop** in item 5 above, or the **round cap**. Then merge (step 5). If unavailability was detected instead, the local review loop below takes over with its own termination rules.
 
 ### Local review loop (reviewer unavailable)
 
-Entered only from unavailability detection — the reviewer loop's structural twin, with "spawn a fresh reviewer agent" replacing "trigger the bound reviewer". Fresh context per round is the point: the reviewer never sees prior rounds' reasoning, so its findings are independent. Round counter starts at 1; **hard cap: 10 rounds** — a runaway backstop only; the judgment-based stops below are expected to end the loop much earlier.
+Entered only from unavailability detection — the reviewer loop's structural twin, with "spawn a fresh reviewer agent" replacing "trigger the bound reviewer". Fresh context per round is the point: the reviewer never sees prior rounds' reasoning, so its findings are independent. Round counter starts at 1; **hard cap: the same resolved `reviewsCap`, counted independently of the reviewer loop's rounds** — a runaway backstop only; the judgment-based stops below are expected to end the loop much earlier.
 
 Each round:
 
@@ -146,7 +163,7 @@ Each round:
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - Every finding this round was declined with rationale (no code changed) → loop ended; a fresh agent on the same code would repeat the same findings; go to merge.
    - **Oscillation guard**: the same Critical/Required finding (or finding-set) recurs across rounds even though fixes addressing it were applied and pushed → stop early and treat it as a disagreed finding (interactive: pause per pause point (a); non-interactive: resolve autonomously and log).
-   - Round counter reaches 10 → stop; go to merge under the cap semantics.
+   - Round counter reaches the cap → stop; go to merge under the cap semantics.
    - **Contract violation**: the reviewer's output has no `VERDICT` line, or its verdict contradicts its own listed severities → derive the verdict from the findings (`CLEAN` iff zero Critical/Required) and proceed with these rules. If the output is unusable (no parseable findings at all), discard it and spawn one replacement reviewer without incrementing the counter; if the replacement also fails, stop and report.
    - Otherwise: increment the counter and spawn a fresh reviewer on the new HEAD.
 
@@ -180,7 +197,7 @@ Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success
 
 - **Never** merge while any required check is failing or pending.
 - **Never** merge while unresolved review threads remain.
-- **Never** run more than 10 reviewer rounds or 10 local review rounds.
+- **Never** run more than `reviewsCap` reviewer rounds or `reviewsCap` local review rounds (default 15 each, counted independently).
 - **Never** re-trigger the reviewer (codex comment or copilot reviewer-request) again after unavailability was detected — the switch to the local loop is permanent for the run.
 - Red CI takes priority over review handling at the start of every round.
 - Always merge into the PR's base branch; never retarget.

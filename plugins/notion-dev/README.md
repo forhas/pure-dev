@@ -2,7 +2,7 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.6.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.7.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
 
 ## Prerequisites
 
@@ -132,6 +132,7 @@ Key fields:
 - `worktree.prefix` — template for worktree directory names. Tokens: `{name}`, `{key}`, `{id}`. Default: `"{name}-{key}-{id}"`.
 - `verify.steps[]` — ordered list of `{ name, cmd, retries }` commands run after implementation and before PR.
 - `reviewer` — PR reviewer selection: `"codex"` (default) or `"copilot"`. Set during `/notion-dev:init`; can be changed by re-running that command.
+- `reviewsCap` — maximum review rounds the PR review loop runs; default **15** when absent or invalid. Hand-edited (`/notion-dev:init` does not write it). Applies to the configured-reviewer loop and the local fallback loop independently, so a run that falls back can perform up to twice that number in total. It is a runaway backstop — the loop normally ends far earlier.
 
 ### Reviewer configuration
 
@@ -143,6 +144,10 @@ The PR review loop uses your configured reviewer. Both options fall back to the 
 Projects upgraded from earlier versions of notion-dev (whose config predates the `reviewer` key) will be prompted to choose a reviewer the next time you run `/notion-dev:ticket` or `/notion-dev:finalize`; that choice applies to the current run only. To persist it, re-run `/notion-dev:init` — the review loop never writes the config itself.
 
 Secrets never belong in this file; MCP auth handles credentials.
+
+The number of rounds either loop will run is capped by `reviewsCap` (default 15). Raise it
+for repos where reviews routinely need more iterations; lower it to fail fast. The review
+loop never writes this key — edit `.claude/notion-dev.config.json` directly.
 
 ## Ticket system
 
