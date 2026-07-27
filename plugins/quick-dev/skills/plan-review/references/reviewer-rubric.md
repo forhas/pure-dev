@@ -26,7 +26,7 @@ The verdict is decided **solely** by the rule in the output contract below. Neve
 
 ## Selectivity — review the plan in front of you
 
-Apply only the axes that fit. A docs-only plan gets no test-coverage analysis. A pure-config plan gets no scope challenge. A plan for a repo with no test suite cannot be faulted for lacking test tasks — say so once as FYI and move on. Forcing every axis onto every plan produces exactly the theoretical findings this rubric forbids.
+Apply only the axes that fit. A docs-only plan gets no test-coverage analysis. A pure-config plan gets no scope challenge. A plan for a repo with no test suite cannot be faulted for lacking test tasks — record that in `COVERAGE-MAP:` and skip the axis; do **not** raise a finding for it. A finding must name a problem and a fix, and "this repo has no tests" is neither. Forcing every axis onto every plan produces exactly the theoretical findings this rubric forbids.
 
 ## Project standards come from the repo
 
@@ -118,8 +118,8 @@ If your review identifies work the plan could reasonably defer, check whether th
 
 Emit the `NOT-IN-SCOPE-PRESENT:` line per these three cases:
 
-- **Deferrable work found, no such section** — raise one Required finding asking for the section with those items and a one-line rationale each, and emit `NOT-IN-SCOPE-PRESENT: no`.
-- **Deferrable work found, the section already covers it** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`.
+- **Deferrable work found, and the section is absent *or* missing some of the items you identified** — raise one Required finding naming the items that are not listed, with a one-line rationale each, and emit `NOT-IN-SCOPE-PRESENT: no`. A section that exists but omits half the deferred work is the absent case, not the covered one.
+- **Deferrable work found, and the section already lists all of it** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`.
 - **Nothing to defer** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`, regardless of whether the heading exists. Requiring the heading for its own sake is exactly the cosmetic finding this rubric forbids.
 
 The line reports whether the deferred-work requirement is *satisfied*, not merely whether the heading exists.
