@@ -146,11 +146,11 @@ It dispatches a fresh reviewer against the plan **and the codebase**, triages th
 
 **Non-interactive mode and `PLAN-REVIEW: blocked`** (≥1 unresolved Critical): stop the run per the command's failure handling, leaving the worktree, branch, and `PLAN.md` intact, and report the blockers. Do not implement a plan already known to be Critically flawed. `proceed-with-warnings`, `clean`, and `degraded` all continue — with any blockers logged for the final report.
 
-(c) Hard gate — plan approval. Present a short summary (not the whole file): what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
+(c) Hard gate — plan approval (**interactive only; skipped entirely in non-interactive mode**, where step (b)'s rule already decided — see 4.3). Present a short summary (not the whole file): what the review changed, what it declined and why (`DECLINED-WITH-REASONING`), and anything still unresolved. Ask `AskUserQuestion`: "Approve this plan, or revise?" Options:
 - **Approve** — proceed.
-- **Revise** — capture the user's feedback, edit PLAN.md, re-ask.
+- **Revise** — capture the user's feedback, edit PLAN.md, re-ask **this gate**. Do not re-invoke `notion-dev:plan-review`: its two-round budget is already spent, and human iteration is deliberately outside it.
 
-Blocking. Do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make **Revise** the recommended option.
+Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blocked`, say so plainly and make **Revise** the recommended option.
 
 (d) Invoke `superpowers:subagent-driven-development` on `<worktree>/PLAN.md`. It walks the checkbox-tracked task list writing-plans produced, running a fresh subagent per task with per-task review. Two scoping instructions for this delegation, kept from the prior single-flow command:
 
