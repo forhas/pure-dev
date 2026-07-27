@@ -53,7 +53,9 @@ Before any resume decision that involves triage: read `$REPO_ROOT/.claude/notion
 
 If the worktree already exists:
 - Announce: "Found existing worktree at `<path>`; resuming."
-- **Worktree + `PLAN.md` with unchecked boxes**: this is the `FLOW=superpowers` path. Confirm via `AskUserQuestion` that the user wants to continue with the existing plan, then resume at Phase 4.2 step (d), `superpowers:subagent-driven-development`, starting from the first unchecked task. Skip the plan review — the existing plan was already reviewed and approved in the interrupted run.
+- **Worktree + `PLAN.md` with unchecked boxes**: this is the `FLOW=superpowers` path. Confirm via `AskUserQuestion` that the user wants to continue with the existing plan, then pick the resume point from the checkbox evidence — **never assume the plan was reviewed**:
+  - **Some boxes already checked** — implementation began, which is only reachable through step (d), so review and approval necessarily completed in the prior run. Resume at step (d), `superpowers:subagent-driven-development`, from the first unchecked task, and skip the review.
+  - **No boxes checked at all** — there is no evidence the plan ever cleared review. The prior run may have stopped *because* the review returned `PLAN-REVIEW: blocked`, or been interrupted before step (b) ran at all. Resume at step **(b)** and run the review, gate, and build normally. Re-reviewing an already-approved plan costs one review; skipping review on a plan known to be Critically flawed is the failure this gate exists to prevent.
 - **Worktree + `PLAN.md` with all boxes checked**: the build finished but the run was interrupted before ship (Phase 6.6 removes `PLAN.md` on a completed run). This is the `FLOW=superpowers` path. Confirm via `AskUserQuestion`, then resume at Phase 5 (verify) and continue the pipeline from there.
 - **Worktree, no `PLAN.md`**: inspect state.
   - Commits ahead of base **and** an open PR exists for the branch → offer to jump straight to Phase 7 (or suggest running `/notion-dev:finalize <pr>` instead).

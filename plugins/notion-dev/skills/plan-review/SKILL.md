@@ -56,7 +56,12 @@ Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (
 
 Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
 
-**Degradation.** If the agent fails, or its output lacks the `VERDICT` line, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
+**Contract check.** The reviewer's output is only usable if it carries a `VERDICT` line, a `NOT-IN-SCOPE-PRESENT` line, and — when the verdict is `NOT-CLEAN` — at least one parseable Critical or Required finding. Two failure shapes get different treatment:
+
+- **Verdict contradicts its own findings** — `VERDICT: CLEAN` alongside a listed Critical or Required finding. Derive the verdict from the findings (`NOT-CLEAN`) and continue; the findings are what you triage. This is the safe direction and needs no retry.
+- **Output unusable** — no `VERDICT` line, no `NOT-IN-SCOPE-PRESENT` line, or `VERDICT: NOT-CLEAN` with no parseable blocking finding to triage. Never treat this as a clean plan: with nothing to triage the counts would come out zero and the status would compute to `clean`, silently inverting the verdict.
+
+**Degradation.** If the agent fails, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
 
 ## Step 3 — Triage the findings
 
