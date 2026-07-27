@@ -157,7 +157,7 @@ On any unrecoverable failure (tests can't pass, PR unmergeable, review loop stop
 
 - STOP. Do not force anything and do not run cleanup — leave the worktree, branch, and PR intact for inspection.
 - Report exactly what state remains (worktree path, branch name, PR number) and the exact commands to either resume or manually clean up.
-- Best-effort, before stopping: append a ledger outcome line (schema in `../flow-triage/references/ledger.md`) with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics. If the append itself fails, ignore it — never let ledger bookkeeping mask the real failure report.
+- Best-effort, before stopping: append a ledger outcome line (schema in `../flow-triage/references/ledger.md`) with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — **except** the `plan_review_*` fields, which carry their real values from the plan-review output block whenever the review ran. A `blocked` exit is the single most valuable case to calibrate on, and the schema reserves `null` for *no review signal*, which is not what happened here. If the append itself fails, ignore it — never let ledger bookkeeping mask the real failure report.
 
 ## Additional Resources
 
