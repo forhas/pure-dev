@@ -13,9 +13,11 @@ Records a resolved ticket against its Epic container. Invoked by `/notion-dev:ti
 
 **Every step here is best-effort**: a failure logs a warning and continues to the next step. This skill never fails its caller's run — the merge has already landed by the time it is invoked, and epic bookkeeping is not worth losing that.
 
-**1. Resolve the epic.** `fetchTicket(<ticket-id>)` and read `metadata.parentTaskProperty`. Empty (`""`), or the property absent from the live DB → **skip steps 2-5 entirely** and return `EPIC-UPDATE: none`. Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title and Epic name.
+**1. Resolve the epic.** `fetchTicket(<ticket-id>)` and read `metadata.parentTaskProperty`. Empty (`""`), or the property absent from the live DB → **skip steps 2-5 entirely** and return `EPIC-UPDATE: none`. Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title, Epic name, and body (used by step 1a). Also record this ticket's `key` (e.g. `"STO-67"`) from the same `fetchTicket(<ticket-id>)` result — used by step 1a.
 
 Also record `TICKET_ASSIGNEE = metadata.assigneeProperty` from that same `fetchTicket` call — `""` when the ticket has no assignee, the property is absent, or it isn't People-typed. Used by step 2.
+
+**1a. Idempotency check.** Before any mutation, parse `## Resolution Log` from the epic body fetched in step 1 into its `### [<KEY>-<n>] resolved — <datetime>` entries (same parse `getEpicContext` step 5 does). If an entry already exists whose `<KEY>-<n>` equals this ticket's `key` (step 1) → a prior invocation already recorded this exact resolution (e.g. `/notion-dev:finalize`'s post-merge recovery path re-invoking `epic-update` after an interrupted run had already appended the log entry). **Skip steps 2-5 entirely** — no follow-up filing, no task-list refresh, no log append, no close check — and return `EPIC-UPDATE: already-recorded`. This single check is what makes re-invoking this skill safe: both the duplicate-ticket-filing and duplicate-log-entry failure modes happen inside the same invocation this check short-circuits.
 
 **2. File deferred follow-ups.** Source: `REVIEW_REPORT`'s deferred follow-ups — the same list written to the ticket's `## Merged` section.
 
@@ -67,11 +69,11 @@ Step 2 must run before step 5, or a run that files a follow-up would close the e
 Return exactly one block for the caller's report:
 
 ```
-EPIC-UPDATE: none | updated | closed | degraded
+EPIC-UPDATE: none | updated | closed | degraded | already-recorded
 EPIC: [<KEY>-<n>] <name> · <url>          (omit on `none`)
 FILED: <KEY>-69, <KEY>-70                 (or `none`)
 DEFERRED: <one-liner>, …                  (or `none`)
 CHILDREN: <resolved>/<total> resolved
 ```
 
-`degraded` means the DB lacks `epicProperty` or `parentTaskProperty`, so epic containers are unavailable — distinct from `none`, which means this ticket simply has no epic.
+`degraded` means the DB lacks `epicProperty` or `parentTaskProperty`, so epic containers are unavailable — distinct from `none`, which means this ticket simply has no epic. `already-recorded` means step 1a found an existing `## Resolution Log` entry for this ticket and skipped steps 2-5 — this is what makes the skill safe to invoke more than once for the same ticket (e.g. `/notion-dev:finalize`'s post-merge recovery path).

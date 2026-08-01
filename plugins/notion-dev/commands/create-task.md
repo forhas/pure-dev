@@ -113,9 +113,9 @@ The breakdown skill emits a proposed Epic name. Reconcile it against the configu
 Once the Epic **select value** is reconciled, resolve the Epic **page** — the container the tasks will hang from. This step only decides *which* page: reuse one that already exists, or record that a new one is needed. It does **not** call `createEpic` itself — `createEpic` takes an `assignee`, and Phase 2.75 (which resolves the assignee) runs *after* this phase, so the value doesn't exist yet here. The actual call is deferred to Phase 3.2's mission path, before Pass 0, which is the first point `assignee` is known and also where `EPIC_ID` is first required (by `parent: EPIC_ID` in the create loop).
 
 1. Invoke `notion-dev:ticket-system` operation `findEpics()`.
-2. A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its id as `EPIC_ID`; `EPIC_TO_CREATE` stays unset.
-3. No match → do **not** create the epic yet. Record `EPIC_TO_CREATE = { name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission> }` — everything `createEpic` will need except `assignee`. `EPIC_ID` stays unresolved until Phase 3.2.
-4. `findEpics()` returned `[]` (the DB lacks `epicProperty` or `parentTaskProperty`) → `EPIC_ID = undefined`, `EPIC_TO_CREATE` stays unset. Continue with Epic-select tagging only; do not prompt. (This is the "no epic property on the DB" degradation path; Phase 3.2's deferred-creation step checks for it via `EPIC_TO_CREATE` being unset, so it never fires here either.)
+2. `findEpics()` returned **`null`** (the DB lacks `epicProperty` or `parentTaskProperty` — epic containers are unavailable) → `EPIC_ID = undefined`, `EPIC_TO_CREATE` stays unset. Continue with Epic-select tagging only; do not prompt. (This is the "no epic containers on the DB" degradation path; Phase 3.2's deferred-creation step checks for it via `EPIC_TO_CREATE` being unset, so it never fires here either.)
+3. Otherwise `findEpics()` returned an array (possibly `[]`, meaning the properties exist but no epic pages exist yet). A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its **`id`** (the logical ticket id, e.g. `67` — *not* `pageId`) as `EPIC_ID`; `EPIC_TO_CREATE` stays unset.
+4. No match (including the `[]` case) → do **not** create the epic yet. Record `EPIC_TO_CREATE = { name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission> }` — everything `createEpic` will need except `assignee`. `EPIC_ID` stays unresolved until Phase 3.2.
 
 `EPIC_ID` is `undefined` and `EPIC_TO_CREATE` stays unset on the "Collapse to single ticket" branch — a collapsed mission is a single ticket and goes through Phase 2.6 like any other.
 
@@ -142,11 +142,11 @@ Ask `AskUserQuestion`: **Approve / Revise / Collapse to single ticket**.
 
 Runs only when Phase 2.5 returned `kind: "single"`. Skipped entirely for missions (2.5.2 already resolved the epic) and for the `existing-ticket` source mode, which never re-parents a ticket — the same rule that makes it skip Phase 2.5.
 
-1. Invoke `notion-dev:ticket-system` operation `findEpics()`. Empty → **skip silently, no prompt**.
+1. Invoke `notion-dev:ticket-system` operation `findEpics()`. **`null`** (the DB lacks `epicProperty` or `parentTaskProperty` — epic containers are unavailable) → skip silently, no prompt: the unavailable-degrade case. **`[]`** (both properties exist but no epic pages exist yet) → also skip silently, no prompt, but for a different reason: there is simply nothing to attach to. Both are silent, but they are different states — do not conflate them in any future change here.
 2. Judge the ticket's title and `## Requirements` against each epic's `name` and `## Overview`. This is a semantic judgment, not string matching: an epic is a plausible candidate when this ticket is work on the same incident, feature, or investigation. A shared word is not a match.
 3. **Zero plausible candidates → skip silently.** No prompt. This is the common case, and routine single-ticket runs must stay as quiet as they are today.
 4. **One or more plausible candidates** → ask `AskUserQuestion`: *"This looks related to an existing epic. Attach it?"*
-   - **Attach to `[<KEY>-<n>] <name>`** — the best candidate first, further candidates as additional options. Record `EPIC_ID` and the epic name.
+   - **Attach to `[<KEY>-<n>] <name>`** — the best candidate first, further candidates as additional options. Record the candidate's **`id`** (the logical ticket id, not `pageId`) as `EPIC_ID`, and the epic name.
    - **Pick another** — show the full `findEpics()` list as sub-choices.
    - **No epic** — proceed unattached; `EPIC_ID = undefined`.
 
@@ -213,7 +213,7 @@ Capture the returned `{ id, url }`.
 
 #### Mission path (two-pass)
 
-**Epic creation** (mission path only; runs before Pass 0 — skip entirely when `EPIC_ID` is already set from 2.5.2's reuse match, or when `EPIC_TO_CREATE` was never set, i.e. the DB lacks epic containers or the mission collapsed): invoke `notion-dev:ticket-system` operation `createEpic({ name: EPIC_TO_CREATE.name, overview: EPIC_TO_CREATE.overview, type: EPIC_TO_CREATE.type, assignee })`. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `assignee` is Phase 2.75's resolved value — this is why the call waits until here instead of running inline in 2.5.2, where `EPIC_TO_CREATE` was recorded but Phase 2.75 hadn't run yet. Record `EPIC_ID` from the result (`{ id, key, url, pageId }`). A `null` return (epic containers became unavailable between 2.5.2 and now) degrades the same way 2.5.2 step 4 does: `EPIC_ID = undefined`, continue with Epic-select tagging only.
+**Epic creation** (mission path only; runs before Pass 0 — skip entirely when `EPIC_ID` is already set from 2.5.2's reuse match, or when `EPIC_TO_CREATE` was never set, i.e. the DB lacks epic containers or the mission collapsed): invoke `notion-dev:ticket-system` operation `createEpic({ name: EPIC_TO_CREATE.name, overview: EPIC_TO_CREATE.overview, type: EPIC_TO_CREATE.type, assignee })`. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `assignee` is Phase 2.75's resolved value — this is why the call waits until here instead of running inline in 2.5.2, where `EPIC_TO_CREATE` was recorded but Phase 2.75 hadn't run yet. Record the result's **`id`** (the logical ticket id — the result shape is `{ id, key, url, pageId }`) as `EPIC_ID`, the same field 2.5.2's reuse path records. A `null` return (epic containers became unavailable between 2.5.2 and now) degrades the same way 2.5.2 step 4 does: `EPIC_ID = undefined`, continue with Epic-select tagging only.
 
 **Pass 0 — reconcile Phase options** (mirrors the Epic reconciliation in 2.5.2, but non-interactive — phase labels are generated per-mission structure, not user taxonomy, so missing options are auto-added rather than prompted): invoke `notion-dev:ticket-system` operation `getSelectOptions(<phaseProperty>)` (the configured name, default `"Phase"`). If the return is `null` → set `phase = undefined` on all tasks. Otherwise, rebind case-insensitive matches to the exact live casing, and for each distinct `task.phase` absent from the returned options invoke `addSelectOption(<phaseProperty>, "<phase>")`. `createTicket` requires an exact option match and raises otherwise — reconcile before the first create, or Pass 1 fails partway through.
 
@@ -227,7 +227,7 @@ for task in mission.tasks:
     body:     task.body,
     type:     task.type,
     epic:     mission.epic,     // reconciled name from 2.5.2
-    parent:   EPIC_ID,          // epic page id; omitted when undefined
+    parent:   EPIC_ID,          // logical ticket id (createTicket resolves it to a page id via fetchTicket, same as setParent); omitted when undefined
     phase:    task.phase,       // omitted fields pass through as absent
     step:     task.step,
     assignee: assignee,         // from Phase 2.75; omit when "unassigned"
