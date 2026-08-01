@@ -293,6 +293,8 @@ resolved from `.claude/notion-dev.config.json`), the local fallback
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
 report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
 
+Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) recover deferred follow-ups if this run dies before Phase 8 completes. Best-effort — a write failure here must not fail the run.
+
 ---
 
 ## Phase 8 — Record

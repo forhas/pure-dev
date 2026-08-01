@@ -9,7 +9,7 @@ Records a resolved ticket against its Epic container. Invoked by `/notion-dev:ti
 
 **Args:** `<ticket-id>` (the numeric or logical key of the just-resolved ticket), plus `--non-interactive` when the caller is in that mode.
 
-**Caller-supplied context:** `REVIEW_REPORT` (the review loop's final report, source of the deferred follow-ups) and `REPO_ROOT` (the primary checkout — the caller recorded it before any `cd` into a worktree).
+**Caller-supplied context:** `REVIEW_REPORT` (the review loop's final report, source of the deferred follow-ups) and `REPO_ROOT` (the primary checkout — the caller recorded it before any `cd` into a worktree). `REVIEW_REPORT` can arrive **absent** rather than merely empty — `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) passes it as absent when it could neither load the persisted report file nor reconstruct anything usable from the PR's review history. Absent is not the same as "no deferred follow-ups": it means this invocation has no way to know whether there were any. Step 2 and step 5 below both treat it accordingly.
 
 **Every step here is best-effort**: a failure logs a warning and continues to the next step. This skill never fails its caller's run — the merge has already landed by the time it is invoked, and epic bookkeeping is not worth losing that.
 
@@ -28,6 +28,8 @@ This ticket's resolution is recorded, but that does not mean the *rest* of the e
 Return `EPIC-UPDATE: already-recorded`, reporting what actually happened on this path: follow-up creation and log-append suppressed; task-list refresh and the close check ran.
 
 **2. File deferred follow-ups.** Source: `REVIEW_REPORT`'s deferred follow-ups — the same list written to the ticket's `## Merged` section.
+
+When `REVIEW_REPORT` is **absent** (not merely a report with an empty deferred-follow-ups list) — the caller could not produce or recover one, per the note above — skip this step entirely: there is no list to file from. Record `FILED = []`, `ALREADY_FILED = []`, and set `UNFILED` to the sentinel **unknown** rather than `[]` — an empty `UNFILED` asserts "nothing was left outstanding," which this invocation has no basis to assert. Carry `UNFILED = unknown` into step 4 (log entry) and step 5 (close check, fourth condition).
 
 This step is deduplicated **per follow-up**, not just at the whole-invocation level step 1a already covers. Step 1a's log-entry check is a fast path for the fully-completed case; it cannot catch a run that died after this step created a ticket but before step 4 appended the log entry, because the log entry is written *after* this step, not before. So each follow-up must recognize on its own whether it was already filed by a prior, interrupted invocation:
 
@@ -62,7 +64,7 @@ The mirror is refreshed only on resolution, so between resolutions it lags reali
 ### [<KEY>-<id>] resolved — <YYYY-MM-DD HH:MM UTC>
 **Summary** — <2-4 sentences: what was actually done, distilled from the ticket's ## Implementation section and the merge>
 **Follow-ups filed** — [<KEY>-69] Backfill historic wallets · <url>    (`FILED` ∪ `ALREADY_FILED`; omit the line when both are empty — this is the first log entry to record this ticket's resolution regardless of which invocation actually created the follow-up ticket)
-**Follow-ups deferred** — <item>                                       (omit the line when UNFILED is empty)
+**Follow-ups deferred** — <item>                                       (omit the line when UNFILED is empty; when UNFILED is unknown, use this line instead: "review report unavailable — deferred follow-ups could not be determined")
 **Epic status** — 2 of 3 tasks resolved
 **Next** — <the remaining blocker, or "epic complete">
 ```
@@ -75,8 +77,9 @@ Close only when **all** of:
 1. Every child other than the just-resolved one has a status in the resolved set.
 2. `FILED` and `ALREADY_FILED` are both empty. Strictly redundant with (1) — a freshly filed or already-filed follow-up is an unresolved child, so (1) already fails — but stated so the intent survives any future change to when the child list is read.
 3. `UNFILED` is empty — a known-but-unfiled follow-up means the work is not finished. On the recovery path (step 1a), `UNFILED` is the set repopulated from the matched log entry's `**Follow-ups deferred**` line, not an empty default — see step 1a for why that read is mandatory.
+4. `UNFILED` is not the **unknown** sentinel (step 2, when `REVIEW_REPORT` arrived absent). This is a distinct failure mode from condition 3, not a rephrasing of it: condition 3 fails when there is a *known* unfiled item; this condition fails when there is *no way to know* whether one exists. An absent `REVIEW_REPORT` must never read as "nothing was deferred" — that reading is exactly the bug this condition exists to close off, since it would let a merged-then-interrupted recovery run close an epic over real outstanding work purely because the evidence of it never reached this invocation. When this condition is the one that fails, say so plainly in this entry's `Next` line (e.g. "review report unavailable — epic left open pending manual review") rather than folding it into the generic "remaining blocker" phrasing condition 1's failure would use. This condition does not apply on the already-recorded path (step 1a matched): there, deferred follow-ups are known from the historical log entry, not from this run's `REVIEW_REPORT`, so `UNFILED` is never the unknown sentinel on that path.
 
-Then `updateStatus(EPIC_ID, "implemented")`, and say so in step 4's `Epic status` and `Next` lines. Otherwise leave the epic's status untouched. The plugin never moves an epic *out* of a resolved status, and never sets an epic to `In Progress`.
+Then `updateStatus(EPIC_ID, "implemented")`, and say so in step 4's `Epic status` and `Next` lines. Otherwise leave the epic's status untouched — this includes refusing to close under condition 4 even when conditions 1-3 all hold. The plugin never moves an epic *out* of a resolved status, and never sets an epic to `In Progress`.
 
 Step 2 must run before step 5, or a run that files a follow-up would close the epic that follow-up belongs to.
 
@@ -89,8 +92,10 @@ EPIC-UPDATE: none | updated | closed | degraded | already-recorded
 EPIC: [<KEY>-<n>] <name> · <url>          (omit on `none`)
 FILED: <KEY>-69, <KEY>-70                 (or `none`)
 ALREADY-FILED: <KEY>-71                   (or `none`)
-DEFERRED: <one-liner>, …                  (or `none`)
+DEFERRED: <one-liner>, …                  (or `none` or `unknown`)
 CHILDREN: <resolved>/<total> resolved
 ```
 
 `degraded` means the DB lacks `epicProperty` or `parentTaskProperty`, so epic containers are unavailable — distinct from `none`, which means this ticket simply has no epic. `already-recorded` means step 1a found an existing `## Resolution Log` entry for this ticket: step 2 (filing) and step 4 (log append) were skipped because repeating them would duplicate a ticket or a log entry, but step 3 (`refreshEpicTasks`) and step 5 (the close check) still ran, since both are idempotent and are how an interrupted prior run's leftover bookkeeping gets completed — this is what makes the skill safe, and useful, to invoke more than once for the same ticket (e.g. `/notion-dev:finalize`'s post-merge recovery path). `FILED` and `ALREADY_FILED` are both empty on this path (no filing ran this invocation), so `CHILDREN` below reflects step 3's fresh count, not this run's filing activity. `UNFILED`, however, is **not** empty by default on this path — it is repopulated (per step 1a) from the matched log entry's `**Follow-ups deferred**` line, so `DEFERRED` below reports the original run's deferred items, not this run's (there are none). `ALREADY-FILED` reports step 2's **per-follow-up** dedup — a follow-up whose deterministic title matched an existing epic child, so nothing new was created — distinct from `FILED` (newly created this run); a recovery run's report must show which follow-ups it actually did the work of creating versus which it correctly recognized as already done.
+
+`DEFERRED: unknown` is a distinct value from `none`, reported only when `REVIEW_REPORT` arrived absent this run (step 2) and step 1a did not already recover the answer from a historical log entry — it means step 5's fourth close condition is the reason (if any) the epic did not close, and the caller must not read `unknown` as "nothing was deferred."
