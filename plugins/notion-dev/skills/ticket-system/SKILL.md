@@ -22,8 +22,8 @@ The caller names the operation and passes the arguments; the sections below desc
 | `updateStatus` | `id`, `logicalStatus` ∈ `{ inProgress, implemented }` (plugin-invoked set) plus any custom key present in the user's `statusMap` | `void` — the plugin never invokes `delivered` / `done` / shipped-style states; those are reserved for host-project commands |
 | `setPullRequest` | `id`, `url` | `void` — persists the PR URL into the configured PR property. No-op when the live DB has no such property. Does not touch body sections. |
 | `setDependencies` | `id`, `[titleOrId, …]` | `void` — writes the configured `dependsOnProperty` relation. Resolves entries that look like titles to page IDs within the DB. No-op when the property is absent. Pass-2 in mission creation. |
-| `createEpic` | `{ name, overview, type?, assignee? }` | `{ id, url, pageId }` — creates an Epic container page. No-op returning `null` when the DB lacks `epicProperty` or `parentTaskProperty` |
-| `findEpics` | — | `[{ id, pageId, name, title, url, overview }]` — pages with `epicProperty` set and `parentTaskProperty` empty. `[]` when either property is absent |
+| `createEpic` | `{ name, overview, type?, assignee? }` | `{ id, key, url, pageId }` — creates an Epic container page. No-op returning `null` when the DB lacks `epicProperty` or `parentTaskProperty` |
+| `findEpics` | — | `[{ id, key, pageId, name, title, url, overview }]` — pages with `epicProperty` set and `parentTaskProperty` empty. `[]` when either property is absent |
 | `setParent` | `id`, `epicId` | `void` — writes the `parentTaskProperty` relation. No-op when the property is absent |
 | `listEpicChildren` | `epicId` | `[{ id, key, title, status, url }]` — pages whose `parentTaskProperty` points at `epicId`, ordered by `id`. `[]` when the property is absent |
 | `refreshEpicTasks` | `epicId` | `void` — re-renders the epic's `## Tasks` section from its live children. The single owner of that section's format |
@@ -395,7 +395,7 @@ Both properties are required for epic containers. When either is absent from the
 3. Call `createTicket({ title: name, body, type, assignee, epic: name })`. Reusing the normal creation path means the epic gets an ID, the title prefix, `Creation Date`, `staticProperties`, and the assignee for free. Status is `"Backlog"` like any new ticket.
 4. `parentTaskProperty` is left empty — an epic has no parent. `phase`, `step`, and `dependsOn` are never set on an epic.
 5. `type` defaults to the dominant child type when the caller knows the children, else `feature`.
-6. Return `{ id, url, pageId }`.
+6. Return `{ id, key, url, pageId }` — `key` is the logical ticket key (`"STO-67"`) derived the same way `fetchTicket` derives it (`project.key` + the numeric `id` from step 3), so callers can display `[{key}] {name}` without constructing the prefix themselves.
 
 ## findEpics()
 
@@ -403,7 +403,7 @@ Read-only.
 
 1. If `epicProperty` or `parentTaskProperty` is absent from the live DB, warn once and return `[]`.
 2. Query the database (or `dataSourceId` when configured) with `mcp__notion__notion-query-data-sources` for pages where `epicProperty` is not empty **and** `parentTaskProperty` is empty.
-3. For each hit return `{ id, pageId, name, title, url, overview }` — `name` is the `epicProperty` Select value, `title` is the page title with the ID prefix stripped, `overview` is the text of its `## Overview` section (empty string when absent).
+3. For each hit return `{ id, key, pageId, name, title, url, overview }` — `key` is the logical ticket key (`"STO-67"`) for display, same meaning and format as in `fetchTicket` and `listEpicChildren`; `name` is the `epicProperty` Select value, `title` is the page title with the ID prefix stripped, `overview` is the text of its `## Overview` section (empty string when absent).
 
 ## setParent(id, epicId)
 
