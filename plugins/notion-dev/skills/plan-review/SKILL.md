@@ -33,9 +33,13 @@ MICRO-PLAN:
 <flow-triage's MICRO-PLAN block verbatim, or "NONE — not available">
 VERIFY:
 <the project's verify/test commands, one per line, or NONE>
+EPIC-CONTEXT:
+<the epic context block from ticket-system's getEpicContext, verbatim, or "NONE — not available">
 ```
 
 `SCOUT-FINDINGS` and `MICRO-PLAN` are legitimately absent when the caller skipped triage (for example a resumed run). When they are, tell the reviewer they are unavailable — never fabricate a stand-in.
+
+`EPIC-CONTEXT` is legitimately absent whenever the ticket has no epic — the ordinary case. When present, it is **background, not spec**: the reviewer may use it to judge whether the plan is consistent with what siblings already decided, but must never treat a resolution-log entry as a requirement — the ticket body (`INTENT`, plus `--spec-file` when given) remains the single source of truth.
 
 ## Step 1 — Build the reviewer prompt
 
@@ -47,8 +51,9 @@ Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empt
 4. The `INTENT` block and, when `--spec-file` was given, that file's contents — together these are what the plan is judged against. When the caller supplies both they are complementary, not alternatives: the spec file carries the full requirement, `INTENT` the caller's framing of it. Include both; neither overrides the other.
 5. The `SCOUT-FINDINGS` and `MICRO-PLAN` blocks, labelled as precomputed context from triage, or explicitly marked unavailable.
 6. The `VERIFY` commands, so the reviewer knows what verification exists in this repo.
-7. The repo root as the codebase to verify against, plus a pointer to `CLAUDE.md` and `.claude/rules/` if present.
-8. An explicit statement that it is **review-only**: it must not edit files, commit, or push.
+7. The `EPIC-CONTEXT` block, when present, labelled explicitly as **background, not spec** — the epic's overview, sibling status, and recent resolution history, useful for judging consistency with what siblings already decided, never a source of requirements. Omit this item entirely when `EPIC-CONTEXT` is `NONE — not available`.
+8. The repo root as the codebase to verify against, plus a pointer to `CLAUDE.md` and `.claude/rules/` if present.
+9. An explicit statement that it is **review-only**: it must not edit files, commit, or push.
 
 ## Step 2 — Dispatch the reviewer
 
