@@ -1,6 +1,6 @@
 ---
 description: Produce a well-formed ticket from a prompt or an existing source. Runs a depth-calibrated interview (via notion-dev:ticket-interviewer) when needed, then writes the result to the configured ticket system.
-argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
+argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [--provenance=<marker>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
 ---
 
 # /notion-dev:create-task
@@ -24,8 +24,9 @@ Args: `[<source>:]<ref>` or free prompt text.
 | `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. **Taken on trust** — unlike `--epic`/`--parent` pairs resolved internally via `findEpics()`, an explicitly supplied `--parent` is written through to `setParent` with no epic-structure check (there is no way to guard it without also blocking the legitimate case of attaching a brand-new epic's first child); the caller is responsible for passing the id of an actual epic. |
 | `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
 | `--title=<text>` | Pin the ticket's final title to this exact string (see Phase 2.1). The interviewer still elaborates the body, but does not get to rewrite the title. |
+| `--provenance=<marker>` | Pin this exact marker line into the created ticket's `## Context` section (see Phase 2.1). The marker is folded into `body` before Phase 3.2's single write — never appended in a separate call afterward — so the ticket and its provenance marker come into existence in the same atomic operation, or neither does. |
 
-`--epic`, `--parent`, `--assignee`, and `--title` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting — `--title` in particular is what lets a caller dedup its own follow-ups reliably: it derives a title, passes it here, and knows that string is exactly what ends up stored.
+`--epic`, `--parent`, `--assignee`, `--title`, and `--provenance` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting. `--title` and `--provenance` together are what let a caller dedup its own follow-ups reliably: `--title` derives a title, passes it here, and knows that string is exactly what ends up stored; `--provenance` derives a marker and knows it is written into `## Context` as part of ticket creation itself, not as a follow-up step a crash between the two could skip.
 
 **`--non-interactive` phase behavior:**
 
@@ -33,6 +34,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 |---|---|---|
 | 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) |
 | 2.1 title | Interviewer's returned `title` is used as-is, unless `--title` is supplied — then that exact string always wins, in either mode | Same rule: `--title`, when supplied, overrides the interviewer's returned `title`; otherwise the interviewer's value is used |
+| 2.1 provenance | Interviewer's returned `body`'s `## Context` section is used as-is, unless `--provenance` is supplied — then the marker is force-inserted into `## Context` verbatim before Phase 3.2 writes, in either mode | Same rule: `--provenance`, when supplied, is folded into `## Context` before Phase 3.2's creation call; otherwise the interviewer's `## Context` is used unchanged |
 | 2.2 confirm | `create` / `revise` / `cancel` | Auto-`create` |
 | 2.5 breakdown | May return a mission | Auto-collapse to `single` |
 | 2.6 epic attach | Prompt on candidates | Use `--epic` / `--parent`, or attach to none |
@@ -74,6 +76,8 @@ Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confid
 
 When `--title` was supplied, it wins: use that exact string as the ticket's title and discard the interviewer's returned `title`. The interviewer still elaborates `body` in full — depth calibration, clarity audit, everything — only the title is pinned. This is what lets a caller (e.g. `epic-update`'s follow-up filing) derive a title once and know it is exactly what gets stored, regardless of what the interviewer would otherwise have produced.
 
+When `--provenance` was supplied, apply the same discipline to `## Context`: after the interviewer returns `body`, ensure its `## Context` section contains the marker as a verbatim line — appended to whatever the interviewer wrote there if not already present, never replacing the section's other content. This happens here, before Phase 3.2's single write — not as a follow-up call after creation. The marker is part of the same `body` that `createTicket`/`updateTicket` writes in one call, so the ticket and its marker are created together, atomically, or neither is. A `revise` loop (Phase 2.2) re-invokes the interviewer with a fresh `body`; re-apply the same insertion on every pass so the marker survives every revision.
+
 No `confidence`-branching lives in this command — depth calibration is fully owned by the skill.
 
 In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user. Everything else about the interview is unchanged.
@@ -107,7 +111,7 @@ Invoke `notion-dev:task-breakdown` passing `{ title, body, sourceRef, type? }` f
 The breakdown skill emits a proposed Epic name. Reconcile it against the configured ticket system before using it — the reconciliation is driven entirely by `getSelectOptions`' return:
 
 1. Invoke `notion-dev:ticket-system` operation `getSelectOptions(<epicProperty>)` (the configured name, default `"Epic"`).
-2. If the return is `null` (property absent or not a selectable type) → skip the Epic entirely. Set `epic = undefined` on all tasks; continue to 2.5.3.
+2. If the return is `null` (property absent or not a selectable type) → skip the Epic entirely. Set `epic = undefined` on all tasks and record `EPIC_PROPERTY_ABSENT = true` — carried through to Phase 4's mission report, where it distinguishes this degradation (no Epic select tag is possible on any task, since `createTicket` only writes the Epic select when `epicProperty` exists) from the narrower case where only `parentTaskProperty` is missing (select tagging still succeeds; only the container page doesn't exist). Continue to 2.5.3.
 3. If the proposed name exists in the returned list (case-insensitive match) → reuse; rebind to the exact live casing; continue to 2.5.3.
 4. If no match → ask `AskUserQuestion`:
    - **Create "\<proposed\>"** — invoke `notion-dev:ticket-system` operation `addSelectOption(<epicProperty>, "<proposed>")`; then use it.
@@ -213,6 +217,8 @@ Invoke `notion-dev:ticket-system`:
 - If source was `existing-ticket`, operation is `updateTicket(id, { title, body, type })` — update in place. (Treat this as a `createTicket`-style call with the existing id; the ticket-system skill handles the distinction.)
 - Otherwise, operation is `createTicket({ title, body, type, assignee, epic, parent })` — new ticket. Omit `assignee` when Phase 2.75 chose "Leave unassigned"; omit `epic` and `parent` when Phase 2.6 attached to no epic (`epic` = the epic name, `parent` = `EPIC_ID`). `existing-ticket` `updateTicket` never sets an assignee or a parent — both are creation-only.
 
+`body` already carries the `--provenance` marker, folded into `## Context` back in Phase 2.1 when the flag was supplied. No separate write follows this call to add it — the marker and the ticket exist from the same operation.
+
 Capture the returned `{ id, url }`.
 
 #### Mission path (two-pass)
@@ -276,10 +282,11 @@ Print:
 
 ### Mission result
 
-Open with one of two lines, chosen by whether `EPIC_ID` is set (never both, never neither):
+Open with one of three lines, chosen by whether `EPIC_ID` is set and, when it is not, by `EPIC_PROPERTY_ABSENT` (recorded in Phase 2.5.2 step 2). The two `EPIC_ID`-undefined cases are **not** interchangeable: `createTicket`'s "Mission metadata" step (`skills/ticket-system/SKILL.md`) writes the Epic select only when `epicProperty` exists on the live DB, independently of whether `parentTaskProperty` exists — so a missing `epicProperty` degrades further than a missing `parentTaskProperty` alone, and the report must say which happened:
 
 - `EPIC_ID` set → `Mission created under Epic: [<KEY>-<n>] <epic name> · <epic url>`.
-- `EPIC_ID` undefined (the degradation path — `findEpics()` returned `null` because the DB lacks `epicProperty` or `parentTaskProperty`, per Phase 2.5.2 and Phase 3.2's epic-creation step) → there is no container page, so do not claim one. Print instead: `Mission tagged with Epic select "<epic name>" on every task — no container page (this DB has no Epic select or Parent task relation to hold one).` Never silently drop this line; a user who expected a container page needs to know they didn't get one.
+- `EPIC_ID` undefined and `EPIC_PROPERTY_ABSENT` is **not** set (`epicProperty` exists; `parentTaskProperty` is the one missing, per Phase 2.5.2 and Phase 3.2's epic-creation step) → the Epic select write still succeeded on every task; only the container page is missing. Print: `Mission tagged with Epic select "<epic name>" on every task — no container page (this DB has no Parent task relation to hold one).`
+- `EPIC_ID` undefined and `EPIC_PROPERTY_ABSENT` **is** set (`epicProperty` itself is absent from the live DB, so `epic` was already `undefined` on every task from Phase 2.5.2 step 2 onward) → `createTicket` skipped the Epic write entirely: no container page **and** no select tag on any task. Print: `Mission created with no Epic grouping — this DB has no "<epicProperty configured name>" select property to tag tasks with, and no Parent task relation to hold a container.` Never silently drop either of the last two lines, and never conflate them — a user who expected grouping metadata needs to know exactly what they didn't get and which property is missing.
 
 Then the structured summary:
 
