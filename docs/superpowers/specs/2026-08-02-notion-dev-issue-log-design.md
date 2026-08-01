@@ -1,0 +1,386 @@
+# notion-dev: runtime issue log
+
+**Date:** 2026-08-02
+**Plugin:** `plugins/notion-dev` (quick-dev is not affected)
+**Target version:** `0.8.0` → `0.9.0` (minor — new capability, nothing breaking)
+
+## Goal
+
+When the plugin misbehaves in a client's repo, leave a durable, shareable record the plugin author can act on. The client forwards one file; the author reads it and fixes the plugin.
+
+Coverage is **total by intent**, in two layers:
+
+1. **A standing rule** — any command or skill that encounters anything unexpected at runtime records it, including situations nobody enumerated in advance.
+2. **Enumerated known sites** — the already-known degradation points carry explicit named signatures, so common cases produce consistent, groupable entries instead of free-form prose.
+
+Layer 1 without layer 2 is unsearchable. Layer 2 without layer 1 only ever captures what was foreseen. Both ship together.
+
+## Non-goals
+
+- **quick-dev.** Its copies of the four shared skills (`flow-triage`, `plan-review`, `local-code-review`, `review-and-merge`) are separate files and are not touched.
+- **Remediation advice.** The log is author-facing diagnostics. It never tells the client how to fix anything, and never classifies whether a given entry is the client's setup or the plugin's bug.
+- **Rotation, truncation, or archival.** The file grows with distinct problems, not with runs. Signature dedup is the bounding mechanism.
+- **A `/notion-dev:report-issues` command.** `cat` works. Rejected as YAGNI.
+- **Executable code of any kind.** No hooks, no scripts. The plugin stays prompt-and-markdown.
+- **Ticket content.** See §5.
+
+---
+
+## 1. Components
+
+```
+plugins/notion-dev/skills/issue-log/
+  SKILL.md                    ← the contract: when to log, how to write, redaction, dedup, best-effort
+  references/signatures.md    ← the layer-2 signature registry
+```
+
+Two files, mirroring the existing `flow-triage` / `references/ledger.md` split.
+
+`SKILL.md` is the **how**. It never lists individual call sites. `signatures.md` is the **what** — the only place a layer-2 signature name is defined. Call sites cite names; they never redefine them.
+
+This split is the primary defence against the repo's dominant defect class (a fact stated in two places, one copy updated). A signature name exists once in the registry and is referenced everywhere else.
+
+---
+
+## 2. The file
+
+### 2.1 Location
+
+`$REPO_ROOT/.claude/notion-dev/notion-dev-issues.md`
+
+In the **primary checkout** of the target repo, never inside a feature worktree — worktrees get deleted. Same rule, and the same `$REPO_ROOT`, as `ledger.jsonl` and `review-report-<KEY>-<id>.md`, which already live in this directory.
+
+On first write, create the directory with a self-ignoring gitignore, verbatim from `skills/flow-triage/references/ledger.md`:
+
+```bash
+mkdir -p .claude/notion-dev
+[ -f .claude/notion-dev/.gitignore ] || printf '*\n' > .claude/notion-dev/.gitignore
+```
+
+The location is not a preference. A file anywhere visible to git — notably the repo root — trips the clean-tree gates in `commands/ticket.md` Phase 6.6 and `skills/review-and-merge/SKILL.md`, both of which require `git status --porcelain` to be empty, and could sweep the file into a client's PR. A root-level file is a functional bug.
+
+### 2.2 Header
+
+Written once, when the file is created. Never rewritten, never re-checked on later appends.
+
+```markdown
+# notion-dev runtime issues
+
+Written automatically by the notion-dev plugin when a command or skill hits
+something unexpected. You do not need to run anything to produce it.
+
+**If you are seeing this, send the whole file to whoever maintains the plugin.**
+It contains identifiers only — no ticket titles, bodies, diffs, or user details.
+
+This records what the plugin noticed and had the opportunity to record. It is
+not a complete account of everything that went wrong: a run killed mid-flight
+leaves nothing behind to record its own death. A short file is not evidence of
+a healthy run.
+```
+
+### 2.3 Ordering
+
+Entries append in first-seen order. A new signature becomes a new section at the end of the file. A repeat signature updates its existing section in place. Nothing is ever reordered or removed.
+
+---
+
+## 3. Entry format
+
+```markdown
+## missing-property:parentTaskProperty
+**Kind**: degraded · **Occurrences**: 7
+**First seen**: 2026-08-02T14:32Z (notion-dev 0.9.0)
+**Last seen**: 2026-08-05T09:11Z (notion-dev 0.9.0)
+**Where**: /notion-dev:ticket → epic-update step 1
+**Expected**: `parentTaskProperty` "Parent task" present, self-referential relation
+**Observed**: property absent from live database
+**Effect**: epic linkage skipped; ticket resolved without a Resolution Log entry
+**Context**: idProperty=unique_id · db=…a41f9c · epicProperty=present
+```
+
+Every field is required. `Context` may be the literal `none` when no permitted pair applies.
+
+### 3.1 `Kind`
+
+Exactly one of three values, answering one question only — **did the run continue?**
+
+| Value | Meaning |
+|---|---|
+| `failed` | The run aborted here. |
+| `degraded` | The run continued but did less than it should have. |
+| `unexpected` | Layer 1 catch-all: something was wrong and the writer cannot confidently say which of the above applies. |
+
+The handoff proposed a fourth value, `drift` (live state disagrees with config). It is **deliberately excluded**. Drift and degradation are different axes: every `missing-property:*` entry is simultaneously drift *and* a degradation, so a writer choosing between them is making a coin flip, and the label comes out inconsistent across runs. Drift is already legible in the signature name. Kind stays one axis.
+
+### 3.2 Timestamps and version
+
+`First seen` and `Last seen` are ISO 8601 UTC to the minute (`date -u +%FT%RZ`), each followed by the plugin version observed at that moment.
+
+**The version is read from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` at write time.** It is never hardcoded in `SKILL.md` — a literal version string in the skill is a second copy of a fact that lives in the manifest, and it would go stale at the first release. §9 verifies this.
+
+Because both timestamps carry a version, an entry whose first-seen and last-seen versions differ is an issue that survived an upgrade. That is the version-mismatch signal, obtained for free.
+
+### 3.3 Dedup
+
+Signature is the identity. On every write:
+
+1. Read the file if it exists.
+2. Search for a line exactly matching `## <signature>`.
+3. **Present** — update that section's `**Last seen**` line to now plus the current version, and increment the integer on its `**Occurrences**` line. Leave every other byte of the section unchanged.
+4. **Absent** — append a blank line and the full entry at the end of the file.
+5. **File absent** — create the directory and gitignore per §2.1, write the §2.2 header, then the entry.
+
+**On a repeat, only `Last seen` and `Occurrences` change.** The five descriptive fields and `Kind` keep their first-seen values. This is deliberate on two grounds: mutating them makes the entry lie about what was first observed, and it makes the write non-deterministic. If `Observed` would differ materially from the recorded value, that is a different condition and belongs under a different signature.
+
+`Occurrences` counts **write events**, not underlying incidents. Most layer-2 sites are specified as "log one warning per run", so for those it counts runs. The registry marks the frequency of each.
+
+---
+
+## 4. Signature grammar
+
+`<class>:<subject>` — both kebab-case, no spaces.
+
+**Class** is drawn from a closed list:
+
+| Class | Use |
+|---|---|
+| `missing-property` | A configured property is absent from the live database. |
+| `wrong-type` | The property exists but its Notion type is not what the plugin requires. |
+| `option-missing` | A Select/Status option the plugin needs is not on the property. |
+| `prefix-mismatch` | A live identifier prefix disagrees with config. |
+| `mcp-unavailable` | An MCP server or tool could not be reached at all. |
+| `mcp-error` | An MCP call was reached and returned an error. |
+| `abort` | A guardrail or precondition stopped the run. |
+| `retry-exhausted` | An operation was retried per its own contract and still failed. |
+| `fallback` | A secondary path ran because the primary was unavailable. |
+| `partial` | An operation completed some of its work and not the rest. |
+| `unexpected` | Nothing above fits. |
+
+**Subject** is either a config property name verbatim (`parentTaskProperty`) or a fixed kebab subject (`project-scope`, `notion`, `epic-update`).
+
+Layer 1 invents signatures at write time under this same grammar, reusing an existing class wherever one fits and falling back to `unexpected:<subject>`. Constraining the catch-all to the grammar is what keeps it groupable — free-form prose entries would make the log unsearchable, which §3.1 of the handoff identifies as the failure mode that kills the feature.
+
+---
+
+## 5. Redaction
+
+Redaction is **structural** — a per-field whitelist, not a cleanup pass someone remembers to run. Writing a compliant entry and writing a redacted entry are the same act.
+
+| Field | May contain |
+|---|---|
+| signature | A class from §4 plus a config property name or fixed subject. |
+| `Kind` | One of the three §3.1 values. |
+| `Occurrences` | An integer. |
+| `First seen` / `Last seen` | A UTC timestamp and the plugin version. |
+| `Where` | Command name, phase name, skill name, step number. Optionally a ticket key (`STO-67`). |
+| `Expected` | The plugin's expectation, stated in config and schema terms. |
+| `Observed` | The shape of live state — presence, absence, Notion property type, error text. |
+| `Effect` | What the plugin did, skipped, or aborted. |
+| `Context` | `key=value` pairs joined by ` · `, drawn only from the closed list below. |
+
+**`Context` permitted keys:** `idProperty`, `epicProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `flow`, `reviewer`, `db`.
+
+Values are `present`, `absent`, a Notion type name, a configured property name, or — for `db` only — the last six characters of the database id, written `db=…a41f9c`.
+
+### 5.1 Forbidden, without exception
+
+Ticket titles. Ticket bodies. Any part of a ticket's content. PR titles, descriptions, or contents. Diffs or code. Notion user ids. Email addresses. Personal names. Full database ids. Full page ids. Absolute filesystem paths. URLs of any kind.
+
+`Observed` and `Effect` are the leak risk, because they are prose. Their contract states it directly: **these describe plugin behavior, never ticket content.** `SKILL.md` carries this forbidden list verbatim adjacent to the field table.
+
+The rationale, which `SKILL.md` states so a future editor does not relax it: clients forward this file to the plugin author, possibly without reading it. Plugin bugs live in the plugin's logic, not the client's data, so identifiers are sufficient to diagnose.
+
+---
+
+## 6. What is *not* logged
+
+Necessary counterweight to layer 1. The plugin already declares a set of absences and empty results **routine**, annotating several of them "never a warning — these are routine, not exceptional". Logging them would bury the real entries under normal operation.
+
+Never logged:
+
+| Condition | Where declared |
+|---|---|
+| `getEpicContext` returns `null` (ticket has no epic, or `epicMarkerProperty` absent) | `ticket-system/SKILL.md` — "Not a warning — this is the normal case for most tickets" |
+| `findEpics()` returns `[]` (property exists, no page marked yet) | `ticket-system/SKILL.md`, `create-task.md` Phase 2.6 |
+| `resolveAssignee` returns `null` (zero or ambiguous matches) | `ticket-system/SKILL.md` — "routine, not exceptional" |
+| `fetchTicket` returning a type's empty default for an unset or absent property | `ticket-system/SKILL.md` — "never a warning" |
+| Zero plausible epic candidates in `create-task.md` Phase 2.6 | "the common case, and routine single-ticket runs must stay as quiet as they are today" |
+| A user declining a gate, choosing Revise, or aborting at a confirmation prompt | Normal interaction; the ledger already records it as `stopped` |
+| Anything the issue log itself fails at | §8 |
+
+Note the asymmetry that makes this list non-obvious: `findEpics()` returning **`null`** — `epicMarkerProperty` absent from the database — **is** logged, as `missing-property:epicMarkerProperty`. Returning **`[]`** is not. The adapter is explicit that callers must not conflate the two, and neither may the issue log.
+
+`getEpicContext` never logs even when it returns `null` because the marker is absent, because that same condition is already recorded at `findEpics`/`createTicket`. One condition, one signature, one entry.
+
+---
+
+## 7. Wiring
+
+### 7.1 Layer 1 — the standing rule
+
+Each of the four commands gains one short preamble block, near the top, before its first phase:
+
+> **Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens. That skill owns the format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must *not* be logged. This applies to conditions nobody enumerated in advance, not only to the named ones below.
+
+The full rule, the vocabulary, and the not-logged list live in `SKILL.md` and are **not** duplicated into the commands. A slash command file *is* the prompt, so this block is guaranteed-read for the whole run, including skills invoked mid-flow.
+
+**Timing: write at the moment of the deviation, never batched to end of run.** A run that dies loses batched entries, and those are precisely the runs whose record matters most.
+
+### 7.2 Layer 1 — the end-of-run sweep
+
+A second net, for conditions the agent noticed but did not stop to record. Placed in each command's final phase:
+
+| Command | Sweep location | Report-line location |
+|---|---|---|
+| `ticket.md` | Phase 9 (Clean up), alongside the ledger outcome append | Phase 10 (Report) |
+| `finalize.md` | Phase 4 (Clean up) | Phase 5 (Report) |
+| `create-task.md` | Phase 4 (Report), before the report is composed | Phase 4 (Report) |
+| `init.md` | Its report step | Its report step |
+
+Text: *"Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`."*
+
+**The sweep must also run on the unrecoverable-failure path.** `ticket.md`'s "Failure and stop conditions" section stops without running cleanup, so Phase 9's sweep never fires there — and that path is where the interesting failures are. It gets its own best-effort sweep, placed and worded to mirror exactly how the ledger outcome append is already handled there. Same for `finalize.md` and `create-task.md`.
+
+### 7.3 Layer 1 — the report line
+
+Each command prints one line in its final report, **only when that run wrote to the log**:
+
+```
+2 issues logged to .claude/notion-dev/notion-dev-issues.md
+```
+
+Without this the feature depends on a client stumbling across a dotfile inside a self-ignored directory. An author-facing diagnostic nobody mentions never gets sent.
+
+### 7.4 Layer 2 — the registry
+
+`references/signatures.md` holds one table. Seeded from the sites verified present in the current tree:
+
+| Signature | Kind | Site | Condition | Frequency |
+|---|---|---|---|---|
+| `missing-property:prProperty` | degraded | `ticket-system` | `prProperty` absent; PR write skipped | once/run |
+| `missing-property:assigneeProperty` | degraded | `ticket-system` | `assigneeProperty` absent; assignee write skipped | once/run |
+| `wrong-type:assigneeProperty` | degraded | `ticket-system` | present but not a People property | once/run |
+| `missing-property:creationDateProperty` | degraded | `ticket-system` | absent; creation-date write skipped | once/run |
+| `wrong-type:creationDateProperty` | degraded | `ticket-system` | present but neither `date` nor `created_time` | once/run |
+| `missing-property:parentTaskProperty` | degraded | `ticket-system` | absent; guards parent write, `setParent`, `listEpicChildren`, `refreshEpicTasks` | once/run |
+| `missing-property:epicProperty` | degraded | `ticket-system` | absent; Epic select skipped, `createEpic` degrades | once/run |
+| `missing-property:epicMarkerProperty` | degraded | `ticket-system` | absent; `findEpics` returns `null`, epic containers unavailable | once/run |
+| `missing-property:dependsOnProperty` | degraded | `ticket-system` | absent; `setDependencies` no-ops | once/run |
+| `option-missing:<propertyName>` | failed | `ticket-system` | required Select/Status option absent; `createTicket` raises | per occurrence |
+| `prefix-mismatch:unique_id` | degraded | `ticket-system` | live `unique_id` prefix differs from `project.key` | once/run |
+| `mcp-unavailable:notion` | failed | `ticket-system` | Notion MCP unreachable | per occurrence |
+| `mcp-unavailable:notion-get-users` | failed | `ticket-system` | `resolveAssignee` cannot run | per occurrence |
+| `mcp-error:<tool>` | unexpected | any | an MCP call returned an error | per occurrence |
+| `abort:project-scope` | failed | `ticket-system` | pinned `staticProperties` mismatch; refused to cross projects | per occurrence |
+| `fallback:local-code-review` | degraded | `ticket.md`, `finalize.md` | configured reviewer unavailable; local fallback ran, no cross-model validation | once/run |
+| `retry-exhausted:plan-review` | degraded | `ticket.md` | `PLAN-REVIEW: degraded` — reviewer never ran | once/run |
+| `retry-exhausted:verify` | failed | `ticket.md` | verify step never passed after its retries | per occurrence |
+| `partial:epic-update` | degraded | `ticket.md`, `finalize.md` | `epic-update` returned a non-empty `SKIPPED` or `FAILED` bucket | once/run |
+
+Each existing warning sentence at these sites gains a signature citation. The prose already exists — `ticket-system/SKILL.md` alone already says "log **one** warning per run" repeatedly. This work gives those warnings a durable destination; it does not invent new detection logic.
+
+Where a condition splits `missing-property` from `wrong-type` (assignee, creation date), the call site says which to use: absent → `missing-property`, present-but-wrong-type → `wrong-type`. Existing prose already distinguishes the two cases in the same sentence.
+
+### 7.5 Layer 2 — log at the caller
+
+`init.md`'s schema-drift items get **no signatures of their own.** A `parentTaskProperty` missing at init and the same property missing at ticket time are one condition observed at two moments; both write `missing-property:parentTaskProperty`. Minting init-specific classes would produce a dozen near-duplicates and destroy the grouping the file exists to provide.
+
+Degraded plan review, degraded code review, and partial `epic-update` are logged **by the calling command**, not inside `plan-review/SKILL.md`, `local-code-review/SKILL.md`, `review-and-merge/SKILL.md`, or `epic-update/SKILL.md`. Two reasons:
+
+1. Each degradation is already visible to the caller in the output block those skills return — `PLAN-REVIEW: degraded`, the reviewer-used line, `epic-update`'s `SKIPPED`/`FAILED` buckets. No new signal has to be threaded anywhere.
+2. `plan-review/SKILL.md` Step 1 is a **closed enumeration** of what reaches the reviewer's prompt. Threading a value into it without extending that enumeration produces a silently ignored instruction — the exact defect §7a of the handoff records. Logging at the caller means those four skill files are not touched at all.
+
+### 7.6 Files changed
+
+| File | Change |
+|---|---|
+| `skills/issue-log/SKILL.md` | new |
+| `skills/issue-log/references/signatures.md` | new |
+| `skills/ticket-system/SKILL.md` | signature citations at 14 sites |
+| `commands/ticket.md` | preamble, Phase 9 sweep, Phase 10 report line, failure-path sweep, 4 caller-side signatures |
+| `commands/finalize.md` | preamble, Phase 4 sweep, Phase 5 report line, failure-path sweep, 2 caller-side signatures |
+| `commands/create-task.md` | preamble, Phase 4 sweep + report line, failure-path sweep |
+| `commands/init.md` | preamble, report-step sweep + report line, drift items cite existing signatures |
+| `.claude-plugin/plugin.json` | `0.8.0` → `0.9.0` |
+| `README.md` | new section documenting the log |
+
+---
+
+## 8. Best-effort contract
+
+Stated in `SKILL.md` and echoed at every sweep site:
+
+- A failure to create, read, or write the issue log **never fails the run**. Copied in spirit from the ledger's "a ledger append failure never fails the run."
+- A failure of the issue log is **never itself logged**. No recursion. The issue-log skill never invokes itself.
+- The log is written to `$REPO_ROOT`, resolved the same way the ledger resolves it — the primary checkout, never a worktree.
+- A malformed or hand-edited existing file is not repaired. If the file cannot be parsed for the dedup search, append the new entry at the end and continue. Never rewrite or discard what is already there.
+
+---
+
+## 9. Verification
+
+No test harness exists in this repo and none is added. Verification is cross-file consistency, run as commands with stated expected output.
+
+**V1 — signature closure (the load-bearing check).**
+
+```bash
+grep -rhoE '\b(missing-property|wrong-type|option-missing|prefix-mismatch|mcp-unavailable|mcp-error|abort|retry-exhausted|fallback|partial|unexpected):[A-Za-z_<>-]+' \
+  plugins/notion-dev --include='*.md' | sort -u
+```
+
+Two details this check gets wrong if implemented naively, both verified against a draft of this spec:
+
+- The character class must include `_`, or `prefix-mismatch:unique_id` is truncated and reported as a spurious mismatch.
+- Angle-bracket forms are **templates, not signatures** — `option-missing:<propertyName>` and `mcp-error:<tool>` in the registry, `unexpected:<subject>` in the §4 grammar. Filter `| grep -v '<'` from both sides before comparing, or the grammar's illustrative form is reported as an unregistered signature on every run.
+
+Compared against the signature column of `references/signatures.md`, the two sets must be **equal**. A signature present only in the first set is a call site naming something nobody defined. A signature present only in the second is a dead registry entry. Both are the two-places-disagree defect, caught mechanically.
+
+**V2 — every command carries the standing rule.** `grep -l 'notion-dev:issue-log' plugins/notion-dev/commands/*.md | wc -l` returns `4`.
+
+**V3 — every command has a sweep and a report line.** Grep each of the four command files for the sweep sentence and the report-line format; expect one of each per file, plus a failure-path sweep in `ticket.md`, `finalize.md`, and `create-task.md`.
+
+**V4 — no hardcoded version.** Every version literal in the new skill must sit on an illustrative `First seen` / `Last seen` example line and nowhere else:
+
+```bash
+grep -rnE '0\.[0-9]+\.[0-9]+' plugins/notion-dev/skills/issue-log/ | grep -v 'First seen\|Last seen'
+```
+
+Expect no output. The skill reads the version from the manifest at write time (§3.2).
+
+**V5 — redaction contract present.** `SKILL.md` contains the §5 field table and the §5.1 forbidden list, and no example entry in either new file contains a URL, an email, a full id, or prose that reads as ticket content.
+
+**V6 — not-logged list is reachable.** `SKILL.md` contains the §6 table, and the standing-rule preamble in all four commands points at it.
+
+**V7 — version consistency.** `.claude-plugin/plugin.json` reads `0.9.0` and `README.md` states the same version.
+
+**V8 — the two-places sweep.** For every file edited, check whether each fact added is stated anywhere else in that same file — quick-reference table versus detailed section, lead-in count versus list length, sibling operations that should have received the same change. This single check caught every defect across ten review rounds on the epics branch; it goes verbatim into every reviewer prompt.
+
+---
+
+## 10. Known limitations
+
+Stated here and, where client-visible, in the file header and README.
+
+**An entry is written only if the agent follows the instruction to write it.** The plugin has no runtime — no `finally`, no exception handler, no process. In practice this captures quiet degradations well, because they happen mid-flow while the agent is already following instructions, and captures hard failures unreliably, because a killed process, an exhausted context, or a user interrupt leaves nothing running to record its own death. This is the inverse of a conventional log's strengths. A short file is not evidence of a healthy run.
+
+Writing is nonetheless **automatic** during ordinary command runs. The client types nothing.
+
+**Concurrent runs can lose an occurrence increment.** Dedup is read-modify-write, unlike the ledger's append-only JSONL. Two agents in parallel worktrees writing the same signature at the same moment will have one overwrite the other's increment. Acceptable: this is diagnostics, not accounting, and the entry itself still exists.
+
+**The file grows without bound in principle.** In practice it grows with *distinct* problems rather than with runs, since dedup collapses repeats. No rotation, by decision.
+
+---
+
+## 11. Rejected alternatives
+
+**Repeating the standing rule in full in each command** instead of referencing the skill. More likely to be obeyed, since the agent never has to load the skill to know the rule. It also creates four copies of one fact, which is the failure mode behind every fix round on the epics branch. Rejected.
+
+**A `Stop` hook that sweeps the run.** Technically available — `plugin.json` can declare hooks, and a run-marker file would keep it silent in sessions that never ran a notion-dev command. But it does not fire on an Esc interrupt or an exhausted context either, which are exactly the cases §10 loses, so its gain over the in-band sweep is close to zero. Its cost is real: the first executable file in a plugin whose no-code property is load-bearing for how everything else is verified. Rejected.
+
+**Repo root plus auto-editing the client's `.gitignore`.** More discoverable. Edits a file the plugin does not own, and fails open if the ignore line is ever removed. Rejected — see §2.1.
+
+**A `drift` value in the `Kind` taxonomy.** See §3.1.
+
+**A `/notion-dev:report-issues` command.** See Non-goals.
+
+**Splitting the file into "your setup" and "plugin issues" sections.** Sharper signal, but requires the plugin to classify blame at write time, and it would sometimes be wrong. The log is author-facing; the author can classify. Rejected.
