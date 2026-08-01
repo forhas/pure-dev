@@ -2,7 +2,7 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.7.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.8.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
 
 ## Prerequisites
 
@@ -219,7 +219,7 @@ No v1 refactor required to adopt phase 2.
 │   ├── review-and-merge/     # PR review loop: Codex rounds, local fallback, merge gates
 │   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
 │   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
-│   └── epic-update/          # records a resolved ticket against its Epic — files deferred follow-ups, refreshes the task list, appends the resolution log entry, closes the Epic when everything under it is done. Shared by `/notion-dev:ticket` and `/notion-dev:finalize`.
+│   └── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
 ├── schema/
 │   └── notion-dev.config.schema.json
 ├── LICENSE
