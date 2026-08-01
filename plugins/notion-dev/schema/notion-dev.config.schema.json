@@ -85,6 +85,11 @@
           "type": "string",
           "default": "Depends on",
           "description": "Self-referential Relation property used to express blocking dependencies between tickets in a mission. Written in a Pass-2 after all mission tickets exist. Absence-tolerant."
+        },
+        "creationDateProperty": {
+          "type": "string",
+          "default": "Creation Date",
+          "description": "Property holding the ticket's creation timestamp. The live property may be either a Date property (the plugin writes the creation timestamp) or a Created time property (Notion auto-populates; the plugin never writes). Absence-tolerant — when missing or of any other type, the write is skipped with a warning rather than aborting."
         }
       }
     },

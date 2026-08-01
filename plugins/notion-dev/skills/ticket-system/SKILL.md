@@ -53,6 +53,7 @@ Config (from `.claude/notion-dev.config.json` → `ticketSystem`):
 - `phaseProperty` — Select property holding the Phase tag (default `"Phase"`). Absence-tolerant.
 - `stepProperty` — Number property holding the Step position within a Phase (default `"Step"`). Absence-tolerant.
 - `dependsOnProperty` — self-referential Relation property for blocking dependencies (default `"Depends on"`). Written in a second pass after all mission tickets exist. Absence-tolerant.
+- `creationDateProperty` — property holding the ticket's creation timestamp (default `"Creation Date"`). Tolerates two live types: a `date` property (the adapter writes the timestamp at creation) or a `created_time` property (Notion auto-populates; the adapter never writes). Absence-tolerant.
 
 Defaults for `statusMap` when keys are missing:
 ```
@@ -82,6 +83,7 @@ The adapter normalizes the following shape differences between the canonical sch
 - **Step** (Number) — write as a number. Integers and floats both accepted; adapter passes through the caller's value.
 - **Depends on** (Relation) — write as a list of page IDs. When the caller passes titles, resolve each to a page ID by DB-scoped title search (same mechanism `existing-ticket` uses on numeric IDs) before writing. Unresolved titles raise a clear error naming the offender. Absence-tolerant when the property is missing.
 - **Assignee** (People) — write as a single-item list of `{ id }` user references to the `assigneeProperty` column. Read is not implemented (the plugin never reads assignee back). When the configured property is absent from the live DB or is not a `people` type, skip the write and log **one** warning per run (`"assigneeProperty '<name>' not found or not a People property on DB; skipping assignee write"`) — never abort. `assignee` is caller-supplied creation state, not a `staticProperty`: `updateTicket` and `upsertSection` never touch it.
+- **Creation Date** (`date` or `created_time`) — read the live property type and branch. `date`: `createTicket` writes `{ "date": { "start": "<ISO 8601 UTC timestamp, with time>" } }`. `created_time`: never written — Notion populates it, and the API rejects writes to it. Any other type, or the property absent: skip the write and log **one** warning per run (`"creationDateProperty '<name>' not found or not a date/created_time property on DB; skipping creation date write"`). Creation-only, like `staticProperties` — `updateTicket` and `upsertSection` never touch it.
 
 ## Project scoping guardrail
 
@@ -213,6 +215,7 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
    - If the live DB has `typeProperty` AND `type` was provided, set it: translate the logical key through `typeMap` to the Notion option label, then write it as a scalar (Select) or single-item list (Multi-Select) depending on the live property type.
    - For each `[name, value]` in `staticProperties` (if configured), set that property on the page. Property type is inferred from the live database schema (Select/Status → option name match; Multi-Select → single-item list unless the value is already a list; text → verbatim). Skip silently with a warning if the property doesn't exist on the DB.
    - **Assignee** (absence-tolerant): if `assignee` (a resolved user id) is provided AND the live DB has the `assigneeProperty` column AND it is a `people` type, set it to a single-item people list `[{ id: assignee }]`. If the column is absent or not People-typed, skip with the one-time warning from "Property type handling". `assignee` absent → set nothing.
+   - **Creation Date** (absence-tolerant): if the live DB has the `creationDateProperty` column AND it is a `date` type, set it to the current UTC timestamp in ISO 8601 with time (e.g. `2026-08-01T14:32:00Z`). When it is a `created_time` type, set nothing — Notion fills it. When absent or any other type, skip with the one-time warning from "Property type handling".
    - **Mission metadata** (absence-tolerant, independent of each other):
      - If `epic` is provided AND `epicProperty` exists on the live DB, set that Select to `epic` (exact option-name match required; if the option doesn't exist, raise an error — the caller should have resolved it via `getSelectOptions` / `addSelectOption` first).
      - If `phase` is provided AND `phaseProperty` exists, set that Select to `phase` (same option-match rule).
