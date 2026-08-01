@@ -80,11 +80,21 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
 - **Deferred follow-ups** — list of YAGNI/disagreement items and any follow-up ticket IDs created for them, distilled from `REVIEW_REPORT`.
 
-### 3.2 Update status and post-merge hooks
+### 3.2 Update status
 
 `updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
 
-Then run `git.postMergeHooks` skills in order (empty default — no-op).
+### 3.3 Update the epic
+
+Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 2) and `$REPO_ROOT` as context.
+
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5.
+
+Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
+
+### 3.4 Post-merge hooks
+
+Run `git.postMergeHooks` skills in order (empty default — no-op).
 
 ---
 
@@ -119,6 +129,7 @@ Print a summary covering:
 - PR URL.
 - Review summary — which loop ran (the configured code reviewer, Codex or Copilot, or the local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
 - Ticket end state (`implemented`).
+- Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 
