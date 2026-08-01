@@ -54,7 +54,7 @@
         "statusMap": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Maps logical statuses (inProgress, implemented, delivered) to Notion option names."
+          "description": "Maps logical statuses to Notion option names. The plugin WRITES inProgress and implemented. It only READS done and cancelled — these exist so the epic-close check knows which of your Status options mean resolved, and no plugin command ever transitions a ticket into them. Defaults: inProgress→In Progress, implemented→Implemented, done→Done, cancelled→Cancelled."
         },
         "typeMap": {
           "type": "object",
@@ -85,6 +85,21 @@
           "type": "string",
           "default": "Depends on",
           "description": "Self-referential Relation property used to express blocking dependencies between tickets in a mission. Written in a Pass-2 after all mission tickets exist. Absence-tolerant."
+        },
+        "creationDateProperty": {
+          "type": "string",
+          "default": "Creation Date",
+          "description": "Property holding the ticket's creation timestamp. The live property may be either a Date property (the plugin writes the creation timestamp) or a Created time property (Notion auto-populates; the plugin never writes). Absence-tolerant — when missing or of any other type, the write is skipped with a warning rather than aborting."
+        },
+        "parentTaskProperty": {
+          "type": "string",
+          "default": "Parent task",
+          "description": "Self-referential Relation property linking a ticket to its Epic container page. Distinct from dependsOnProperty. Absence-tolerant — without it, Epic grouping degrades to Epic-select tagging only and no epic pages are created or matched."
+        },
+        "epicMarkerProperty": {
+          "type": "string",
+          "default": "Is Epic",
+          "description": "Checkbox property that marks a page as an Epic container. This is the sole signal used to identify epics — carrying an Epic select value or having children never enters into it. Set to true by createEpic; read by findEpics, getEpicContext, epic-update, and /notion-dev:ticket's epic guard, which all apply the same predicate. Absence-tolerant with a twist: when missing from the live database, epics cannot be identified safely at all, so findEpics returns null and every guard/validation site treats the page as not an epic rather than falling back to any structural guess."
         }
       }
     },

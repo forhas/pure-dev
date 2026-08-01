@@ -32,7 +32,9 @@ These anchors, taken before any worktree resolution or `cd` below, keep Phase 4'
 Work PR-first — the PR number is the entry point, and the ticket id is derived from it:
 
 1. Determine the PR: use the `<pr-number>` arg. If omitted, infer the open PR for the current branch (`gh pr view --json number` / list PRs for the branch). Derive `owner/repo` from `git remote get-url origin`.
-2. Fetch PR metadata via `mcp__github__get_pull_request` (fallback: `gh pr view --json number,url,headRefName,baseRefName,reviews,state,isDraft`). State must be open and not draft — with one exception. **`MERGED` = post-merge recovery**: a prior run merged but was interrupted before record/cleanup. In that case skip Phase 2 (the review loop) entirely and continue at Phase 3 with the merge commit from `gh pr view <pr> --json mergeCommit` and "Review resolution" distilled from the PR's review history (or "n/a — recovered post-merge"); Phases 3–4 are idempotent, and step 4 below does **not** recreate a missing worktree on this path (nothing to fix on the branch — an absent worktree just means less to clean; the remote branch is typically already deleted, so recreation would fail anyway). `CLOSED`-without-merge or draft: stop and report.
+2. Fetch PR metadata via `mcp__github__get_pull_request` (fallback: `gh pr view --json number,url,headRefName,baseRefName,reviews,state,isDraft`). State must be open and not draft — with one exception. **`MERGED` = post-merge recovery**: a prior run merged but was interrupted before record/cleanup. In that case skip Phase 2 (the review loop) entirely and continue at Phase 3 with the merge commit from `gh pr view <pr> --json mergeCommit` and "Review resolution" distilled from the PR's review history (or "n/a — recovered post-merge"); Phases 3–4 are idempotent — this includes 3.2's `notion-dev:epic-update` invocation, which detects an already-recorded resolution via its own idempotency check and returns `EPIC-UPDATE: already-recorded` rather than re-filing follow-up tickets or duplicating the Resolution Log entry, so re-invoking it here on recovery is safe and must not be special-cased or skipped — and step 4 below does **not** recreate a missing worktree on this path (nothing to fix on the branch — an absent worktree just means less to clean; the remote branch is typically already deleted, so recreation would fail anyway). `CLOSED`-without-merge or draft: stop and report.
+
+   Skipping Phase 2 also means `REVIEW_REPORT` was never produced by *this* run — but 3.3's "Review resolution" field and, critically, 3.2's `notion-dev:epic-update` invocation both depend on it: epic-update reads it as the source of deferred follow-ups, and files none of them (its `SKIPPED` and `FAILED` both fall back to the **unknown** sentinel, per its step 2) if it never receives a report. Recover it, in order, once step 3 below has derived `<KEY>-<id>`: (a) read `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` — the file Phase 2 persists whenever it actually runs — and use its contents as `REVIEW_REPORT` when present; (b) when absent (this recovery sub-case: the merge landed but the run died *before* Phase 2 ever wrote that file, or before it existed at all in an older run), reconstruct `REVIEW_REPORT` from the PR's review history instead of only "n/a — recovered post-merge": the review comments, threads, and replies on the PR carry both the applied/declined summary for 3.3 *and* the deferred-follow-ups list 3.2 needs — decline/defer rationale lives in the reply text on each thread, so pull it from there rather than treating the merge as evidence of nothing outstanding. When reconstruction still yields nothing usable (no review history to read, e.g. a manually opened and merged PR), pass `REVIEW_REPORT` to 3.2 as explicitly **absent**, not as an empty report — the two mean different things to `epic-update`'s close check (see its fifth close condition).
 3. Extract the **numeric ticket id** from the head branch name (pattern `ticket/<project.key>-<n>-*`, `<KEY>` = `project.key` from the config). This `<id>` is what every downstream `notion-dev:ticket-system` call uses.
 4. Resolve the worktree path from the config's `worktree.prefix` template using that numeric `<id>`. If it's absent **and the PR is open**, recreate it (on the `MERGED` recovery path, never recreate — per step 2 — and when the worktree is absent there, skip the rest of this step including the `cd`; run Phases 3–4 from `$REPO_ROOT`):
    ```
@@ -63,13 +65,27 @@ resolved from `.claude/notion-dev.config.json`), the local fallback
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
 report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
 
+Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets a *later* recovery run of this same command find the report if this run dies between Phase 2 and Phase 3 completing. Best-effort — a write failure here must not fail the run.
+
 ---
 
 ## Phase 3 — Record
 
-### 3.1 Update ticket
+### 3.1 Update status
 
-Append a separate `## Merged` section — do **not** touch the `## Implementation` section written by `/notion-dev:ticket`; the two are meant to coexist as a chronological record.
+`updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
+
+### 3.2 Update the epic
+
+Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 2, or — on the `MERGED` recovery path — the persisted-file/reconstructed-history recovery in Phase 1 step 2, absent when neither yielded anything usable) and `$REPO_ROOT` as context.
+
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5 and for 3.3 below.
+
+Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
+
+### 3.3 Update ticket
+
+Append a separate `## Merged` section — do **not** touch the `## Implementation` section written by `/notion-dev:ticket`; the two are meant to coexist as a chronological record. This step runs **after** 3.2 deliberately: the "Deferred follow-ups" field below names actual follow-up ticket IDs, which do not exist until `epic-update` (3.2) files them. An earlier revision of this command wrote this section first and left that field promising links to tickets that were created only afterward, with nothing to ever backfill them — reordering closes that gap by writing the record once, after the data it needs exists.
 
 Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with these fields (order matters — the Notion adapter renders scalars as a table and narrative/lists below it, in this order):
 - **PR** — the PR URL (same one written into `## Implementation` earlier; repeating it here makes the Merged record self-contained).
@@ -78,13 +94,11 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Base branch** — the branch merged into (from `git.baseBranch` or the PR's `baseRefName`).
 - **Merged at** — ISO timestamp.
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
-- **Deferred follow-ups** — list of YAGNI/disagreement items and any follow-up ticket IDs created for them, distilled from `REVIEW_REPORT`.
+- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 3.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 3.2's outcome.
 
-### 3.2 Update status and post-merge hooks
+### 3.4 Post-merge hooks
 
-`updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
-
-Then run `git.postMergeHooks` skills in order (empty default — no-op).
+Run `git.postMergeHooks` skills in order (empty default — no-op).
 
 ---
 
@@ -119,6 +133,7 @@ Print a summary covering:
 - PR URL.
 - Review summary — which loop ran (the configured code reviewer, Codex or Copilot, or the local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
 - Ticket end state (`implemented`).
+- Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 

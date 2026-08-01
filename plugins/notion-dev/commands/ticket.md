@@ -35,15 +35,32 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 
 ### 1.1 Fetch the ticket
 
-Invoke the `notion-dev:ticket-system` skill, operation `fetchTicket(id)`, passing whatever was supplied — the page id/URL or logical key on a fresh run, or the numeric id on resume. The adapter accepts both. You get `{ title, body, status, url, metadata, type }`.
+Invoke the `notion-dev:ticket-system` skill, operation `fetchTicket(id)`, passing whatever was supplied — the page id/URL or logical key on a fresh run, or the numeric id on resume. The adapter accepts both. You get `{ title, key, body, status, url, metadata, type }`.
 
 Derive the **numeric `<id>`** used for all naming below from `metadata.idProperty value` in the returned ticket. If the resolved page has no `idProperty` value, stop and tell the user the ticket DB needs an ID property — branch and worktree naming depend on it.
 
 Record `TICKET_TYPE` from the returned `type` (the logical key, when the DB has a mapped type property) — it may be absent.
 
+**Epic guard.** The fetched page is an epic container when the returned `metadata.parentTaskProperty` is `""` (empty) **and** `metadata.epicMarkerProperty` is `true` — the same predicate `findEpics()`, `getEpicContext` step 2, and `epic-update` step 1 apply (see "Epic containers" in `skills/ticket-system/SKILL.md`), so all four agree on what an epic is. In that case abort — an epic is a container, not implementable work:
+
+```
+[<KEY>-<n>] <name> is an epic container, not an implementable ticket.
+Pick one of its children:
+  [<KEY>-67] Fix stale index — Implemented
+  [<KEY>-68] Add cache metrics — In Progress
+```
+
+Hard abort in both interactive and non-interactive mode. It runs before Phase 2, so no worktree, branch, status change, or ledger line is created.
+
+A page carrying only the `Epic` select tag, with no `epicMarkerProperty` set, is **not** guarded here — even with an empty parent, and even if it happens to have picked up an ordinary Sub-items child. The marker, not the tag or the shape, is what makes a page an epic (see "Epic containers" in `skills/ticket-system/SKILL.md`); blocking on shape alone is the exact failure this guard used to have, since a legacy Epic-tagged ticket on an upgraded database can satisfy every structural signal an epic does. A freshly created epic with **zero** children **is** guarded here now — there is no child-count requirement left to exempt it. `metadata.epicMarkerProperty` reads `false` when `epicMarkerProperty` is absent from the live DB entirely, so the guard degrades safely to "not an epic" rather than guessing from structure.
+
+**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
+
+`EPIC_CONTEXT` is **background, not requirements**: the ticket body remains the single source of truth for what to build. Where the two appear to conflict — a resolution-log entry describing an approach the ticket now contradicts — the ticket wins, and the conflict is surfaced to the user at the 1.3 clarification gate rather than silently resolved.
+
 Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the preconditions gate — before the first config read and ticket-system call, both of which depend on it; the ledger, per `skills/flow-triage/references/ledger.md`, likewise lives in the primary checkout it points to.
 
-Announce to the user: "Working on `<KEY>-<id>`: <title>" (`<KEY>` is `project.key` from the config; `<id>` is that numeric value). Show the ticket URL.
+Announce to the user: "Working on `<key>`: <title>" (`<key>` is the `key` field returned by `fetchTicket`, e.g. `"STO-67"` — display it as-is, don't rebuild it from `project.key`). Show the ticket URL.
 
 ### 1.2 Check for existing worktree (resumability)
 
@@ -68,7 +85,7 @@ Non-interactive mode: self-answer every resume question above with the most reas
 
 ### 1.3 Hard gate — requirement clarification
 
-Read the ticket body together with `CLAUDE.md` at the repo root and any files the ticket references.
+Read the ticket body together with `CLAUDE.md` at the repo root, any files the ticket references, and `EPIC_CONTEXT` when present. A sibling's resolution may already answer an open question on this ticket, and a sibling's follow-up may *be* this ticket. `EPIC_CONTEXT` is background, not requirements (see 1.1) — if a resolution-log entry appears to conflict with the ticket body, surface the conflict to the user at this gate rather than silently favoring the log.
 
 Ask yourself: do I understand the goal, scope, and acceptance criteria well enough to implement without guessing?
 
@@ -112,7 +129,7 @@ Invoke the `notion-dev:flow-triage` skill via the Skill tool from inside the wor
 - non-interactive: add `--auto`
 - `FLOW_OVERRIDE` set: add `--forced-flow=$FLOW_OVERRIDE`
 - `TICKET_TYPE` known: add `--ticket-type=<TICKET_TYPE>`
-- description argument: the ticket title, a blank line, then the ticket body.
+- description argument: the ticket title, a blank line, then the ticket body — followed, when `EPIC_CONTEXT` is present, by a blank line, a `--- EPIC CONTEXT (background, not requirements) ---` delimiter, and `EPIC_CONTEXT`, so triage can tell requirements from background.
 
 From its output block record `FLOW`, `MICRO_PLAN`, `SCOUT_FINDINGS` (sourced from that
 block's `FLOW:`, `MICRO-PLAN:`, and `SCOUT-FINDINGS:` lines respectively). Triage owns its
@@ -129,7 +146,7 @@ From inside the worktree, follow the branch matching `FLOW`:
 
 ### 4.1 `FLOW=feature-dev`
 
-Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (they are absent when Phase 3 was skipped on resume). Follow its full flow (explore → clarify → architect → implement → review).
+Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (they are absent when Phase 3 was skipped on resume). When `EPIC_CONTEXT` is present, include it too as further seed context, labeled background, not requirements. Follow its full flow (explore → clarify → architect → implement → review).
 
 ### 4.2 `FLOW=superpowers`
 
@@ -138,11 +155,13 @@ Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_F
 - **Save location**: write the plan to `<worktree>/PLAN.md`. Do **not** use writing-plans' default `docs/superpowers/plans/...` path.
 - **Feature name** for the plan header: `<KEY>-<id>: <title>`.
 
+When `EPIC_CONTEXT` is present, also pass it — labeled explicitly as **background context, not spec**: writing-plans must not turn a resolution-log entry into a task. Only the ticket body is the spec.
+
 Writing-plans produces a TDD-structured plan with bite-sized (2-5 minute) tasks, explicit file-by-file create/modify paths, and checkbox (`- [ ]`) tracking.
 
 For tickets that are genuinely not TDD-shaped (docs-only edit, config bump, pure refactor with existing coverage), say so in the spec you hand to writing-plans — it will still structure tasks appropriately, just without red-then-green gating.
 
-(b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — and `VERIFY:` lists the `verify.steps` commands from config. No `--spec-file`: the ticket body is the spec and travels inline.
+(b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — `VERIFY:` lists the `verify.steps` commands from config, and `EPIC-CONTEXT:` is `EPIC_CONTEXT` when present or `NONE — not available` when absent, following the same convention as the other optional blocks — labeled as background, not requirements, so the reviewer never treats a resolution-log entry as spec. No `--spec-file`: the ticket body is the spec and travels inline.
 
 It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
 
@@ -274,13 +293,27 @@ resolved from `.claude/notion-dev.config.json`), the local fallback
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
 report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
 
+Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) recover deferred follow-ups if this run dies before Phase 8 completes. Best-effort — a write failure here must not fail the run.
+
 ---
 
 ## Phase 8 — Record
 
-### 8.1 Update ticket
+### 8.1 Update status
 
-Append a separate `## Merged` section — do **not** touch the `## Implementation` section written in Phase 6.5; the two are meant to coexist as a chronological record.
+`updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
+
+### 8.2 Update the epic
+
+Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 7) and `$REPO_ROOT` as context.
+
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10 and for 8.3 below.
+
+Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
+
+### 8.3 Update ticket
+
+Append a separate `## Merged` section — do **not** touch the `## Implementation` section written in Phase 6.5; the two are meant to coexist as a chronological record. This step runs **after** 8.2 deliberately: the "Deferred follow-ups" field below names actual follow-up ticket IDs, which do not exist until `epic-update` (8.2) files them. An earlier revision of this command wrote this section first and left that field promising links to tickets that were created only afterward, with nothing to ever backfill them — reordering closes that gap by writing the record once, after the data it needs exists.
 
 Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with these fields (order matters — the Notion adapter renders scalars as a table and narrative/lists below it, in this order):
 - **PR** — the PR URL (same one written into `## Implementation` earlier; repeating it here makes the Merged record self-contained).
@@ -289,13 +322,9 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Base branch** — the branch merged into (from `git.baseBranch` or the PR's `baseRefName`).
 - **Merged at** — ISO timestamp.
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
-- **Deferred follow-ups** — list of YAGNI/disagreement items and any follow-up ticket IDs created for them, distilled from `REVIEW_REPORT`.
+- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
 
-### 8.2 Update status
-
-`updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
-
-### 8.3 Post-merge hooks
+### 8.4 Post-merge hooks
 
 Run `git.postMergeHooks` skills in order (empty default — no-op).
 
@@ -333,6 +362,7 @@ Print a summary covering:
 - Review summary — which loop ran (the configured code reviewer, Codex or Copilot, or the local fallback), rounds, applied vs. declined findings. When the local fallback ran, state prominently that no cross-model review validated the PR, and why.
 - Plan-review outcome (`superpowers` path only) — status, findings, and accepted vs. declined counts from `PLAN_REVIEW_REPORT`. List any unresolved blockers the run proceeded past explicitly; a `proceed-with-warnings` run must not bury them. State `degraded` plainly when the reviewer could not run, and `skipped` when a resume bypassed the review.
 - Ticket end state (`implemented`).
+- Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 
