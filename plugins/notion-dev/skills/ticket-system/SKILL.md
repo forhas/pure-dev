@@ -15,7 +15,7 @@ The caller names the operation and passes the arguments; the sections below desc
 
 | Operation | Arguments | Returns |
 |---|---|---|
-| `fetchTicket` | `id` (numeric or prefixed string, or a Notion page id/URL) | `{ title, body, status, type, url, metadata }` — `type` is the logical key (`feature`/`bug`/…) when the DB has a mapped type property, else absent |
+| `fetchTicket` | `id` (numeric or prefixed string, or a Notion page id/URL) | `{ title, key, body, status, type, url, metadata }` — `title` has the ID prefix stripped; `key` is the logical ticket key (`"STO-67"`) for display; `metadata` carries `rawTitle` (the literal Notion title) alongside `pageId` and the `idProperty` value; `type` is the logical key (`feature`/`bug`/…) when the DB has a mapped type property, else absent |
 | `createTicket` | `{ title, body, type?, epic?, phase?, step?, assignee? }` | `{ id, url }` — `epic`/`phase`/`step` are optional mission metadata; `assignee` is a resolved Notion user id. Each is absence-tolerant when the corresponding configured property is missing from the live DB |
 | `resolveAssignee` | `value` (user id, email, or display name) | `{ id, name }` on a unique person match; `null` on no match or ambiguity. Read-only — never mutates config or the DB |
 | `updateTicket` | `id`, `{ title?, body?, type? }` | `{ id, url }` — only the provided fields change |
