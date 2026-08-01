@@ -35,13 +35,13 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 
 ### 1.1 Fetch the ticket
 
-Invoke the `notion-dev:ticket-system` skill, operation `fetchTicket(id)`, passing whatever was supplied — the page id/URL or logical key on a fresh run, or the numeric id on resume. The adapter accepts both. You get `{ title, body, status, url, metadata, type }`.
+Invoke the `notion-dev:ticket-system` skill, operation `fetchTicket(id)`, passing whatever was supplied — the page id/URL or logical key on a fresh run, or the numeric id on resume. The adapter accepts both. You get `{ title, key, body, status, url, metadata, type }`.
 
 Derive the **numeric `<id>`** used for all naming below from `metadata.idProperty value` in the returned ticket. If the resolved page has no `idProperty` value, stop and tell the user the ticket DB needs an ID property — branch and worktree naming depend on it.
 
 Record `TICKET_TYPE` from the returned `type` (the logical key, when the DB has a mapped type property) — it may be absent.
 
-**Epic guard.** The fetched page is an epic container when its `parentTaskProperty` is empty **and** its `epicProperty` is set **and** `listEpicChildren(id)` returns at least one child. In that case abort — an epic is a container, not implementable work:
+**Epic guard.** The fetched page is an epic container when the returned `metadata.parentTaskProperty` is `""` (empty) **and** `metadata.epicProperty` is non-empty **and** `listEpicChildren(id)` returns at least one child. In that case abort — an epic is a container, not implementable work:
 
 ```
 [<KEY>-<n>] <name> is an epic container, not an implementable ticket.
@@ -56,7 +56,7 @@ An **epic-in-waiting** — Epic select set, empty parent, but no children yet �
 
 Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the preconditions gate — before the first config read and ticket-system call, both of which depend on it; the ledger, per `skills/flow-triage/references/ledger.md`, likewise lives in the primary checkout it points to.
 
-Announce to the user: "Working on `<KEY>-<id>`: <title>" (`<KEY>` is `project.key` from the config; `<id>` is that numeric value). Show the ticket URL.
+Announce to the user: "Working on `<key>`: <title>" (`<key>` is the `key` field returned by `fetchTicket`, e.g. `"STO-67"` — display it as-is, don't rebuild it from `project.key`). Show the ticket URL.
 
 ### 1.2 Check for existing worktree (resumability)
 

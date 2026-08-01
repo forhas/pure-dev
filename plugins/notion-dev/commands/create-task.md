@@ -24,7 +24,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 | `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. |
 | `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
 
-`--epic`, `--parent`, and `--assignee` are what let `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting.
+`--epic`, `--parent`, and `--assignee` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting.
 
 **`--non-interactive` phase behavior:**
 
@@ -39,7 +39,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 **Proxy-respondent subagent.** The interviewer still runs in full — depth calibration, clarity audit, all of it — but its questions are answered by a **fresh subagent**, not by the main loop.
 
-This is deliberate. When `/notion-dev:finalize` files a deferred review item, the main loop is the agent that *wrote* that item during review. Having it answer its own interview restates its own assumptions and produces a ticket that looks elaborated but carries no new information. A fresh agent, handed the ticket, the merge diff, and the review thread, has to actually read them.
+This is deliberate. When `/notion-dev:ticket` or `/notion-dev:finalize` files a deferred review item, the main loop is the agent that *wrote* that item during review. Having it answer its own interview restates its own assumptions and produces a ticket that looks elaborated but carries no new information. A fresh agent, handed the ticket, the merge diff, and the review thread, has to actually read them.
 
 Dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
 
@@ -110,14 +110,14 @@ The breakdown skill emits a proposed Epic name. Reconcile it against the configu
    - **Pick existing** — show the live option list as sub-choices; user picks one; rebind.
    - **Collapse to single ticket** — merge the mission's task bodies into one (concatenate `## Requirements`, combine `## Acceptance Criteria` into one checklist, preserve all other sections) and proceed to Phase 3 single-path with no Epic.
 
-Once the Epic **select value** is reconciled, resolve the Epic **page** — the container the tasks will hang from:
+Once the Epic **select value** is reconciled, resolve the Epic **page** — the container the tasks will hang from. This step only decides *which* page: reuse one that already exists, or record that a new one is needed. It does **not** call `createEpic` itself — `createEpic` takes an `assignee`, and Phase 2.75 (which resolves the assignee) runs *after* this phase, so the value doesn't exist yet here. The actual call is deferred to Phase 3.2's mission path, immediately before Pass 1, which is the first point `assignee` is known and also where `EPIC_ID` is first required (by `parent: EPIC_ID` in the create loop).
 
 1. Invoke `notion-dev:ticket-system` operation `findEpics()`.
-2. A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its id as `EPIC_ID`.
-3. No match → invoke `createEpic({ name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission>, assignee: <resolved in Phase 2.75> })`. Record `EPIC_ID`.
-4. `findEpics()` returned `[]` (the DB lacks `epicProperty` or `parentTaskProperty`) → `EPIC_ID = undefined`. Continue with Epic-select tagging only; do not prompt.
+2. A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its id as `EPIC_ID`; `EPIC_TO_CREATE` stays unset.
+3. No match → do **not** create the epic yet. Record `EPIC_TO_CREATE = { name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission> }` — everything `createEpic` will need except `assignee`. `EPIC_ID` stays unresolved until Phase 3.2.
+4. `findEpics()` returned `[]` (the DB lacks `epicProperty` or `parentTaskProperty`) → `EPIC_ID = undefined`, `EPIC_TO_CREATE` stays unset. Continue with Epic-select tagging only; do not prompt. (This is the "no epic property on the DB" degradation path; Phase 3.2's deferred-creation step checks for it via `EPIC_TO_CREATE` being unset, so it never fires here either.)
 
-`EPIC_ID` is `undefined` on the "Collapse to single ticket" branch — a collapsed mission is a single ticket and goes through Phase 2.6 like any other.
+`EPIC_ID` is `undefined` and `EPIC_TO_CREATE` stays unset on the "Collapse to single ticket" branch — a collapsed mission is a single ticket and goes through Phase 2.6 like any other.
 
 ### 2.5.3 Confirm the breakdown
 
@@ -213,6 +213,8 @@ Capture the returned `{ id, url }`.
 
 #### Mission path (two-pass)
 
+**Epic creation** (mission path only; runs before Pass 0 — skip entirely when `EPIC_ID` is already set from 2.5.2's reuse match, or when `EPIC_TO_CREATE` was never set, i.e. the DB lacks epic containers or the mission collapsed): invoke `notion-dev:ticket-system` operation `createEpic({ name: EPIC_TO_CREATE.name, overview: EPIC_TO_CREATE.overview, type: EPIC_TO_CREATE.type, assignee })`. `assignee` is Phase 2.75's resolved value — this is why the call waits until here instead of running inline in 2.5.2, where `EPIC_TO_CREATE` was recorded but Phase 2.75 hadn't run yet. Record `EPIC_ID` from the result (`{ id, key, url, pageId }`). A `null` return (epic containers became unavailable between 2.5.2 and now) degrades the same way 2.5.2 step 4 does: `EPIC_ID = undefined`, continue with Epic-select tagging only.
+
 **Pass 0 — reconcile Phase options** (mirrors the Epic reconciliation in 2.5.2, but non-interactive — phase labels are generated per-mission structure, not user taxonomy, so missing options are auto-added rather than prompted): invoke `notion-dev:ticket-system` operation `getSelectOptions(<phaseProperty>)` (the configured name, default `"Phase"`). If the return is `null` → set `phase = undefined` on all tasks. Otherwise, rebind case-insensitive matches to the exact live casing, and for each distinct `task.phase` absent from the returned options invoke `addSelectOption(<phaseProperty>, "<phase>")`. `createTicket` requires an exact option match and raises otherwise — reconcile before the first create, or Pass 1 fails partway through.
 
 **Pass 1 — create all tickets** (in declaration order, so each task is visible in the DB before its potential dependents are written):
@@ -265,6 +267,7 @@ Print:
 - New (or updated) ticket ID and URL.
 - The epic it was attached to, when Phase 2.6 attached one: `Epic: [<KEY>-<n>] <name> · <url>`. Omit the line entirely when unattached.
 - A one-line summary of what was captured.
+- Non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`).
 - Next step: "Run `/notion-dev:ticket <ticket-id>` when you're ready to implement (the page id is in the ticket URL above)."
 
 ### Mission result
@@ -275,11 +278,11 @@ Print a structured summary:
 Mission created under Epic: [<KEY>-<n>] <epic name> · <epic url>
 
 <phase 1 name>          (if phases used)
-  Step 1 — STO-<id> · <title> · <url>
-  Step 2 — STO-<id> · <title> · <url>
+  Step 1 — <KEY>-<id> · <title> · <url>
+  Step 2 — <KEY>-<id> · <title> · <url>
 <phase 2 name>
-  Step 1 — STO-<id> · <title> · <url>
-    depends on: STO-<id>, STO-<id>
+  Step 1 — <KEY>-<id> · <title> · <url>
+    depends on: <KEY>-<id>, <KEY>-<id>
 …
 
 Tickets created: N.
@@ -287,6 +290,8 @@ Dependencies wired: M edges across K tasks.
 
 Next step: Run `/notion-dev:ticket <ticket-id>` on any task to implement (the page id is in each task's URL above). The plugin does not auto-sequence — dependency tags are informational.
 ```
+
+Also print any non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`), same as the single-ticket result above.
 
 When `phase` isn't used in the mission, flatten to a plain numbered list.
 

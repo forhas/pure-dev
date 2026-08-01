@@ -13,7 +13,9 @@ Records a resolved ticket against its Epic container. Invoked by `/notion-dev:ti
 
 **Every step here is best-effort**: a failure logs a warning and continues to the next step. This skill never fails its caller's run — the merge has already landed by the time it is invoked, and epic bookkeeping is not worth losing that.
 
-**1. Resolve the epic.** `fetchTicket(<ticket-id>)` and read its `parentTaskProperty`. Empty, or the property absent from the live DB → **skip steps 2-5 entirely** and return `EPIC-UPDATE: none`. Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title and Epic name.
+**1. Resolve the epic.** `fetchTicket(<ticket-id>)` and read `metadata.parentTaskProperty`. Empty (`""`), or the property absent from the live DB → **skip steps 2-5 entirely** and return `EPIC-UPDATE: none`. Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title and Epic name.
+
+Also record `TICKET_ASSIGNEE = metadata.assigneeProperty` from that same `fetchTicket` call — `""` when the ticket has no assignee, the property is absent, or it isn't People-typed. Used by step 2.
 
 **2. File deferred follow-ups.** Source: `REVIEW_REPORT`'s deferred follow-ups — the same list written to the ticket's `## Merged` section.
 
@@ -25,8 +27,10 @@ For each item to file, write a context packet to `$REPO_ROOT/.claude/notion-dev/
 Then run:
 
 ```
-/notion-dev:create-task --non-interactive --context-file=<packet> --epic="<epic name>" --parent=<EPIC_ID> --assignee=<this ticket's assignee> prompt:<finding title>
+/notion-dev:create-task --non-interactive --context-file=<packet> --epic="<epic name>" --parent=<EPIC_ID> [--assignee=<TICKET_ASSIGNEE>] prompt:<finding title>
 ```
+
+Include `--assignee=<TICKET_ASSIGNEE>` only when `TICKET_ASSIGNEE` (step 1) is non-empty. When it's empty — the resolved ticket had no assignee — omit the flag entirely and let create-task's own Phase 2.75 `defaultAssignee` resolution decide; that fallback is exactly what Phase 2.75 already does for any caller that doesn't pass `--assignee`, so no special-casing is needed here.
 
 Record `FILED` = `[{ id, title, url }]` for each created ticket, and `UNFILED` = the items the user chose to skip. A create-task failure is **non-fatal**: log it, add the item to `UNFILED`, continue. When `REVIEW_REPORT` has no deferred follow-ups both lists are empty and this step is a no-op.
 
