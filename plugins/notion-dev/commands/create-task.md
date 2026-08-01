@@ -276,11 +276,14 @@ Print:
 
 ### Mission result
 
-Print a structured summary:
+Open with one of two lines, chosen by whether `EPIC_ID` is set (never both, never neither):
+
+- `EPIC_ID` set → `Mission created under Epic: [<KEY>-<n>] <epic name> · <epic url>`.
+- `EPIC_ID` undefined (the degradation path — `findEpics()` returned `null` because the DB lacks `epicProperty` or `parentTaskProperty`, per Phase 2.5.2 and Phase 3.2's epic-creation step) → there is no container page, so do not claim one. Print instead: `Mission tagged with Epic select "<epic name>" on every task — no container page (this DB has no Epic select or Parent task relation to hold one).` Never silently drop this line; a user who expected a container page needs to know they didn't get one.
+
+Then the structured summary:
 
 ```
-Mission created under Epic: [<KEY>-<n>] <epic name> · <epic url>
-
 <phase 1 name>          (if phases used)
   Step 1 — <KEY>-<id> · <title> · <url>
   Step 2 — <KEY>-<id> · <title> · <url>
