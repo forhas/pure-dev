@@ -75,6 +75,15 @@ The breakdown skill emits a proposed Epic name. Reconcile it against the configu
    - **Pick existing** — show the live option list as sub-choices; user picks one; rebind.
    - **Collapse to single ticket** — merge the mission's task bodies into one (concatenate `## Requirements`, combine `## Acceptance Criteria` into one checklist, preserve all other sections) and proceed to Phase 3 single-path with no Epic.
 
+Once the Epic **select value** is reconciled, resolve the Epic **page** — the container the tasks will hang from:
+
+1. Invoke `notion-dev:ticket-system` operation `findEpics()`.
+2. A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its id as `EPIC_ID`.
+3. No match → invoke `createEpic({ name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission>, assignee: <resolved in Phase 2.75> })`. Record `EPIC_ID`.
+4. `findEpics()` returned `[]` (the DB lacks `epicProperty` or `parentTaskProperty`) → `EPIC_ID = undefined`. Continue with Epic-select tagging only; do not prompt.
+
+`EPIC_ID` is `undefined` on the "Collapse to single ticket" branch — a collapsed mission is a single ticket and goes through Phase 2.6 like any other.
+
 ### 2.5.3 Confirm the breakdown
 
 Show the user a compact summary:
@@ -91,6 +100,22 @@ Ask `AskUserQuestion`: **Approve / Revise / Collapse to single ticket**.
 - **Revise** — capture user feedback and re-invoke `notion-dev:task-breakdown` with the body plus notes.
 - **Collapse** — same fallback as 2.5.2 option.
 - **Approve** — proceed to Phase 3 mission path.
+
+---
+
+## Phase 2.6 — Attach to an epic (single-ticket path only)
+
+Runs only when Phase 2.5 returned `kind: "single"`. Skipped entirely for missions (2.5.2 already resolved the epic) and for the `existing-ticket` source mode, which never re-parents a ticket — the same rule that makes it skip Phase 2.5.
+
+1. Invoke `notion-dev:ticket-system` operation `findEpics()`. Empty → **skip silently, no prompt**.
+2. Judge the ticket's title and `## Requirements` against each epic's `name` and `## Overview`. This is a semantic judgment, not string matching: an epic is a plausible candidate when this ticket is work on the same incident, feature, or investigation. A shared word is not a match.
+3. **Zero plausible candidates → skip silently.** No prompt. This is the common case, and routine single-ticket runs must stay as quiet as they are today.
+4. **One or more plausible candidates** → ask `AskUserQuestion`: *"This looks related to an existing epic. Attach it?"*
+   - **Attach to `[<KEY>-<n>] <name>`** — the best candidate first, further candidates as additional options. Record `EPIC_ID` and the epic name.
+   - **Pick another** — show the full `findEpics()` list as sub-choices.
+   - **No epic** — proceed unattached; `EPIC_ID = undefined`.
+
+**Non-interactive mode** never prompts here: use `--epic` / `--parent` when supplied, else attach to nothing.
 
 ---
 
@@ -144,7 +169,7 @@ Before any ticket-system call, normalize `type` to its **logical key** — lower
 
 Invoke `notion-dev:ticket-system`:
 - If source was `existing-ticket`, operation is `updateTicket(id, { title, body, type })` — update in place. (Treat this as a `createTicket`-style call with the existing id; the ticket-system skill handles the distinction.)
-- Otherwise, operation is `createTicket({ title, body, type, assignee })` — new ticket. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `existing-ticket` `updateTicket` never sets an assignee (assignment is creation-only).
+- Otherwise, operation is `createTicket({ title, body, type, assignee, epic, parent })` — new ticket. Omit `assignee` when Phase 2.75 chose "Leave unassigned"; omit `epic` and `parent` when Phase 2.6 attached to no epic (`epic` = the epic name, `parent` = `EPIC_ID`). `existing-ticket` `updateTicket` never sets an assignee or a parent — both are creation-only.
 
 Capture the returned `{ id, url }`.
 
@@ -162,12 +187,19 @@ for task in mission.tasks:
     body:     task.body,
     type:     task.type,
     epic:     mission.epic,     // reconciled name from 2.5.2
+    parent:   EPIC_ID,          // epic page from 2.5.2; omitted when undefined
     phase:    task.phase,       // omitted fields pass through as absent
     step:     task.step,
     assignee: assignee,         // from Phase 2.75; omit when "unassigned"
   })
   taskMap.push({ id: result.id, url: result.url, title: task.title })
 ```
+
+**Pass 1.5 — populate the epic's task list** (skip when `EPIC_ID` is undefined):
+
+Invoke `notion-dev:ticket-system` operation `refreshEpicTasks(EPIC_ID)`. That operation owns the `## Tasks` render format entirely — do **not** render the list here, or this command and the epic-update flow will drift apart.
+
+This runs even though nothing has resolved yet, so the epic reads as a real plan the moment it exists. A failure here is non-fatal — warn and continue to Pass 2.
 
 **Pass 2 — wire dependencies**:
 
@@ -193,6 +225,7 @@ If Pass 1 fails partway, report what succeeded (with IDs/URLs) and stop before P
 
 Print:
 - New (or updated) ticket ID and URL.
+- The epic it was attached to, when Phase 2.6 attached one: `Epic: [<KEY>-<n>] <name> · <url>`. Omit the line entirely when unattached.
 - A one-line summary of what was captured.
 - Next step: "Run `/notion-dev:ticket <ticket-id>` when you're ready to implement (the page id is in the ticket URL above)."
 
@@ -201,7 +234,7 @@ Print:
 Print a structured summary:
 
 ```
-Mission created under Epic: <epic name>
+Mission created under Epic: [<KEY>-<n>] <epic name> · <epic url>
 
 <phase 1 name>          (if phases used)
   Step 1 — STO-<id> · <title> · <url>
