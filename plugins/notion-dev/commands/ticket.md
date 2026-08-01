@@ -52,7 +52,7 @@ Pick one of its children:
 
 Hard abort in both interactive and non-interactive mode. It runs before Phase 2, so no worktree, branch, status change, or ledger line is created.
 
-An **epic-in-waiting** — Epic select set, empty parent, but no children yet — is deliberately **not** guarded: it is indistinguishable from a normal ticket that happens to carry an Epic tag, and blocking it would break the plain Epic-select tagging that works today. Skip the guard entirely when the DB lacks `parentTaskProperty` or `epicProperty`.
+A page with an Epic select and an empty parent but **no** children is deliberately **not** guarded here — it is indistinguishable from a normal ticket that happens to carry an Epic tag (see "Epic containers" in `skills/ticket-system/SKILL.md`), and blocking it would break the plain Epic-select tagging that works today. This is also why `findEpics()` never returns such a page as a container. Skip the guard entirely when the DB lacks `parentTaskProperty` or `epicProperty`.
 
 **Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
 
