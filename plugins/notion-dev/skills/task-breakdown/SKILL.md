@@ -73,7 +73,7 @@ Any one of these justifies a split:
 
 When returning `mission`, apply these rules to decide which optional fields to populate on each task:
 
-- **Epic** — always present on a mission result (a mission without a shared initiative wouldn't be a mission). Propose a name derived from the source title or theme. The caller will reconcile against existing DB options.
+- **Epic** — always present on a mission result (a mission without a shared initiative wouldn't be a mission). Propose a name derived from the source title or theme. The caller reconciles it against existing DB options **and creates a real container page titled with it**, so the name must read as an initiative or incident a person would recognize months later — `"Large-Wallet Stale-Index Incident"`, not `"Misc fixes"` or `"Work from Tuesday"`. Prefer a noun phrase; avoid dates and ticket numbers, which the ID prefix already supplies.
 - **Phase** — only when the mission's tasks naturally group into **sequential implementation stages** (e.g. Research → Implementation → Validation). If the tasks are parallelizable or don't share a stage-gate pattern, omit `phase` entirely from every task.
 - **Step** — only when **≥2 sibling tasks exist within the same Phase** AND execution order within the phase matters. Use integer steps (1, 2, 3…); leave float precision for future inserts.
 - **DependsOn** — only for **true blocking dependencies**. Do not use for soft preferences, logical sequencing already expressed by Phase/Step, or "it'd be nicer to do A first."

@@ -114,9 +114,11 @@ Then:
 | Command | Purpose |
 |---|---|
 | `/notion-dev:init` | One-time (or re-runnable) setup. Writes config, patches `.mcp.json`, bootstraps the ticket database. |
-| `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). |
+| `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). Flags: `--non-interactive` (answers its own interview via a fresh subagent grounded in `--context-file`), `--context-file=<path>`, `--epic=<name>`, `--parent=<id>`, `--assignee=<id>`. |
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → plan review (superpowers path) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → run post-merge hooks → update ticket → clean up. |
+
+Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 
 ## Configuration
 
@@ -125,13 +127,14 @@ Then:
 Key fields:
 
 - `project.{key, name}` — ticket ID prefix (e.g. `STO`) and short project name (used in worktree naming).
-- `ticketSystem` — the Notion ticket-database config: `databaseId` (required) plus optional property-name overrides and `statusMap` / `typeMap` / `staticProperties`. Assignee support adds `assigneeProperty` (the People column, default `"Assignee"`) and `defaultAssignee` (a user id, email, or display name; `""` means create-task prompts each run). `/notion-dev:init` sets both.
+- `ticketSystem` — the Notion ticket-database config: `databaseId` (required) plus optional property-name overrides and `statusMap` / `typeMap` / `staticProperties`. Assignee support adds `assigneeProperty` (the People column, default `"Assignee"`) and `defaultAssignee` (a user id, email, or display name; `""` means create-task prompts each run). `/notion-dev:init` sets both. Epic support adds `parentTaskProperty` (the self-referential Relation linking a ticket to its Epic container page, default `"Parent task"`) and `creationDateProperty` (default `"Creation Date"`, tolerating either a `Date` property the plugin writes at creation or a `Created time` property Notion auto-fills). Both are absence-tolerant: when missing from the live database the plugin skips the write with a warning rather than aborting.
 - `inputSources` — enabled source adapters: any of `"prompt"`, `"existing-ticket"`, `"notion-page"`.
 - `git.{baseBranch, prTargetBranch, mergeStrategy, preMergeChecks, postMergeHooks}` — git-flow config; `preMergeChecks` runs as a merge gate inside the review loop (`notion-dev:review-and-merge`), `postMergeHooks` is a phase-2 seam (empty by default).
 - `dependencies.{superpowers, featureDev}` — set by `/notion-dev:init` after verifying both build-flow plugins are installed. Both must be `true` for `/notion-dev:ticket` to run.
 - `worktree.prefix` — template for worktree directory names. Tokens: `{name}`, `{key}`, `{id}`. Default: `"{name}-{key}-{id}"`.
 - `verify.steps[]` — ordered list of `{ name, cmd, retries }` commands run after implementation and before PR.
 - `reviewer` — PR reviewer selection: `"codex"` (default) or `"copilot"`. Set during `/notion-dev:init`; can be changed by re-running that command.
+- `ticketSystem.statusMap.{done, cancelled}` — **read-only** entries (defaults `"Done"` / `"Cancelled"`). Together with `implemented` they form the *resolved set*: the statuses that count as finished when deciding whether an Epic's children are all done and the Epic should close. No plugin command ever moves a ticket into these states — they exist purely so the Epic-close check understands your board. `/notion-dev:init` asks which of your live Status options belong in the set.
 - `reviewsCap` — maximum review rounds the PR review loop runs; default **15** when absent or invalid. Hand-edited (`/notion-dev:init` does not write it). Applies to the configured-reviewer loop and the local fallback loop independently, so a run that falls back can perform up to twice that number in total. It is a runaway backstop — the loop normally ends far earlier.
 
 ### Reviewer configuration
@@ -152,10 +155,33 @@ loop never writes this key — edit `.claude/notion-dev.config.json` directly.
 ## Ticket system
 
 - `/notion-dev:init` offers to create a new Notion database with the exact schema, or validate/patch an existing one.
-- Required properties: `Name` (title), `ID` (number), `Status` (select/status), `Type` (select), `PR` (URL).
+- Required properties: `Name` (title), `ID` (number or unique-id), `Status` (select/status), `Type` (select), `PR` (URL).
 - Optional: `Assignee` (People) — `/notion-dev:create-task` assigns new tickets to a configured default, or prompts you to pick a workspace user when no default is set.
-- Status options: `Backlog`, `In Progress`, `Implemented`. (The plugin only ever sets `In Progress` and `Implemented`; add `Delivered` or other shipped states yourself if you run a release flow — the plugin doesn't manage them.)
+- Optional: `Creation Date` (Date, or a `Created time` property) — set when a ticket is created.
+- Optional: `Parent task` (self-referential Relation) — links a ticket to its Epic container. Required for Epics; without it, Epic grouping degrades to the `Epic` select tag alone.
+- Status options: `Backlog`, `In Progress`, `Implemented`. (The plugin only ever sets `In Progress` and `Implemented`; add `Delivered` or other shipped states yourself if you run a release flow — the plugin doesn't manage them. It *reads* `Done` and `Cancelled` for the Epic-close check — see `statusMap` above.)
 - Type options: `Feature`, `Bug`, `Improvement`, `Research`.
+
+## Epics
+
+An **Epic** is a container page in the same ticket database: its `Parent task` is empty, its `Epic` select is set, and its children point back at it via `Parent task` while sharing the same `Epic` value.
+
+- **Missions always get one.** When `/notion-dev:create-task` breaks a request into multiple tickets, it reuses a matching Epic page or creates one, and parents every task to it.
+- **Single tickets are offered attachment only when an existing Epic plausibly matches** the work — an incident, feature, or investigation already underway. With no plausible match there is no prompt, so routine single-ticket runs stay quiet.
+- **Follow-ups land in the same Epic.** When a review defers an item, `/notion-dev:ticket` and `/notion-dev:finalize` file it as a real ticket under the same Epic (always, in `--non-interactive` mode; on confirmation otherwise).
+- **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
+
+An Epic page carries three sections:
+
+| Section | Content |
+|---|---|
+| `## Overview` | What the initiative or incident is. Written once, at creation. |
+| `## Tasks` | Each child with its status: `- [x] [STO-67] Fix stale index — Implemented`. **Refreshed only when a child resolves**, so between resolutions it lags — the live view is Notion's `Parent task` relation column. |
+| `## Resolution Log` | Append-only history. Every time a child resolves, a divider and a dated entry are added with what was done, follow-ups filed, how many tasks remain, and what's next. |
+
+When the last unresolved child resolves and no follow-ups are outstanding, the Epic's own status moves to `Implemented`.
+
+**A note on Notion Sub-items.** `/notion-dev:init` can create the `Parent task` relation for you, but the Notion API cannot enable Notion's native *Sub-items* feature — so an API-created relation renders as an ordinary relation column rather than nested sub-rows. Grouping and every plugin behavior work identically either way. For the native nested rendering, enable Sub-items in the Notion UI **before** running `/notion-dev:init`, and init will bind to it instead of creating its own.
 
 ## Input sources
 
@@ -192,7 +218,8 @@ No v1 refactor required to adopt phase 2.
 │   ├── flow-triage/          # build-flow chooser: bug hard rule, scorecard, ledger (used by ticket)
 │   ├── review-and-merge/     # PR review loop: Codex rounds, local fallback, merge gates
 │   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
-│   └── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
+│   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
+│   └── epic-update/          # records a resolved ticket against its Epic — files deferred follow-ups, refreshes the task list, appends the resolution log entry, closes the Epic when everything under it is done. Shared by `/notion-dev:ticket` and `/notion-dev:finalize`.
 ├── schema/
 │   └── notion-dev.config.schema.json
 ├── LICENSE
