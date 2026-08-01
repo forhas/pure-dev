@@ -41,6 +41,19 @@ Derive the **numeric `<id>`** used for all naming below from `metadata.idPropert
 
 Record `TICKET_TYPE` from the returned `type` (the logical key, when the DB has a mapped type property) — it may be absent.
 
+**Epic guard.** The fetched page is an epic container when its `parentTaskProperty` is empty **and** its `epicProperty` is set **and** `listEpicChildren(id)` returns at least one child. In that case abort — an epic is a container, not implementable work:
+
+```
+[<KEY>-<n>] <name> is an epic container, not an implementable ticket.
+Pick one of its children:
+  [<KEY>-67] Fix stale index — Implemented
+  [<KEY>-68] Add cache metrics — In Progress
+```
+
+Hard abort in both interactive and non-interactive mode. It runs before Phase 2, so no worktree, branch, status change, or ledger line is created.
+
+An **epic-in-waiting** — Epic select set, empty parent, but no children yet — is deliberately **not** guarded: it is indistinguishable from a normal ticket that happens to carry an Epic tag, and blocking it would break the plain Epic-select tagging that works today. Skip the guard entirely when the DB lacks `parentTaskProperty` or `epicProperty`.
+
 Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the preconditions gate — before the first config read and ticket-system call, both of which depend on it; the ledger, per `skills/flow-triage/references/ledger.md`, likewise lives in the primary checkout it points to.
 
 Announce to the user: "Working on `<KEY>-<id>`: <title>" (`<KEY>` is `project.key` from the config; `<id>` is that numeric value). Show the ticket URL.
