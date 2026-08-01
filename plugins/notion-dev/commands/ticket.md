@@ -41,7 +41,7 @@ Derive the **numeric `<id>`** used for all naming below from `metadata.idPropert
 
 Record `TICKET_TYPE` from the returned `type` (the logical key, when the DB has a mapped type property) — it may be absent.
 
-**Epic guard.** The fetched page is an epic container when the returned `metadata.parentTaskProperty` is `""` (empty) **and** `metadata.epicProperty` is non-empty **and** `listEpicChildren(id)` returns at least one child. In that case abort — an epic is a container, not implementable work:
+**Epic guard.** The fetched page is an epic container when the returned `metadata.parentTaskProperty` is `""` (empty) **and** `metadata.epicMarkerProperty` is `true` — the same predicate `findEpics()`, `getEpicContext` step 2, and `epic-update` step 1 apply (see "Epic containers" in `skills/ticket-system/SKILL.md`), so all four agree on what an epic is. In that case abort — an epic is a container, not implementable work:
 
 ```
 [<KEY>-<n>] <name> is an epic container, not an implementable ticket.
@@ -52,7 +52,7 @@ Pick one of its children:
 
 Hard abort in both interactive and non-interactive mode. It runs before Phase 2, so no worktree, branch, status change, or ledger line is created.
 
-A page with an Epic select and an empty parent but **no** children is deliberately **not** guarded here — it is indistinguishable from a normal ticket that happens to carry an Epic tag (see "Epic containers" in `skills/ticket-system/SKILL.md`), and blocking it would break the plain Epic-select tagging that works today. This is also why `findEpics()` never returns such a page as a container. Skip the guard entirely when the DB lacks `parentTaskProperty` or `epicProperty`.
+A page carrying only the `Epic` select tag, with no `epicMarkerProperty` set, is **not** guarded here — even with an empty parent, and even if it happens to have picked up an ordinary Sub-items child. The marker, not the tag or the shape, is what makes a page an epic (see "Epic containers" in `skills/ticket-system/SKILL.md`); blocking on shape alone is the exact failure this guard used to have, since a legacy Epic-tagged ticket on an upgraded database can satisfy every structural signal an epic does. A freshly created epic with **zero** children **is** guarded here now — there is no child-count requirement left to exempt it. `metadata.epicMarkerProperty` reads `false` when `epicMarkerProperty` is absent from the live DB entirely, so the guard degrades safely to "not an epic" rather than guessing from structure.
 
 **Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
 

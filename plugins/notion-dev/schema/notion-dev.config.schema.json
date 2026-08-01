@@ -95,6 +95,11 @@
           "type": "string",
           "default": "Parent task",
           "description": "Self-referential Relation property linking a ticket to its Epic container page. Distinct from dependsOnProperty. Absence-tolerant — without it, Epic grouping degrades to Epic-select tagging only and no epic pages are created or matched."
+        },
+        "epicMarkerProperty": {
+          "type": "string",
+          "default": "Is Epic",
+          "description": "Checkbox property that marks a page as an Epic container. This is the sole signal used to identify epics — carrying an Epic select value or having children never enters into it. Set to true by createEpic; read by findEpics, getEpicContext, epic-update, and /notion-dev:ticket's epic guard, which all apply the same predicate. Absence-tolerant with a twist: when missing from the live database, epics cannot be identified safely at all, so findEpics returns null and every guard/validation site treats the page as not an epic rather than falling back to any structural guess."
         }
       }
     },
