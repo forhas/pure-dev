@@ -1,6 +1,6 @@
 ---
 description: Produce a well-formed ticket from a prompt or an existing source. Runs a depth-calibrated interview (via notion-dev:ticket-interviewer) when needed, then writes the result to the configured ticket system.
-argument-hint: "[prompt:|existing-ticket:|notion-page:]<text-or-ref>"
+argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
 ---
 
 # /notion-dev:create-task
@@ -13,6 +13,35 @@ Args: `[<source>:]<ref>` or free prompt text.
 - `notion-page:<url-or-id>` — read a Notion page as input.
 
 **Parsing rule.** Only treat a leading `<token>:` as a source selector when `<token>` exactly matches a known source name (`prompt`, `existing-ticket`, `notion-page`). Otherwise — including when the argument merely happens to contain a colon (e.g. `Add rate limiting: 100 req/min`) — default to `prompt` and treat the **entire** argument as raw text. Never infer a source from an arbitrary word before a colon.
+
+**Flags.** Five optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
+
+| Flag | Effect |
+|---|---|
+| `--non-interactive` | Never pause for user input; see the phase table below. |
+| `--context-file=<path>` | Path to a markdown context packet. Seeds the interviewer, and is the proxy respondent's evidence base. Valid with or without `--non-interactive`. |
+| `--epic=<name>` | Skip Phase 2.6's matching; use this Epic select value verbatim. |
+| `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. |
+| `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
+
+`--epic`, `--parent`, and `--assignee` are what let `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting.
+
+**`--non-interactive` phase behavior:**
+
+| Phase | Interactive | Non-interactive |
+|---|---|---|
+| 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) |
+| 2.2 confirm | `create` / `revise` / `cancel` | Auto-`create` |
+| 2.5 breakdown | May return a mission | Auto-collapse to `single` |
+| 2.6 epic attach | Prompt on candidates | Use `--epic` / `--parent`, or attach to none |
+| 2.75 assignee | Prompt when unresolved | Use `--assignee`, else `defaultAssignee`, else leave unassigned |
+| 3.1 type | Prompt when unclear | Infer from the body; default `improvement` |
+
+**Proxy-respondent subagent.** The interviewer still runs in full — depth calibration, clarity audit, all of it — but its questions are answered by a **fresh subagent**, not by the main loop.
+
+This is deliberate. When `/notion-dev:finalize` files a deferred review item, the main loop is the agent that *wrote* that item during review. Having it answer its own interview restates its own assumptions and produces a ticket that looks elaborated but carries no new information. A fresh agent, handed the ticket, the merge diff, and the review thread, has to actually read them.
+
+Dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
 
 ## Preconditions
 
@@ -43,6 +72,8 @@ Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confid
 
 No `confidence`-branching lives in this command — depth calibration is fully owned by the skill.
 
+In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user. Everything else about the interview is unchanged.
+
 ### 2.2 Confirm
 
 Show the returned `title` + `body` to the user. Ask `AskUserQuestion`: "Create this ticket? (create / revise / cancel)".
@@ -50,11 +81,15 @@ Show the returned `title` + `body` to the user. Ask `AskUserQuestion`: "Create t
 - `cancel` — abort.
 - `create` — proceed to Phase 2.5.
 
+In **non-interactive mode**, skip this gate: proceed as if the user chose `create`, and log the auto-decision for the Phase 4 report.
+
 ---
 
 ## Phase 2.5 — Breakdown assessment
 
 Decide whether this is one ticket or a multi-task mission. The plugin defaults to single-ticket; splitting requires clear evidence. `existing-ticket` source mode **always skips this phase** — elaborating an existing ticket never splits it.
+
+In **non-interactive mode**, instruct `notion-dev:task-breakdown` to return `single` and skip 2.5.2 and 2.5.3 entirely. This mode exists to file one deferred review finding, which is one item by construction; running the breakdown and then discarding a mission result would be wasted work.
 
 ### 2.5.1 Invoke task-breakdown
 
@@ -125,22 +160,23 @@ Decide **who** the new ticket(s) get assigned to. Produces a single `assignee`
 value — a resolved Notion user id, or the sentinel "unassigned" — reused for
 every `createTicket` in Phase 3. Runs once, even for a mission.
 
-1. Read `ticketSystem.defaultAssignee` from config.
+1. **`--assignee` supplied** → `assignee = <that id>`; skip the rest of this phase. In non-interactive mode without the flag, fall through to `defaultAssignee` resolution below, and if that fails, `assignee = unassigned` — never prompt.
+2. Read `ticketSystem.defaultAssignee` from config.
    - **Set and non-empty** → invoke `notion-dev:ticket-system` operation
      `resolveAssignee(defaultAssignee)`.
      - Unique match → `assignee = <id>`; continue to Phase 3 silently.
      - `null` (no match / ambiguous) → warn
        (`"defaultAssignee '<value>' did not resolve to a unique user; pick manually"`)
-       and fall through to step 2.
-   - **Absent or empty string (`""`)** → go to step 2.
-2. **Interactive pick.** This needs the full user *list* to display, so call
+       and fall through to step 3.
+   - **Absent or empty string (`""`)** → go to step 3.
+3. **Interactive pick.** This needs the full user *list* to display, so call
    `mcp__notion__notion-get-users` directly (not `resolveAssignee`, which
    resolves a single value). Filter to `type == "person"` and present their
    display names with `AskUserQuestion`: "Assign this ticket to whom?".
    Include a final **"Leave unassigned"** option.
    - A named pick → resolve to that user's id → `assignee = <id>`.
    - "Leave unassigned" → `assignee = unassigned` (pass no `assignee` in Phase 3).
-3. **Missions:** the single `assignee` decided here applies to **every** task —
+4. **Missions:** the single `assignee` decided here applies to **every** task —
    pass it into each `createTicket` in Pass 1. "Leave unassigned" applies to all.
 
 This choice is used for the current run only — never written back to config.
@@ -158,6 +194,8 @@ If the interviewer returned a `type`, use it. Otherwise infer from the body cont
 - **Research** — investigation without code output.
 
 If still unclear, ask `AskUserQuestion` with the four options.
+
+In **non-interactive mode**, never ask: infer from the body, and when genuinely unclear default to `improvement` — the least-committal of the four, and the easiest to correct later.
 
 For `mission` results, `type` is per-task on the breakdown output; apply the same inference per task when a task's `type` is absent.
 
