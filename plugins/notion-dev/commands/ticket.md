@@ -54,6 +54,10 @@ Hard abort in both interactive and non-interactive mode. It runs before Phase 2,
 
 An **epic-in-waiting** — Epic select set, empty parent, but no children yet — is deliberately **not** guarded: it is indistinguishable from a normal ticket that happens to carry an Epic tag, and blocking it would break the plain Epic-select tagging that works today. Skip the guard entirely when the DB lacks `parentTaskProperty` or `epicProperty`.
 
+**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty)` and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
+
+`EPIC_CONTEXT` is **background, not requirements**: the ticket body remains the single source of truth for what to build. Where the two appear to conflict — a resolution-log entry describing an approach the ticket now contradicts — the ticket wins, and the conflict is surfaced to the user at the 1.3 clarification gate rather than silently resolved.
+
 Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the preconditions gate — before the first config read and ticket-system call, both of which depend on it; the ledger, per `skills/flow-triage/references/ledger.md`, likewise lives in the primary checkout it points to.
 
 Announce to the user: "Working on `<key>`: <title>" (`<key>` is the `key` field returned by `fetchTicket`, e.g. `"STO-67"` — display it as-is, don't rebuild it from `project.key`). Show the ticket URL.
@@ -81,7 +85,7 @@ Non-interactive mode: self-answer every resume question above with the most reas
 
 ### 1.3 Hard gate — requirement clarification
 
-Read the ticket body together with `CLAUDE.md` at the repo root and any files the ticket references.
+Read the ticket body together with `CLAUDE.md` at the repo root, any files the ticket references, and `EPIC_CONTEXT` when present. A sibling's resolution may already answer an open question on this ticket, and a sibling's follow-up may *be* this ticket. `EPIC_CONTEXT` is background, not requirements (see 1.1) — if a resolution-log entry appears to conflict with the ticket body, surface the conflict to the user at this gate rather than silently favoring the log.
 
 Ask yourself: do I understand the goal, scope, and acceptance criteria well enough to implement without guessing?
 
@@ -125,7 +129,7 @@ Invoke the `notion-dev:flow-triage` skill via the Skill tool from inside the wor
 - non-interactive: add `--auto`
 - `FLOW_OVERRIDE` set: add `--forced-flow=$FLOW_OVERRIDE`
 - `TICKET_TYPE` known: add `--ticket-type=<TICKET_TYPE>`
-- description argument: the ticket title, a blank line, then the ticket body.
+- description argument: the ticket title, a blank line, then the ticket body — followed, when `EPIC_CONTEXT` is present, by a blank line, a `--- EPIC CONTEXT (background, not requirements) ---` delimiter, and `EPIC_CONTEXT`, so triage can tell requirements from background.
 
 From its output block record `FLOW`, `MICRO_PLAN`, `SCOUT_FINDINGS` (sourced from that
 block's `FLOW:`, `MICRO-PLAN:`, and `SCOUT-FINDINGS:` lines respectively). Triage owns its
@@ -142,7 +146,7 @@ From inside the worktree, follow the branch matching `FLOW`:
 
 ### 4.1 `FLOW=feature-dev`
 
-Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (they are absent when Phase 3 was skipped on resume). Follow its full flow (explore → clarify → architect → implement → review).
+Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (they are absent when Phase 3 was skipped on resume). When `EPIC_CONTEXT` is present, include it too as further seed context, labeled background, not requirements. Follow its full flow (explore → clarify → architect → implement → review).
 
 ### 4.2 `FLOW=superpowers`
 
@@ -151,11 +155,13 @@ Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_F
 - **Save location**: write the plan to `<worktree>/PLAN.md`. Do **not** use writing-plans' default `docs/superpowers/plans/...` path.
 - **Feature name** for the plan header: `<KEY>-<id>: <title>`.
 
+When `EPIC_CONTEXT` is present, also pass it — labeled explicitly as **background context, not spec**: writing-plans must not turn a resolution-log entry into a task. Only the ticket body is the spec.
+
 Writing-plans produces a TDD-structured plan with bite-sized (2-5 minute) tasks, explicit file-by-file create/modify paths, and checkbox (`- [ ]`) tracking.
 
 For tickets that are genuinely not TDD-shaped (docs-only edit, config bump, pure refactor with existing coverage), say so in the spec you hand to writing-plans — it will still structure tasks appropriately, just without red-then-green gating.
 
-(b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — and `VERIFY:` lists the `verify.steps` commands from config. No `--spec-file`: the ticket body is the spec and travels inline.
+(b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — `VERIFY:` lists the `verify.steps` commands from config, and `EPIC-CONTEXT:` is `EPIC_CONTEXT` when present or `NONE — not available` when absent, following the same convention as the other optional blocks — labeled as background, not requirements, so the reviewer never treats a resolution-log entry as spec. No `--spec-file`: the ticket body is the spec and travels inline.
 
 It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
 

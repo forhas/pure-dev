@@ -26,6 +26,7 @@ The caller names the operation and passes the arguments; the sections below desc
 | `findEpics` | — | `[{ id, key, pageId, name, title, url, overview }]` — pages with `epicProperty` set and `parentTaskProperty` empty. `[]` when either property is absent |
 | `setParent` | `id`, `epicId` | `void` — writes the `parentTaskProperty` relation. No-op when the property is absent |
 | `listEpicChildren` | `epicId` | `[{ id, key, title, status, url }]` — pages whose `parentTaskProperty` points at `epicId`, ordered by `id`. `[]` when the property is absent |
+| `getEpicContext` | `epicId` | bounded markdown context block, or `null` — epic identity, verbatim `## Overview`, **live** sibling status (via `listEpicChildren`, never the epic body's stale `## Tasks` snapshot) with the caller's own ticket marked, and the most recent 3 `## Resolution Log` entries (with a count of any older entries omitted). `null` (no warning — routine) when `epicId` is empty, or `epicProperty`/`parentTaskProperty` is absent from the live DB. The sole owner of what "epic context" means — callers never assemble it themselves or parse `## Resolution Log`. **Background, not requirements**: callers must never treat its content as spec |
 | `refreshEpicTasks` | `epicId` | `void` — re-renders the epic's `## Tasks` section from its live children. The single owner of that section's format |
 | `appendToSection` | `id`, `sectionName`, `content` | `void` — **appends** to a named body section, creating it if absent. Never replaces, unlike `upsertSection` |
 | `getSelectOptions` | `propertyName` | `[string]` or `null` — lists option names for a Select / Multi-Select / Status property. Returns `null` if the property is absent or not a selectable type. Read-only. |
@@ -425,6 +426,39 @@ Read-only.
 2. Resolve `epicId` to a page ID via `fetchTicket`.
 3. Query the DB for pages whose `parentTaskProperty` contains that page ID.
 4. Return `[{ id, key, title, status, url }]` ordered ascending by `id` — `key` the logical ticket key (`"STO-67"`) for display, `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
+
+## getEpicContext(epicId)
+
+Read-only. Assembles the bounded context block that `/notion-dev:ticket` threads into its reasoning phases when a starting ticket belongs to an epic. **The sole owner of what "epic context" means and how much of it is included** — callers must never assemble this themselves or parse `## Resolution Log` directly; that format belongs to `epic-update`, and a second copy of the parser in a command file is how the two drift apart.
+
+1. If `epicId` is empty, or `epicProperty`/`parentTaskProperty` is absent from the live DB, return `null`. Not a warning — this is the normal case for most tickets, which have no epic.
+2. `fetchTicket(epicId)` → epic identity (`key`, `title`, `url`) and `body`.
+3. **Overview.** Extract the `## Overview` section verbatim from `body`. Omit the heading and body entirely from the output when the section is absent.
+4. **Sibling status.** Call `listEpicChildren(epicId)` — a **live** call, never derived from the epic body's `## Tasks` section. That section is documented as "Snapshot as of the last resolution" and is only refreshed when a child resolves, so it is stale by construction; handing a starting ticket stale sibling status would be worse than handing it none. Render one line per child: `[{key}] {title} — {status}`. This operation is invoked immediately after the caller's own `fetchTicket(id)` in `/notion-dev:ticket` Phase 1.1, whose `id` is the page that produced `epicId` as its `parentTaskProperty` — mark that child's line with a trailing ` (this ticket)` so the reader can locate itself among its siblings.
+5. **Recent resolution history.** Parse `## Resolution Log` from `body` into its `### [<KEY>-<n>] resolved — <datetime>` entries, in document order. `appendToSection` always appends at the end, so the **last 3** entries in document order are the most recent 3 resolutions — take those. When more than 3 entries exist, prepend a line stating how many older entries were omitted, so the reader knows there is more history and where to find it (the epic `url` from step 2).
+6. Assemble and return one markdown block, in this order — identity, `## Overview` (when present), sibling status, recent resolution history:
+
+```
+## Epic context: [<KEY>-<n>] <epic title>
+<epic url>
+
+## Overview
+<verbatim epic overview text>
+
+### Siblings
+- [<KEY>-67] Fix stale index — Implemented
+- [<KEY>-68] Add cache metrics — In Progress (this ticket)
+- [<KEY>-69] Backfill historic wallets — Backlog
+
+### Recent resolution history
+…2 older entries omitted — see the epic page for full history.
+### [<KEY>-65] resolved — 2026-07-30 14:02 UTC
+**Summary** — ...
+### [<KEY>-66] resolved — 2026-07-31 09:15 UTC
+**Summary** — ...
+```
+
+**Background, not requirements.** This block is context for the caller's reasoning, never a source of tasks or acceptance criteria — a resolution-log entry can describe an approach the current ticket now contradicts. Callers are responsible for stating that framing wherever they hand this block onward; see `/notion-dev:ticket` Phase 1.1.
 
 ## refreshEpicTasks(epicId)
 

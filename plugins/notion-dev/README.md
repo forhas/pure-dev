@@ -170,6 +170,7 @@ An **Epic** is a container page in the same ticket database: its `Parent task` i
 - **Single tickets are offered attachment only when an existing Epic plausibly matches** the work — an incident, feature, or investigation already underway. With no plausible match there is no prompt, so routine single-ticket runs stay quiet.
 - **Follow-ups land in the same Epic.** When a review defers an item, `/notion-dev:ticket` and `/notion-dev:finalize` file it as a real ticket under the same Epic (always, in `--non-interactive` mode; on confirmation otherwise).
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
+- **`/notion-dev:ticket` reads its Epic before planning.** A starting ticket pulls the epic's `## Overview`, live sibling statuses (not the `## Tasks` snapshot), and the 3 most recent `## Resolution Log` entries as context — background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build.
 
 An Epic page carries three sections:
 
