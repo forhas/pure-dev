@@ -35,6 +35,28 @@ The caller names the operation and passes the arguments; the sections below desc
 
 Callers may pass an `id` as a **logical key** — `STO-285`, `STO285`, or `285`. Normalize by stripping the configured `project.key` prefix and any separator, then parsing the remainder as an integer, then resolving it through the `idProperty` lookup. A **Notion page id or page URL** is also accepted, resolving the page directly.
 
+## Title prefix
+
+Every ticket title carries its ticket ID as a leading tag: `[STO-67] Large-Wallet Stale-Index Incident`. The adapter owns this entirely — **callers pass and receive bare titles and never construct, parse, or strip the prefix themselves**. Applies to epics identically.
+
+Format: `[<KEY>-<n>] ` — literal `[`, `project.key`, `-`, the numeric ID, `]`, one space.
+
+Detection (case-insensitive on the key, tolerant of stray inner whitespace):
+
+```
+^\[\s*<KEY>-(\d+)\s*\]\s*
+```
+
+Only a prefix matching **this project's** `project.key` counts. On a DB shared between projects, a leading `[FOO-12] ` is part of the title, not a prefix — leave it alone.
+
+**Writing.** `createTicket` and `updateTicket` write `[<KEY>-<n>] <bare title>`, stripping any already-matching prefix from the incoming value first. Idempotent: never double-prefixes, and a prefix carrying the wrong number is corrected to the page's real ID.
+
+**Reading.** `fetchTicket` returns `title` with the prefix stripped, and `metadata.rawTitle` with the literal Notion title. This is what keeps callers correct without changes — `/notion-dev:ticket` kebab-cases the title into a branch slug, and a stripped title keeps branches as `ticket/STO-67-large-wallet-stale-index` rather than `ticket/STO-67-sto-67-large-wallet-stale-i`.
+
+Callers that need to *show* the id alongside the title use the `key` field (`"STO-67"`) and render `[{key}] {title}` themselves. That is display formatting, not prefix construction — what the adapter owns is the title stored in Notion.
+
+**`unique_id` prefix mismatch.** A Notion `unique_id` column carries its own prefix. When it differs from `project.key`, titles still use `project.key` — config is the source of truth for the plugin's naming, and branch names already depend on it. Log **one** warning per run: `"ID column prefix '<live>' differs from project.key '<KEY>'; titles use '<KEY>'"`.
+
 ## Configuration
 
 Config (from `.claude/notion-dev.config.json` → `ticketSystem`):
@@ -75,7 +97,7 @@ research    → "Research"
 
 The adapter normalizes the following shape differences between the canonical schema and real-world databases:
 
-- **Title** — every Notion database has exactly one property whose type is `title` (the page title). The adapter discovers it dynamically by scanning the live schema for the `title`-typed property; its **name** is not fixed — common choices are `Name`, `Title`, `Task name`, etc. Callers pass the title value as a plain string; the adapter writes it to whichever property is the title type on this DB. Never hardcode a property name for the title.
+- **Title** — every Notion database has exactly one property whose type is `title` (the page title). The adapter discovers it dynamically by scanning the live schema for the `title`-typed property; its **name** is not fixed — common choices are `Name`, `Title`, `Task name`, etc. Callers pass the title value as a plain string; the adapter writes it to whichever property is the title type on this DB. Never hardcode a property name for the title. The value written is the caller's bare title with the ID prefix prepended, and the value read is stripped of it — see "Title prefix" above.
 - **ID** — read/write as `number` or `unique_id` depending on the live property type. `unique_id` is read-only to the MCP; creation does not set it (Notion auto-assigns). Queries filter by numeric id regardless of type.
 - **Type** — read: if the live property is `multi_select`, take the first value; if `select`, take the value. Write: if `multi_select`, send a single-item list; if `select`, send the scalar. Empty values round-trip as `null`.
 - **PR** — read/write when `prProperty` exists on the live DB. When absent, skip writes and log a single warning per run (no abort).
@@ -189,7 +211,7 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
 2. **Apply the project scoping guardrail** (see section above) — abort here if any pinned `staticProperties` mismatch the live page. Fail before any further work.
 3. Convert blocks to markdown, preserving **Requirements**, **Acceptance Criteria**, **Context**, **Open Questions** sections.
 4. Read `typeProperty` (if present): normalize to a logical key via reverse lookup through `typeMap` (defaults above). For `multi_select`, the first option wins.
-5. Return `{ title, body, status, type, url, metadata: { pageId, idProperty value } }`. The `idProperty value` (the numeric key) is read off the **resolved page** regardless of which branch resolved it — callers rely on it for branch/worktree naming.
+5. Return `{ title, key, body, status, type, url, metadata: { pageId, idProperty value, rawTitle } }`. `title` is the page title **with the ID prefix stripped** (see "Title prefix"); `key` is the logical ticket key (`"STO-67"`) for callers that need to *display* the id beside the title; `rawTitle` is the literal Notion title. The `idProperty value` (the numeric key) is read off the **resolved page** regardless of which branch resolved it — callers rely on it for branch/worktree naming.
 
 ## resolveAssignee(value)
 
@@ -211,7 +233,7 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
 1. Determine the next ID: query the database ordered by `idProperty` desc; take `max + 1`. If `idProperty` is `unique_id`, skip this step — Notion auto-assigns on create; read the assigned id back from the created page.
 2. Create the page via `mcp__notion__notion-create-pages`:
    - Parent = configured database / data source.
-   - Properties: `idProperty` = new id (omit when `unique_id`), the **title-typed property** (discovered from the live schema — see Property type handling above) = `title`, `statusProperty` = `"Backlog"` (or the first option if Backlog not present).
+   - Properties: `idProperty` = new id (omit when `unique_id`), the **title-typed property** (discovered from the live schema — see Property type handling above), `statusProperty` = `"Backlog"` (or the first option if Backlog not present). The title value depends on the ID column type — see the retitle rule in step 3.
    - If the live DB has `typeProperty` AND `type` was provided, set it: translate the logical key through `typeMap` to the Notion option label, then write it as a scalar (Select) or single-item list (Multi-Select) depending on the live property type.
    - For each `[name, value]` in `staticProperties` (if configured), set that property on the page. Property type is inferred from the live database schema (Select/Status → option name match; Multi-Select → single-item list unless the value is already a list; text → verbatim). Skip silently with a warning if the property doesn't exist on the DB.
    - **Assignee** (absence-tolerant): if `assignee` (a resolved user id) is provided AND the live DB has the `assigneeProperty` column AND it is a `people` type, set it to a single-item people list `[{ id: assignee }]`. If the column is absent or not People-typed, skip with the one-time warning from "Property type handling". `assignee` absent → set nothing.
@@ -222,7 +244,12 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
      - If `step` is provided AND `stepProperty` exists, set that Number to `step`.
      - Any missing configured property emits a one-time warning (`"<name>Property '<n>' not found on DB; skipping"`) and continues.
    - Children blocks: render `body` markdown, **applying the Styling conventions above**. Each canonical heading (`Requirements`, `Acceptance Criteria`, `Context`, `Open Questions`, `Source`) gets its palette color; intro callouts prepend sections that define one; `Acceptance Criteria` renders as to-do blocks. No divider appears yet at creation — only zone transitions add dividers.
-3. Return `{ id: newId, url: pageUrl }`.
+3. Apply the title prefix (see "Title prefix"):
+   - **`number` ID column** — the id was computed in step 1, so the create in step 2 already wrote `[<KEY>-<n>] <title>`. Nothing further.
+   - **`unique_id` ID column** — the id does not exist until the page does. Step 2 created the page with the **bare** title; now read the assigned id off the created page and call `mcp__notion__notion-update-page` to set the title-typed property to `[<KEY>-<n>] <title>`. Two calls; unavoidable.
+
+   If this retitle call fails, **do not roll back** — the page exists and is usable. Return normally and report that the prefix is missing. `updateTicket`'s backfill (below) repairs it on the next touch, and `fetchTicket`'s strip tolerates its absence.
+4. Return `{ id: newId, url: pageUrl }`.
 
 **`dependsOn` is never set here.** Mission callers run a second pass with `setDependencies` once all pages exist and their IDs are known.
 
@@ -234,7 +261,7 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
 
 1. `fetchTicket(id)` → `pageId` and the current page content.
 2. For each provided field:
-   - `title` → update the page's title-typed property (whatever its name on the live DB) via `mcp__notion__notion-update-page`.
+   - `title` → strip any matching prefix from the incoming value (see "Title prefix"), then write `[<KEY>-<n>] <stripped>` to the page's title-typed property (whatever its name on the live DB) via `mcp__notion__notion-update-page`.
    - `type` → update the `typeProperty` if the database has one. Translate the logical key through `typeMap` and write as scalar (Select) or single-item list (Multi-Select) to match the live property type. Ignore when `typeProperty` is absent from the live DB.
    - `body` → **heading-scoped merge**, not wholesale replacement:
      1. Parse the existing page blocks and the new `body` markdown into `## <heading>` sections.
@@ -242,6 +269,9 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
      3. Re-render the section's children with the Styling conventions applied (intro callouts, to-do blocks for Acceptance Criteria, etc.).
      4. For each `## <heading>` present **only** on the existing page: preserve it unchanged (content AND heading attributes).
      5. This guarantees that plugin-managed sections written by other commands — `## Implementation` (from `/notion-dev:ticket`), `## Merged` (from `/notion-dev:finalize`), and any future named sections added via `upsertSection` — are never wiped by a later `create-task` elaboration or any other call that supplies a partial body.
+
+2a. **Prefix backfill.** Even when `patch` contains no `title`, inspect the live title. If it has no prefix, or a prefix whose number does not match this page's ID, rewrite it to `[<KEY>-<n>] <existing title, stripped>`. This is what lets `/notion-dev:create-task existing-ticket:<id>` repair a legacy title with no change to that command.
+
 3. Return `{ id, url: pageUrl }`.
 
 ## updateStatus(id, logicalStatus)
