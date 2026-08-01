@@ -87,10 +87,12 @@ Notion is the plugin's ticket backend — no selection to make.
   | `Phase` | Select | no preset options — mission creation adds them |
   | `Step` | Number | position within a Phase |
   | `Depends on` | Relation (self-referential) | blocking dependencies between mission tasks |
+  | `Creation Date` | Date | set by `createTicket` at ticket creation |
+  | `Parent task` | Relation (self-referential) | links a ticket to its Epic container page; distinct from `Depends on` |
 
   Database title: `Tasks - <project.name>`.
 
-  The last four are the structural-mission properties (`/notion-dev:create-task` mission path); without them a fresh install silently loses mission grouping, order, and dependency edges — the same properties 3a-ii actively detects on existing DBs. If the create API cannot declare the self-referential `Depends on` relation at creation time (the DB's own ID is only known afterwards), add it immediately after via a schema update (`mcp__notion__notion-update-data-source`) pointing the relation at the new database.
+  The last four are the structural-mission properties (`/notion-dev:create-task` mission path); without them a fresh install silently loses mission grouping, order, and dependency edges — the same properties 3a-ii actively detects on existing DBs. If the create API cannot declare the self-referential `Depends on` relation at creation time (the DB's own ID is only known afterwards), add it immediately after via a schema update (`mcp__notion__notion-update-data-source`) pointing the relation at the new database. `Parent task` carries the same creation caveat as `Depends on`: if the create API cannot declare a self-referential relation before the database's own ID exists, add it immediately afterward via `mcp__notion__notion-update-data-source` pointing at the new database. `Creation Date` is a plain Date property — the plugin writes the timestamp itself rather than using a `Created time` property, so the value stays editable and backfillable.
 
 - Capture the returned `databaseId` and `dataSourceId`.
 
@@ -106,11 +108,14 @@ Notion is the plugin's ticket backend — no selection to make.
   - **Assignee** — prefer a `people` property named `"Assignee"` (case-insensitive). If absent, and exactly one `people` property exists, offer it via `AskUserQuestion`: *"Use `<found>` as the assignee property?"* (options: the candidate, or "Add a new `Assignee` People property"). If no `people` property exists at all, ask `AskUserQuestion`: **Add `Assignee` (People)** / **Skip** (assignment writes will warn-and-skip at runtime). Record the chosen name in `assigneeProperty` only when it is not the default `"Assignee"`. Remember whether an assignee slot exists — step 3b keys off it.
   - For any still-missing required slot (ID/Status/Type), offer via `AskUserQuestion` to auto-create it as an addition to the existing database. If the user declines, warn that some operations may fail; continue.
 - **Type options**: after Type is resolved, compare its option list against `typeMap` values (default: `Feature`/`Bug`/`Improvement`/`Research`). For each mismatch, ask `AskUserQuestion`: **Patch** (add the missing option) / **Update config to match live** (rebind `typeMap[<key>]` to an existing option) / **Skip**. *Prefer rebinding over renaming when the live label differs only cosmetically — e.g. `"Feature request"` vs `"Feature"` — to preserve existing ticket data.*
+- **Resolved statuses** — ask `AskUserQuestion` (multi-select) over the resolved Status property's live option list: *"Which of these mean a ticket is resolved?"* Pre-check any option matching `Implemented` / `Done` / `Cancelled` case-insensitively. Write the picks to `statusMap.done` and `statusMap.cancelled`, following the omit-when-default convention — when the picks are exactly the defaults, write nothing. This set is read-only to the plugin: it decides when an Epic auto-closes, and no command ever transitions a ticket into these statuses. Skip this question on the **create-new** path (3a-i), where the Status options are the plugin's own three and the defaults already apply.
 - **Detect structural-mission properties** — probe the live schema for the four optional properties used by multi-task missions. **No user prompts** here; pure detection. For each, record an override in config only when the resolved live name differs from the default:
   - `epicProperty` (default `"Epic"`) — look for any `select` property named `Epic` (case-insensitive). If missing under that name, scan for a `select` property whose name contains "epic" / "initiative" / "theme" and offer it as the binding via `AskUserQuestion` only if exactly one candidate exists. Otherwise omit (feature degrades gracefully).
   - `phaseProperty` (default `"Phase"`) — same pattern, scanning for "phase" / "stage".
   - `stepProperty` (default `"Step"`) — `number` property named `Step`.
   - `dependsOnProperty` (default `"Depends on"`) — self-referential `relation` property. Accept any such relation (self-referential is the distinguishing trait; name match is secondary).
+  - `parentTaskProperty` (default `"Parent task"`) — scan for a self-referential `relation` **other than** the one bound to `dependsOnProperty`. Prefer the name `"Parent task"` (case-insensitive), then `"Parent item"`, then `"Parent"`. If none is found, ask `AskUserQuestion`: **Create `Parent task` (Relation)** / **Bind to `<found>`** (only when a candidate exists) / **Skip**. The Create option's prompt must state the limitation plainly: *"The API creates a plain self-referential relation, not Notion's native Sub-items feature — grouping and every plugin feature work identically, but rows render as a normal relation column rather than nested sub-rows. To get the native rendering, enable Sub-items in the Notion UI first and re-run init to bind to it."* On **Skip**, epic containers are unavailable and Epic grouping degrades to Select-tagging only.
+- **Detect the Creation Date property** — prefer a property named `"Creation Date"` (case-insensitive) of type `date` or `created_time`. If missing under that name, scan for a single `created_time` property and offer it. If still unresolved, ask `AskUserQuestion`: **Add `Creation Date` (Date)** / **Bind to `<found>`** (only when a candidate exists) / **Skip** (creation-date writes are skipped at runtime with a warning). Record `creationDateProperty` only when the resolved live name differs from the default.
 - **Detect extra Select/Status/Multi-Select properties** (for `staticProperties`) — anything other than the resolved `idProperty` / `statusProperty` / `typeProperty` / `epicProperty` / `phaseProperty`. For each such property, ask `AskUserQuestion`: *"Set a fixed value on `<prop>` for every new ticket?"* Options = the property's live option list, plus "Leave unset". When the user picks a concrete option, record it in `ticketSystem.staticProperties` as `<prop>: <option>`. Skip this whole step silently if no extra properties exist. Example use case: a `Project` property distinguishing multiple apps that share one DB.
 
 #### 3a-iii. Populate config
@@ -302,6 +307,7 @@ Print a short summary:
 - Input sources enabled
 - Verify steps
 - Code reviewer: <codex|copilot>.
+- Optional slots resolved: `Creation Date`, `Parent task` — and whether **Epic containers are available** (both `epicProperty` and `parentTaskProperty` present). When either is missing, say so plainly: "Epic containers unavailable — Epic grouping will use the Select tag only."
 - Build-flow plugins verified: superpowers + feature-dev (required dependencies)
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."
 
@@ -325,6 +331,8 @@ Compare the configured ticket system against its live backend state. This runs a
    - **Type slot** (`typeProperty`): must exist and be `select` or `multi_select`. Report missing.
    - **PR slot** (`prProperty`): if config has `prProperty`, must exist and be `url`; informational only, not a hard drift.
    - **Assignee slot** (`assigneeProperty`): if config has `assigneeProperty`, it should exist and be `people`-typed; **informational only**, not a hard drift (mirrors the PR slot). Skip the check when `assigneeProperty` is absent from config.
+   - **Creation Date slot** (`creationDateProperty`): if config has the key, it should exist and be `date` or `created_time`; **informational only**, not a hard drift (mirrors the PR and Assignee slots). Skip the check when the key is absent from config.
+   - **Parent task slot** (`parentTaskProperty`): if config has the key, it should exist and be a self-referential `relation`; **informational only**. Skip the check when the key is absent from config.
    - **Status options**: expected = `statusMap` values plus `"Backlog"`. Report any expected option missing; extras are informational.
    - **Type options**: expected = `typeMap` values (defaults `Feature`/`Bug`/`Improvement`/`Research` when the key is absent). Report any expected option missing; extras are informational.
 3. For each drift item, ask `AskUserQuestion`:
