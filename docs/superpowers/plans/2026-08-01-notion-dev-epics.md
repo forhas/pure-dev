@@ -21,7 +21,7 @@ Copied verbatim from the spec. Every task's requirements implicitly include thes
 - **Absence tolerance.** Every new Notion property (`creationDateProperty`, `parentTaskProperty`) is absence-tolerant: when missing from the live DB, skip the operation and log **one** warning per run. Never abort. (§1, §4.3, §4.4, §4.5)
 - **One warning per run.** Warnings for a missing property are emitted once per run, not once per call. Matches the existing `prProperty` / `assigneeProperty` convention.
 - **Omit-when-default.** `/notion-dev:init` writes a config key only when the resolved live name differs from the schema default. Exceptions already in the codebase (`reviewer`, `defaultAssignee`) are not extended by this work.
-- **The adapter owns the title prefix.** No command file ever constructs, parses, or strips `[<KEY>-<n>] `. Callers pass and receive bare titles. (§3)
+- **The adapter owns the title prefix.** No command file ever **writes a title** carrying a constructed prefix, and none parses or strips one. Callers pass and receive bare titles, and get the ticket key as a separate `key` field (`"STO-67"`) when they need to *display* it. Rendering `[{key}] {title}` for human-readable output is fine; building a prefix to write back is not. (§3)
 - **`statusMap.done` / `statusMap.cancelled` are read-only.** The plugin reads them for the epic-close check and never transitions a ticket into them. (§1.2)
 - **Epic bookkeeping is best-effort.** Every step in §6 logs a warning and continues on failure; it never fails a run whose merge already landed. (§6.6)
 - **`quick-dev` is untouched.** No file under `plugins/quick-dev/` changes.
@@ -148,7 +148,13 @@ The value written is the caller's bare title with the ID prefix prepended, and t
 Replace `fetchTicket` step 5 (line 190) with:
 
 ```markdown
-5. Return `{ title, body, status, type, url, metadata: { pageId, idProperty value, rawTitle } }`. `title` is the page title **with the ID prefix stripped** (see "Title prefix"); `rawTitle` is the literal Notion title. The `idProperty value` (the numeric key) is read off the **resolved page** regardless of which branch resolved it — callers rely on it for branch/worktree naming.
+5. Return `{ title, key, body, status, type, url, metadata: { pageId, idProperty value, rawTitle } }`. `title` is the page title **with the ID prefix stripped** (see "Title prefix"); `key` is the logical ticket key (`"STO-67"`) for callers that need to *display* the id beside the title; `rawTitle` is the literal Notion title. The `idProperty value` (the numeric key) is read off the **resolved page** regardless of which branch resolved it — callers rely on it for branch/worktree naming.
+```
+
+Then append to the "Reading" paragraph of the `## Title prefix` section added in Step 1:
+
+```markdown
+Callers that need to *show* the id alongside the title use the `key` field (`"STO-67"`) and render `[{key}] {title}` themselves. That is display formatting, not prefix construction — what the adapter owns is the title stored in Notion.
 ```
 
 - [ ] **Step 4: Prefix on create**
@@ -189,11 +195,11 @@ Then, immediately after step 2's bullet list and before step 3 (`3. Return { id,
 ```bash
 cd /home/forhas/dev/pure-dev
 grep -n 'Title prefix' plugins/notion-dev/skills/ticket-system/SKILL.md
-grep -n 'rawTitle' plugins/notion-dev/skills/ticket-system/SKILL.md
-grep -rn '\[<KEY>-' plugins/notion-dev/commands/ | wc -l
+grep -c 'rawTitle\|`key`' plugins/notion-dev/skills/ticket-system/SKILL.md
+grep -rn 'title.*=.*\[<KEY>-\|title.*\[\$\?{\?KEY' plugins/notion-dev/commands/ | wc -l
 ```
 
-Expected: first prints 5 lines (the section heading plus 4 cross-references). Second prints 2 lines (fetchTicket's return, and the Title prefix section's "Reading" paragraph). Third prints `0` — **no command file may construct a prefix**; any hit means the adapter-owns-it constraint was violated.
+Expected: first prints 5 lines (the section heading plus 4 cross-references). Second prints ≥ 3. Third prints `0` — **no command file may write a title carrying a constructed prefix**. Display rendering such as `[{key}] {title}` in an epic's task list is explicitly allowed and does not match this pattern.
 
 - [ ] **Step 7: Commit**
 
@@ -218,7 +224,8 @@ The five new operations plus `parentTaskProperty`, the resolved set, and the epi
   - `createEpic({ name, overview, type?, assignee? })` → `{ id, url, pageId }`
   - `findEpics()` → `[{ id, pageId, name, title, url, overview }]`
   - `setParent(id, epicId)` → `void`
-  - `listEpicChildren(epicId)` → `[{ id, title, status, url }]`
+  - `listEpicChildren(epicId)` → `[{ id, key, title, status, url }]`
+  - `refreshEpicTasks(epicId)` → `void` — sole owner of the `## Tasks` render format
   - `appendToSection(id, sectionName, content)` → `void`
   - `createTicket` gains `parent?`
   - config key `ticketSystem.parentTaskProperty`, default `"Parent task"`
@@ -252,7 +259,8 @@ In `plugins/notion-dev/skills/ticket-system/SKILL.md`, in the `## Logical operat
 | `createEpic` | `{ name, overview, type?, assignee? }` | `{ id, url, pageId }` — creates an Epic container page. No-op returning `null` when the DB lacks `epicProperty` or `parentTaskProperty` |
 | `findEpics` | — | `[{ id, pageId, name, title, url, overview }]` — pages with `epicProperty` set and `parentTaskProperty` empty. `[]` when either property is absent |
 | `setParent` | `id`, `epicId` | `void` — writes the `parentTaskProperty` relation. No-op when the property is absent |
-| `listEpicChildren` | `epicId` | `[{ id, title, status, url }]` — pages whose `parentTaskProperty` points at `epicId`, ordered by `id`. `[]` when the property is absent |
+| `listEpicChildren` | `epicId` | `[{ id, key, title, status, url }]` — pages whose `parentTaskProperty` points at `epicId`, ordered by `id`. `[]` when the property is absent |
+| `refreshEpicTasks` | `epicId` | `void` — re-renders the epic's `## Tasks` section from its live children. The single owner of that section's format |
 | `appendToSection` | `id`, `sectionName`, `content` | `void` — **appends** to a named body section, creating it if absent. Never replaces, unlike `upsertSection` |
 ```
 
@@ -370,7 +378,27 @@ Read-only.
 1. If `parentTaskProperty` is absent from the live DB, warn once and return `[]`.
 2. Resolve `epicId` to a page ID via `fetchTicket`.
 3. Query the DB for pages whose `parentTaskProperty` contains that page ID.
-4. Return `[{ id, title, status, url }]` ordered ascending by `id` — `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
+4. Return `[{ id, key, title, status, url }]` ordered ascending by `id` — `key` the logical ticket key (`"STO-67"`) for display, `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
+
+## refreshEpicTasks(epicId)
+
+Re-renders an epic's `## Tasks` section from its live children. **The single owner of that section's format** — callers never render it themselves, so `/notion-dev:create-task` and the epic-update flow cannot drift apart.
+
+1. If `parentTaskProperty` is absent from the live DB, warn once and return.
+2. `listEpicChildren(epicId)`.
+3. Render one Notion to-do block per child, ordered by id:
+
+```
+- [x] [STO-67] Fix stale index — Implemented
+- [ ] [STO-68] Add cache metrics — In Progress
+- [ ] [STO-69] Backfill historic wallets — Backlog
+```
+
+   The box is ticked when the child's `status` is in the **resolved set**. Each line is `[{key}] {title} — {status}` from the `listEpicChildren` entry.
+4. Prepend this note as the section's first paragraph: *"Snapshot as of the last resolution — see the Parent task column for live status."*
+5. `upsertSection(epicId, "Tasks", <rendered blocks>)`.
+
+Safe to call repeatedly. `upsertSection` replaces only up to the next top-level heading, so a `## Resolution Log` below it is never touched.
 
 ## appendToSection(id, sectionName, content)
 
@@ -389,7 +417,7 @@ The **append-only** counterpart to `upsertSection`. Where `upsertSection` replac
 ```bash
 cd /home/forhas/dev/pure-dev
 python3 -c "import json; d=json.load(open('plugins/notion-dev/schema/notion-dev.config.schema.json')); print('parentTaskProperty default:', d['properties']['ticketSystem']['properties']['parentTaskProperty']['default'])"
-for op in createEpic findEpics setParent listEpicChildren appendToSection; do
+for op in createEpic findEpics setParent listEpicChildren refreshEpicTasks appendToSection; do
   printf '%s: table=%s section=%s\n' "$op" \
     "$(grep -c "^| \`$op\`" plugins/notion-dev/skills/ticket-system/SKILL.md)" \
     "$(grep -c "^## $op" plugins/notion-dev/skills/ticket-system/SKILL.md)"
@@ -558,14 +586,7 @@ Then insert a new pass between Pass 1 and Pass 2 (after line 170):
 ````markdown
 **Pass 1.5 — populate the epic's task list** (skip when `EPIC_ID` is undefined):
 
-Invoke `listEpicChildren(EPIC_ID)`, then `upsertSection(EPIC_ID, "Tasks", <rendered list>)`. One line per child, ordered by id, as Notion to-do blocks:
-
-```
-- [ ] [<KEY>-67] Fix stale index — Backlog
-- [ ] [<KEY>-68] Add cache metrics — Backlog
-```
-
-The checkbox is ticked when the child's status is in the resolved set (see `notion-dev:ticket-system`); at creation nothing is. Prefix the section body with the staleness note: *"Snapshot as of the last resolution — see the Parent task column for live status."*
+Invoke `notion-dev:ticket-system` operation `refreshEpicTasks(EPIC_ID)`. That operation owns the `## Tasks` render format entirely — do **not** render the list here, or this command and the epic-update flow will drift apart.
 
 This runs even though nothing has resolved yet, so the epic reads as a real plan the moment it exists. A failure here is non-fatal — warn and continue to Pass 2.
 ````
@@ -771,28 +792,41 @@ git commit -m "feat(notion-dev): refuse to implement an Epic container in ticket
 
 ---
 
-### Task 8: Epic update on ticket resolution
+### Task 8: Epic update on ticket resolution — shared skill
 
-The §6 procedure, written identically into both commands. This is the task most at risk of the two copies drifting — Step 5's verification exists specifically to catch that.
+The §6 procedure lives in **one** new skill that both commands invoke, mirroring how `notion-dev:review-and-merge` is already shared by `ticket.md` Phase 7 and `finalize.md` Phase 2. No duplicated prose, so no drift check is needed.
 
 **Files:**
-- Modify: `plugins/notion-dev/commands/ticket.md:294-301` (Phase 8, between 8.2 and 8.3)
-- Modify: `plugins/notion-dev/commands/finalize.md:83-88` (Phase 3.2)
+- Create: `plugins/notion-dev/skills/epic-update/SKILL.md`
+- Modify: `plugins/notion-dev/commands/ticket.md:294-301` (Phase 8, between 8.2 and 8.3), `:335` (Phase 10 report)
+- Modify: `plugins/notion-dev/commands/finalize.md:83-88` (Phase 3.2), `:121` (Phase 5 report)
 
 **Interfaces:**
-- Consumes: Task 3's `listEpicChildren` / `appendToSection` / `upsertSection` / `updateStatus` and the resolved set; Task 5's `## Tasks` render format; Task 6's non-interactive invocation contract.
-- Produces: nothing consumed downstream.
+- Consumes: Task 3's `listEpicChildren` / `refreshEpicTasks` / `appendToSection` / `updateStatus` and the resolved set; Task 6's non-interactive invocation contract.
+- Produces: skill `notion-dev:epic-update`, invoked as
+  `Skill(notion-dev:epic-update)` with args `<ticket-id>` plus `--non-interactive` when set, and `REVIEW_REPORT` passed as context. Returns an `EPIC-UPDATE:` output block the callers put in their reports.
 
-- [ ] **Step 1: Write the procedure into `ticket.md`**
+- [ ] **Step 1: Create the shared skill**
 
-In `plugins/notion-dev/commands/ticket.md`, insert a new section between `### 8.2 Update status` (which ends at line 296) and `### 8.3 Post-merge hooks`:
+Create `plugins/notion-dev/skills/epic-update/SKILL.md`. Match the frontmatter style of the sibling skills (see `plugins/notion-dev/skills/review-and-merge/SKILL.md` for the house pattern):
 
 ````markdown
-### 8.2a Update the epic
+---
+name: epic-update
+description: Use after a ticket reaches Implemented, from /notion-dev:ticket Phase 8 or /notion-dev:finalize Phase 3, to record the resolution on the ticket's Epic container — file deferred follow-ups, refresh the Epic's task list, append a dated log entry, and close the Epic when everything under it is resolved.
+---
 
-Runs immediately after the status flip and before the post-merge hooks. **Every step here is best-effort**: a failure logs a warning and continues to the next step, never failing a run whose merge already landed.
+# epic-update
 
-**1. Resolve the epic.** Read the resolved ticket's `parentTaskProperty` from the Phase 1.1 fetch. Empty, or the property absent from the live DB → **skip steps 2-5 entirely.** Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title and Epic name.
+Records a resolved ticket against its Epic container. Invoked by `/notion-dev:ticket` (Phase 8) and `/notion-dev:finalize` (Phase 3) — the two entry points that take a ticket to `Implemented`.
+
+**Args:** `<ticket-id>` (the numeric or logical key of the just-resolved ticket), plus `--non-interactive` when the caller is in that mode.
+
+**Caller-supplied context:** `REVIEW_REPORT` (the review loop's final report, source of the deferred follow-ups) and `REPO_ROOT` (the primary checkout — the caller recorded it before any `cd` into a worktree).
+
+**Every step here is best-effort**: a failure logs a warning and continues to the next step. This skill never fails its caller's run — the merge has already landed by the time it is invoked, and epic bookkeeping is not worth losing that.
+
+**1. Resolve the epic.** `fetchTicket(<ticket-id>)` and read its `parentTaskProperty`. Empty, or the property absent from the live DB → **skip steps 2-5 entirely** and return `EPIC-UPDATE: none`. Not an error; most tickets have no epic. Otherwise `EPIC_ID` is the referenced page — fetch it for its title and Epic name.
 
 **2. File deferred follow-ups.** Source: `REVIEW_REPORT`'s deferred follow-ups — the same list written to the ticket's `## Merged` section.
 
@@ -809,17 +843,9 @@ Then run:
 
 Record `FILED` = `[{ id, title, url }]` for each created ticket, and `UNFILED` = the items the user chose to skip. A create-task failure is **non-fatal**: log it, add the item to `UNFILED`, continue. When `REVIEW_REPORT` has no deferred follow-ups both lists are empty and this step is a no-op.
 
-**3. Refresh the epic's `## Tasks`.** Invoke `listEpicChildren(EPIC_ID)`, then `upsertSection(EPIC_ID, "Tasks", <rendered list>)`. One line per child, ordered by id, as Notion to-do blocks:
+**3. Refresh the epic's `## Tasks`.** Invoke `notion-dev:ticket-system` operation `refreshEpicTasks(EPIC_ID)`, then `listEpicChildren(EPIC_ID)` to hold the child list for steps 4 and 5. Do **not** render the task list here — `refreshEpicTasks` owns that format, and duplicating it is how this section drifts from the one `/notion-dev:create-task` writes.
 
-```
-- [x] [<KEY>-67] Fix stale index — Implemented
-- [ ] [<KEY>-68] Add cache metrics — In Progress
-- [ ] [<KEY>-69] Backfill historic wallets — Backlog
-```
-
-The checkbox is ticked when the child's status is in the **resolved set** (see `notion-dev:ticket-system`). Prefix the section body with: *"Snapshot as of the last resolution — see the Parent task column for live status."* The mirror is refreshed only here, so between resolutions it lags reality; the live view is Notion's Parent task relation column, and this section exists so the epic reads as a coherent document.
-
-`upsertSection` is safe here precisely because the log lives in its own `## Resolution Log` section — replacing `## Tasks` stops at the next top-level heading, so history is never clobbered.
+The mirror is refreshed only on resolution, so between resolutions it lags reality; the live view is Notion's Parent task relation column, and the section exists so the epic reads as a coherent document.
 
 **4. Append the log entry.** Invoke `appendToSection(EPIC_ID, "Resolution Log", <entry>)`. The entry is a `divider` block followed by:
 
@@ -844,9 +870,37 @@ Close only when **all** of:
 Then `updateStatus(EPIC_ID, "implemented")`, and say so in step 4's `Epic status` and `Next` lines. Otherwise leave the epic's status untouched. The plugin never moves an epic *out* of a resolved status, and never sets an epic to `In Progress`.
 
 Step 2 must run before step 5, or a run that files a follow-up would close the epic that follow-up belongs to.
+
+## Output block
+
+Return exactly one block for the caller's report:
+
+```
+EPIC-UPDATE: none | updated | closed | degraded
+EPIC: [<KEY>-<n>] <name> · <url>          (omit on `none`)
+FILED: <KEY>-69, <KEY>-70                 (or `none`)
+DEFERRED: <one-liner>, …                  (or `none`)
+CHILDREN: <resolved>/<total> resolved
+```
+
+`degraded` means the DB lacks `epicProperty` or `parentTaskProperty`, so epic containers are unavailable — distinct from `none`, which means this ticket simply has no epic.
 ````
 
-- [ ] **Step 2: Reference it from Phase 10's report**
+- [ ] **Step 2: Invoke the skill from `ticket.md` Phase 8**
+
+In `plugins/notion-dev/commands/ticket.md`, insert a new section between `### 8.2 Update status` (which ends at line 296) and `### 8.3 Post-merge hooks`:
+
+````markdown
+### 8.2a Update the epic
+
+Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 7) and `$REPO_ROOT` as context.
+
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending the dated `## Resolution Log` entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10.
+
+Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
+````
+
+- [ ] **Step 3: Reference it from Phase 10's report**
 
 In `## Phase 10 — Report`, after the `- Ticket end state (`implemented`).` bullet (line 335), add:
 
@@ -854,7 +908,7 @@ In `## Phase 10 — Report`, after the `- Ticket end state (`implemented`).` bul
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 ```
 
-- [ ] **Step 3: Write the same procedure into `finalize.md`**
+- [ ] **Step 4: Invoke the skill from `finalize.md` Phase 3**
 
 In `plugins/notion-dev/commands/finalize.md`, `### 3.2 Update status and post-merge hooks` currently reads:
 
@@ -864,11 +918,19 @@ In `plugins/notion-dev/commands/finalize.md`, `### 3.2 Update status and post-me
 Then run `git.postMergeHooks` skills in order (empty default — no-op).
 ```
 
-Replace it with the `updateStatus` sentence, then **the full text of steps 1-5 from Step 1 above, verbatim**, under a `### 3.3 Update the epic` heading, then the `postMergeHooks` sentence under `### 3.4 Post-merge hooks`.
+Replace it with three sections: keep the `updateStatus` sentence under the existing `### 3.2 Update status` heading, add `### 3.3 Update the epic`, then move the `postMergeHooks` sentence under `### 3.4 Post-merge hooks`. The new 3.3 reads:
 
-Copy the text rather than cross-referencing: these two commands are independent entry points and a reader of one must not have to open the other. Two adjustments to the copied text — `$REPO_ROOT` is recorded at finalize's preconditions gate rather than Phase 1.1, and the epic is resolved from the Phase 1 step 5 `fetchTicket(id)` result.
+```markdown
+Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 2) and `$REPO_ROOT` as context.
 
-- [ ] **Step 4: Reference it from finalize's Phase 5 report**
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending the dated `## Resolution Log` entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5.
+
+Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
+```
+
+Same invocation as `ticket.md` 8.2a. The only difference is the phase the `REVIEW_REPORT` comes from — finalize's review loop is Phase 2, ticket's is Phase 7.
+
+- [ ] **Step 5: Reference it from finalize's Phase 5 report**
 
 In `## Phase 5 — Report`, after the `- Ticket end state (`implemented`).` bullet (line 121), add:
 
@@ -876,24 +938,25 @@ In `## Phase 5 — Report`, after the `- Ticket end state (`implemented`).` bull
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 ```
 
-- [ ] **Step 5: Verify the two copies did not drift**
+- [ ] **Step 6: Verify the procedure exists once and both commands invoke it**
 
 ```bash
 cd /home/forhas/dev/pure-dev
-for s in 'Resolution Log' 'Follow-ups filed' 'Snapshot as of the last resolution' 'UNFILED' 'never moves an epic'; do
-  printf '%-40s ticket=%s finalize=%s\n' "$s" \
-    "$(grep -c "$s" plugins/notion-dev/commands/ticket.md)" \
-    "$(grep -c "$s" plugins/notion-dev/commands/finalize.md)"
-done
+echo "--- procedure defined exactly once ---"
+grep -rlc 'Resolution Log' plugins/notion-dev/skills/epic-update/SKILL.md plugins/notion-dev/commands/ticket.md plugins/notion-dev/commands/finalize.md 2>/dev/null
+echo "--- both commands invoke the skill ---"
+grep -c 'notion-dev:epic-update' plugins/notion-dev/commands/ticket.md plugins/notion-dev/commands/finalize.md
+echo "--- frontmatter present ---"
+head -4 plugins/notion-dev/skills/epic-update/SKILL.md
 ```
 
-Expected: **identical non-zero counts in both columns on every row.** Any row where the two numbers differ means the procedure drifted between the copies — fix it before committing. This check is the whole reason the two copies are safe to maintain.
+Expected: the first list names **only** `skills/epic-update/SKILL.md` — if either command file appears, the procedure was duplicated instead of invoked. The second prints `1` for each command. The third shows a `---` / `name: epic-update` / `description:` frontmatter block matching the sibling skills.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add plugins/notion-dev/commands/ticket.md plugins/notion-dev/commands/finalize.md
-git commit -m "feat(notion-dev): log ticket resolutions to the epic and close it when done"
+git add plugins/notion-dev/skills/epic-update/SKILL.md plugins/notion-dev/commands/ticket.md plugins/notion-dev/commands/finalize.md
+git commit -m "feat(notion-dev): add the epic-update skill and invoke it from ticket and finalize"
 ```
 
 ---
@@ -986,6 +1049,10 @@ Then add a line immediately after the Commands table (line 120):
 Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 ```
 
+- [ ] **Step 2f: List the new skill in the Layout section**
+
+The `## Layout` section (line 179) enumerates the plugin's directories. Add `skills/epic-update/` to that listing in the same style as its siblings, described as: *records a resolved ticket against its Epic — files deferred follow-ups, refreshes the task list, appends the resolution log entry, closes the Epic when everything under it is done. Shared by `/notion-dev:ticket` and `/notion-dev:finalize`.*
+
 - [ ] **Step 3: Bump the manifest**
 
 In `plugins/notion-dev/.claude-plugin/plugin.json`, change `"version": "0.7.0"` to `"version": "0.8.0"`. Minor: four new user-facing capabilities, no breaking change to any existing config — every new key is optional with a default, and every new Notion property is absence-tolerant.
@@ -998,7 +1065,7 @@ python3 -c "import json; print('version:', json.load(open('plugins/notion-dev/.c
 python3 -c "import json; json.load(open('plugins/notion-dev/schema/notion-dev.config.schema.json')); print('schema OK')"
 echo '--- every adapter operation called by a command must be defined ---'
 missing=0
-for op in $(grep -ohE '\b(createEpic|findEpics|setParent|listEpicChildren|appendToSection|upsertSection|createTicket|updateTicket|updateStatus|fetchTicket|setPullRequest|setDependencies|getSelectOptions|addSelectOption|postComment|resolveAssignee)\b' plugins/notion-dev/commands/*.md | sort -u); do
+for op in $(grep -ohE '\b(createEpic|findEpics|setParent|listEpicChildren|refreshEpicTasks|appendToSection|upsertSection|createTicket|updateTicket|updateStatus|fetchTicket|setPullRequest|setDependencies|getSelectOptions|addSelectOption|postComment|resolveAssignee)\b' plugins/notion-dev/commands/*.md plugins/notion-dev/skills/epic-update/SKILL.md | sort -u); do
   if [ "$(grep -c "^## $op" plugins/notion-dev/skills/ticket-system/SKILL.md)" -eq 0 ]; then
     echo "UNDEFINED: $op"; missing=1
   fi
