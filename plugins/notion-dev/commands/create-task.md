@@ -1,6 +1,6 @@
 ---
 description: Produce a well-formed ticket from a prompt or an existing source. Runs a depth-calibrated interview (via notion-dev:ticket-interviewer) when needed, then writes the result to the configured ticket system.
-argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
+argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
 ---
 
 # /notion-dev:create-task
@@ -14,7 +14,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 **Parsing rule.** Only treat a leading `<token>:` as a source selector when `<token>` exactly matches a known source name (`prompt`, `existing-ticket`, `notion-page`). Otherwise — including when the argument merely happens to contain a colon (e.g. `Add rate limiting: 100 req/min`) — default to `prompt` and treat the **entire** argument as raw text. Never infer a source from an arbitrary word before a colon.
 
-**Flags.** Five optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
+**Flags.** Six optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
 
 | Flag | Effect |
 |---|---|
@@ -23,14 +23,16 @@ Args: `[<source>:]<ref>` or free prompt text.
 | `--epic=<name>` | Skip Phase 2.6's matching; use this Epic select value verbatim. |
 | `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. |
 | `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
+| `--title=<text>` | Pin the ticket's final title to this exact string (see Phase 2.1). The interviewer still elaborates the body, but does not get to rewrite the title. |
 
-`--epic`, `--parent`, and `--assignee` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting.
+`--epic`, `--parent`, `--assignee`, and `--title` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting — `--title` in particular is what lets a caller dedup its own follow-ups reliably: it derives a title, passes it here, and knows that string is exactly what ends up stored.
 
 **`--non-interactive` phase behavior:**
 
 | Phase | Interactive | Non-interactive |
 |---|---|---|
 | 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) |
+| 2.1 title | Interviewer's returned `title` is used as-is, unless `--title` is supplied — then that exact string always wins, in either mode | Same rule: `--title`, when supplied, overrides the interviewer's returned `title`; otherwise the interviewer's value is used |
 | 2.2 confirm | `create` / `revise` / `cancel` | Auto-`create` |
 | 2.5 breakdown | May return a mission | Auto-collapse to `single` |
 | 2.6 epic attach | Prompt on candidates | Use `--epic` / `--parent`, or attach to none |
@@ -69,6 +71,8 @@ Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confid
 - Calibrates interview depth to `confidence` (high / medium / low).
 - Runs a clarity audit (Goal, Scope, Acceptance Criteria, Edge Cases, Dependencies, Data shape) as its shared safety net across tiers — even on high-confidence input.
 - Returns `{ title, body, type? }` where `body` is markdown formatted with `## Requirements`, `## Acceptance Criteria` (checklist), `## Context`, `## Open Questions`, `## Source`.
+
+When `--title` was supplied, it wins: use that exact string as the ticket's title and discard the interviewer's returned `title`. The interviewer still elaborates `body` in full — depth calibration, clarity audit, everything — only the title is pinned. This is what lets a caller (e.g. `epic-update`'s follow-up filing) derive a title once and know it is exactly what gets stored, regardless of what the interviewer would otherwise have produced.
 
 No `confidence`-branching lives in this command — depth calibration is fully owned by the skill.
 
