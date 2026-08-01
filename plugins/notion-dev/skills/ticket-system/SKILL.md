@@ -16,12 +16,18 @@ The caller names the operation and passes the arguments; the sections below desc
 | Operation | Arguments | Returns |
 |---|---|---|
 | `fetchTicket` | `id` (numeric or prefixed string, or a Notion page id/URL) | `{ title, key, body, status, type, url, metadata }` — `title` has the ID prefix stripped; `key` is the logical ticket key (`"STO-67"`) for display; `metadata` carries `rawTitle` (the literal Notion title) alongside `pageId` and the `idProperty` value; `type` is the logical key (`feature`/`bug`/…) when the DB has a mapped type property, else absent |
-| `createTicket` | `{ title, body, type?, epic?, phase?, step?, assignee? }` | `{ id, url }` — `epic`/`phase`/`step` are optional mission metadata; `assignee` is a resolved Notion user id. Each is absence-tolerant when the corresponding configured property is missing from the live DB |
+| `createTicket` | `{ title, body, type?, epic?, parent?, phase?, step?, assignee? }` | `{ id, url }` — `epic`/`parent`/`phase`/`step` are optional mission metadata; `assignee` is a resolved Notion user id. Each is absence-tolerant when the corresponding configured property is missing from the live DB |
 | `resolveAssignee` | `value` (user id, email, or display name) | `{ id, name }` on a unique person match; `null` on no match or ambiguity. Read-only — never mutates config or the DB |
 | `updateTicket` | `id`, `{ title?, body?, type? }` | `{ id, url }` — only the provided fields change |
 | `updateStatus` | `id`, `logicalStatus` ∈ `{ inProgress, implemented }` (plugin-invoked set) plus any custom key present in the user's `statusMap` | `void` — the plugin never invokes `delivered` / `done` / shipped-style states; those are reserved for host-project commands |
 | `setPullRequest` | `id`, `url` | `void` — persists the PR URL into the configured PR property. No-op when the live DB has no such property. Does not touch body sections. |
 | `setDependencies` | `id`, `[titleOrId, …]` | `void` — writes the configured `dependsOnProperty` relation. Resolves entries that look like titles to page IDs within the DB. No-op when the property is absent. Pass-2 in mission creation. |
+| `createEpic` | `{ name, overview, type?, assignee? }` | `{ id, url, pageId }` — creates an Epic container page. No-op returning `null` when the DB lacks `epicProperty` or `parentTaskProperty` |
+| `findEpics` | — | `[{ id, pageId, name, title, url, overview }]` — pages with `epicProperty` set and `parentTaskProperty` empty. `[]` when either property is absent |
+| `setParent` | `id`, `epicId` | `void` — writes the `parentTaskProperty` relation. No-op when the property is absent |
+| `listEpicChildren` | `epicId` | `[{ id, key, title, status, url }]` — pages whose `parentTaskProperty` points at `epicId`, ordered by `id`. `[]` when the property is absent |
+| `refreshEpicTasks` | `epicId` | `void` — re-renders the epic's `## Tasks` section from its live children. The single owner of that section's format |
+| `appendToSection` | `id`, `sectionName`, `content` | `void` — **appends** to a named body section, creating it if absent. Never replaces, unlike `upsertSection` |
 | `getSelectOptions` | `propertyName` | `[string]` or `null` — lists option names for a Select / Multi-Select / Status property. Returns `null` if the property is absent or not a selectable type. Read-only. |
 | `addSelectOption` | `propertyName`, `optionName` | `void` — extends a Select's options list on the live DB. Should only be invoked after explicit user confirmation (adding options mutates shared DB schema). |
 | `postComment` | `id`, `text` | `void` |
@@ -76,14 +82,25 @@ Config (from `.claude/notion-dev.config.json` → `ticketSystem`):
 - `stepProperty` — Number property holding the Step position within a Phase (default `"Step"`). Absence-tolerant.
 - `dependsOnProperty` — self-referential Relation property for blocking dependencies (default `"Depends on"`). Written in a second pass after all mission tickets exist. Absence-tolerant.
 - `creationDateProperty` — property holding the ticket's creation timestamp (default `"Creation Date"`). Tolerates two live types: a `date` property (the adapter writes the timestamp at creation) or a `created_time` property (Notion auto-populates; the adapter never writes). Absence-tolerant.
+- `parentTaskProperty` — self-referential Relation linking a ticket to its Epic container page (default `"Parent task"`). Distinct from `dependsOnProperty`: `Depends on` expresses blocking order between siblings, `Parent task` expresses containment. Absence-tolerant.
 
 Defaults for `statusMap` when keys are missing:
 ```
 inProgress  → "In Progress"
 implemented → "Implemented"
+done        → "Done"
+cancelled   → "Cancelled"
 ```
 
-The plugin actively invokes only `inProgress` (set by `/notion-dev:ticket` at worktree creation) and `implemented` (set by `/notion-dev:finalize` post-merge). Additional logical keys (`delivered`, `done`, etc.) may appear in a user's `statusMap` to support custom commands like a separate `/release` flow, but **no plugin command transitions a ticket to those states** — that is deliberately out of scope. Release and deployment semantics belong to the host project.
+The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
+
+### Resolved set
+
+The **resolved set** is the collection of live Notion option names produced by `statusMap.implemented`, `statusMap.done`, and `statusMap.cancelled`. A ticket counts as resolved when its status matches any member, case-insensitively.
+
+Used by exactly one thing: the epic-close check in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3, and for ticking the checkboxes in an epic's `## Tasks` section.
+
+A missing `done` or `cancelled` key falls back to its default option name. If that option does not exist on the live DB it simply never matches — a status the plugin has not been told about is not resolved, so the epic does not auto-close. Wrong in the safe direction.
 
 Defaults for `typeMap` when keys are missing:
 ```
@@ -106,6 +123,7 @@ The adapter normalizes the following shape differences between the canonical sch
 - **Depends on** (Relation) — write as a list of page IDs. When the caller passes titles, resolve each to a page ID by DB-scoped title search (same mechanism `existing-ticket` uses on numeric IDs) before writing. Unresolved titles raise a clear error naming the offender. Absence-tolerant when the property is missing.
 - **Assignee** (People) — write as a single-item list of `{ id }` user references to the `assigneeProperty` column. Read is not implemented (the plugin never reads assignee back). When the configured property is absent from the live DB or is not a `people` type, skip the write and log **one** warning per run (`"assigneeProperty '<name>' not found or not a People property on DB; skipping assignee write"`) — never abort. `assignee` is caller-supplied creation state, not a `staticProperty`: `updateTicket` and `upsertSection` never touch it.
 - **Creation Date** (`date` or `created_time`) — read the live property type and branch. `date`: `createTicket` writes `{ "date": { "start": "<ISO 8601 UTC timestamp, with time>" } }`. `created_time`: never written — Notion populates it, and the API rejects writes to it. Any other type, or the property absent: skip the write and log **one** warning per run (`"creationDateProperty '<name>' not found or not a date/created_time property on DB; skipping creation date write"`). Creation-only, like `staticProperties` — `updateTicket` and `upsertSection` never touch it.
+- **Parent task** (Relation, self-referential) — write as a **single-element** list of page IDs; a ticket has exactly one parent. Relation writes in Notion are replacement, not append, so writing one element is correct and no read-merge is needed (unlike `Depends on`). Reject a self-reference (`id == epicId`) with a clear error. When the configured property is absent from the live DB, skip the write and log **one** warning per run (`"parentTaskProperty '<name>' not found on DB; skipping parent write"`) — never abort.
 
 ## Project scoping guardrail
 
@@ -137,8 +155,13 @@ Tickets are first-class user-facing documents. The adapter applies a fixed visua
 | `Source` | `/notion-dev:create-task` | `gray` | — | — |
 | `Implementation` | `/notion-dev:ticket` | `blue` | `blue_background` | 🔨 |
 | `Merged` | `/notion-dev:finalize` | `green` | `green_background` | ✅ |
+| `Overview` | `createEpic` | `gray` | — | — |
+| `Tasks` | epic refresh (`/notion-dev:ticket` Phase 8, `/notion-dev:finalize` Phase 3) | `blue` | — | — |
+| `Resolution Log` | epic update (same) | `purple` | — | — |
 
 Unknown section names (including user-added ones) render with no color and no callout — the plugin only styles sections it owns. Match section names case-insensitively on base text; don't restyle sections a user has manually recolored (see "Heading attribute preservation" below).
+
+The last three sections appear on **epic pages only**. None takes an intro callout — they are self-explanatory, and a callout on every one would be noise. `Tasks` renders as to-do blocks (same convention as `Acceptance Criteria`). The zone-divider rule below applies to `Implementation` / `Merged` on ticket pages only; epic pages use the per-entry divider described under `appendToSection`.
 
 ### Zone dividers
 
@@ -228,7 +251,7 @@ Read-only. Turns a human-supplied value into a concrete Notion user id. Used by 
 
 Never writes config or the database. When `mcp__notion__notion-get-users` is unavailable, fail with the standard MCP-unavailability message (see "MCP unavailability").
 
-## createTicket({ title, body, type?, epic?, phase?, step?, assignee? })
+## createTicket({ title, body, type?, epic?, parent?, phase?, step?, assignee? })
 
 1. Determine the next ID: query the database ordered by `idProperty` desc; take `max + 1`. If `idProperty` is `unique_id`, skip this step — Notion auto-assigns on create; read the assigned id back from the created page.
 2. Create the page via `mcp__notion__notion-create-pages`:
@@ -240,6 +263,7 @@ Never writes config or the database. When `mcp__notion__notion-get-users` is una
    - **Creation Date** (absence-tolerant): if the live DB has the `creationDateProperty` column AND it is a `date` type, set it to the current UTC timestamp in ISO 8601 with time (e.g. `2026-08-01T14:32:00Z`). When it is a `created_time` type, set nothing — Notion fills it. When absent or any other type, skip with the one-time warning from "Property type handling".
    - **Mission metadata** (absence-tolerant, independent of each other):
      - If `epic` is provided AND `epicProperty` exists on the live DB, set that Select to `epic` (exact option-name match required; if the option doesn't exist, raise an error — the caller should have resolved it via `getSelectOptions` / `addSelectOption` first).
+     - If `parent` is provided AND `parentTaskProperty` exists on the live DB, set that Relation to a single-element list containing the epic page's id. Applied **after** the page is created and retitled, since it needs the new page's id. `epic` and `parent` are independent: the Epic select makes the grouping visible in DB views and filters, the Parent task relation makes it a container. Callers normally set both.
      - If `phase` is provided AND `phaseProperty` exists, set that Select to `phase` (same option-match rule).
      - If `step` is provided AND `stepProperty` exists, set that Number to `step`.
      - Any missing configured property emits a one-time warning (`"<name>Property '<n>' not found on DB; skipping"`) and continues.
@@ -353,6 +377,80 @@ Steps:
 5. If the section does not exist, append the blocks at the end of the page (divider, heading, callout, body).
 
 Different section names (e.g. `"Implementation"` and `"Merged"`) coexist — `upsertSection` only touches the named section. Dividers between them are idempotent: each write checks for an adjacent divider before inserting one.
+
+## Epic containers
+
+An **epic** is a page in this same database where `parentTaskProperty` is empty, `epicProperty` (Select) is set, and one or more other pages point at it via `parentTaskProperty`. Children carry the same `epicProperty` value as the epic page. Epics are identified structurally, not by a dedicated property.
+
+A page with an Epic select and an empty parent but **no** children is an *epic-in-waiting* — `findEpics` still returns it so a first child can attach.
+
+Both properties are required for epic containers. When either is absent from the live DB, every operation below degrades to a no-op with one warning, and the plugin falls back to plain Epic-select tagging.
+
+## createEpic({ name, overview, type?, assignee? })
+
+1. If `epicProperty` or `parentTaskProperty` is absent from the live DB, warn once and return `null` — the caller degrades to Epic-select tagging.
+2. Compose the body as two sections:
+   - `## Overview` — the `overview` argument: a short statement of the initiative or incident.
+   - `## Tasks` — empty at creation; the epic-refresh step populates it later.
+3. Call `createTicket({ title: name, body, type, assignee, epic: name })`. Reusing the normal creation path means the epic gets an ID, the title prefix, `Creation Date`, `staticProperties`, and the assignee for free. Status is `"Backlog"` like any new ticket.
+4. `parentTaskProperty` is left empty — an epic has no parent. `phase`, `step`, and `dependsOn` are never set on an epic.
+5. `type` defaults to the dominant child type when the caller knows the children, else `feature`.
+6. Return `{ id, url, pageId }`.
+
+## findEpics()
+
+Read-only.
+
+1. If `epicProperty` or `parentTaskProperty` is absent from the live DB, warn once and return `[]`.
+2. Query the database (or `dataSourceId` when configured) with `mcp__notion__notion-query-data-sources` for pages where `epicProperty` is not empty **and** `parentTaskProperty` is empty.
+3. For each hit return `{ id, pageId, name, title, url, overview }` — `name` is the `epicProperty` Select value, `title` is the page title with the ID prefix stripped, `overview` is the text of its `## Overview` section (empty string when absent).
+
+## setParent(id, epicId)
+
+1. If `parentTaskProperty` is absent from the live DB, warn once and return.
+2. Resolve `id` and `epicId` to page IDs via `fetchTicket`.
+3. If they are the same page, raise: *"`setParent`: a ticket cannot be its own parent"*.
+4. Call `mcp__notion__notion-update-page` setting `parentTaskProperty` to a single-element Relation list containing the epic's page id. Replacement semantics are correct here — a ticket has exactly one parent.
+
+## listEpicChildren(epicId)
+
+Read-only.
+
+1. If `parentTaskProperty` is absent from the live DB, warn once and return `[]`.
+2. Resolve `epicId` to a page ID via `fetchTicket`.
+3. Query the DB for pages whose `parentTaskProperty` contains that page ID.
+4. Return `[{ id, key, title, status, url }]` ordered ascending by `id` — `key` the logical ticket key (`"STO-67"`) for display, `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
+
+## refreshEpicTasks(epicId)
+
+Re-renders an epic's `## Tasks` section from its live children. **The single owner of that section's format** — callers never render it themselves, so `/notion-dev:create-task` and the epic-update flow cannot drift apart.
+
+1. If `parentTaskProperty` is absent from the live DB, warn once and return.
+2. `listEpicChildren(epicId)`.
+3. Render one Notion to-do block per child, ordered by id:
+
+```
+- [x] [STO-67] Fix stale index — Implemented
+- [ ] [STO-68] Add cache metrics — In Progress
+- [ ] [STO-69] Backfill historic wallets — Backlog
+```
+
+   The box is ticked when the child's `status` is in the **resolved set**. Each line is `[{key}] {title} — {status}` from the `listEpicChildren` entry.
+4. Prepend this note as the section's first paragraph: *"Snapshot as of the last resolution — see the Parent task column for live status."*
+5. `upsertSection(epicId, "Tasks", <rendered blocks>)`.
+
+Safe to call repeatedly. `upsertSection` replaces only up to the next top-level heading, so a `## Resolution Log` below it is never touched.
+
+## appendToSection(id, sectionName, content)
+
+The **append-only** counterpart to `upsertSection`. Where `upsertSection` replaces a section's children, this adds to the end of them. Use it wherever history must accumulate rather than be overwritten.
+
+1. `fetchTicket(id)` → `pageId`.
+2. Scan the page for an existing `## <sectionName>` heading — match base heading text, **ignoring** trailing Notion attributes like `{color="..."}`.
+3. **Section absent** → append the heading at the end of the page, applying the palette color from the Styling conventions table, then write `content`'s blocks beneath it.
+4. **Section present** → append `content`'s blocks immediately before the next top-level (`##`) heading, or at end of page when it is the last section. Existing children are never read back, rewritten, or reordered — that is the whole point of this operation.
+
+`content` is markdown, rendered with the same block conventions `upsertSection` uses.
 
 ## MCP unavailability
 

@@ -54,7 +54,7 @@
         "statusMap": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Maps logical statuses (inProgress, implemented, delivered) to Notion option names."
+          "description": "Maps logical statuses to Notion option names. The plugin WRITES inProgress and implemented. It only READS done and cancelled — these exist so the epic-close check knows which of your Status options mean resolved, and no plugin command ever transitions a ticket into them. Defaults: inProgress→In Progress, implemented→Implemented, done→Done, cancelled→Cancelled."
         },
         "typeMap": {
           "type": "object",
@@ -90,6 +90,11 @@
           "type": "string",
           "default": "Creation Date",
           "description": "Property holding the ticket's creation timestamp. The live property may be either a Date property (the plugin writes the creation timestamp) or a Created time property (Notion auto-populates; the plugin never writes). Absence-tolerant — when missing or of any other type, the write is skipped with a warning rather than aborting."
+        },
+        "parentTaskProperty": {
+          "type": "string",
+          "default": "Parent task",
+          "description": "Self-referential Relation property linking a ticket to its Epic container page. Distinct from dependsOnProperty. Absence-tolerant — without it, Epic grouping degrades to Epic-select tagging only and no epic pages are created or matched."
         }
       }
     },
