@@ -21,7 +21,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 | `--non-interactive` | Never pause for user input; see the phase table below. |
 | `--context-file=<path>` | Path to a markdown context packet. Seeds the interviewer, and is the proxy respondent's evidence base. Valid with or without `--non-interactive`. |
 | `--epic=<name>` | Skip Phase 2.6's matching; use this Epic select value verbatim. |
-| `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. |
+| `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. **Taken on trust** — unlike `--epic`/`--parent` pairs resolved internally via `findEpics()`, an explicitly supplied `--parent` is written through to `setParent` with no epic-structure check (there is no way to guard it without also blocking the legitimate case of attaching a brand-new epic's first child); the caller is responsible for passing the id of an actual epic. |
 | `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
 | `--title=<text>` | Pin the ticket's final title to this exact string (see Phase 2.1). The interviewer still elaborates the body, but does not get to rewrite the title. |
 
