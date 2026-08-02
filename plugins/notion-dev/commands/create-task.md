@@ -320,6 +320,4 @@ When `phase` isn't used in the mission, flatten to a plain numbered list.
 
 - Source returns no content (e.g. empty prompt, missing ticket) → ask the user for input or abort.
 - Ticket-system MCP unavailable → abort with clear retry guidance.
-- User cancels at confirm gate → abort; do not write.
-
-Best-effort, before stopping: run the issue-log sweep from Phase 4 — this path skips Phase 4 entirely. A failure to write it never masks the real failure report.
+- User cancels at confirm gate → abort; do not write. Best-effort, before stopping: run the issue-log sweep from Phase 4 — this path skips Phase 4 entirely, and an unrecoverable failure is the single most valuable thing this log can record. A failure to write it never masks the real failure report.
