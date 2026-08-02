@@ -120,7 +120,7 @@ The adapter normalizes the following shape differences between the canonical sch
 - **ID** — read/write as `number` or `unique_id` depending on the live property type. `unique_id` is read-only to the MCP; creation does not set it (Notion auto-assigns). Queries filter by numeric id regardless of type.
 - **Type** — read: if the live property is `multi_select`, take the first value; if `select`, take the value. Write: if `multi_select`, send a single-item list; if `select`, send the scalar. Empty values round-trip as `null`.
 - **PR** — read/write when `prProperty` exists on the live DB. When absent, skip writes and log a single warning per run (no abort). Record `missing-property:prProperty` per `notion-dev:issue-log`.
-- **Epic / Phase** (Select) — write as the option name string. When the configured property is absent from the live DB, skip with a one-time warning. Record `missing-property:epicProperty` per `notion-dev:issue-log`. When the property exists but the option doesn't, raise a clear error telling the caller to add the option first (via `addSelectOption` or manually in Notion). Record `option-missing:<propertyName>` (substituting the real property name, e.g. `epicProperty` or `phaseProperty`) per `notion-dev:issue-log`. Never silently mutate the DB's option list from a write path — option creation is an explicit, user-confirmed action.
+- **Epic / Phase** (Select) — write as the option name string. When the configured property is absent from the live DB, skip with a one-time warning. Record `missing-property:epicProperty` when `epicProperty` is absent, or `missing-property:phaseProperty` when `phaseProperty` is absent, per `notion-dev:issue-log`. When the property exists but the option doesn't, raise a clear error telling the caller to add the option first (via `addSelectOption` or manually in Notion). Record `option-missing:<propertyName>` (substituting the real property name, e.g. `epicProperty` or `phaseProperty`) per `notion-dev:issue-log`. Never silently mutate the DB's option list from a write path — option creation is an explicit, user-confirmed action.
 - **Step** (Number) — write as a number. Integers and floats both accepted; adapter passes through the caller's value.
 - **Depends on** (Relation) — write as a list of page IDs. When the caller passes titles, resolve each to a page ID by DB-scoped title search (same mechanism `existing-ticket` uses on numeric IDs) before writing. Unresolved titles raise a clear error naming the offender. Absence-tolerant when the property is missing.
 - **Assignee** (People) — write as a single-item list of `{ id }` user references to the `assigneeProperty` column. Read: `fetchTicket` returns the current value in `metadata.assigneeProperty` as the first person's user id when the property exists, is a `people` type, and has a value; `""` when absent, not People-typed, or unset. On a multi-assignee column only the first person is exposed — absence-tolerant, never an error. When the configured property is absent from the live DB or is not a `people` type, skip the write and log **one** warning per run (`"assigneeProperty '<name>' not found or not a People property on DB; skipping assignee write"`) — never abort. Record `missing-property:assigneeProperty` when the property is absent, or `wrong-type:assigneeProperty` when it exists but is not a People property, per `notion-dev:issue-log`. `assignee` is caller-supplied creation state, not a `staticProperty`: `updateTicket` and `upsertSection` never touch it.
@@ -398,7 +398,7 @@ An **epic** is a page in this same database where `epicMarkerProperty` (a Checkb
 
 ## createEpic({ name, overview, type?, assignee? })
 
-1. If `parentTaskProperty` or `epicMarkerProperty` is absent from the live DB, warn once and return `null` — the caller degrades to Epic-select tagging.
+1. If `parentTaskProperty` or `epicMarkerProperty` is absent from the live DB, warn once and return `null` — the caller degrades to Epic-select tagging. Record `missing-property:parentTaskProperty` when `parentTaskProperty` is absent, or `missing-property:epicMarkerProperty` when `epicMarkerProperty` is absent, per `notion-dev:issue-log`.
 2. Compose the body as two sections:
    - `## Overview` — the `overview` argument: a short statement of the initiative or incident.
    - `## Tasks` — empty at creation; the epic-refresh step populates it later.
@@ -412,13 +412,13 @@ An **epic** is a page in this same database where `epicMarkerProperty` (a Checkb
 
 Read-only.
 
-1. If `epicMarkerProperty` is absent from the live DB, warn once and return **`null`** — mirrors `getSelectOptions`, which returns `null` for the same absent/unsuitable-property case. Epics cannot be identified safely at all without this property: falling back to a structural guess (an Epic-select tag, an empty parent, a child count) is exactly the bug this marker exists to close, so absence degrades to `null` rather than any such fallback. Distinct from step 3's `[]`: `null` means epic containers are unavailable on this DB at all; `[]` means the property exists but no page has it set yet. Callers must not conflate the two.
+1. If `epicMarkerProperty` is absent from the live DB, warn once and return **`null`** — mirrors `getSelectOptions`, which returns `null` for the same absent/unsuitable-property case. Record `missing-property:epicMarkerProperty` per `notion-dev:issue-log`. Epics cannot be identified safely at all without this property: falling back to a structural guess (an Epic-select tag, an empty parent, a child count) is exactly the bug this marker exists to close, so absence degrades to `null` rather than any such fallback. Distinct from step 3's `[]`: `null` means epic containers are unavailable on this DB at all; `[]` means the property exists but no page has it set yet. Callers must not conflate the two.
 2. Query the database (or `dataSourceId` when configured) with `mcp__notion__notion-query-data-sources` for pages where `epicMarkerProperty` is `true` **and** (when `parentTaskProperty` also exists on the live DB) their own `parentTaskProperty` is empty — the same predicate `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply (see "Epic containers" above), so "epic" means the same thing at all four sites. When `parentTaskProperty` is absent from the live DB entirely, its emptiness is vacuously true for every page, so the filter reduces to `epicMarkerProperty` alone in that case. When `staticProperties` is configured, add each `[name, expected]` pair as an additional equality filter on this same query — the same scoping the "Project scoping guardrail" applies per-page, applied here at query time so epic discovery never surfaces a foreign project's epic in a shared DB. When `staticProperties` is empty or absent, the query is unchanged.
 3. For each hit return `{ id, key, pageId, name, title, url, overview }` — `key` is the logical ticket key (`"STO-67"`) for display, same meaning and format as in `fetchTicket` and `listEpicChildren`; `name` is the `epicProperty` Select value (display metadata — may be empty on a marker-only epic that was never given one), `title` is the page title with the ID prefix stripped, `overview` is the text of its `## Overview` section (empty string when absent). No hits → `[]`. There is no children-based filtering pass here: a page with zero children is returned exactly like any other epic, since the marker alone decides.
 
 ## setParent(id, epicId)
 
-1. If `parentTaskProperty` is absent from the live DB, warn once and return.
+1. If `parentTaskProperty` is absent from the live DB, warn once and return. Record `missing-property:parentTaskProperty` per `notion-dev:issue-log`.
 2. Resolve `id` and `epicId` to page IDs via `fetchTicket`.
 3. If they are the same page, raise: *"`setParent`: a ticket cannot be its own parent"*.
 4. Call `mcp__notion__notion-update-page` setting `parentTaskProperty` to a single-element Relation list containing the epic's page id. Replacement semantics are correct here — a ticket has exactly one parent.
@@ -427,7 +427,7 @@ Read-only.
 
 Read-only.
 
-1. If `parentTaskProperty` is absent from the live DB, warn once and return `[]`.
+1. If `parentTaskProperty` is absent from the live DB, warn once and return `[]`. Record `missing-property:parentTaskProperty` per `notion-dev:issue-log`.
 2. Resolve `epicId` to a page ID via `fetchTicket`.
 3. Query the DB for pages whose `parentTaskProperty` contains that page ID.
 4. Return `[{ id, key, title, status, url }]` ordered ascending by `id` — `key` the logical ticket key (`"STO-67"`) for display, `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
@@ -469,7 +469,7 @@ Read-only. Assembles the bounded context block that `/notion-dev:ticket` threads
 
 Re-renders an epic's `## Tasks` section from its live children. **The single owner of that section's format** — callers never render it themselves, so `/notion-dev:create-task` and the epic-update flow cannot drift apart.
 
-1. If `parentTaskProperty` is absent from the live DB, warn once and return.
+1. If `parentTaskProperty` is absent from the live DB, warn once and return. Record `missing-property:parentTaskProperty` per `notion-dev:issue-log`.
 2. `listEpicChildren(epicId)`.
 3. Render one Notion to-do block per child, ordered by id:
 

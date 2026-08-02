@@ -18,6 +18,7 @@ Read alongside `../SKILL.md`, which owns the grammar, the entry format, the reda
 | `wrong-type:creationDateProperty` | degraded | `ticket-system` | present but neither `date` nor `created_time`; write skipped | once/run |
 | `missing-property:parentTaskProperty` | degraded | `ticket-system` | absent; guards the parent write, `setParent`, `listEpicChildren`, `refreshEpicTasks` | once/run |
 | `missing-property:epicProperty` | degraded | `ticket-system` | absent; Epic select skipped, `createEpic` degrades | once/run |
+| `missing-property:phaseProperty` | degraded | `ticket-system` | absent; Phase select write skipped | once/run |
 | `missing-property:epicMarkerProperty` | degraded | `ticket-system` | absent; `findEpics` returns `null`, epic containers unavailable on this DB | once/run |
 | `missing-property:dependsOnProperty` | degraded | `ticket-system` | absent; `setDependencies` no-ops | once/run |
 | `option-missing:<propertyName>` | failed | `ticket-system` | a required Select/Status option is absent; `createTicket` raises | per occurrence |
