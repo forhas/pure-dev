@@ -1,7 +1,12 @@
 # Dependency direction without a directional relation
 
 **Date**: 2026-08-02
-**Status**: Part 1 accepted and implemented. Part 2 pending empirical verification.
+**Status**: Part 1 implemented, **on a rationale since proven wrong and corrected** — see "Falsification" below. Part 2 resolved: no code change needed.
+
+> **The mechanism this document argues for is false.** Notion self-referential relations are
+> directional. The prediction recorded below was tested and failed on its decisive point. The
+> design outcome survives for a different, narrower reason. Read "Falsification" before treating
+> anything above it as current.
 
 ## Origin
 
@@ -102,3 +107,80 @@ Scratch database, two rows `A` and `B`.
 **Prediction, recorded before the test so it is falsifiable:** #1 symmetric, #2 two columns with a directional split, #3 directional.
 
 If #1 comes back **directional**, the mechanism above is wrong, the client's database is misconfigured in some way their two experiments did not rule out, and Part 2 shrinks to a documentation fix. Part 1 stands unchanged in either case.
+
+---
+
+# Falsification
+
+The test was run against the reporting client's own workspace on 2026-08-02. **Prediction #1 —
+the decisive one, the one Part 2 was gated on — was wrong.**
+
+| Test | Predicted | Observed |
+|---|---|---|
+| #1 one-way (`single_property`, API-created) | symmetric | **directional** — one column, no companion, `B.RelOneWay` null |
+| #2 two-way (`dual_property`) | two columns, directional split | two columns, directional split |
+| #3 native Sub-items | directional | directional (confirmed on live production data) |
+| #4 API-created | — | same as #1; a self-relation genuinely cannot be declared at CREATE time |
+
+Notion self-referential relations are **directional in both forms**. `single_property` writes one
+edge and creates no reverse edge. `dual_property` splits the two directions across two columns. In
+no case did a written edge appear in the same column on the target row.
+
+## Part 2: resolved, no code change
+
+`findEpics` is safe as written, confirmed on live data rather than by argument. Epic STO-333 has 11
+real children; its own `Parent-task` is empty while `Sub-tasks` holds all 11. It remains visible to
+the "parent is empty" predicate today.
+
+This also validated `init.md`'s "Create `Parent task` (Relation)" prompt, which this spec had put in
+doubt: an API-created relation *is* directional, exactly as that prompt promises.
+
+Better still, the plugin wrote only each child's `Parent-task`; Notion filled the epic's `Sub-tasks`
+companion itself. That is test #3 observed in production, not inferred.
+
+## The real reason the relation stays unused
+
+Two follow-up hypotheses were raised and **both were refuted** by a read-only diagnostic:
+
+- *Symmetry* — refuted by tests #1 and #2 above.
+- *Mis-binding to `Sub-tasks`* — refuted by config history. `dependsOnProperty` never appeared in
+  any revision, so the default `"Depends on"` applied, and it matched a real standalone non-native
+  column exactly. `Sub-tasks` was never a reachable candidate.
+
+What survives is narrower and is now the canonical rationale in
+`skills/ticket-system/SKILL.md` → `setDependencies`: **the adapter cannot tell a one-way relation
+from a two-way one.** The MCP schema surface does not expose relation subtype. Bound to a
+`dual_property` column, every write surfaces a reverse edge in a companion column the adapter never
+names, reads, or controls — indistinguishable, to a caller reading the target page's property map,
+from the relation being symmetric. That is a limit of the available surface, not a property of
+Notion relations, and it is revisitable if the API ever exposes subtype.
+
+The `## Blocked by` design outcome is unchanged. Only its justification is.
+
+## Original root cause: inconclusive
+
+The reported reverse edges were cleared by hand before any investigation, and `Depends on` is empty
+across all 338 rows. One lead, recorded as a lead: the live `Depends on` column carries a
+`propertyUrl`, which the scratch `single_property` column did not and both `dual_property` halves
+did. That is consistent with `Depends on` being a two-way relation whose companion-column edges were
+read as symmetry — but the MCP surface does not expose subtype, and a deleted companion would look
+identical. Not testable read-only. Left unresolved rather than resolved to the tidier story.
+
+## Separately found: the parent-name matching bug
+
+`Parent-task` (hyphen) is Notion's native Sub-items name in this workspace. Init's parent-like scan
+matched `"Parent task"` (space) by literal equality, so it matched nothing — and a failed match
+binds nothing rather than mis-binding. The slot stayed unbound and epic containment was unavailable
+for **eleven days**, with no wrong value anywhere to notice.
+
+Fixed in the same change: parent-like names now match case-insensitively with `-`, `_`, and
+whitespace treated as equivalent, and the sub-item half is explicitly excluded so a loose match can
+never invert containment.
+
+## What this episode should change
+
+The mechanism was plausible, internally consistent, and wrong. It was argued from how Notion's
+native Sub-items is *shaped* rather than from any observation of how relations *behave*, then
+written into nine sites as settled fact before a single test had been run. Writing the prediction
+down in advance is what made it cheap to correct — but predicting earlier would have been cheaper
+than correcting later.
