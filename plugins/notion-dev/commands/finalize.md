@@ -12,6 +12,8 @@ Args: `<pr-number> [--non-interactive]` (`<pr-number>` optional — inferred fro
 
 Flag parsing: if the arguments contain `--non-interactive`, remove it and set **non-interactive mode**: never pause for user input; whenever any step calls for asking the user, self-answer with the most reasonable option and log the decision for the final report (Phase 5). Whatever remains is the `<pr-number>` (or empty, for the current-branch inference path).
 
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
+
 ## Preconditions
 
 - **GitHub access**: authenticated `gh` CLI is **required** — the Phase 2 review loop (`notion-dev:review-and-merge`) depends on `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform. Probe `gh auth status` at the top of the command; abort with "Install and authenticate `gh` (`gh auth login`), then re-run" if unavailable. The GitHub MCP (`mcp__github__get_pull_request` etc.) is optional: when present, prefer it for the operations it supports (metadata reads, merge) and fall back to `gh` when it fails or is absent.
@@ -63,7 +65,9 @@ existing-comment processing, rounds with the configured code reviewer (Codex or 
 resolved from `.claude/notion-dev.config.json`), the local fallback
 (`notion-dev:local-code-review`), merge gates (including config `git.preMergeChecks`),
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
-report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
+report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`. When that report
+shows the local fallback ran because the configured reviewer was unavailable, record
+`fallback:local-code-review` per `notion-dev:issue-log`.
 
 Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets a *later* recovery run of this same command find the report if this run dies between Phase 2 and Phase 3 completing. Best-effort — a write failure here must not fail the run.
 
@@ -79,7 +83,9 @@ Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-repor
 
 Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 2, or — on the `MERGED` recovery path — the persisted-file/reconstructed-history recovery in Phase 1 step 2, absent when neither yielded anything usable) and `$REPO_ROOT` as context.
 
-It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5 and for 3.3 below.
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5 and for 3.3 below. When `EPIC_REPORT` carries a non-empty `SKIPPED` or `FAILED` bucket, record `partial:epic-update` per `notion-dev:issue-log`.
+
+On the `MERGED` recovery path (Phase 1 step 2), `epic-update` returning `EPIC-UPDATE: already-recorded` is the idempotency check working correctly — **not** a partial update, and it is never logged.
 
 Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
 
@@ -124,6 +130,8 @@ Append one outcome line to `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` per the 
 
 Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
 
+**Issue-log sweep.** Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`. Best-effort — a failure here never fails the run.
+
 ---
 
 ## Phase 5 — Report
@@ -136,6 +144,7 @@ Print a summary covering:
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
+- Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 
 ---
 
@@ -145,4 +154,4 @@ Print a summary covering:
 - Pre-merge check fails → stop; report which check and why.
 - Merge conflict the user needs to resolve → hand control back with clear instructions.
 - MCP / CLI unavailable for merge → fall back to `gh`; if that also fails, stop.
-- **On any unrecoverable failure**: STOP without running cleanup. Leave the worktree, branch, and PR intact for inspection. Report the exact remaining state (worktree path, branch name, PR number) and the exact commands to resume or clean up manually. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — never let ledger bookkeeping mask the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.
+- **On any unrecoverable failure**: STOP without running cleanup. Leave the worktree, branch, and PR intact for inspection. Report the exact remaining state (worktree path, branch name, PR number) and the exact commands to resume or clean up manually. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — never let ledger bookkeeping mask the real failure report. Also best-effort, before stopping: run the issue-log sweep from Phase 4 — this path skips Phase 4 entirely, and an unrecoverable failure is the single most valuable thing this log can record. A failure to write it never masks the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.
