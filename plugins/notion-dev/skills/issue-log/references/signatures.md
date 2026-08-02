@@ -20,7 +20,7 @@ Read alongside `../SKILL.md`, which owns the grammar, the entry format, the reda
 | `missing-property:epicProperty` | degraded | `ticket-system` | absent; Epic select skipped, `createEpic` degrades | once/run |
 | `missing-property:phaseProperty` | degraded | `ticket-system` | absent; Phase select write skipped | once/run |
 | `missing-property:stepProperty` | degraded | `ticket-system` | absent; Step number write skipped | once/run |
-| `missing-property:epicMarkerProperty` | degraded | `ticket-system` | absent; `findEpics` returns `null`, epic containers unavailable on this DB | once/run |
+| `missing-property:epicMarkerProperty` | degraded | `ticket-system` | absent; `findEpics` and `getEpicContext` both return `null`, epic containers unavailable on this DB | once/run |
 | `missing-property:dependsOnProperty` | degraded | `ticket-system` | absent; `setDependencies` no-ops | once/run |
 | `option-missing:<propertyName>` | failed | `ticket-system` | a required Select/Status option is absent; `createTicket` raises | per occurrence |
 | `prefix-mismatch:unique_id` | degraded | `ticket-system` | live `unique_id` column prefix differs from `project.key` | once/run |
@@ -31,7 +31,7 @@ Read alongside `../SKILL.md`, which owns the grammar, the entry format, the reda
 | `fallback:local-code-review` | degraded | `ticket.md`, `finalize.md` | the configured reviewer was unavailable; the local fallback ran, so no cross-model review validated the PR | once/run |
 | `retry-exhausted:plan-review` | degraded | `ticket.md` | `PLAN-REVIEW: degraded` — the reviewer never ran | once/run |
 | `retry-exhausted:verify` | failed | `ticket.md` | the verify step never passed after its retries | per occurrence |
-| `partial:epic-update` | degraded | `ticket.md`, `finalize.md` | `epic-update` returned a non-empty `SKIPPED` or `FAILED` bucket | once/run |
+| `partial:epic-update` | degraded | `ticket.md`, `finalize.md` | `epic-update` returned a non-empty `SKIPPED` or `FAILED-TO-FILE` bucket | once/run |
 
 ## Consolidations
 

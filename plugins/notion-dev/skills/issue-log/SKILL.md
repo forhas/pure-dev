@@ -27,7 +27,7 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 
 | Condition | Why it is routine |
 |---|---|
-| `getEpicContext` returns `null` | Most tickets have no epic. `ticket-system/SKILL.md`: "Not a warning — this is the normal case for most tickets." |
+| `getEpicContext` returns `null` because `epicId` is empty | Most tickets have no epic. `ticket-system/SKILL.md`: "Not a warning — this is the normal case for most tickets." |
 | `findEpics()` returns `[]` | The marker property exists; no page is marked yet. Nothing is wrong. |
 | `resolveAssignee` returns `null` (zero or ambiguous matches) | `ticket-system/SKILL.md`: "routine, not exceptional." The caller falls back to a picker. |
 | `fetchTicket` returning a type's empty default for an unset or absent property | Absence-tolerant reads are the design. "Never a warning." |
@@ -40,7 +40,7 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 
 **One asymmetry to get right.** `findEpics()` returning **`null`** — `epicMarkerProperty` absent from the live database — **is** logged, as `missing-property:epicMarkerProperty`. Returning **`[]`** is not. The adapter is explicit that callers must never conflate the two states, and neither may this log.
 
-`getEpicContext` never logs, even when it returns `null` because the marker is absent, because that same condition is already recorded at `findEpics` / `createTicket`. One condition, one signature, one entry.
+**This does not extend to `getEpicContext` returning `null` because `epicMarkerProperty` is absent from the live DB.** That cause is not exempt: `/notion-dev:ticket <existing-child-ticket>` can reach `getEpicContext` directly, without ever calling `findEpics` or `createTicket` first, so on that path no other site has recorded the condition. `getEpicContext` records `missing-property:epicMarkerProperty` itself in that case, per `notion-dev:issue-log`, reusing `findEpics`'s registry row rather than minting a second one — one signature, potentially more than one entry-writing site, never a second signature.
 
 ## Where the file lives
 
@@ -48,11 +48,13 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 
 In the **primary checkout** of the target repo, never inside a feature worktree — worktrees get deleted. Same directory and same `$REPO_ROOT` resolution as `ledger.jsonl` and `review-report-<KEY>-<id>.md`.
 
-On first write, create the directory with a self-ignoring gitignore:
+**Resolve `$REPO_ROOT` against the primary checkout**: use the caller's recorded `$REPO_ROOT` when provided, else the first path listed by `git worktree list` — never `git rev-parse --show-toplevel`, which returns the *worktree* root when run inside one. Two of this skill's four callers (`/notion-dev:create-task`, `/notion-dev:init`) never record or pass a `$REPO_ROOT`, so this skill resolves it itself rather than depending on the caller — the same self-sufficiency `skills/ticket-system/SKILL.md` documents for its own config-path resolution.
+
+On first write, create the directory with a self-ignoring gitignore, against the resolved `$REPO_ROOT`:
 
 ```bash
-mkdir -p .claude/notion-dev
-[ -f .claude/notion-dev/.gitignore ] || printf '*\n' > .claude/notion-dev/.gitignore
+mkdir -p "$REPO_ROOT/.claude/notion-dev"
+[ -f "$REPO_ROOT/.claude/notion-dev/.gitignore" ] || printf '*\n' > "$REPO_ROOT/.claude/notion-dev/.gitignore"
 ```
 
 The location is not a preference. A file anywhere visible to git — notably the repo root — trips the clean-tree gates in `commands/ticket.md` Phase 6.6 and `skills/review-and-merge/SKILL.md`, both of which require `git status --porcelain` to be empty, and could sweep the file into a client's PR.

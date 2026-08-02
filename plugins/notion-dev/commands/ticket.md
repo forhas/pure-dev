@@ -56,7 +56,7 @@ Hard abort in both interactive and non-interactive mode. It runs before Phase 2,
 
 A page carrying only the `Epic` select tag, with no `epicMarkerProperty` set, is **not** guarded here — even with an empty parent, and even if it happens to have picked up an ordinary Sub-items child. The marker, not the tag or the shape, is what makes a page an epic (see "Epic containers" in `skills/ticket-system/SKILL.md`); blocking on shape alone is the exact failure this guard used to have, since a legacy Epic-tagged ticket on an upgraded database can satisfy every structural signal an epic does. A freshly created epic with **zero** children **is** guarded here now — there is no child-count requirement left to exempt it. `metadata.epicMarkerProperty` reads `false` when `epicMarkerProperty` is absent from the live DB entirely, so the guard degrades safely to "not an epic" rather than guessing from structure.
 
-**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
+**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently. Most tickets simply have no epic; on the rarer cause (`epicMarkerProperty` absent from the live DB), `getEpicContext` itself already recorded `missing-property:epicMarkerProperty` per `notion-dev:issue-log`, so nothing further is logged here.
 
 `EPIC_CONTEXT` is **background, not requirements**: the ticket body remains the single source of truth for what to build. Where the two appear to conflict — a resolution-log entry describing an approach the ticket now contradicts — the ticket wins, and the conflict is surfaced to the user at the 1.3 clarification gate rather than silently resolved.
 
@@ -311,7 +311,7 @@ Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-repor
 
 Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 7) and `$REPO_ROOT` as context.
 
-It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10 and for 8.3 below. When `EPIC_REPORT` carries a non-empty `SKIPPED` or `FAILED` bucket, record `partial:epic-update` per `notion-dev:issue-log`.
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10 and for 8.3 below. When `EPIC_REPORT` carries a non-empty `SKIPPED` or `FAILED-TO-FILE` bucket, record `partial:epic-update` per `notion-dev:issue-log`.
 
 Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
 
@@ -326,7 +326,7 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Base branch** — the branch merged into (from `git.baseBranch` or the PR's `baseRefName`).
 - **Merged at** — ISO timestamp.
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
-- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
+- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED-TO-FILE`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
 
 ### 8.4 Post-merge hooks
 

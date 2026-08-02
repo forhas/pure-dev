@@ -83,7 +83,7 @@ Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-repor
 
 Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 2, or — on the `MERGED` recovery path — the persisted-file/reconstructed-history recovery in Phase 1 step 2, absent when neither yielded anything usable) and `$REPO_ROOT` as context.
 
-It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5 and for 3.3 below. When `EPIC_REPORT` carries a non-empty `SKIPPED` or `FAILED` bucket, record `partial:epic-update` per `notion-dev:issue-log`.
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 5 and for 3.3 below. When `EPIC_REPORT` carries a non-empty `SKIPPED` or `FAILED-TO-FILE` bucket, record `partial:epic-update` per `notion-dev:issue-log`.
 
 On the `MERGED` recovery path (Phase 1 step 2), `epic-update` returning `EPIC-UPDATE: already-recorded` is the idempotency check working correctly — **not** a partial update, and it is never logged.
 
@@ -100,7 +100,7 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Base branch** — the branch merged into (from `git.baseBranch` or the PR's `baseRefName`).
 - **Merged at** — ISO timestamp.
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
-- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 3.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 3.2's outcome.
+- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 3.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED-TO-FILE`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 3.2's outcome.
 
 ### 3.4 Post-merge hooks
 
