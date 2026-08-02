@@ -257,7 +257,7 @@ This runs even though nothing has resolved yet, so the epic reads as a real plan
 
 **Pass 2 — record dependencies**:
 
-`setDependencies` renders a `## Blocked by` section into the dependent ticket's body. It writes no relation property — the adapter cannot distinguish a one-way Notion relation from a two-way one, and a two-way column surfaces a reverse edge in a companion column it does not control (see `notion-dev:ticket-system` → `setDependencies` for the canonical statement; self-relations are **not** symmetric). It owns that section's format entirely; do **not** render it here.
+`setDependencies` renders a `## Blocked by` section into the dependent ticket's body. It writes no relation property — no available signal predicts whether writing to a given relation column will also produce a reverse edge in a companion column the adapter does not control (see `notion-dev:ticket-system` → `setDependencies` for the canonical statement; self-relations are **not** symmetric, and subtype **is** detectable — it just doesn't answer the behavioral question). It owns that section's format entirely; do **not** render it here.
 
 ```
 for task in mission.tasks:
