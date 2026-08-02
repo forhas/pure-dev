@@ -98,8 +98,10 @@ full, and confirm nothing appears. The contrast is the point.
 
 ## Test 4 — Real DB, read-only
 
-1. Dump the complete property definition of the live `Depends on` column (`propertyUrl` is
-   `PE1CSQ`; the DB is `25bfdf83-c417-809d-bd93-e60e12327627`).
+1. Dump the complete property definition of the live `Depends on` column. Resolve the database
+   from `.claude/notion-dev.config.json` → `ticketSystem.databaseId` in the project you are running
+   against; do **not** expect it to be named here. **No live identifiers appear in this file** — see
+   the note at the end.
 2. Do the same for both native Sub-items halves, `Parent-task` and `Sub-tasks`.
 3. Using whatever discriminator Test 1 found, classify the live `Depends on`: one-way, two-way,
    or undeterminable.
@@ -107,6 +109,32 @@ full, and confirm nothing appears. The contrast is the point.
    one exists, is hidden, or appears to have been deleted.
 
 **No writes. No property edits. Schema and page reads only.**
+
+## Test 5 — Orphaned dual half (the decisive test for the current rationale)
+
+**Do not skip this one.** Tests 1–4 can all pass while leaving the claim the design actually rests
+on unvalidated. Subtype detection is *not* the load-bearing finding; the load-bearing finding is
+that detection does not predict behavior. This test is the only one that shows it.
+
+It was also not in the original plan — it was run because Test 4's "`propertyUrl` present, companion
+absent" state looked impossible and needed explaining. It is written down here so re-running the
+protocol validates the rationale rather than only half of it.
+
+1. In the scratch DB, confirm the `dual_property` `Depends on` from Test 3 and its companion.
+2. **Delete the companion column.**
+3. Re-read the schema. Report whether the surviving `Depends on` still carries `propertyUrl`.
+4. Create fresh rows `C` and `D` (do not reuse `A`/`B` — they already hold edges from Test 3, which
+   would make the result ambiguous). Set `C."Depends on" = [D]`.
+5. **Dump D's complete property map.** Report whether `[C]` appears anywhere at all.
+
+**Decisive question: does a column that still advertises `propertyUrl` now behave one-way?**
+
+If yes, `propertyUrl` reports creation history rather than write behavior, an orphaned half is
+indistinguishable from a live one on this surface, and the current rationale holds. If **no** — the
+orphaned half still produces a reverse edge — then the `propertyUrl`-present branch is *not*
+ambiguous after all, a guard keyed on it would be sound, and the rationale needs revisiting.
+
+---
 
 ---
 
@@ -147,6 +175,13 @@ TEST 3 — MISREAD REPRODUCTION
   single: [A] appears in B under:   <property name | nowhere>
   VERDICT: reproduces the report?   <YES | NO | PARTIAL — explain>
 
+TEST 5 — ORPHANED DUAL HALF (decisive)
+  propertyUrl after companion deleted:  <still present | gone>
+  D's full property map after C→D:      <verbatim>
+  [C] appears in D:                     <YES: under <name> | NOWHERE>
+  VERDICT: creation-history or behavior? <reports creation history (rationale holds)
+                                          | predicts behavior (rationale needs revisiting)>
+
 TEST 4 — REAL DB (read-only)
   "Depends on" full definition:     <verbatim>
   classified as:                    <one-way | two-way | undeterminable>
@@ -162,3 +197,20 @@ CLEANUP
 Report exactly what you observed. A result that contradicts the hypothesis is the most valuable
 outcome here — the last two rounds of this investigation were both plausible theories that turned
 out to be wrong, and both were caught only because the evidence was allowed to contradict them.
+
+---
+
+## Identifier policy — no live values in this file
+
+This repository is a **public** plugin marketplace, and this file is committed to it. It therefore
+carries **no** database UUIDs, data-source ids, page ids, property ids, or `propertyUrl` values for
+any real workspace. An earlier revision named a client database UUID and a property id; both were
+removed.
+
+Resolve every live identifier at run time from `.claude/notion-dev.config.json` in the project being
+diagnosed, and keep them in the run output — never in this protocol.
+
+This is the same standard the plugin already holds itself to: `skills/issue-log/SKILL.md` permits
+only the **last six characters** of a database id in a log entry (`db=…a41f9c`) and forbids ids,
+URLs, and paths everywhere else. A protocol committed to a public repo should not be laxer than the
+runtime logs it exists to debug.
