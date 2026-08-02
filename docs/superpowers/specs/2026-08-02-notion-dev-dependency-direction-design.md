@@ -240,13 +240,22 @@ The decisive test was not in the probe's plan; the agent ran it because the live
 while it behaves exactly one-way.** A fresh write produced no reverse edge anywhere. An orphaned
 dual half and a live dual half are identical on this surface and opposite in behavior.
 
-`propertyUrl` therefore reports **creation history, not write behavior**. A guard keyed on it
-would refuse to write to columns that are perfectly safe — a false positive with no observable
-signal to correct it. And this is not a corner case: it is precisely the state the reporting
-client's database is in today.
+`propertyUrl` therefore reports **creation history, not write behavior** — but only on one branch,
+and an early wording of this correction over-reached by saying no signal predicts write behavior at
+all. Codex caught that in review. The signal is **asymmetric**:
 
-The canonical rationale is now: *no available signal predicts a relation column's write behavior.*
-Restoring the relation needs subtype **plus** live companion state, or a behavioral probe.
+- **absent → `single_property` → safe.** Conclusive on the evidence; a one-way relation produces no
+  reverse edge. A conservative guard binding only such columns would be sound.
+- **present → ambiguous.** A live dual half and an orphaned one are identical here and opposite in
+  behavior, and the orphaned state is precisely what the client's database is in today.
+
+So partial support is *possible*. The relation stays out as a **design judgment**, not an
+impossibility: representing dependency order conditionally on a schema accident (some databases get
+relation edges, others only the body section, with nothing telling a reader which) is worse than
+representing it uniformly; the gate would rest on an undocumented field that three falsified
+inferences in this very investigation argue against trusting for writes; and it restores real config
+surface for a feature covering a subset of databases. That tradeoff is revisitable — the safe branch
+is well-defined.
 
 ## Known unknown: the public REST API
 
