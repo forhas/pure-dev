@@ -255,7 +255,9 @@ Invoke `notion-dev:ticket-system` operation `refreshEpicTasks(EPIC_ID)`. That op
 
 This runs even though nothing has resolved yet, so the epic reads as a real plan the moment it exists. A failure here is non-fatal — warn and continue to Pass 2.
 
-**Pass 2 — wire dependencies**:
+**Pass 2 — record dependencies**:
+
+`setDependencies` renders a `## Blocked by` section into the dependent ticket's body. It writes no relation property — a single self-referential Notion relation is symmetric and cannot express direction (see `notion-dev:ticket-system` → `setDependencies`). It owns that section's format entirely; do **not** render it here.
 
 ```
 for task in mission.tasks:
