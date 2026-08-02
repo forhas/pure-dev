@@ -50,6 +50,6 @@ This table's `Kind` and `Condition` columns describe the **ticket-time** manifes
 ## Adding a signature
 
 1. Add the row here first.
-2. If the new signature names a config property, check the `Context` permitted-keys whitelist in `../SKILL.md` — an entry that can't carry its own property as `Context` is a defect. (`phaseProperty` and `stepProperty` were missed there once; don't repeat it.)
+2. If the new signature's subject is a config property name or an external identifier such as a Notion property type name, check the `Context` permitted-keys whitelist in `../SKILL.md` — an entry that can't carry its own property as `Context` is a defect. (`phaseProperty` and `stepProperty` were missed there once; don't repeat it.)
 3. Cite the name at the call site, in the form: ``Record `<signature>` per `notion-dev:issue-log`.``
 4. Re-run the closure check in the plan's Task 7. The set of **concrete, cited** signature names across `plugins/notion-dev` (excluding this file, and excluding `<...>` template forms) and the set of concrete names in this table must be equal. `/notion-dev:init`'s templated reuse of this grammar (see "Consolidations" above) is out of scope for this check by design — it never appears as a concrete cited string.
