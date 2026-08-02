@@ -26,12 +26,14 @@ Read alongside `../SKILL.md`, which owns the grammar, the entry format, the reda
 | `prefix-mismatch:unique_id` | degraded | `ticket-system` | live `unique_id` column prefix differs from `project.key` | once/run |
 | `mcp-unavailable:notion` | failed | `ticket-system` | the Notion MCP is unreachable | per occurrence |
 | `mcp-unavailable:notion-get-users` | failed | `ticket-system` | `resolveAssignee` cannot run | per occurrence |
-| `mcp-error:<tool>` | unexpected | any — layer-1 vocabulary, no dedicated call site | an MCP call was reached and returned an error | per occurrence |
+| `mcp-error:<tool>-<error-class>` | unexpected | any — layer-1 vocabulary, no dedicated call site | an MCP call was reached and returned an error; `<error-class>` (see note below) distinguishes different failure modes of the same tool | per occurrence |
 | `abort:project-scope` | failed | `ticket-system` | pinned `staticProperties` mismatch; refused to operate across projects | per occurrence |
 | `fallback:local-code-review` | degraded | `ticket.md`, `finalize.md` | the configured reviewer was unavailable; the local fallback ran, so no cross-model review validated the PR | once/run |
 | `retry-exhausted:plan-review` | degraded | `ticket.md` | `PLAN-REVIEW: degraded` — the reviewer never ran | once/run |
 | `retry-exhausted:verify` | failed | `ticket.md` | the verify step never passed after its retries | per occurrence |
 | `partial:epic-update` | degraded | `ticket.md`, `finalize.md` | `epic-update` returned a non-empty `SKIPPED` or `FAILED-TO-FILE` bucket | once/run |
+
+**`mcp-error:<tool>-<error-class>`.** `<tool>` is the MCP tool name (e.g. `notion-fetch`); `<error-class>` is the error's class or message *shape*, kebab-cased (`object_not_found` → `object-not-found`). The hyphen joining the two is part of the subject, not the `<class>:<subject>` delimiter — that delimiter stays the single colon immediately after `mcp-error`. **`<error-class>` must be sanitized exactly as `Observed` is** (`../SKILL.md`, "Redaction"): never an id, URL, path, or quoted value, only the class or shape word(s) — this matters more here than in a prose field, because this identity becomes a literal `## mcp-error:<tool>-<error-class>` heading in the log file, where a leaked id would be conspicuous rather than merely present. When the tool's error carries no identifiable class (a bare timeout, a blank message, an opaque failure), use the literal word `unknown` as `<error-class>` rather than omitting it or falling back to a bare `mcp-error:<tool>` — `mcp-error:<tool>-unknown` is a fully compliant, groupable identity, and this is what an agent reaches for instead of being stuck without a compliant name for an error it cannot classify. This is also how a repeat tool failure with a materially different `Observed` (per "Write procedure" in `../SKILL.md`) gets its own compliant signature rather than silently overwriting the first one's recorded fields: two distinct error classes returned by the same tool across different runs produce two distinct headings under this template, never one merged under a bare `mcp-error:<tool>`.
 
 ## Consolidations
 

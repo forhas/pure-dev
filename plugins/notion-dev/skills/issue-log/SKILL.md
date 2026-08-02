@@ -33,7 +33,7 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 | `fetchTicket` returning a type's empty default for an unset or absent property | Absence-tolerant reads are the design. "Never a warning." |
 | Zero plausible epic candidates in `/notion-dev:create-task` Phase 2.6 | "The common case, and routine single-ticket runs must stay as quiet as they are today." |
 | A user declining a gate, choosing Revise, or aborting at a confirmation prompt | Normal interaction. The ledger already records it as `stopped`. |
-| `getSelectOptions` returns `null` | `ticket-system/SKILL.md`: "Never logs a warning on `null` — callers use the `null` return as a signal to skip downstream logic." This is the read-only helper itself staying quiet, not an exemption for the underlying absence: when a caller treats that `null` as "property absent" and acts on it (e.g. `/notion-dev:create-task` Pass 0 setting `phase = undefined`), layer 1's standing rule still applies at that point and `missing-property:<propertyName>` gets recorded there. |
+| `getSelectOptions` returns `null` | `ticket-system/SKILL.md`: "Never logs a **warning** on `null` — callers use the `null` return as a signal to skip downstream logic." This is the read-only helper itself staying quiet, not an exemption for the underlying absence: the adapter — the only party that read the live property, not the caller — records `missing-property:<propertyName>` when the property is absent from the live DB, or `wrong-type:<propertyName>` when it's present but not a selectable type, at the moment it determines which cause applies, before ever returning. Recording an entry is not a warning; every caller (e.g. `/notion-dev:create-task` Pass 0 setting `phase = undefined`) still receives the same bare `null` either way and its control flow does not change. |
 | Project-scoping guardrail: pinned `staticProperties` value matches, or the scoped property is absent from the live DB | `ticket-system/SKILL.md`: "Match (or property absent from the live DB) → proceed silently." |
 | A configured `done`/`cancelled` status option absent from the live DB (the read-only "resolved set" check) | `ticket-system/SKILL.md`: "it simply never matches ... Wrong in the safe direction." |
 | Any failure of this skill itself | See "Best-effort" below. Never recurse. |
@@ -134,7 +134,7 @@ Class is drawn from this closed list:
 | `partial` | An operation completed some of its work and not the rest. |
 | `unexpected` | Nothing above fits. |
 
-Subject is either a config property name reproduced verbatim in its original camelCase (`parentTaskProperty`, never `parent-task-property`) or a fixed kebab-case subject (`project-scope`, `notion`, `epic-update`).
+Subject is either a config property name reproduced verbatim in its original camelCase (`parentTaskProperty`, never `parent-task-property`) or a fixed kebab-case subject (`project-scope`, `notion`, `epic-update`). `mcp-error` is the one class whose subject is a compound of two kebab-case parts, `<tool>-<error-class>`, joined by a hyphen that is part of the subject, not the `<class>:<subject>` colon delimiter — see `references/signatures.md` for the full template contract, including sanitization and the `unknown` fallback.
 
 Enumerated signatures live in `references/signatures.md`. **Cite a registered name whenever one applies; never coin a variant of one that already exists.** Layer 1 invents new signatures under this same grammar, reusing an existing class wherever one fits and falling back to `unexpected:<subject>`. Constraining the catch-all to the grammar is what keeps it groupable — free-form entries make the log unsearchable, which defeats its purpose.
 
@@ -164,6 +164,8 @@ Values are `present`, `absent`, a Notion type name, a configured property name, 
 - **Forbidden** — `object_not_found: page <full-page-id> not found at <api-url>` (a live error would spell the id and URL out in full; that is exactly what must never reach this field)
 
 If nothing is left after stripping, fall back to the error's class name alone.
+
+**The signature identity, not only `Observed`, carries the error class.** `mcp-error:<tool>` alone cannot distinguish two different failure modes of the same tool — a repeat write with a materially different `Observed` is a different condition per "Write procedure" above, and this class needs a compliant name for it. The registered template is `mcp-error:<tool>-<error-class>`, with `<error-class>` sanitized the same way as `Observed` above and kebab-cased (`object_not_found` → `object-not-found`); when no identifiable class exists, use `unknown`. See `references/signatures.md` for the full contract.
 
 ### Forbidden, without exception
 

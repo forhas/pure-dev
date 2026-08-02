@@ -29,7 +29,7 @@ The caller names the operation and passes the arguments; the sections below desc
 | `getEpicContext` | `epicId`, `currentTicketId` | bounded markdown context block, or `null` — epic identity, verbatim `## Overview`, **live** sibling status (via `listEpicChildren`, never the epic body's stale `## Tasks` snapshot) with the sibling whose `id` equals `currentTicketId` marked, and the most recent 3 `## Resolution Log` entries (with a count of any older entries omitted). `null` (no warning — routine) when `epicId` is empty; `null` (record `missing-property:epicMarkerProperty` per `notion-dev:issue-log`) when `epicMarkerProperty` is absent from the live DB instead — the two causes are not interchangeable. When `currentTicketId` matches no sibling, mark nothing and continue — never an error. The sole owner of what "epic context" means — callers never assemble it themselves or parse `## Resolution Log`. **Background, not requirements**: callers must never treat its content as spec |
 | `refreshEpicTasks` | `epicId` | `void` — re-renders the epic's `## Tasks` section from its live children. The single owner of that section's format |
 | `appendToSection` | `id`, `sectionName`, `content` | `void` — **appends** to a named body section, creating it if absent. Never replaces, unlike `upsertSection` |
-| `getSelectOptions` | `propertyName` | `[string]` or `null` — lists option names for a Select / Multi-Select / Status property. Returns `null` if the property is absent or not a selectable type. Read-only. |
+| `getSelectOptions` | `propertyName` | `[string]` or `null` — lists option names for a Select / Multi-Select / Status property. Returns a bare `null` if the property is absent from the live DB or present but not a selectable type — callers see the same `null` either way and use it as a control-flow signal, unchanged. The adapter, which read the live schema, distinguishes the two causes when recording: `missing-property:<propertyName>` when absent, `wrong-type:<propertyName>` when present but not Select/Multi-Select/Status, per `notion-dev:issue-log`. Recording is not a warning — still none on `null`. Read-only. |
 | `addSelectOption` | `propertyName`, `optionName` | `void` — extends a Select's options list on the live DB. Should only be invoked after explicit user confirmation (adding options mutates shared DB schema). |
 | `postComment` | `id`, `text` | `void` |
 | `upsertSection` | `id`, `sectionName` (string), `content` (dict of labeled entries OR markdown) | `void` — appends a `## <sectionName>` block to the ticket body, or **overwrites** it if one already exists. Different section names are independent — e.g. `"Implementation"` and `"Merged"` coexist. |
@@ -340,9 +340,10 @@ Read-only. Used by callers (e.g. `/notion-dev:create-task`) to decide whether a 
 1. Fetch the data source schema via `mcp__notion__notion-fetch` on the configured `databaseId` (or `dataSourceId` if set).
 2. Locate the property named `propertyName`.
 3. If it's `select`, `multi_select`, or `status`, return the list of option names (`[string]`).
-4. If it's any other type or missing, return `null`.
+4. If `propertyName` is missing from the live schema entirely, return `null`. Record `missing-property:<propertyName>` per `notion-dev:issue-log`.
+5. If `propertyName` exists but is some other type, return `null`. Record `wrong-type:<propertyName>` per `notion-dev:issue-log`.
 
-Never logs a warning on `null` — callers use the `null` return as a signal to skip downstream logic.
+Never logs a **warning** on `null` — callers use the `null` return as a signal to skip downstream logic, unchanged by the above. Recording an issue-log entry (steps 4–5) is not a warning: it is the adapter — the only party that read the live property — silently distinguishing the two causes for the plugin author, while every caller keeps receiving the same bare `null` and the same control flow either way.
 
 ## addSelectOption(propertyName, optionName)
 
