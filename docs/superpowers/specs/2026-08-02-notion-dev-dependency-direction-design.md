@@ -1,12 +1,24 @@
 # Dependency direction without a directional relation
 
 **Date**: 2026-08-02
-**Status**: Part 1 implemented, **on a rationale since proven wrong and corrected** — see "Falsification" below. Part 2 resolved: no code change needed.
+**Status**: Part 1 implemented. Part 2 resolved: no code change needed. Original root cause: **resolved**.
+The design outcome has held throughout; its stated rationale has been falsified and rewritten **three times**.
 
-> **The mechanism this document argues for is false.** Notion self-referential relations are
-> directional. The prediction recorded below was tested and failed on its decisive point. The
-> design outcome survives for a different, narrower reason. Read "Falsification" before treating
-> anything above it as current.
+> **Three claims made in this document are false.** Each was recorded as fact and later disproven:
+>
+> 1. *Notion self-referential relations are symmetric.* They are not — both forms are directional.
+> 2. *Relation subtype is not detectable.* It is — `propertyUrl` marks two-way halves.
+> 3. *No available signal predicts write behavior.* Over-reach. The signal is **asymmetric**:
+>    `propertyUrl` **absent** conclusively means `single_property`, which is **provably safe to
+>    write**; only the **present** branch is ambiguous, because a live dual half and an orphaned
+>    one look identical and behave oppositely.
+>
+> **The current rationale** — in `skills/ticket-system/SKILL.md` → `setDependencies` — is a
+> **design judgment, not an impossibility**: partial support for the provably-safe branch *could*
+> be built, and is declined chiefly because it would make dependency order depend on a schema
+> accident when the body section already covers every database unconditionally.
+>
+> Read the three falsification sections at the end before treating anything above them as current.
 
 ## Origin
 
@@ -147,6 +159,10 @@ Two follow-up hypotheses were raised and **both were refuted** by a read-only di
   any revision, so the default `"Depends on"` applied, and it matched a real standalone non-native
   column exactly. `Sub-tasks` was never a reachable candidate.
 
+> **Superseded.** The paragraph below was the rationale as of 0.11.0. It is also wrong — see
+> "Second falsification" at the end of this document. Subtype *is* detectable. The conclusion
+> survives; the reason does not.
+
 What survives is narrower and is now the canonical rationale in
 `skills/ticket-system/SKILL.md` → `setDependencies`: **the adapter cannot tell a one-way relation
 from a two-way one.** The MCP schema surface does not expose relation subtype. Bound to a
@@ -157,14 +173,30 @@ Notion relations, and it is revisitable if the API ever exposes subtype.
 
 The `## Blocked by` design outcome is unchanged. Only its justification is.
 
-## Original root cause: inconclusive
+## Original root cause: RESOLVED
 
-The reported reverse edges were cleared by hand before any investigation, and `Depends on` is empty
-across all 338 rows. One lead, recorded as a lead: the live `Depends on` column carries a
-`propertyUrl`, which the scratch `single_property` column did not and both `dual_property` halves
-did. That is consistent with `Depends on` being a two-way relation whose companion-column edges were
-read as symmetry — but the MCP surface does not expose subtype, and a deleted companion would look
-identical. Not testable read-only. Left unresolved rather than resolved to the tidier story.
+> Previously recorded here as inconclusive. A controlled reproduction closed it — see
+> "Second falsification" below for the evidence.
+
+An agent writes `A → B` into a **two-way** relation, then reads B's full property map and finds an
+edge back to `A` under the *companion* column's name. It concludes "every write also creates the
+reverse edge." **Right about the observation, wrong about the mechanism** — the edge is real, it is
+simply the other half of a directional pair rather than a symmetric relation.
+
+Reproduced directly, with the contrast written in a single call: a `dual_property` column named
+`Depends on` put `[A]` into B under `Related to … (Depends on)`; a `single_property` column written
+in the same breath put nothing anywhere.
+
+**Reconstruction of the client's incident** — labelled as reconstruction, since the edges were
+cleared before any investigation: the live `Depends on` was a two-way relation *with* its companion
+at incident time, the reverse edges landed in that companion, they were read as symmetry, and the
+companion was removed during the cleanup. That leaves exactly the orphaned-dual state the live
+schema shows today — `propertyUrl` present, no companion — which testing confirms now behaves
+directionally.
+
+One reported detail this does **not** account for: that dropping and recreating the column changed
+nothing. Recreating it as two-way would restore the companion and the appearance of symmetry, but
+there is no record of how it was recreated, so that part stays unexplained rather than assumed.
 
 ## Separately found: the parent-name matching bug
 
@@ -184,3 +216,126 @@ native Sub-items is *shaped* rather than from any observation of how relations *
 written into nine sites as settled fact before a single test had been run. Writing the prediction
 down in advance is what made it cheap to correct — but predicting earlier would have been cheaper
 than correcting later.
+
+---
+
+# Second falsification
+
+Run 2026-08-02 against a scratch database, probing whether relation subtype is detectable and
+whether a two-way relation reproduces the original report. **The 0.11.0 rationale failed too.**
+
+## Subtype is detectable
+
+`propertyUrl` on the MCP schema surface partitions relations cleanly:
+
+| Property kind | `propertyUrl` |
+|---|---|
+| `single_property` relation (×3, incl. API-created) | **absent** |
+| `dual_property` relation, both halves (×6) | **present** |
+| non-relations — title, number, date, checkbox, text, select (×6) | **absent** |
+
+So "the MCP schema surface does not expose a relation's subtype" is false. There is no explicit
+`single_property`/`dual_property` key, but `propertyUrl` is a reliable proxy for how a column was
+created.
+
+## …and detecting it is not enough
+
+The decisive test was not in the probe's plan; the agent ran it because the live database's
+"`propertyUrl` present, companion absent" state looked impossible and needed explaining.
+
+**Deleting a two-way relation's companion leaves the surviving half carrying its `propertyUrl`
+while it behaves exactly one-way.** A fresh write produced no reverse edge anywhere. An orphaned
+dual half and a live dual half are identical on this surface and opposite in behavior.
+
+`propertyUrl` therefore reports **creation history, not write behavior** — but only on one branch,
+and an early wording of this correction over-reached by saying no signal predicts write behavior at
+all. Codex caught that in review. The signal is **asymmetric**:
+
+- **absent → `single_property` → safe.** Conclusive on the evidence; a one-way relation produces no
+  reverse edge. A conservative guard binding only such columns would be sound.
+- **present → ambiguous.** A live dual half and an orphaned one are identical here and opposite in
+  behavior, and the orphaned state is precisely what the client's database is in today.
+
+So partial support is *possible*. The relation stays out as a **design judgment**, not an
+impossibility: representing dependency order conditionally on a schema accident (some databases get
+relation edges, others only the body section, with nothing telling a reader which) is worse than
+representing it uniformly; the gate would rest on an undocumented field that three falsified
+inferences in this very investigation argue against trusting for writes; and it restores real config
+surface for a feature covering a subset of databases. That tradeoff is revisitable — the safe branch
+is well-defined.
+
+## Known unknown: the public REST API
+
+Untested. The only credential available was an `mcp.notion.com` OAuth token; `api.notion.com`
+rejected it (HTTP 401 under both `2022-06-28` and `2025-09-03`). So it remains possible that the
+public REST API exposes an explicit subtype discriminator that the MCP layer drops.
+
+It would add little that matters. `propertyUrl` already answers subtype on the MCP surface, and the
+open question is not subtype but **companion state** — and only on the `propertyUrl`-present branch,
+since the absent branch is already conclusive without it. An explicit REST discriminator would
+confirm what the proxy already reports, with the advantage of being documented rather than inferred,
+which is not nothing given how much weight that proxy is carrying. Settling it needs
+an internal-integration token.
+
+## What this episode should change — second pass
+
+The first pass said predicting earlier would have been cheaper than correcting later. This round
+sharpens it: **the probe I designed would have produced the wrong answer.** It asked whether a
+discriminator exists and whether it tracks subtype — both yes, which reads as "restore behind a
+guard." The question it failed to ask was whether the signal predicts *behavior*.
+
+Three rationales have now been recorded as fact and then falsified: symmetry, undetectable
+subtype, and (had the orphan test not been run) detectable-therefore-guardable. Each was
+plausible, each was consistent with everything known at the time, and each was wrong. The pattern
+is not bad luck — it is asserting a mechanism from structure rather than from behavior. The fix
+that keeps working is the cheap adversarial test that tries to make the mechanism fail, and it
+has to be aimed at the *consequence* being claimed, not at the property being observed.
+
+---
+
+# Third falsification
+
+Unlike the first two, this one was **caught in code review, not by a test** — Codex, on PR #11,
+reviewing the very commit that corrected the second falsification.
+
+## The over-reach
+
+The 0.12.0 draft replaced "subtype is undetectable" with:
+
+> no available signal predicts a relation column's write behavior
+
+False, and the refutation was **in the same section**. That section established that `propertyUrl`
+absent means `single_property`, and that a `single_property` relation produces no reverse edge.
+Together those make absence predictive. A conclusion true only of the `propertyUrl`-**present**
+branch had been generalised across both.
+
+## The corrected form
+
+The signal is **asymmetric**:
+
+| `propertyUrl` | Means | Safe to write? |
+|---|---|---|
+| absent | `single_property`, conclusive | **yes** — a conservative guard would be sound |
+| present | live dual *or* orphaned dual, indistinguishable | unknown |
+
+So partial support is *possible*. Keeping the relation out is therefore a **design judgment**, and
+the three reasons are recorded in the canonical statement — chiefly that binding it makes dependency
+order depend on a schema accident when the body section already covers every database.
+
+## The propagation failure is the more useful finding
+
+The correction took **three review rounds to fully land**, and every round was the same defect: the
+fix was applied to the sentences under the cursor while adjacent prose kept asserting the old claim
+in stronger form.
+
+- Round 1 corrected the canonical statement and four citing sites.
+- Round 2 found `init.md`'s next paragraph still requiring "subtype plus companion state ... which
+  nothing available provides today" — **contradicting the corrected sentence two lines above it**.
+- Round 3 found this document's own header banner still telling readers the stale claim was current
+  — the single most-read line, in the section that exists to say what is current.
+
+Across PRs #10 and #11 that pattern accounts for **six of the eight review findings**. The rule it
+argues for: after changing a claim or a rule, grep for every restatement of it and read each one,
+rather than trusting that the edit sites were the only places it lived. A targeted edit leaves the
+document *more* inconsistent than before, because the surviving copies now contradict the fixed one
+instead of merely being stale together.
