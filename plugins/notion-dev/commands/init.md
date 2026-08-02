@@ -6,6 +6,8 @@ description: Initialize the notion-dev plugin in this project. Configures ticket
 
 Interactive, idempotent setup. Produces `.claude/notion-dev.config.json` and a merged `.mcp.json` so that `/notion-dev:create-task`, `/notion-dev:ticket`, and `/notion-dev:finalize` work in this project.
 
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
+
 ## Steps
 
 ### 1. Preflight
@@ -314,6 +316,8 @@ git commit -m "chore: initialize notion-dev plugin"
 
 ### 11. Report
 
+**Issue-log sweep.** Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`. Best-effort — a failure here never fails the run.
+
 Print a short summary:
 - Ticket system configured
 - Input sources enabled
@@ -321,6 +325,7 @@ Print a short summary:
 - Code reviewer: <codex|copilot>.
 - Optional slots resolved: `Creation Date`, `Parent task`, `Is Epic` — and whether **Epic containers are available** (`Is Epic` and `Parent task` both present **on the live Notion database**, regardless of whether `epicMarkerProperty` / `parentTaskProperty` were written to config — omit-when-default means they're commonly absent from config even when present live). The `Epic` select tag is unrelated to availability — it's display metadata, never what identifies a container. When `Is Epic` or `Parent task` is missing live, say so plainly: "Epic containers unavailable — Epic grouping will use the Select tag only."
 - Build-flow plugins verified: superpowers + feature-dev (required dependencies)
+- Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."
 
 ## Re-configuration behavior
@@ -352,6 +357,8 @@ Compare the configured ticket system against its live backend state. This runs a
    - **Patch** — add the missing property / option via Notion MCP.
    - **Skip** — leave as-is; commands relying on it may fail.
    - **Update config to match live** — rebind the local config (e.g. change `statusMap.inProgress` or `typeMap.feature` to the live option name; change `typeProperty` to point at a different live property). **Prefer this over Patch when the live label differs only cosmetically** (e.g. `"In progress"` vs `"In Progress"`, `"Feature request"` vs `"Feature"`) — it preserves existing ticket data.
+
+Each drift item is also recorded via `notion-dev:issue-log`, using the same signature the adapter uses for that property at runtime — `missing-property:<propertyName>` when the property is absent, `wrong-type:<propertyName>` when it exists with the wrong Notion type. Never coin an init-specific signature: a property missing here and missing at ticket time are one condition observed at two moments, and one entry is what makes the log groupable.
 
 ### Report
 

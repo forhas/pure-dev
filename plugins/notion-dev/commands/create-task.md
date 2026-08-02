@@ -47,6 +47,8 @@ This is deliberate. When `/notion-dev:ticket` or `/notion-dev:finalize` files a 
 
 Dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
 
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
+
 ## Preconditions
 
 - `.claude/notion-dev.config.json` exists and has `ticketSystem` configured.
@@ -110,18 +112,18 @@ Invoke `notion-dev:task-breakdown` passing `{ title, body, sourceRef, type? }` f
 
 The breakdown skill emits a proposed Epic name. Reconcile it against the configured ticket system before using it — the reconciliation is driven entirely by `getSelectOptions`' return:
 
-1. Invoke `notion-dev:ticket-system` operation `getSelectOptions(<epicProperty>)` (the configured name, default `"Epic"`).
+1. Invoke `notion-dev:ticket-system` operation `getSelectOptions(epicProperty)` — pass the literal config key `epicProperty` itself, not the live column name it resolves to (`"Epic"` by default).
 2. If the return is `null` (property absent or not a selectable type) → skip the Epic entirely. Set `epic = undefined` on all tasks and record `EPIC_PROPERTY_ABSENT = true` — carried through to Phase 4's mission report, where it distinguishes this degradation (no Epic select tag is possible on any task, since `createTicket` only writes the Epic select when `epicProperty` exists) from the narrower case where only `parentTaskProperty` is missing (select tagging still succeeds; only the container page doesn't exist). Continue to 2.5.3.
 3. If the proposed name exists in the returned list (case-insensitive match) → reuse; rebind to the exact live casing; continue to 2.5.3.
 4. If no match → ask `AskUserQuestion`:
-   - **Create "\<proposed\>"** — invoke `notion-dev:ticket-system` operation `addSelectOption(<epicProperty>, "<proposed>")`; then use it.
+   - **Create "\<proposed\>"** — invoke `notion-dev:ticket-system` operation `addSelectOption(epicProperty, "<proposed>")` (`epicProperty` is again the literal config key, not its live column name); then use it.
    - **Pick existing** — show the live option list as sub-choices; user picks one; rebind.
    - **Collapse to single ticket** — merge the mission's task bodies into one (concatenate `## Requirements`, combine `## Acceptance Criteria` into one checklist, preserve all other sections) and proceed to Phase 3 single-path with no Epic.
 
 Once the Epic **select value** is reconciled, resolve the Epic **page** — the container the tasks will hang from. This step only decides *which* page: reuse one that already exists, or record that a new one is needed. It does **not** call `createEpic` itself — `createEpic` takes an `assignee`, and Phase 2.75 (which resolves the assignee) runs *after* this phase, so the value doesn't exist yet here. The actual call is deferred to Phase 3.2's mission path, before Pass 0, which is the first point `assignee` is known and also where `EPIC_ID` is first required (by `parent: EPIC_ID` in the create loop).
 
 1. Invoke `notion-dev:ticket-system` operation `findEpics()`.
-2. `findEpics()` returned **`null`** (the DB lacks `epicMarkerProperty` — epics cannot be identified at all) → `EPIC_ID = undefined`, `EPIC_TO_CREATE` stays unset. Continue with Epic-select tagging only; do not prompt. (This is the "no epic containers on the DB" degradation path; Phase 3.2's deferred-creation step checks for it via `EPIC_TO_CREATE` being unset, so it never fires here either.)
+2. `findEpics()` returned **`null`** (the DB lacks `epicMarkerProperty` — epics cannot be identified at all) → `EPIC_ID = undefined`, `EPIC_TO_CREATE` stays unset. Continue with Epic-select tagging only; do not prompt. (This is the "no epic containers on the DB" degradation path; Phase 3.2's deferred-creation step checks for it via `EPIC_TO_CREATE` being unset, so it never fires here either.) Neither branch writes to the issue log here. The `null` case — `epicMarkerProperty` absent — is recorded once by `notion-dev:ticket-system` as `missing-property:epicMarkerProperty`; the `[]` case is routine and is never logged at all. See `notion-dev:issue-log`.
 3. Otherwise `findEpics()` returned an array (possibly `[]`, meaning `epicMarkerProperty` exists but no page has it set to `true` yet — a page merely carrying the Epic select tag does not count, see `findEpics()` in `skills/ticket-system/SKILL.md`). A returned epic whose `name` matches the reconciled Epic value (case-insensitive) → reuse it. Record its **`id`** (the logical ticket id, e.g. `67` — *not* `pageId`) as `EPIC_ID`; `EPIC_TO_CREATE` stays unset.
 4. No match (including the `[]` case) → do **not** create the epic yet. Record `EPIC_TO_CREATE = { name: <reconciled Epic value>, overview: <2-4 sentence distillation of the mission's goal from the source body>, type: <the dominant task type across the mission> }` — everything `createEpic` will need except `assignee`. `EPIC_ID` stays unresolved until Phase 3.2.
 
@@ -150,7 +152,7 @@ Ask `AskUserQuestion`: **Approve / Revise / Collapse to single ticket**.
 
 Runs only when Phase 2.5 returned `kind: "single"`. Skipped entirely for missions (2.5.2 already resolved the epic) and for the `existing-ticket` source mode, which never re-parents a ticket — the same rule that makes it skip Phase 2.5.
 
-1. Invoke `notion-dev:ticket-system` operation `findEpics()`. **`null`** (the DB lacks `epicMarkerProperty` — epics cannot be identified at all) → skip silently, no prompt: the unavailable-degrade case. **`[]`** (`epicMarkerProperty` exists but no page has it set to `true` yet) → also skip silently, no prompt, but for a different reason: there is simply nothing to attach to. Both are silent, but they are different states — do not conflate them in any future change here.
+1. Invoke `notion-dev:ticket-system` operation `findEpics()`. **`null`** (the DB lacks `epicMarkerProperty` — epics cannot be identified at all) → skip silently, no prompt: the unavailable-degrade case. **`[]`** (`epicMarkerProperty` exists but no page has it set to `true` yet) → also skip silently, no prompt, but for a different reason: there is simply nothing to attach to. Both are silent, but they are different states — do not conflate them in any future change here. Neither branch writes to the issue log here. The `null` case — `epicMarkerProperty` absent — is recorded once by `notion-dev:ticket-system` as `missing-property:epicMarkerProperty`; the `[]` case is routine and is never logged at all. See `notion-dev:issue-log`.
 2. Judge the ticket's title and `## Requirements` against each epic's `name` and `## Overview`. This is a semantic judgment, not string matching: an epic is a plausible candidate when this ticket is work on the same incident, feature, or investigation. A shared word is not a match.
 3. **Zero plausible candidates → skip silently.** No prompt. This is the common case, and routine single-ticket runs must stay as quiet as they are today.
 4. **One or more plausible candidates** → ask `AskUserQuestion`: *"This looks related to an existing epic. Attach it?"*
@@ -225,7 +227,7 @@ Capture the returned `{ id, url }`.
 
 **Epic creation** (mission path only; runs before Pass 0 — skip entirely when `EPIC_ID` is already set from 2.5.2's reuse match, or when `EPIC_TO_CREATE` was never set, i.e. the DB lacks epic containers or the mission collapsed): invoke `notion-dev:ticket-system` operation `createEpic({ name: EPIC_TO_CREATE.name, overview: EPIC_TO_CREATE.overview, type: EPIC_TO_CREATE.type, assignee })`. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `assignee` is Phase 2.75's resolved value — this is why the call waits until here instead of running inline in 2.5.2, where `EPIC_TO_CREATE` was recorded but Phase 2.75 hadn't run yet. Record the result's **`id`** (the logical ticket id — the result shape is `{ id, key, url, pageId }`) as `EPIC_ID`, the same field 2.5.2's reuse path records. A `null` return (epic containers became unavailable between 2.5.2 and now) degrades the same way 2.5.2 step 4 does: `EPIC_ID = undefined`, continue with Epic-select tagging only.
 
-**Pass 0 — reconcile Phase options** (mirrors the Epic reconciliation in 2.5.2, but non-interactive — phase labels are generated per-mission structure, not user taxonomy, so missing options are auto-added rather than prompted): invoke `notion-dev:ticket-system` operation `getSelectOptions(<phaseProperty>)` (the configured name, default `"Phase"`). If the return is `null` → set `phase = undefined` on all tasks. Otherwise, rebind case-insensitive matches to the exact live casing, and for each distinct `task.phase` absent from the returned options invoke `addSelectOption(<phaseProperty>, "<phase>")`. `createTicket` requires an exact option match and raises otherwise — reconcile before the first create, or Pass 1 fails partway through.
+**Pass 0 — reconcile Phase options** (mirrors the Epic reconciliation in 2.5.2, but non-interactive — phase labels are generated per-mission structure, not user taxonomy, so missing options are auto-added rather than prompted): invoke `notion-dev:ticket-system` operation `getSelectOptions(phaseProperty)` — pass the literal config key `phaseProperty` itself, not the live column name it resolves to (`"Phase"` by default). If the return is `null` → set `phase = undefined` on all tasks. Otherwise, rebind case-insensitive matches to the exact live casing, and for each distinct `task.phase` absent from the returned options invoke `addSelectOption(phaseProperty, "<phase>")` (same rule: the literal config key, not its live column name). `createTicket` requires an exact option match and raises otherwise — reconcile before the first create, or Pass 1 fails partway through.
 
 **Pass 1 — create all tickets** (in declaration order, so each task is visible in the DB before its potential dependents are written):
 
@@ -271,6 +273,8 @@ If Pass 1 fails partway, report what succeeded (with IDs/URLs) and stop before P
 
 ## Phase 4 — Report
 
+**Issue-log sweep.** Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`. Best-effort — a failure here never fails the run.
+
 ### Single-ticket result
 
 Print:
@@ -278,6 +282,7 @@ Print:
 - The epic it was attached to, when Phase 2.6 attached one: `Epic: [<KEY>-<n>] <name> · <url>`. Omit the line entirely when unattached.
 - A one-line summary of what was captured.
 - Non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`).
+- Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - Next step: "Run `/notion-dev:ticket <ticket-id>` when you're ready to implement (the page id is in the ticket URL above)."
 
 ### Mission result
@@ -305,7 +310,7 @@ Dependencies wired: M edges across K tasks.
 Next step: Run `/notion-dev:ticket <ticket-id>` on any task to implement (the page id is in each task's URL above). The plugin does not auto-sequence — dependency tags are informational.
 ```
 
-Also print any non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`), same as the single-ticket result above.
+Also print any non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`), and issues logged, when this run wrote any, same as the single-ticket result above.
 
 When `phase` isn't used in the mission, flatten to a plain numbered list.
 
@@ -315,4 +320,4 @@ When `phase` isn't used in the mission, flatten to a plain numbered list.
 
 - Source returns no content (e.g. empty prompt, missing ticket) → ask the user for input or abort.
 - Ticket-system MCP unavailable → abort with clear retry guidance.
-- User cancels at confirm gate → abort; do not write.
+- User cancels at confirm gate → abort; do not write. Best-effort, before stopping: run the issue-log sweep from Phase 4 — this path skips Phase 4 entirely, and an unrecoverable failure is the single most valuable thing this log can record. A failure to write it never masks the real failure report.

@@ -20,6 +20,8 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 - Everything after a `|` is optional guidance and remains available context throughout the run.
 - Whatever remains is the `<ticket-id>` (or empty, for the no-arg resume path above).
 
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
+
 ## Preconditions
 
 - **Superpowers and feature-dev (required).** `dependencies.superpowers` **and** `dependencies.featureDev` in the config must both be `true` — if either is missing or false, abort and tell the user to re-run `/notion-dev:init` (which verifies and records both). Confirm `superpowers:writing-plans`, `superpowers:subagent-driven-development`, `superpowers:receiving-code-review`, and `feature-dev:feature-dev` are all available; this command delegates planning, execution, and review to them.
@@ -54,7 +56,7 @@ Hard abort in both interactive and non-interactive mode. It runs before Phase 2,
 
 A page carrying only the `Epic` select tag, with no `epicMarkerProperty` set, is **not** guarded here — even with an empty parent, and even if it happens to have picked up an ordinary Sub-items child. The marker, not the tag or the shape, is what makes a page an epic (see "Epic containers" in `skills/ticket-system/SKILL.md`); blocking on shape alone is the exact failure this guard used to have, since a legacy Epic-tagged ticket on an upgraded database can satisfy every structural signal an epic does. A freshly created epic with **zero** children **is** guarded here now — there is no child-count requirement left to exempt it. `metadata.epicMarkerProperty` reads `false` when `epicMarkerProperty` is absent from the live DB entirely, so the guard degrades safely to "not an epic" rather than guessing from structure.
 
-**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently, with no warning, since most tickets have no epic.
+**Epic context.** When `metadata.parentTaskProperty` is non-empty, invoke `getEpicContext(metadata.parentTaskProperty, <id>)` — `<id>` is this ticket's own numeric id, already derived above — and record the result as `EPIC_CONTEXT`. When `metadata.parentTaskProperty` is empty, or the call returns `null`, `EPIC_CONTEXT` is absent — every use of it below is skipped silently. Most tickets simply have no epic; on the rarer cause (`epicMarkerProperty` absent from the live DB), `getEpicContext` itself already recorded `missing-property:epicMarkerProperty` per `notion-dev:issue-log`, so nothing further is logged here.
 
 `EPIC_CONTEXT` is **background, not requirements**: the ticket body remains the single source of truth for what to build. Where the two appear to conflict — a resolution-log entry describing an approach the ticket now contradicts — the ticket wins, and the conflict is surfaced to the user at the 1.3 clarification gate rather than silently resolved.
 
@@ -163,7 +165,7 @@ For tickets that are genuinely not TDD-shaped (docs-only edit, config bump, pure
 
 (b) Invoke `notion-dev:plan-review` — independent review of the plan before any of it is built. Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — `VERIFY:` lists the `verify.steps` commands from config, and `EPIC-CONTEXT:` is `EPIC_CONTEXT` when present or `NONE — not available` when absent, following the same convention as the other optional blocks — labeled as background, not requirements, so the reviewer never treats a resolution-log entry as spec. No `--spec-file`: the ticket body is the spec and travels inline.
 
-It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
+It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). When the block reads `PLAN-REVIEW: degraded` — the reviewer never ran — record `retry-exhausted:plan-review` per `notion-dev:issue-log`. The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
 
 **Non-interactive mode and `PLAN-REVIEW: blocked`** (≥1 unresolved Critical): stop the run per the command's failure handling, leaving the worktree, branch, and `PLAN.md` intact, and report the blockers. Do not implement a plan already known to be Critically flawed. `proceed-with-warnings`, `clean`, and `degraded` all continue — with any blockers logged for the final report.
 
@@ -195,7 +197,7 @@ Throughout execution, project context matters: `CLAUDE.md` at the repo root, exi
 Iterate over `verify.steps` from config in order. For each step:
 1. Run the `cmd`.
 2. If it fails, attempt to fix and re-run.
-3. Cap at `retries` attempts per step (default 3). If still failing, report to the user and stop.
+3. Cap at `retries` attempts per step (default 3). If still failing, record `retry-exhausted:verify` per `notion-dev:issue-log`, then report to the user and stop.
 
 ### 5.2 Optional simplify
 
@@ -291,7 +293,9 @@ existing-comment processing, rounds with the configured code reviewer (Codex or 
 resolved from `.claude/notion-dev.config.json`), the local fallback
 (`notion-dev:local-code-review`), merge gates (including config `git.preMergeChecks`),
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
-report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
+report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`. When that report
+shows the local fallback ran because the configured reviewer was unavailable, record
+`fallback:local-code-review` per `notion-dev:issue-log`.
 
 Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) recover deferred follow-ups if this run dies before Phase 8 completes. Best-effort — a write failure here must not fail the run.
 
@@ -307,7 +311,7 @@ Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-repor
 
 Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 7) and `$REPO_ROOT` as context.
 
-It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10 and for 8.3 below.
+It owns the whole epic-side record: filing deferred follow-ups as tickets under the epic, refreshing the epic's `## Tasks`, appending a dated log entry, and closing the epic when every child is resolved. Record its `EPIC-UPDATE:` output block as `EPIC_REPORT` for Phase 10 and for 8.3 below. When `EPIC_REPORT`'s `FAILED-TO-FILE` bucket is non-empty, or either `SKIPPED` or `FAILED-TO-FILE` carries `epic-update`'s `unknown` sentinel, record `partial:epic-update` per `notion-dev:issue-log`. Never merely because `SKIPPED` holds concrete items — per `epic-update/SKILL.md`, a `SKIPPED` item there is a user decision (the interactive gate offered File/Skip and the user chose Skip), the routine kind of interaction this log must never record. `unknown` means the invocation had no `REVIEW_REPORT` to assert either bucket from and is the real quiet degradation this signature exists to catch; a future edit must not simplify this back to a bare non-empty-`SKIPPED`-or-`FAILED-TO-FILE` check, which is exactly the bug being fixed here.
 
 Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
 
@@ -322,7 +326,7 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Base branch** — the branch merged into (from `git.baseBranch` or the PR's `baseRefName`).
 - **Merged at** — ISO timestamp.
 - **Review resolution** — 1-3 bullets summarizing how review feedback was handled, distilled from `REVIEW_REPORT` (e.g. "applied 4 comments, deferred 1 as follow-up, disagreed on 1").
-- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
+- **Deferred follow-ups** — list of YAGNI/disagreement items distilled from `REVIEW_REPORT`, each paired with its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `SKIPPED` or `FAILED-TO-FILE`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
 
 ### 8.4 Post-merge hooks
 
@@ -352,6 +356,8 @@ Append one outcome line to `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` per the 
 
 Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. Plan-review metrics come from `PLAN_REVIEW_REPORT` (Phase 4.2 step (b)); all four are `null` wherever there is no review signal to record — the `feature-dev` path, which has no plan to review, a `degraded` review, where the reviewer never ran, and a resume that skipped the review. On a degraded review write `null`, **not** the zeros its output block carries: `0` findings would be indistinguishable from a review that ran and found nothing, and that is exactly the distinction this ledger exists to preserve. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
 
+**Issue-log sweep.** Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`. Best-effort — a failure here never fails the run.
+
 ---
 
 ## Phase 10 — Report
@@ -365,6 +371,7 @@ Print a summary covering:
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups filed (with their IDs) versus deferred, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
+- Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 
 ---
 
@@ -374,4 +381,4 @@ Print a summary covering:
 - > 15 files touched unplanned → stop and ask whether to continue or re-plan.
 - Missing env vars or configuration → stop, never guess credentials.
 - Any hard gate not passed → stop, do not proceed.
-- **On any unrecoverable failure** (verify can't be made to pass, PR unmergeable, review loop stopped, unresolvable conflicts): STOP without running cleanup. Leave the worktree, branch, and PR (if one exists) intact for inspection. Report the exact remaining state (worktree path, branch name, PR number if any) and the exact commands to resume or clean up manually — including `/notion-dev:finalize <pr>` when a PR exists. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — **except** the `plan_review_*` fields, which carry their real values from the plan-review output block whenever the review ran. A `blocked` exit is the single most valuable case to calibrate on, and the schema reserves `null` for *no review signal*, which is not what happened here — never let ledger bookkeeping mask the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.
+- **On any unrecoverable failure** (verify can't be made to pass, PR unmergeable, review loop stopped, unresolvable conflicts): STOP without running cleanup. Leave the worktree, branch, and PR (if one exists) intact for inspection. Report the exact remaining state (worktree path, branch name, PR number if any) and the exact commands to resume or clean up manually — including `/notion-dev:finalize <pr>` when a PR exists. Best-effort, before stopping: append a ledger outcome line with `result` `"failed"` (unrecoverable failure) or `"stopped"` (user abort) and `null` metrics — **except** the `plan_review_*` fields, which carry their real values from the plan-review output block whenever the review ran. A `blocked` exit is the single most valuable case to calibrate on, and the schema reserves `null` for *no review signal*, which is not what happened here — never let ledger bookkeeping mask the real failure report. Also best-effort, before stopping: run the issue-log sweep from Phase 9 — this path skips Phase 9 entirely, and an unrecoverable failure is the single most valuable thing this log can record. A failure to write it never masks the real failure report. The Notion ticket stays "In Progress" — no failure status is ever written to Notion.
