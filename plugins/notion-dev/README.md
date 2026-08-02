@@ -2,7 +2,7 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.8.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.9.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
 
 ## Prerequisites
 
@@ -151,6 +151,22 @@ Secrets never belong in this file; MCP auth handles credentials.
 The number of rounds either loop will run is capped by `reviewsCap` (default 15). Raise it
 for repos where reviews routinely need more iterations; lower it to fail fast. The review
 loop never writes this key — edit `.claude/notion-dev.config.json` directly.
+
+## Runtime issue log
+
+When a command or skill hits something unexpected — a configured property missing from your Notion database, an MCP outage, a review that degraded, a step that aborted — the plugin records it in:
+
+```
+.claude/notion-dev/notion-dev-issues.md
+```
+
+This is automatic. You do not run anything to produce it, and it never interrupts a command: a failure to write the log never fails the run. The file lives in a self-ignored directory, so it never dirties `git status` and never lands in a PR.
+
+**If the plugin misbehaves, send that whole file to whoever maintains the plugin.** It carries identifiers only — property names, command and phase names, error text, config shape, plugin version — and never ticket titles, ticket bodies, diffs, PR contents, user ids, or email addresses.
+
+Repeat problems are deduplicated: the same issue collapses to one entry with an occurrence count and a last-seen timestamp, so the file grows with distinct problems rather than with runs. There is no rotation — nothing is ever discarded.
+
+**One caveat worth understanding.** The plugin has no background process. An entry gets written because a running agent recorded it, so quiet degradations are captured well while abrupt failures — a killed process, an interrupt — may leave nothing behind. A short file is not proof that nothing went wrong.
 
 ## Ticket system
 
