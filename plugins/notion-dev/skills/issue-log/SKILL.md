@@ -138,6 +138,8 @@ Subject takes one of three forms: a fixed kebab-case subject the plugin invents 
 
 **A property subject is always the config key, never the live column name.** `parentTaskProperty`, `phaseProperty`, `epicProperty`, and their siblings are the plugin's own config keys — fixed identifiers the plugin defines, never the client's live Notion column label. Some operations receive that live column name as their *argument* instead of the config key, because that is what the underlying Notion lookup needs. Before recording, such an operation maps its argument back to whichever config key supplied that value and cites the **key**, never the argument: splicing the class prefix directly onto a live column value (say, a column the client happens to call `"Phase"`, or something less tidy with spaces in it) instead of onto the registered `phaseProperty` would both violate this grammar and leak the client's own naming into a file forwarded to the plugin author. When no config key owns the live column at all — for instance a name drawn from `staticProperties`, which the plugin never binds to a dedicated config key — there is no property identity to cite. Treat that the same as any other condition nobody enumerated in advance (Layer 1, above): reuse whichever registered class fits, paired with a fixed kebab-case subject naming the *check being performed*, never the live column value. An operation must never skip recording for lack of an owning key, and must never fall back to the raw column name as the subject.
 
+**`option-missing` splits into two subject forms, and only one of them may include the live option name.** A required Select/Status option divides into two kinds. **Kind A** — a `statusProperty` or `typeProperty` option selected through `statusMap` / `typeMap` — is keyed by a stable, plugin-defined **logical key** (`implemented`, `cancelled`, `feature`, and their siblings), identical across every client; the registered subject for a missing Kind A option is `<propertyName>-<logicalKey>`, so a missing `implemented` and a missing `cancelled` get separate identities rather than colliding under one bare property name. **Kind B** — `epicProperty` and `phaseProperty` options — are free-form values generated from the ticket or mission itself (an epic name proposed for the mission; a phase label), never a fixed vocabulary; for these the subject stays the bare config key with no suffix, and the live option value must never be appended to it, because it is ticket-derived content and a signature is written into a `##` heading — the most exposed place in this file (see "Redaction" below). Losing per-option dedup for Kind B is accepted: a missing free-form option always has the same diagnosis — the caller skipped the `getSelectOptions` / `addSelectOption` reconcile before `createTicket` — so which option was missing doesn't change the diagnosis. See `references/signatures.md` for the full template contract.
+
 Enumerated signatures live in `references/signatures.md`. **Cite a registered name whenever one applies; never coin a variant of one that already exists.** Layer 1 invents new signatures under this same grammar, reusing an existing class wherever one fits and falling back to `unexpected:<subject>`. Constraining the catch-all to the grammar is what keeps it groupable — free-form entries make the log unsearchable, which defeats its purpose.
 
 ## Redaction
@@ -146,7 +148,7 @@ Redaction is structural: a per-field whitelist, not a cleanup pass. Writing a co
 
 | Field | May contain |
 |---|---|
-| signature | A class from the list above plus a config property name, a Notion property type name, or a fixed subject. |
+| signature | A class from the list above plus a config property name, a Notion property type name, a `statusMap`/`typeMap` logical key, or a fixed subject. |
 | `Kind` | One of the three values above. |
 | `Occurrences` | An integer. |
 | `First seen` / `Last seen` | A UTC timestamp and the plugin version. |
@@ -172,6 +174,8 @@ If nothing is left after stripping, fall back to the error's class name alone.
 ### Forbidden, without exception
 
 Ticket titles. Ticket bodies. Any part of a ticket's content. PR titles, descriptions, or contents. Diffs or code. Notion user ids. Email addresses. Personal names. Full database ids. Full page ids. Absolute filesystem paths. URLs of any kind.
+
+**A free-form Select option value counts as ticket content.** An Epic name or Phase label is generated from the ticket or mission being filed, not from a fixed vocabulary — see "Signature grammar" above. That is why `option-missing`'s Kind B subject never appends the live option value: only the config property key (`epicProperty`, `phaseProperty`) may appear, never the epic name or phase label that triggered the entry. Kind A is the one exception to "a subject never carries live content" — its `<logicalKey>` is the plugin's own fixed vocabulary (`implemented`, `feature`, …), never anything read off the live DB.
 
 `Observed` and `Effect` are the leak risk, because they are prose. **They describe plugin behavior, never ticket content.**
 
