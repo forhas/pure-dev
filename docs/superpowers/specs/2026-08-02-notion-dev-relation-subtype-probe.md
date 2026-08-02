@@ -11,6 +11,13 @@ notion-dev 0.11.0 removed `dependsOnProperty` and justifies it with this claim:
 > The adapter cannot tell a one-way relation from a two-way one — the Notion MCP schema surface
 > does not expose a relation's subtype.
 
+> **OUTCOME (recorded after this probe ran): the claim above was DISPROVEN.** `propertyUrl` does
+> reveal subtype — absent on every `single_property` relation, present on every `dual_property`
+> half. But it reports how a column was *created*, not how a write to it will *behave*: an
+> orphaned two-way half keeps `propertyUrl` and behaves one-way. See the "Second falsification"
+> and "Third falsification" sections of `2026-08-02-notion-dev-dependency-direction-design.md`.
+> This file is retained as the test protocol, not as an open question.
+
 **That claim is load-bearing and under-evidenced.** It came from one agent noticing that a
 `propertyUrl` field was absent on a scratch `single_property` column and present on both halves
 of a `dual_property` pair. Nobody has dumped a complete relation property definition to check

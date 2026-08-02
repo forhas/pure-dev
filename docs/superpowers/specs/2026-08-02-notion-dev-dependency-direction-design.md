@@ -2,16 +2,23 @@
 
 **Date**: 2026-08-02
 **Status**: Part 1 implemented. Part 2 resolved: no code change needed. Original root cause: **resolved**.
-The design outcome has held throughout; its stated rationale has been falsified and rewritten **twice**.
+The design outcome has held throughout; its stated rationale has been falsified and rewritten **three times**.
 
-> **Two mechanisms argued in this document are false.** (1) Notion self-referential relations are
-> **not** symmetric — they are directional in both forms. (2) Relation subtype **is** detectable via
-> `propertyUrl` — it simply does not predict write behavior, because an orphaned two-way half still
-> carries it and behaves one-way.
+> **Three claims made in this document are false.** Each was recorded as fact and later disproven:
 >
-> Read the two falsification sections at the end before treating anything above them as current.
-> The current rationale lives in `skills/ticket-system/SKILL.md` → `setDependencies`: *no available
-> signal predicts a relation column's write behavior.*
+> 1. *Notion self-referential relations are symmetric.* They are not — both forms are directional.
+> 2. *Relation subtype is not detectable.* It is — `propertyUrl` marks two-way halves.
+> 3. *No available signal predicts write behavior.* Over-reach. The signal is **asymmetric**:
+>    `propertyUrl` **absent** conclusively means `single_property`, which is **provably safe to
+>    write**; only the **present** branch is ambiguous, because a live dual half and an orphaned
+>    one look identical and behave oppositely.
+>
+> **The current rationale** — in `skills/ticket-system/SKILL.md` → `setDependencies` — is a
+> **design judgment, not an impossibility**: partial support for the provably-safe branch *could*
+> be built, and is declined chiefly because it would make dependency order depend on a schema
+> accident when the body section already covers every database unconditionally.
+>
+> Read the three falsification sections at the end before treating anything above them as current.
 
 ## Origin
 
@@ -283,3 +290,52 @@ plausible, each was consistent with everything known at the time, and each was w
 is not bad luck — it is asserting a mechanism from structure rather than from behavior. The fix
 that keeps working is the cheap adversarial test that tries to make the mechanism fail, and it
 has to be aimed at the *consequence* being claimed, not at the property being observed.
+
+---
+
+# Third falsification
+
+Unlike the first two, this one was **caught in code review, not by a test** — Codex, on PR #11,
+reviewing the very commit that corrected the second falsification.
+
+## The over-reach
+
+The 0.12.0 draft replaced "subtype is undetectable" with:
+
+> no available signal predicts a relation column's write behavior
+
+False, and the refutation was **in the same section**. That section established that `propertyUrl`
+absent means `single_property`, and that a `single_property` relation produces no reverse edge.
+Together those make absence predictive. A conclusion true only of the `propertyUrl`-**present**
+branch had been generalised across both.
+
+## The corrected form
+
+The signal is **asymmetric**:
+
+| `propertyUrl` | Means | Safe to write? |
+|---|---|---|
+| absent | `single_property`, conclusive | **yes** — a conservative guard would be sound |
+| present | live dual *or* orphaned dual, indistinguishable | unknown |
+
+So partial support is *possible*. Keeping the relation out is therefore a **design judgment**, and
+the three reasons are recorded in the canonical statement — chiefly that binding it makes dependency
+order depend on a schema accident when the body section already covers every database.
+
+## The propagation failure is the more useful finding
+
+The correction took **three review rounds to fully land**, and every round was the same defect: the
+fix was applied to the sentences under the cursor while adjacent prose kept asserting the old claim
+in stronger form.
+
+- Round 1 corrected the canonical statement and four citing sites.
+- Round 2 found `init.md`'s next paragraph still requiring "subtype plus companion state ... which
+  nothing available provides today" — **contradicting the corrected sentence two lines above it**.
+- Round 3 found this document's own header banner still telling readers the stale claim was current
+  — the single most-read line, in the section that exists to say what is current.
+
+Across PRs #10 and #11 that pattern accounts for **six of the eight review findings**. The rule it
+argues for: after changing a claim or a rule, grep for every restatement of it and read each one,
+rather than trusting that the edit sites were the only places it lived. A targeted edit leaves the
+document *more* inconsistent than before, because the surviving copies now contradict the fixed one
+instead of merely being stale together.
