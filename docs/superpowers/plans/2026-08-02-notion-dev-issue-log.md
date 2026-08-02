@@ -47,7 +47,7 @@ These three blocks appear in more than one task. They are reproduced in full ins
 **The standing-rule preamble** (Tasks 3, 4, 5, 6):
 
 ```markdown
-**Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill owns the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged. This rule applies to conditions nobody enumerated in advance, not only to the named ones below. A failure to write the log never fails the run.
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 ```
 
 **The sweep** (Tasks 3, 4, 5, 6):
@@ -480,7 +480,7 @@ This is the most intricate of the four commands. It has ten phases plus a "Failu
 Insert after the command's opening description and before its first `## Preconditions` heading:
 
 ```markdown
-**Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill owns the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged. This rule applies to conditions nobody enumerated in advance, not only to the named ones below. A failure to write the log never fails the run.
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 ```
 
 - [ ] **Step 2: Add the four caller-side signature citations**
@@ -577,7 +577,7 @@ git commit -m "feat(notion-dev): wire issue-log into /notion-dev:ticket"
 Insert after the command's opening description and before `## Preconditions`:
 
 ```markdown
-**Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill owns the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged. This rule applies to conditions nobody enumerated in advance, not only to the named ones below. A failure to write the log never fails the run.
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 ```
 
 - [ ] **Step 2: Add the two caller-side signature citations**
@@ -663,7 +663,7 @@ git commit -m "feat(notion-dev): wire issue-log into /notion-dev:finalize"
 Insert after the command's opening description and before `## Preconditions`:
 
 ```markdown
-**Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill owns the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged. This rule applies to conditions nobody enumerated in advance, not only to the named ones below. A failure to write the log never fails the run.
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 ```
 
 - [ ] **Step 2: Add a do-not-log note at the epic degradation sites**
@@ -750,7 +750,7 @@ git commit -m "feat(notion-dev): wire issue-log into /notion-dev:create-task"
 Insert after the command's opening description and before `## Steps`:
 
 ```markdown
-**Standing rule — runtime issues.** Anything unexpected at runtime — an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill owns the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged. This rule applies to conditions nobody enumerated in advance, not only to the named ones below. A failure to write the log never fails the run.
+**Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 ```
 
 - [ ] **Step 2: Cite existing signatures in the drift check**
