@@ -310,7 +310,7 @@ Dependencies wired: M edges across K tasks.
 Next step: Run `/notion-dev:ticket <ticket-id>` on any task to implement (the page id is in each task's URL above). The plugin does not auto-sequence — dependency tags are informational.
 ```
 
-Also print any non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`), same as the single-ticket result above.
+Also print any non-interactive decisions taken during the run, if any (e.g. Phase 2.2's auto-`create`), and issues logged, when this run wrote any, same as the single-ticket result above.
 
 When `phase` isn't used in the mission, flatten to a plain numbered list.
 
