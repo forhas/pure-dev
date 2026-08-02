@@ -68,17 +68,34 @@ edges were misread as symmetry. Test 3 reproduces that directly.
 
 **Decisive question: is there any field that reliably tells the two subtypes apart?**
 
-## Test 2 — Negative control for `propertyUrl`
+## Test 2 — Controls for `propertyUrl`
 
-The `propertyUrl` heuristic is only meaningful if it tracks subtype rather than something else.
+Two controls, and they carry **different weight**. Any guard built on this signal is only ever
+applied to a column already known to be a `relation`, so the question that decides soundness is how
+the field behaves *within* relations.
+
+**2a — Within-relation partition (decisive).** Across every relation from Test 1:
+
+1. Does **any** `single_property` relation carry `propertyUrl`?
+2. Does **any** `dual_property` half lack it?
+
+A "yes" to either **kills the discriminator** — the field no longer separates the two subtypes, and
+no guard can be built on it. A "no" to both means it partitions cleanly on this evidence.
+
+**2b — Non-relation control (contextual, not decisive).**
 
 1. In the same scratch DB, add non-relation properties: a `select`, a `number`, a `date`, a
    `checkbox`, and a `rich_text`.
 2. Report which of them carry `propertyUrl`.
 
-If non-relation properties also carry it, `propertyUrl` is not a subtype signal and the heuristic
-is dead — say so plainly. Report what you observe either way; do not adjust the conclusion to fit
-the hypothesis.
+This tells you what the field *means* — if it appears on everything, it is a generic property
+attribute rather than anything relation-specific, which should lower confidence in the partition
+being causal rather than coincidental.
+
+**But it must not by itself produce a "discriminator is dead" verdict.** Candidate columns are
+relations by construction, so a future Notion release adding `propertyUrl` to `select` columns would
+not disturb a partition that still holds across relations. Judge 2a on its own evidence; report 2b
+as context, and say explicitly if the two point in different directions.
 
 ## Test 3 — Reproduce the original misread
 
@@ -163,10 +180,13 @@ TEST 1 — SCHEMA DUMP
   MCP strips a field the raw API exposes:  <YES: which | NO | could not test raw>
   VERDICT: subtype detectable?             <YES | NO | ONLY VIA RAW API>
 
-TEST 2 — propertyUrl NEGATIVE CONTROL
-  relations with propertyUrl:       <list>
-  NON-relations with propertyUrl:   <list>
-  VERDICT: propertyUrl tracks subtype?  <YES | NO — it appears on non-relations too>
+TEST 2 — propertyUrl CONTROLS
+  2a (decisive) single_property relations WITH propertyUrl:  <list | none>
+  2a (decisive) dual_property halves WITHOUT propertyUrl:    <list | none>
+  VERDICT 2a: partitions within relations?  <YES — clean partition
+                                             | NO — discriminator is dead, list the exceptions>
+  2b (context) NON-relations with propertyUrl:  <list | none>
+  2b note: <what this implies about what the field means; does NOT override 2a>
 
 TEST 3 — MISREAD REPRODUCTION
   dual: companion column name:      <name>
