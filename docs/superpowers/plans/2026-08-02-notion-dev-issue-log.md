@@ -340,13 +340,13 @@ grep -rnE '0\.[0-9]+\.[0-9]+' plugins/notion-dev/skills/issue-log/ | grep -v 'Fi
 ```
 Expected: no output.
 
-- [ ] **Step 6: Verify the registry parses to exactly 20 signatures**
+- [ ] **Step 6: Verify the registry parses to exactly 22 signatures**
 
 Run:
 ```bash
 grep -oE '^\| `[a-z-]+:[A-Za-z_<>-]+`' plugins/notion-dev/skills/issue-log/references/signatures.md | wc -l
 ```
-Expected: `20`.
+Expected: `22`.
 
 - [ ] **Step 7: Verify redaction and not-logged sections are present (spec V5, V6)**
 
@@ -447,9 +447,9 @@ Expected: at least `15`. Paired sites and multi-signature sentences push this hi
 
 - [ ] **Step 6: Verify no behavior text was rewritten**
 
-Run: `git diff --stat plugins/notion-dev/skills/ticket-system/SKILL.md`
+Run: `git diff plugins/notion-dev/skills/ticket-system/SKILL.md`
 
-Expected: insertions substantially exceed deletions. A large deletion count means existing prose was rewritten rather than appended to — revert and redo as appends.
+An in-line append to a long single-line paragraph renders as one deleted line paired with one added line, so an insertions-vs-deletions line count is not a usable signal here. Instead, for every changed `-`/`+` pair, confirm the `+` line contains every word of its paired `-` line verbatim, with only new text (a citation sentence) added at the end. A `+` line missing or reordering any word present on its paired `-` line means existing prose was rewritten rather than appended to — revert and redo as an append.
 
 - [ ] **Step 7: Apply the two-places rule**
 
@@ -876,7 +876,7 @@ grep -oE '^\| `[a-z-]+:[A-Za-z_<>-]+`' plugins/notion-dev/skills/issue-log/refer
   | sed 's/^| //; s/`//g' | grep -v '<' | sort -u > /tmp/all_registered.txt
 diff /tmp/all_cited.txt /tmp/all_registered.txt
 ```
-Expected: no output — the two sets are equal, at **18** entries each. The registry holds 20 rows; `option-missing:<propertyName>` and `mcp-error:<tool>` are templates and are filtered from both sides.
+Expected: no output — the two sets are equal, at **20** entries each. The registry holds 22 rows; `option-missing:<propertyName>` and `mcp-error:<tool>` are templates and are filtered from both sides.
 
 A line prefixed `<` is a signature cited somewhere but never registered. A line prefixed `>` is a dead registry entry no call site uses. Both are the two-places-disagree defect; fix and re-run.
 

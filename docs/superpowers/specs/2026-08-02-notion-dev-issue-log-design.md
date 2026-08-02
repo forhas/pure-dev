@@ -164,6 +164,8 @@ Layer 1 invents signatures at write time under this same grammar, reusing an exi
 
 ## 5. Redaction
 
+> **Amended during execution (2026-08-02):** final review found `Observed`'s original "error text" allowance let raw MCP error strings carry a full id or URL — both forbidden under §5.1. `Observed` was constrained to an error's class-and-message *shape* with ids, URLs, paths, and quoted values stripped; see `SKILL.md` for the current wording and worked examples. The `Context` permitted-keys list below also gained `phaseProperty` and `stepProperty` — two config properties whose registry signatures (§7.4) had no key to carry `Context: <property>=absent`. The table below reflects the original design; `SKILL.md` is current.
+
 Redaction is **structural** — a per-field whitelist, not a cleanup pass someone remembers to run. Writing a compliant entry and writing a redacted entry are the same act.
 
 | Field | May contain |
@@ -253,6 +255,8 @@ Without this the feature depends on a client stumbling across a dotfile inside a
 
 ### 7.4 Layer 2 — the registry
 
+> **Amended during execution (2026-08-02):** final review found this table missing `missing-property:stepProperty` — governed identically to the `phaseProperty` row below (same absence-tolerant Number property, same umbrella warning), just never given its own row because Step had no dedicated prose paragraph for the sweep to find. The live registry now holds 22 rows, not the 19 below. Treat this table as a historical snapshot of design intent; `references/signatures.md` is current.
+
 `references/signatures.md` holds one table. Seeded from the sites verified present in the current tree:
 
 | Signature | Kind | Site | Condition | Frequency |
@@ -291,6 +295,8 @@ Degraded plan review, degraded code review, and partial `epic-update` are logged
 2. `plan-review/SKILL.md` Step 1 is a **closed enumeration** of what reaches the reviewer's prompt. Threading a value into it without extending that enumeration produces a silently ignored instruction — the exact defect §7a of the handoff records. Logging at the caller means those four skill files are not touched at all.
 
 ### 7.6 Files changed
+
+> **Amended during execution (2026-08-02):** final review found `createTicket`'s Epic/Phase option-match raises, its per-property missing-configured-property warning, and `addSelectOption`'s schema-mismatch raise all uncited at design time, pushing `ticket-system/SKILL.md`'s citation count well past 14. The row below is the original estimate; count the live citations with `grep -c 'notion-dev:issue-log' plugins/notion-dev/skills/ticket-system/SKILL.md` rather than trusting this number.
 
 | File | Change |
 |---|---|
