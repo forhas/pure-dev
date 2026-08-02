@@ -263,8 +263,11 @@ Untested. The only credential available was an `mcp.notion.com` OAuth token; `ap
 rejected it (HTTP 401 under both `2022-06-28` and `2025-09-03`). So it remains possible that the
 public REST API exposes an explicit subtype discriminator that the MCP layer drops.
 
-That would still be insufficient on its own — it answers subtype, not companion state — but it is
-directly relevant to any wording that scopes a limitation to "the MCP surface". Settling it needs
+It would add little that matters. `propertyUrl` already answers subtype on the MCP surface, and the
+open question is not subtype but **companion state** — and only on the `propertyUrl`-present branch,
+since the absent branch is already conclusive without it. An explicit REST discriminator would
+confirm what the proxy already reports, with the advantage of being documented rather than inferred,
+which is not nothing given how much weight that proxy is carrying. Settling it needs
 an internal-integration token.
 
 ## What this episode should change — second pass
