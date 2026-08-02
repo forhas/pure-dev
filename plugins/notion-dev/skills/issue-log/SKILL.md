@@ -33,6 +33,9 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 | `fetchTicket` returning a type's empty default for an unset or absent property | Absence-tolerant reads are the design. "Never a warning." |
 | Zero plausible epic candidates in `/notion-dev:create-task` Phase 2.6 | "The common case, and routine single-ticket runs must stay as quiet as they are today." |
 | A user declining a gate, choosing Revise, or aborting at a confirmation prompt | Normal interaction. The ledger already records it as `stopped`. |
+| `getSelectOptions` returns `null` | `ticket-system/SKILL.md`: "Never logs a warning on `null` — callers use the `null` return as a signal to skip downstream logic." This is the read-only helper itself staying quiet, not an exemption for the underlying absence: when a caller treats that `null` as "property absent" and acts on it (e.g. `/notion-dev:create-task` Pass 0 setting `phase = undefined`), layer 1's standing rule still applies at that point and `missing-property:<propertyName>` gets recorded there. |
+| Project-scoping guardrail: pinned `staticProperties` value matches, or the scoped property is absent from the live DB | `ticket-system/SKILL.md`: "Match (or property absent from the live DB) → proceed silently." |
+| A configured `done`/`cancelled` status option absent from the live DB (the read-only "resolved set" check) | `ticket-system/SKILL.md`: "it simply never matches ... Wrong in the safe direction." |
 | Any failure of this skill itself | See "Best-effort" below. Never recurse. |
 
 **One asymmetry to get right.** `findEpics()` returning **`null`** — `epicMarkerProperty` absent from the live database — **is** logged, as `missing-property:epicMarkerProperty`. Returning **`[]`** is not. The adapter is explicit that callers must never conflate the two states, and neither may this log.
@@ -145,13 +148,20 @@ Redaction is structural: a per-field whitelist, not a cleanup pass. Writing a co
 | `First seen` / `Last seen` | A UTC timestamp and the plugin version. |
 | `Where` | Command name, phase name, skill name, step number. Optionally a ticket key such as `STO-67`. |
 | `Expected` | The plugin's expectation, stated in config and schema terms. |
-| `Observed` | The shape of live state — presence, absence, Notion property type, error text. |
+| `Observed` | The shape of live state — presence, absence, Notion property type, or an MCP error's **class and message shape**, with every id, URL, path, and quoted value stripped out (see below). |
 | `Effect` | What the plugin did, skipped, or aborted. |
 | `Context` | `key=value` pairs joined by ` · `, drawn only from the closed list below. |
 
-**`Context` permitted keys:** `idProperty`, `epicProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `flow`, `reviewer`, `db`.
+**`Context` permitted keys:** `idProperty`, `epicProperty`, `phaseProperty`, `stepProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `flow`, `reviewer`, `db`.
 
 Values are `present`, `absent`, a Notion type name, a configured property name, or — for `db` only — the last six characters of the database id, written `db=…a41f9c`.
+
+**`Observed` on an `mcp-error`.** An MCP error's raw text routinely embeds a full page or database id, or an API URL — both forbidden below without exception. Every other field in this table stays a closed vocabulary; this is the one field with external input, so it needs its own rule rather than a remembered exception. Reduce the raw error to its class and message *shape*: strip every id, URL, path, and quoted literal, keeping only the error type and the surrounding words.
+
+- **Wanted** — `object_not_found: requested resource not found`
+- **Forbidden** — `object_not_found: page <full-page-id> not found at <api-url>` (a live error would spell the id and URL out in full; that is exactly what must never reach this field)
+
+If nothing is left after stripping, fall back to the error's class name alone.
 
 ### Forbidden, without exception
 

@@ -162,7 +162,7 @@ When a command or skill hits something unexpected — a configured property miss
 
 This is automatic. You do not run anything to produce it, and it never interrupts a command: a failure to write the log never fails the run. The file lives in a self-ignored directory, so it never dirties `git status` and never lands in a PR.
 
-**If the plugin misbehaves, send that whole file to whoever maintains the plugin.** It carries identifiers only — property names, command and phase names, error text, config shape, plugin version — and never ticket titles, ticket bodies, diffs, PR contents, user ids, or email addresses.
+**If the plugin misbehaves, send that whole file to whoever maintains the plugin.** It carries identifiers only — property names, command and phase names, a stripped MCP error class/shape (never the raw error text), config shape, plugin version — and never ticket titles, ticket bodies, diffs, PR contents, user ids, or email addresses.
 
 Repeat problems are deduplicated: the same issue collapses to one entry with an occurrence count and a last-seen timestamp, so the file grows with distinct problems rather than with runs. There is no rotation — nothing is ever discarded.
 
