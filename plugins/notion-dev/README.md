@@ -239,7 +239,8 @@ No v1 refactor required to adopt phase 2.
 │   ├── review-and-merge/     # PR review loop: Codex rounds, local fallback, merge gates
 │   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
 │   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
-│   └── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
+│   ├── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
+│   └── issue-log/            # durable, redacted runtime deviation log (used by all four commands, ticket-system)
 ├── schema/
 │   └── notion-dev.config.schema.json
 ├── LICENSE
