@@ -163,7 +163,7 @@ Redaction is structural: a per-field whitelist, not a cleanup pass. Writing a co
 | `Effect` | What the plugin did, skipped, or aborted. |
 | `Context` | `key=value` pairs joined by ` · `, drawn only from the closed list below. |
 
-**`Context` permitted keys:** `idProperty`, `epicProperty`, `phaseProperty`, `stepProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `typeProperty`, `flow`, `reviewer`, `db`.
+**`Context` permitted keys:** `idProperty`, `epicProperty`, `phaseProperty`, `stepProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `typeProperty`, `flow`, `reviewer`, `db`.
 
 Values are `present`, `absent`, a Notion type name, a configured property name, or — for `db` only — the last six characters of the database id, written `db=…a41f9c`.
 
