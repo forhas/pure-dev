@@ -116,7 +116,7 @@ An entry whose first-seen and last-seen versions differ is an issue that survive
 
 ## Signature grammar
 
-`<class>:<subject>` — both kebab-case, no spaces.
+`<class>:<subject>` — no spaces. `<class>` is always kebab-case. `<subject>` is kebab-case only when it is one of the fixed subjects below; when it names a config property, it is that property's name reproduced **verbatim, in its original camelCase — never kebab-ized.** This is not cosmetic: signature identity is what dedup keys on (see "Write procedure" below). Kebab-izing a config property's name (e.g. writing `typeProperty` as `type-property`) would produce two headings for one condition, and the occurrence count that keeps this file bounded would split between them.
 
 Class is drawn from this closed list:
 
@@ -134,7 +134,7 @@ Class is drawn from this closed list:
 | `partial` | An operation completed some of its work and not the rest. |
 | `unexpected` | Nothing above fits. |
 
-Subject is either a config property name verbatim (`parentTaskProperty`) or a fixed kebab subject (`project-scope`, `notion`, `epic-update`).
+Subject is either a config property name reproduced verbatim in its original camelCase (`parentTaskProperty`, never `parent-task-property`) or a fixed kebab-case subject (`project-scope`, `notion`, `epic-update`).
 
 Enumerated signatures live in `references/signatures.md`. **Cite a registered name whenever one applies; never coin a variant of one that already exists.** Layer 1 invents new signatures under this same grammar, reusing an existing class wherever one fits and falling back to `unexpected:<subject>`. Constraining the catch-all to the grammar is what keeps it groupable — free-form entries make the log unsearchable, which defeats its purpose.
 
@@ -154,7 +154,7 @@ Redaction is structural: a per-field whitelist, not a cleanup pass. Writing a co
 | `Effect` | What the plugin did, skipped, or aborted. |
 | `Context` | `key=value` pairs joined by ` · `, drawn only from the closed list below. |
 
-**`Context` permitted keys:** `idProperty`, `epicProperty`, `phaseProperty`, `stepProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `flow`, `reviewer`, `db`.
+**`Context` permitted keys:** `idProperty`, `epicProperty`, `phaseProperty`, `stepProperty`, `epicMarkerProperty`, `parentTaskProperty`, `assigneeProperty`, `dependsOnProperty`, `prProperty`, `creationDateProperty`, `statusProperty`, `typeProperty`, `flow`, `reviewer`, `db`.
 
 Values are `present`, `absent`, a Notion type name, a configured property name, or — for `db` only — the last six characters of the database id, written `db=…a41f9c`.
 
