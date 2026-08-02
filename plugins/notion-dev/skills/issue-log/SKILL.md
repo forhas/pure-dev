@@ -42,6 +42,8 @@ This list is as load-bearing as the standing rule. The plugin deliberately treat
 
 **This does not extend to `getEpicContext` returning `null` because `epicMarkerProperty` is absent from the live DB.** That cause is not exempt: `/notion-dev:ticket <existing-child-ticket>` can reach `getEpicContext` directly, without ever calling `findEpics` or `createTicket` first, so on that path no other site has recorded the condition. `getEpicContext` records `missing-property:epicMarkerProperty` itself in that case, per `notion-dev:issue-log`, reusing `findEpics`'s registry row rather than minting a second one — one signature, potentially more than one entry-writing site, never a second signature.
 
+**The same non-exemption applies to `getEpicContext` returning `null` because `epicMarkerProperty` exists but isn't a Checkbox type.** A wrong-typed marker is just as unverifiable as a missing one, and the same direct-reach path (`/notion-dev:ticket <existing-child-ticket>`) means no other site has recorded it either. Unlike the absence case, there is no existing registry row to reuse — `findEpics` never defined a wrong-type behavior of its own — so `getEpicContext` records `wrong-type:epicMarkerProperty` per `notion-dev:issue-log` under its own registry row.
+
 ## Where the file lives
 
 `$REPO_ROOT/.claude/notion-dev/notion-dev-issues.md`
