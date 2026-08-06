@@ -47,8 +47,8 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 | review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments, withholding low-confidence findings into a `<details><summary>Suppressed comments (N)</summary>` block in the body instead, so the body is a first-class finding source; inline threads appear only when it has line-level findings |
 | non-actionable boilerplate to ignore | Codex "About" block | **exactly two things**: the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer. A `<details><summary>Suppressed comments (N)</summary>` block is **not** boilerplate — despite also being a `<details>` block it carries real findings, and is triaged like any other finding |
 | "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
-| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | the reviewer-request command exits non-zero (e.g. HTTP 422 → Copilot code review not enabled for the repo/org) |
-| quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent request failure is treated as `not-configured` |
+| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | GitHub **rejects** the reviewer-request with an HTTP error status (e.g. 422 → Copilot code review not enabled for the repo/org). A bare transport error is not a rejection — it carries no status; retry it per step 3 |
+| quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent GitHub *rejection* is treated as `not-configured` |
 | silence | no response within ~10 min (20×30s polls) → re-trigger once → `reason=silent` | same |
 
 ### Round cap
@@ -105,9 +105,39 @@ Never respond twice to the same comment — track handled comment IDs. If code c
 
 After all current comments are handled, trigger the bound reviewer per its profile:
 - **codex** → `gh pr comment <pr> --body "@codex review"`.
-- **copilot** → run the reviewer-request command. If it **exits non-zero** (Copilot code
-  review not enabled for this repo/org), treat it as `reason=not-configured` immediately:
-  post the unavailability note (step 4) and enter the local review loop — do not count a round.
+- **copilot** → run the reviewer-request command. If GitHub **rejects** it with an HTTP error
+  status (e.g. 422 → Copilot code review not enabled for this repo/org), treat it as
+  `reason=not-configured` immediately: post the unavailability note (step 4) and enter the
+  local review loop — do not count a round. A bare transport failure is **not** a rejection —
+  see the retry rule below.
+
+### A failed trigger has an unknown outcome — never blind-retry it
+
+`gh` exiting non-zero does **not** mean the request never reached GitHub. A transport failure
+(DNS, TLS, `error connecting to api.github.com`) can lose the *response* after the mutation
+was already applied. Retrying blind then double-triggers: two reviews race on one poll
+baseline and the round counter is wrong for the rest of the run. On any non-zero exit from a
+trigger command:
+
+1. **Re-read the state the trigger would have changed, and let that decide** — never the exit
+   code alone:
+   - **codex** → `gh api --paginate repos/{owner}/{repo}/issues/<pr>/comments` and look for an
+     `@codex review` comment newer than the round's previous trigger. Present → the post
+     succeeded; adopt its `created_at` as the trigger timestamp and continue. Absent → nothing
+     landed; retry the post.
+   - **copilot** → `gh pr view <pr> --json reviewRequests`. The bot already listed as a
+     requested reviewer → the request succeeded; continue. Not listed → retry.
+2. **Retry at most 3 times** with a short backoff (~10s), re-checking state before each retry.
+   Still failing with no state change → stop and report. Do not fall through to the local loop
+   on a transport fault.
+
+**Distinguish a GitHub rejection from a transport failure.** For copilot this is the
+difference between a retry and a permanent misdiagnosis. `reason=not-configured` requires an
+actual HTTP error *response* from GitHub (e.g. `HTTP 422`, `HTTP 403`), which `gh` reports with
+a status code and message. A bare connection error carries no status — it is a transport fault:
+retry it per the rule above and **never** record `not-configured` for it. Treating a brief
+network outage as "Copilot is not configured" permanently switches the run to the local
+fallback and makes the final report claim a configuration problem the repo does not have.
 
 **Record the trigger timestamp** — the poll baseline used in step 4. It must be well-defined for both reviewers, since only codex leaves a comment to key off:
 - **codex** → the `created_at` of the `@codex review` comment just posted.
@@ -150,7 +180,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 - **Quota** (codex only) — a new bot message whose body contains the case-insensitive substring `reached your codex usage limit`. `reason=quota`. Not applicable to copilot — copilot has no comment-based quota notice.
 - **Not-configured / error / refusal**:
   - **codex** — a message from the Codex app itself (author login exactly `chatgpt-codex-connector[bot]`, matching the response filter above) or explicitly about Codex (e.g. a workflow notice that Codex is disabled or not installed) that is *exclusively* an inability-to-review notice: it carries **no** `Reviewed commit` marker and **no** findings. Two guards matter here: the exclusivity guard — a normal review that merely mentions an error while still carrying findings or a reviewed-commit marker is a normal round, not an unavailability signal — and the author guard — another review/CI app's failure notice is never a codex signal. `reason=not-configured` when the message says Codex is disabled / not set up / no app installed; otherwise `reason=error`.
-  - **copilot** — the reviewer-request command exits non-zero (e.g. HTTP 422 → Copilot code review not enabled for the repo/org). `reason=not-configured`. A persistent request failure is treated as `not-configured`, not `error`.
+  - **copilot** — GitHub rejects the reviewer-request with an HTTP error status (e.g. HTTP 422 → Copilot code review not enabled for the repo/org). `reason=not-configured`. A persistent rejection is treated as `not-configured`, not `error`. A **transport failure is neither** — it has no HTTP status, so retry it per step 3 and never record `not-configured` for it.
 - **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger. Do not stall: **re-trigger the bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not increment the round counter. If a review lands on the retry, continue normally. If the retry window is also silent: `reason=silent`.
 
 ### When a new reviewer response appears
@@ -223,6 +253,7 @@ Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success
 - Red CI takes priority over review handling at the start of every round.
 - Always merge into the PR's base branch; never retarget.
 - Never respond twice to the same comment; never reapply already-applied changes.
+- **Never blind-retry a mutating call whose outcome is unknown** — trigger, comment, reply, thread resolve, or merge. A non-zero `gh` exit can mean the mutation applied and only the response was lost, so re-read the state the call would have changed and decide from that (step 3 for triggers; step 5 already applies this to the merge). Never infer a reviewer's configuration state from a transport failure.
 - The judgment bar (step 2) applies to every finding from every source — a well-reasoned decline beats a low-confidence edit, and neither loop manufactures work from theoretical findings.
 - If the PR becomes unmergeable, is closed, or has conflicts that cannot be resolved safely: **stop and report** — do not force anything.
 
