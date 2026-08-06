@@ -125,8 +125,22 @@ trigger command:
      `@codex review` comment newer than the round's previous trigger. Present → the post
      succeeded; adopt its `created_at` as the trigger timestamp and continue. Absent → nothing
      landed; retry the post.
-   - **copilot** → `gh pr view <pr> --json reviewRequests`. The bot already listed as a
-     requested reviewer → the request succeeded; continue. Not listed → retry.
+   - **copilot** → **two** states each mean the request landed, and checking only the first
+     yields a false negative that re-requests the review:
+     - (a) the bot is listed in `gh pr view <pr> --json reviewRequests`, **or**
+     - (b) a Copilot review has already been submitted after the timestamp captured
+       immediately before this attempt — the bot is **auto-removed** from `reviewRequests`
+       the moment it submits, so a review that completes before this recovery read leaves
+       no trace in (a):
+
+       ```bash
+       gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+         | jq "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
+                | select(.submitted_at > \"$TS\")] | length"
+       ```
+
+     Either → the request succeeded; continue (if (b), that review *is* the round's response —
+     handle it, do not re-request). Neither → nothing landed; retry.
 2. **Retry at most 3 times** with a short backoff (~10s), re-checking state before each retry.
    Still failing with no state change → stop and report. Do not fall through to the local loop
    on a transport fault.
