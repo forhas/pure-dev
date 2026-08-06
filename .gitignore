@@ -1,5 +1,13 @@
 # Claude Code local session state — not part of the marketplace
-.claude/
+.claude/*
+# ...except this repo's own mirror of the review-and-merge skill, which is versioned
+# with the repo so it cannot silently drift from the plugin skill it mirrors.
+# Scoped to that one path: a blanket !.claude/skills/ would also expose any other
+# project-local skill a clone happens to have, which `git add -A` would then sweep
+# into a review commit.
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/review-and-merge/
 
 node_modules/
 .DS_Store

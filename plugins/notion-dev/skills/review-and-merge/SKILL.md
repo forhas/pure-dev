@@ -43,13 +43,13 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 |---|---|---|
 | trigger | comment `@codex review` | request the bot reviewer: `gh api --method POST "repos/{owner}/{repo}/pulls/<pr>/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` (gh substitutes `{owner}`/`{repo}`) |
 | re-trigger each round | re-comment `@codex review` | re-run the same reviewer-request command (the bot is auto-removed once it submits) |
-| response author (exact login) | `chatgpt-codex-connector[bot]` | `copilot-pull-request-reviewer[bot]` |
-| review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments (suppresses low-confidence ones), so the body is a first-class finding source; inline threads appear only when it has line-level findings |
-| non-actionable boilerplate to ignore | Codex "About" block | the review body's per-file `<details>` summary table and the "Add Copilot custom instructions" footer |
-| "no meaningful issues" | review says no major issues / equivalent | a review whose body is only the overview/per-file summary with no actionable findings and no (or only resolved) inline comments |
-| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | the reviewer-request command exits non-zero (e.g. HTTP 422 → Copilot code review not enabled for the repo/org) |
-| quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent request failure is treated as `not-configured` |
-| silence | no response within ~10 min (20×30s polls) → re-trigger once → `reason=silent` | same |
+| response author | `chatgpt-codex-connector[bot]` on every surface | **one bot, two logins**: `copilot-pull-request-reviewer[bot]` on the **review** object, `Copilot` on that review's **inline comments** — same `user.node_id`. Accept **either** login; matching one alone silently drops half the review (see step 4) |
+| review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments, withholding low-confidence findings into a `<details><summary>Suppressed comments (N)</summary>` block in the body instead, so the body is a first-class finding source; inline threads appear only when it has line-level findings |
+| non-actionable boilerplate to ignore | Codex "About" block | **exactly two things**: the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer. A `<details><summary>Suppressed comments (N)</summary>` block is **not** boilerplate — despite also being a `<details>` block it carries real findings, and is triaged like any other finding |
+| "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
+| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | a **permanent rejection** of the reviewer-request: a `422`/`403`/`404` whose **message** says Copilot review is not enabled. Status alone is never enough — GitHub documents `422` on this endpoint as "Validation failed, or the endpoint has been spammed". Transient statuses (`500`/`502`/`503`/`429`, rate-limit `403`, spam-protection `422`) and bare transport errors are **not** signals — retry them (step 3) |
+| quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent GitHub *rejection* is treated as `not-configured` |
+| silence | no response within ~10 min (20×30s polls) → confirm the request is really gone (definite re-read), then re-trigger once → `reason=silent` | same window, but **never re-trigger while the bot is still listed in `reviewRequests`** — it is slow, not silent (latency of ~16 min observed); keep polling to a ~30-min bound |
 
 ### Round cap
 
@@ -105,15 +105,136 @@ Never respond twice to the same comment — track handled comment IDs. If code c
 
 After all current comments are handled, trigger the bound reviewer per its profile:
 - **codex** → `gh pr comment <pr> --body "@codex review"`.
-- **copilot** → run the reviewer-request command. If it **exits non-zero** (Copilot code
-  review not enabled for this repo/org), treat it as `reason=not-configured` immediately:
-  post the unavailability note (step 4) and enter the local review loop — do not count a round.
+- **copilot** → run the reviewer-request command. Treat it as `reason=not-configured` **only**
+  when the response **message** says Copilot review is not enabled for this repo/org —
+  on a `422`, `403`, or `404` alike. The status code alone never proves it. Then post the unavailability note
+  (step 4) and enter the local review loop — do not count a round. Every other failure is
+  retryable, not a verdict — see the classification below.
+
+### A failed trigger has an unknown outcome — never blind-retry it
+
+`gh` exiting non-zero does **not** mean the request never reached GitHub. A transport failure
+(DNS, TLS, `error connecting to api.github.com`) can lose the *response* after the mutation
+was already applied. Retrying blind then double-triggers: two reviews race on one poll
+baseline and the round counter is wrong for the rest of the run.
+
+**Capture an attempt baseline immediately before every trigger post — including the first one
+of the run.** The recovery read below needs something definite to compare against, and "newer
+than the round's previous trigger" is undefined on the first post. A PR can already carry an
+older `@codex review` comment (a previous run, or a human), so with no baseline the recovery
+read can adopt that stale comment as proof the new post landed — skipping the retry *and*
+polling from a stale timestamp, which makes an old review look like this round's response.
+Record either the current UTC time or the newest existing `@codex review` comment id before
+each post; for copilot the pre-call UTC timestamp step 3 already requires is that baseline.
+
+On any non-zero exit from a trigger command:
+
+1. **Re-read the state the trigger would have changed, and let that decide** — never the exit
+   code alone:
+   - **codex** → `gh api --paginate repos/{owner}/{repo}/issues/<pr>/comments` and look for an
+     `@codex review` comment newer than **this attempt's baseline**. Present → the post
+     succeeded; adopt its `created_at` as the trigger timestamp and continue. Absent → nothing
+     landed; retry the post.
+   - **copilot** → **two** states each mean the request landed, and checking only the first
+     yields a false negative that re-requests the review:
+     - (a) the bot is listed in `gh pr view <pr> --json reviewRequests`, **or**
+     - (b) a Copilot review has appeared that was **not in `$SEEN`** (the pre-trigger id
+       snapshot) — the bot is **auto-removed** from `reviewRequests` the moment it submits,
+       so a review that completes before this recovery read leaves no trace in (a):
+
+       ```bash
+       gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+         | jq "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
+                | select(.id as \$i | $SEEN | index(\$i) | not)] | length"
+       ```
+
+     Either → the request succeeded; continue (if (b), that review *is* the round's response —
+     handle it, do not re-request). Neither → nothing landed; retry.
+2. **The state re-read must itself succeed before it decides anything.** A read that errors,
+   times out, or returns empty is not evidence of either outcome — it tells you nothing about
+   whether the mutation landed. Never compare a failed read's empty result against the
+   baseline and conclude from the difference that the state did (or did not) change: that
+   turns one network fault into a false verdict, and a false "it landed" silently skips the
+   round while a false "it didn't" double-triggers. Retry the **read** until it returns a
+   definite answer, then decide. This is the same rule one level up — a transport failure is
+   never a semantic signal.
+3. **Retry at most 3 times** with a short backoff (~10s), re-checking state before each retry.
+   Still failing with no state change → stop and report. Do not fall through to the local loop
+   on a transport fault.
+
+**Classify a failed reviewer-request in three buckets, not two — only the first is a verdict.**
+`gh` exits non-zero "for any reason" (`gh help exit-codes`), so neither the exit code nor the
+mere *presence* of an HTTP status distinguishes these. Read the status and message:
+
+- **Permanent rejection** → `reason=not-configured`. A status whose meaning is "Copilot review
+  is not available for this repo/org" — a `422`, `403`, or `404` whose **message** says so.
+  The status alone is never sufficient: GitHub documents `422` on this endpoint as
+  "Validation failed, or the endpoint has been spammed", so a validation error or
+  spam-protection throttle returns the same code as a genuine not-enabled rejection. Read
+  the message; if it does not name Copilot review as unavailable, this is not a verdict.
+- **Transient response** → retry, **never** `not-configured`. `HTTP 500`, `502`, `503`, `429`,
+  and any rate-limit `403` carry a status but say nothing about configuration. A rate-limit
+  `403` in particular is indistinguishable from a permission `403` by status alone — the
+  message decides.
+- **Transport failure** → retry, **never** `not-configured`. A bare connection error (DNS, TLS,
+  `error connecting to api.github.com`, `i/o timeout`) carries no status at all.
+
+Recording `not-configured` for either retryable bucket permanently switches the run to the
+local fallback and makes the final report claim a configuration problem the repo does not have.
 
 **Record the trigger timestamp** — the poll baseline used in step 4. It must be well-defined for both reviewers, since only codex leaves a comment to key off:
 - **codex** → the `created_at` of the `@codex review` comment just posted.
 - **copilot** → the current UTC time captured **immediately before** the reviewer-request call (the REST request creates no comment). Capture it before the call so a review that lands during the request is not excluded.
 
-Every re-trigger (the silence retry in step 4, and the next-round trigger in the loop) **refreshes** this timestamp per the same rule.
+**Also snapshot the reviewer's existing response IDs immediately before the trigger — and
+prefer them to the timestamp.** GitHub timestamps are **second-precision**, so a reviewer that
+submits inside the same second the baseline was captured has `submitted_at` *equal* to `$TS`
+and is dropped by a strict `>` comparison: the round then reads as silent, gets re-triggered
+or classified `reason=silent`, and its findings go untriaged even though the review exists. An
+ID snapshot has no such boundary condition.
+
+```bash
+# immediately BEFORE the trigger — ids of reviews the reviewer has already submitted.
+# set -o pipefail: without it a failed `gh` still yields exit 0 from `jq`, leaving $SEEN empty.
+set -o pipefail
+SEEN=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+  | jq -c "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\") | .id]")
+```
+
+**Validate the snapshot before issuing the trigger — it is a read, so retrying it is free and
+safe.** The fetch and the parse must *both* succeed: `gh` exits non-zero on failure, but in a
+pipeline that status is discarded unless `pipefail` is set, and `jq` given no input exits 0
+with empty output. An unvalidated `$SEEN` fails in two directions — empty, so every existing
+review looks new and a stale one is triaged as this round's; or unset, so interpolating it
+produces invalid jq and the round cannot be read at all. Either way an already-completed review
+gets re-triggered or classified `reason=silent`. Require a non-empty, parseable JSON array
+(`[]` is valid and means "none yet"; an *unset or non-JSON* value is the failure) and retry the
+read until you have one. Only then send the mutating trigger — never trigger on an unvalidated
+baseline.
+
+Snapshot **reviews** and, for codex, its **issue comments** (quota / unavailability notices) —
+but **never inline comments**. Inline comments are attributed to a round by their
+`pull_request_review_id`, never by snapshot membership. A PR that already carries reviewer
+inline comments from an earlier round or run would otherwise show every one of them as absent
+from `$SEEN`, so the poll would end instantly on already-handled feedback and walk to merge
+without ever waiting for the review it just requested. This applies to **both** reviewers, and
+codex is the more exposed of the two because it creates inline threads routinely.
+
+So: a **new response** is a review, or a codex issue comment, whose `.id` is absent from the
+corresponding snapshot. Its inline comments are then collected via
+`pull_request_review_id ∈ $RIDS` — the same path the copilot profile already uses. No
+wall-clock comparison anywhere. Keep `$TS` for the report only; never let it decide whether a
+response is new.
+
+**A next-round trigger refreshes this baseline; a silence re-trigger must not** — neither
+`$TS` nor `$SEEN`. The silence retry is the *same logical round*: its purpose is to recover a
+response that never arrived, not to start a new one. Refreshing there opens a hole. If the
+original review submits after the last pre-retry read but before the baseline is re-captured,
+a refreshed `$SEEN` now *contains* that review's id, so it is no longer "new" and drops out of
+`$RIDS` (and with the older timestamp form, its `submitted_at` fell below the new `$TS` the
+same way). Either way its findings go untriaged and its threads unresolved, which blocks the
+merge gate far from the cause. Keep the round's **original** `$TS` and `$SEEN` across a
+silence re-trigger, and refresh both only when beginning a genuinely new round.
 
 Set the round counter to **1** when posting this first trigger (also when the PR had no
 reviews at all: run the green-CI gate first, then trigger).
@@ -124,7 +245,35 @@ Rounds are counted from the first reviewer trigger. **Hard cap: the resolved `re
 
 **At the start of every round**: `gh pr checks <pr>` — fix any failing check and re-green before handling any review comment.
 
-Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment whose author login **exactly equals** the bound profile's response-author login — `chatgpt-codex-connector[bot]` (codex) or `copilot-pull-request-reviewer[bot]` (copilot) — created after the round's **trigger timestamp** (step 3: the `@codex review` comment's timestamp for codex, the captured request-start time for copilot). An exact match, never a substring test. Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
+Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment authored by the bound profile's reviewer bot whose **id is absent from the round's `$SEEN` snapshot** (step 3). Newness is decided by that snapshot alone — never by a wall-clock comparison, which has a second-precision boundary that silently drops a response submitted in the same second as the baseline. Authorship is an exact match against the profile's **set** of logins — never a substring or prefix test:
+
+- **codex** — `user.login` exactly equals `chatgpt-codex-connector[bot]` on every surface.
+- **copilot** — the bot renders under **two** logins, and filtering on either one alone silently drops half its output: `user.login` is `copilot-pull-request-reviewer[bot]` on the **review** object but `Copilot` on that review's **inline comments** (both carry the same `user.node_id`). Accept **either** login. Then attribute inline comments to the round by **review id**, not by login or timestamp — the review carries `submitted_at`, its inline comments do not:
+
+  ```bash
+  # EVERY copilot review submitted after the round's trigger timestamp $TS — not just the
+  # newest. A silence re-trigger can leave two requests outstanding, and both can submit
+  # inside one poll interval; keeping only the latest loses the other review's findings and
+  # leaves its threads unresolved, which then blocks the merge gate.
+  # --paginate applies --jq PER PAGE, so an aggregating filter (last, length, add) emits one
+  # result per page; --slurp wraps all pages in one array but cannot be combined with --jq.
+  # Hence: --slurp, then filter with external jq, flattening pages with .[][] — see
+  # references/github-api.md.
+  RIDS=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+    | jq -c "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
+              | select(.id as \$i | $SEEN | index(\$i) | not) | .id]")
+  # their inline comments — matched by review id, across every matching review
+  gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/comments" \
+    | jq "[.[][] | select(.pull_request_review_id as \$r | $RIDS | index(\$r))]"
+  ```
+
+  **Handle every review in `$RIDS`, not only the newest** — each one's body and inline comments
+  are a separate finding source, and each one's threads must be resolved for the merge gate to
+  clear.
+
+  **Reconcile the counts before treating a round as clean**: each review body states how many comments it generated ("generated N comments" / "generated no new comments"). Compare each review's N against that review's own inline comments. If any disagrees, the filter is wrong — do not proceed on the smaller number.
+
+Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
 
 ### Reviewer unavailability detection
 
@@ -133,16 +282,67 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 - **Quota** (codex only) — a new bot message whose body contains the case-insensitive substring `reached your codex usage limit`. `reason=quota`. Not applicable to copilot — copilot has no comment-based quota notice.
 - **Not-configured / error / refusal**:
   - **codex** — a message from the Codex app itself (author login exactly `chatgpt-codex-connector[bot]`, matching the response filter above) or explicitly about Codex (e.g. a workflow notice that Codex is disabled or not installed) that is *exclusively* an inability-to-review notice: it carries **no** `Reviewed commit` marker and **no** findings. Two guards matter here: the exclusivity guard — a normal review that merely mentions an error while still carrying findings or a reviewed-commit marker is a normal round, not an unavailability signal — and the author guard — another review/CI app's failure notice is never a codex signal. `reason=not-configured` when the message says Codex is disabled / not set up / no app installed; otherwise `reason=error`.
-  - **copilot** — the reviewer-request command exits non-zero (e.g. HTTP 422 → Copilot code review not enabled for the repo/org). `reason=not-configured`. A persistent request failure is treated as `not-configured`, not `error`.
-- **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger. Do not stall: **re-trigger the bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not increment the round counter. If a review lands on the retry, continue normally. If the retry window is also silent: `reason=silent`.
+  - **copilot** — only a **permanent rejection** is a signal: a `422`, `403`, or `404` whose **message** says Copilot review is not enabled for the repo/org. Status alone is never enough — `422` on this endpoint also covers validation failure and spam protection, which are retryable. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
+- **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger.
+  **The window elapsing is not proof the request is dead.** Reviewer latency varies widely:
+  copilot has been observed responding in under 30 seconds on one round and ~16 minutes on
+  another round of the *same* run. Re-triggering a request that is merely slow queues a second
+  review and produces a duplicate round. So before re-triggering, confirm the request is
+  actually gone:
+  - **copilot** → `gh pr view <pr> --json reviewRequests`. Bot **still listed** → the request
+    is live and just slow; do **not** re-trigger — keep polling. The request is genuinely gone
+    only when the bot is absent **and** no Copilot review has been submitted after the trigger
+    timestamp (the bot is auto-removed the moment it submits, so absence alone is ambiguous —
+    check for the review too, per step 3).
+  - **codex** → no equivalent pending marker exists. Re-read reviews and issue comments with a
+    **definite** read before concluding — a failed read is not silence.
+
+  While the reviewer is confirmed live but slow, keep polling in further ~10-minute extensions
+  rather than re-triggering, to a bounded total of **~30 minutes** from the trigger.
+
+  Once the request is confirmed gone (or the 30-minute bound is reached): **re-trigger the
+  bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the
+  reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not
+  increment the round counter **and does not refresh the trigger timestamp** (step 3): the
+  round keeps its original `$TS` so a late-arriving original review is still matched. If a review lands on the retry, continue normally. If the retry
+  window is also silent: `reason=silent`.
+
+  If a duplicate round does occur anyway (both the original and the re-triggered request
+  submit), the multi-review handling above covers it: collect **every** matching review id and
+  triage all of them — do not let the newer review mask the older one's findings.
 
 ### When a new reviewer response appears
 
-1. Read all new comments from it. **Copilot only**: because Copilot findings are often body-only (it frequently generates zero inline comments), treat the review's summary body as an actionable finding source, parsed via the existing step-2 "non-inline feedback" path (tracked by comment ID — no thread-resolution state). Skip the boilerplate named in the reviewer profile (the per-file `<details>` summary table and the "Add Copilot custom instructions" footer).
+1. Read all new comments from it — the review body **and** every inline comment attributed to that review by id (per the copilot rule above; a single-login filter misses them). **Copilot only**: because Copilot findings are often body-only (it frequently generates zero inline comments), treat the review's summary body as an actionable finding source, parsed via the existing step-2 "non-inline feedback" path (tracked by comment ID — no thread-resolution state). Two body regions carry findings:
+   - **`<details><summary>Suppressed comments (N)</summary>`** — findings Copilot withheld for low confidence, and frequently the most substantive ones in the review. **Findings, not boilerplate.** Each entry is `**<path>:<line>**` followed by `* <description>` and an optional fenced code excerpt. Triage every one under the step-2 judgment bar. A headline of "generated no new comments" above a populated suppressed block is not a clean verdict.
+   - The prose overview, for any actionable request not tied to a line.
+
+   Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled — this applies only to threads that actually exist (codex always creates inline threads for line-level findings; Copilot only when it has line-level findings).
 4. Re-run the step-2 verification (config `verify.steps`, when present), then commit and push applied changes.
-5. If the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
+5. **Before treating the round as complete — in *either* branch below — confirm it has
+   settled.** A silence retry can leave two requests outstanding, so a second review can arrive
+   after the one just handled; the `$RIDS` query only saw what existed when it ran. The
+   dangerous case is a late **body-only** Copilot review: it creates no inline thread, so the
+   all-threads-resolved merge gate cannot catch it, and its findings would be merged past
+   silently.
+
+   Track a second set, `$HANDLED` — the ids triaged **during this round** — and add each
+   response to it as you handle it. A response is genuinely new only when its id is absent from
+   **both** `$SEEN` and `$HANDLED`. Testing against `$SEEN` alone deadlocks the loop: `$SEEN` is
+   the immutable pre-trigger snapshot, so the response you just handled is by construction
+   absent from it, and every settle poll would rediscover it, declare the round unsettled, and
+   spin forever without ever reaching another round or the merge.
+
+   After handling the round's responses, poll once more (~60–90s) and — for copilot — re-check
+   `reviewRequests`. If any id appears that is absent from both sets, the round has **not**
+   settled: handle it, add it to `$HANDLED`, and repeat. If the bot is still listed in
+   `reviewRequests`, a request is still outstanding — keep waiting, but bound that wait by the
+   same ~30-minute total as the silence rule, then proceed rather than stalling. Only once a
+   settle poll adds nothing may the round end.
+
+   Then: if the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
 
 The reviewer loop ends on whichever comes first: **the reviewer reports no meaningful issues** per its profile's "no meaningful issues" row, the **judgment-based stop** in item 5 above, or the **round cap**. Then merge (step 5). If unavailability was detected instead, the local review loop below takes over with its own termination rules.
 
@@ -202,6 +402,7 @@ Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success
 - Red CI takes priority over review handling at the start of every round.
 - Always merge into the PR's base branch; never retarget.
 - Never respond twice to the same comment; never reapply already-applied changes.
+- **Never blind-retry a mutating call whose outcome is unknown** — trigger, comment, reply, thread resolve, or merge. A non-zero `gh` exit can mean the mutation applied and only the response was lost, so re-read the state the call would have changed and decide from that (step 3 for triggers; step 5 already applies this to the merge). Never infer a reviewer's configuration state from a transport failure.
 - The judgment bar (step 2) applies to every finding from every source — a well-reasoned decline beats a low-confidence edit, and neither loop manufactures work from theoretical findings.
 - If the PR becomes unmergeable, is closed, or has conflicts that cannot be resolved safely: **stop and report** — do not force anything.
 
