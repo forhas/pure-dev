@@ -310,10 +310,21 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    after the one just handled; the `$RIDS` query only saw what existed when it ran. The
    dangerous case is a late **body-only** Copilot review: it creates no inline thread, so the
    all-threads-resolved merge gate cannot catch it, and its findings would be merged past
-   silently. After handling the round's responses, poll once more (~60–90s) and — for copilot
-   — re-check `reviewRequests`. If the bot is still listed, or any id appears that is absent
-   from `$SEEN`, the round has **not** settled: handle the new review and repeat this check.
-   Only once a settle poll adds nothing may the round end.
+   silently.
+
+   Track a second set, `$HANDLED` — the ids triaged **during this round** — and add each
+   response to it as you handle it. A response is genuinely new only when its id is absent from
+   **both** `$SEEN` and `$HANDLED`. Testing against `$SEEN` alone deadlocks the loop: `$SEEN` is
+   the immutable pre-trigger snapshot, so the response you just handled is by construction
+   absent from it, and every settle poll would rediscover it, declare the round unsettled, and
+   spin forever without ever reaching another round or the merge.
+
+   After handling the round's responses, poll once more (~60–90s) and — for copilot — re-check
+   `reviewRequests`. If any id appears that is absent from both sets, the round has **not**
+   settled: handle it, add it to `$HANDLED`, and repeat. If the bot is still listed in
+   `reviewRequests`, a request is still outstanding — keep waiting, but bound that wait by the
+   same ~30-minute total as the silence rule, then proceed rather than stalling. Only once a
+   settle poll adds nothing may the round end.
 
    Then: if the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
 
