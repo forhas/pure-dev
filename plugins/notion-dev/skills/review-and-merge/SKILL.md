@@ -138,15 +138,14 @@ On any non-zero exit from a trigger command:
    - **copilot** → **two** states each mean the request landed, and checking only the first
      yields a false negative that re-requests the review:
      - (a) the bot is listed in `gh pr view <pr> --json reviewRequests`, **or**
-     - (b) a Copilot review has already been submitted after the timestamp captured
-       immediately before this attempt — the bot is **auto-removed** from `reviewRequests`
-       the moment it submits, so a review that completes before this recovery read leaves
-       no trace in (a):
+     - (b) a Copilot review has appeared that was **not in `$SEEN`** (the pre-trigger id
+       snapshot) — the bot is **auto-removed** from `reviewRequests` the moment it submits,
+       so a review that completes before this recovery read leaves no trace in (a):
 
        ```bash
        gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
          | jq "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
-                | select(.submitted_at > \"$TS\")] | length"
+                | select(.id as \$i | $SEEN | index(\$i) | not)] | length"
        ```
 
      Either → the request succeeded; continue (if (b), that review *is* the round's response —
@@ -187,14 +186,33 @@ local fallback and makes the final report claim a configuration problem the repo
 - **codex** → the `created_at` of the `@codex review` comment just posted.
 - **copilot** → the current UTC time captured **immediately before** the reviewer-request call (the REST request creates no comment). Capture it before the call so a review that lands during the request is not excluded.
 
-**A next-round trigger refreshes this timestamp; a silence re-trigger must not.** The
-silence retry is the *same logical round* — its purpose is to recover a response that never
-arrived, not to start a new one. Refreshing `$TS` there opens a hole: if the original review
-submits after the last pre-retry read but before the new timestamp is captured, its
-`submitted_at` falls *below* the new baseline, so the `submitted_at > "$TS"` query silently
-omits it — leaving its findings untriaged and its threads unresolved, which then blocks the
-merge gate. Keep the round's **original** trigger timestamp across a silence re-trigger, and
-refresh only when beginning a genuinely new round.
+**Also snapshot the reviewer's existing response IDs immediately before the trigger — and
+prefer them to the timestamp.** GitHub timestamps are **second-precision**, so a reviewer that
+submits inside the same second the baseline was captured has `submitted_at` *equal* to `$TS`
+and is dropped by a strict `>` comparison: the round then reads as silent, gets re-triggered
+or classified `reason=silent`, and its findings go untriaged even though the review exists. An
+ID snapshot has no such boundary condition.
+
+```bash
+# immediately BEFORE the trigger — ids of reviews the reviewer has already submitted
+SEEN=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+  | jq -c "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\") | .id]")
+```
+
+A **new** review is then any matching review whose `.id` is absent from `$SEEN` — no wall-clock
+comparison at all. Do the same for codex (snapshot the ids of its reviews and issue comments).
+Keep `$TS` for the report and as a secondary guard, but never let it alone decide whether a
+response is new.
+
+**A next-round trigger refreshes this baseline; a silence re-trigger must not** — neither
+`$TS` nor `$SEEN`. The silence retry is the *same logical round*: its purpose is to recover a
+response that never arrived, not to start a new one. Refreshing there opens a hole. If the
+original review submits after the last pre-retry read but before the baseline is re-captured,
+a refreshed `$SEEN` now *contains* that review's id, so it is no longer "new" and drops out of
+`$RIDS` (and with the older timestamp form, its `submitted_at` fell below the new `$TS` the
+same way). Either way its findings go untriaged and its threads unresolved, which blocks the
+merge gate far from the cause. Keep the round's **original** `$TS` and `$SEEN` across a
+silence re-trigger, and refresh both only when beginning a genuinely new round.
 
 Set the round counter to **1** when posting this first trigger (also when the PR had no
 reviews at all: run the green-CI gate first, then trigger).
@@ -221,7 +239,7 @@ Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not bus
   # references/github-api.md.
   RIDS=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
     | jq -c "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
-              | select(.submitted_at > \"$TS\") | .id]")
+              | select(.id as \$i | $SEEN | index(\$i) | not) | .id]")
   # their inline comments — matched by review id, across every matching review
   gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/comments" \
     | jq "[.[][] | select(.pull_request_review_id as \$r | $RIDS | index(\$r))]"
