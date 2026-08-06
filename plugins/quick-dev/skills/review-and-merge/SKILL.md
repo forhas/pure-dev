@@ -29,10 +29,10 @@ This skill drives one of two configured reviewers — `codex` (default) or `copi
 |---|---|---|
 | trigger | comment `@codex review` | request the bot reviewer: `gh api --method POST "repos/{owner}/{repo}/pulls/<pr>/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` (gh substitutes `{owner}`/`{repo}`) |
 | re-trigger each round | re-comment `@codex review` | re-run the same reviewer-request command (the bot is auto-removed once it submits) |
-| response author (exact login) | `chatgpt-codex-connector[bot]` | `copilot-pull-request-reviewer[bot]` |
-| review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments (suppresses low-confidence ones), so the body is a first-class finding source; inline threads appear only when it has line-level findings |
-| non-actionable boilerplate to ignore | Codex "About" block | the review body's per-file `<details>` summary table and the "Add Copilot custom instructions" footer |
-| "no meaningful issues" | review says no major issues / equivalent | a review whose body is only the overview/per-file summary with no actionable findings and no (or only resolved) inline comments |
+| response author | `chatgpt-codex-connector[bot]` on every surface | **one bot, two logins**: `copilot-pull-request-reviewer[bot]` on the **review** object, `Copilot` on that review's **inline comments** — same `user.node_id`. Accept **either** login; matching one alone silently drops half the review (see step 4) |
+| review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments, withholding low-confidence findings into a `<details><summary>Suppressed comments (N)</summary>` block in the body instead, so the body is a first-class finding source; inline threads appear only when it has line-level findings |
+| non-actionable boilerplate to ignore | Codex "About" block | **exactly two things**: the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer. A `<details><summary>Suppressed comments (N)</summary>` block is **not** boilerplate — despite also being a `<details>` block it carries real findings, and is triaged like any other finding |
+| "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
 | not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | the reviewer-request command exits non-zero (e.g. HTTP 422 → Copilot code review not enabled for the repo/org) |
 | quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent request failure is treated as `not-configured` |
 | silence | no response within ~10 min (20×30s polls) → re-trigger once → `reason=silent` | same |
@@ -108,7 +108,24 @@ Rounds are counted from the first reviewer trigger. **Hard cap: the resolved `re
 
 **At the start of every round**: `gh pr checks <pr>` — fix any failing check and re-green before handling any review comment.
 
-Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment whose author login **exactly equals** the bound profile's response-author login — `chatgpt-codex-connector[bot]` (codex) or `copilot-pull-request-reviewer[bot]` (copilot) — created after the round's **trigger timestamp** (step 3: the `@codex review` comment's timestamp for codex, the captured request-start time for copilot). An exact match, never a substring test. Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
+Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment authored by the bound profile's reviewer bot, created after the round's **trigger timestamp** (step 3: the `@codex review` comment's timestamp for codex, the captured request-start time for copilot). Authorship is an exact match against the profile's **set** of logins — never a substring or prefix test:
+
+- **codex** — `user.login` exactly equals `chatgpt-codex-connector[bot]` on every surface.
+- **copilot** — the bot renders under **two** logins, and filtering on either one alone silently drops half its output: `user.login` is `copilot-pull-request-reviewer[bot]` on the **review** object but `Copilot` on that review's **inline comments** (both carry the same `user.node_id`). Accept **either** login. Then attribute inline comments to the round by **review id**, not by login or timestamp — the review carries `submitted_at`, its inline comments do not:
+
+  ```bash
+  # newest copilot review submitted after the round's trigger timestamp $TS
+  RID=$(gh api --paginate "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+    --jq "[.[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
+           | select(.submitted_at > \"$TS\")] | last | .id")
+  # that review's inline comments — matched by review id
+  gh api --paginate "repos/{owner}/{repo}/pulls/<pr>/comments" \
+    --jq "[.[] | select(.pull_request_review_id == $RID)]"
+  ```
+
+  **Reconcile the count before treating a round as clean**: the review body states how many comments it generated ("generated N comments" / "generated no new comments"). If that N disagrees with the number of inline comments retrieved, the filter is wrong — do not proceed on the smaller number.
+
+Any other author (humans, CI bots, the *other* reviewer bot) is handled per step-2 rules but neither ends the poll nor counts as a round.
 
 ### Reviewer unavailability detection
 
@@ -122,7 +139,11 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 
 ### When a new reviewer response appears
 
-1. Read all new comments from it. **Copilot only**: because Copilot findings are often body-only (it frequently generates zero inline comments), treat the review's summary body as an actionable finding source, parsed via the existing step-2 "non-inline feedback" path (tracked by comment ID — no thread-resolution state). Skip the boilerplate named in the reviewer profile (the per-file `<details>` summary table and the "Add Copilot custom instructions" footer).
+1. Read all new comments from it — the review body **and** every inline comment attributed to that review by id (per the copilot rule above; a single-login filter misses them). **Copilot only**: because Copilot findings are often body-only (it frequently generates zero inline comments), treat the review's summary body as an actionable finding source, parsed via the existing step-2 "non-inline feedback" path (tracked by comment ID — no thread-resolution state). Two body regions carry findings:
+   - **`<details><summary>Suppressed comments (N)</summary>`** — findings Copilot withheld for low confidence, and frequently the most substantive ones in the review. **Findings, not boilerplate.** Each entry is `**<path>:<line>**` followed by `* <description>` and an optional fenced code excerpt. Triage every one under the step-2 judgment bar. A headline of "generated no new comments" above a populated suppressed block is not a clean verdict.
+   - The prose overview, for any actionable request not tied to a line.
+
+   Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
 4. Commit and push applied changes.
