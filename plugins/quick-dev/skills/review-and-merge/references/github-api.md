@@ -12,6 +12,30 @@ gh api --paginate repos/{owner}/{repo}/pulls/<pr>/reviews    # review summaries
 gh api --paginate repos/{owner}/{repo}/issues/<pr>/comments  # PR-level (issue) comments
 ```
 
+**`--paginate` applies `--jq` per page, not to the combined result.** This is the trap: an
+aggregating filter (`last`, `first`, `length`, `add`, `max_by`) runs once per page and prints
+one result per page. Capturing that in a shell variable yields a multi-line value — and
+interpolating it into another jq expression produces invalid syntax, so the command fails or,
+worse, silently matches nothing:
+
+```bash
+# WRONG — one line of output per page; $ID becomes "null\n123\n456"
+ID=$(gh api --paginate repos/{owner}/{repo}/pulls/<pr>/reviews --jq '[.[]|select(...)]|last|.id')
+```
+
+`--slurp` wraps all pages into one outer array, but **`--slurp` cannot be combined with
+`--jq`** (`gh` rejects it: *"the `--slurp` option is not supported with `--jq`"*). So slurp
+first, then filter with external `jq`, flattening pages with `.[][]`:
+
+```bash
+# RIGHT — single value, all pages considered
+ID=$(gh api --paginate --slurp repos/{owner}/{repo}/pulls/<pr>/reviews \
+  | jq -r '[.[][] | select(...)] | last | .id')
+```
+
+Per-item filters that print one line each (no aggregation) are unaffected — `--paginate --jq`
+is fine for those.
+
 ## Thread resolution state (GraphQL only)
 
 Thread **resolution state is not in the REST payload**. Query it via GraphQL to know which threads to skip (already resolved), to get each thread's node `id` (needed to resolve it), and to verify the merge gate:

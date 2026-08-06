@@ -144,13 +144,17 @@ Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not bus
 - **copilot** — the bot renders under **two** logins, and filtering on either one alone silently drops half its output: `user.login` is `copilot-pull-request-reviewer[bot]` on the **review** object but `Copilot` on that review's **inline comments** (both carry the same `user.node_id`). Accept **either** login. Then attribute inline comments to the round by **review id**, not by login or timestamp — the review carries `submitted_at`, its inline comments do not:
 
   ```bash
-  # newest copilot review submitted after the round's trigger timestamp $TS
-  RID=$(gh api --paginate "repos/{owner}/{repo}/pulls/<pr>/reviews" \
-    --jq "[.[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
-           | select(.submitted_at > \"$TS\")] | last | .id")
+  # newest copilot review submitted after the round's trigger timestamp $TS.
+  # --paginate applies --jq PER PAGE, so an aggregating filter (last, length, add)
+  # emits one result per page; --slurp wraps all pages in one array but cannot be
+  # combined with --jq. Hence: --slurp, then filter with external jq, and flatten
+  # pages with .[][] — see references/github-api.md.
+  RID=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
+    | jq -r "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\")
+             | select(.submitted_at > \"$TS\")] | last | .id")
   # that review's inline comments — matched by review id
-  gh api --paginate "repos/{owner}/{repo}/pulls/<pr>/comments" \
-    --jq "[.[] | select(.pull_request_review_id == $RID)]"
+  gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/comments" \
+    | jq "[.[][] | select(.pull_request_review_id == $RID)]"
   ```
 
   **Reconcile the count before treating a round as clean**: the review body states how many comments it generated ("generated N comments" / "generated no new comments"). If that N disagrees with the number of inline comments retrieved, the filter is wrong — do not proceed on the smaller number.
