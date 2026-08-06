@@ -1,5 +1,8 @@
 # Claude Code local session state — not part of the marketplace
-.claude/
+.claude/*
+# ...except this repo's own copy of the review-and-merge skill, which is versioned
+# with the repo so it cannot silently drift from the plugin skills it mirrors.
+!.claude/skills/
 
 node_modules/
 .DS_Store

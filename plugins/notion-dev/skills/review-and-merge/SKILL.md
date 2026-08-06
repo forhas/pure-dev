@@ -49,7 +49,7 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 | "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
 | not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | a **permanent rejection** of the reviewer-request: `HTTP 422`, or `403`/`404` whose message says the feature is not enabled. Transient statuses (`500`/`502`/`503`/`429`/rate-limit `403`) and bare transport errors are **not** signals — retry them (step 3) |
 | quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent GitHub *rejection* is treated as `not-configured` |
-| silence | no response within ~10 min (20×30s polls) → re-trigger once → `reason=silent` | same |
+| silence | no response within ~10 min (20×30s polls) → confirm the request is really gone (definite re-read), then re-trigger once → `reason=silent` | same window, but **never re-trigger while the bot is still listed in `reviewRequests`** — it is slow, not silent (latency of ~16 min observed); keep polling to a ~30-min bound |
 
 ### Round cap
 
@@ -233,7 +233,32 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 - **Not-configured / error / refusal**:
   - **codex** — a message from the Codex app itself (author login exactly `chatgpt-codex-connector[bot]`, matching the response filter above) or explicitly about Codex (e.g. a workflow notice that Codex is disabled or not installed) that is *exclusively* an inability-to-review notice: it carries **no** `Reviewed commit` marker and **no** findings. Two guards matter here: the exclusivity guard — a normal review that merely mentions an error while still carrying findings or a reviewed-commit marker is a normal round, not an unavailability signal — and the author guard — another review/CI app's failure notice is never a codex signal. `reason=not-configured` when the message says Codex is disabled / not set up / no app installed; otherwise `reason=error`.
   - **copilot** — only a **permanent rejection** is a signal: `HTTP 422`, or a `403`/`404` whose message says Copilot review is not enabled for the repo/org. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
-- **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger. Do not stall: **re-trigger the bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not increment the round counter. If a review lands on the retry, continue normally. If the retry window is also silent: `reason=silent`.
+- **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger.
+  **The window elapsing is not proof the request is dead.** Reviewer latency varies widely:
+  copilot has been observed responding in under 30 seconds on one round and ~16 minutes on
+  another round of the *same* run. Re-triggering a request that is merely slow queues a second
+  review and produces a duplicate round. So before re-triggering, confirm the request is
+  actually gone:
+  - **copilot** → `gh pr view <pr> --json reviewRequests`. Bot **still listed** → the request
+    is live and just slow; do **not** re-trigger — keep polling. The request is genuinely gone
+    only when the bot is absent **and** no Copilot review has been submitted after the trigger
+    timestamp (the bot is auto-removed the moment it submits, so absence alone is ambiguous —
+    check for the review too, per step 3).
+  - **codex** → no equivalent pending marker exists. Re-read reviews and issue comments with a
+    **definite** read before concluding — a failed read is not silence.
+
+  While the reviewer is confirmed live but slow, keep polling in further ~10-minute extensions
+  rather than re-triggering, to a bounded total of **~30 minutes** from the trigger.
+
+  Once the request is confirmed gone (or the 30-minute bound is reached): **re-trigger the
+  bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the
+  reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not
+  increment the round counter. If a review lands on the retry, continue normally. If the retry
+  window is also silent: `reason=silent`.
+
+  If a duplicate round does occur anyway (both the original and the re-triggered request
+  submit), the multi-review handling above covers it: collect **every** matching review id and
+  triage all of them — do not let the newer review mask the older one's findings.
 
 ### When a new reviewer response appears
 
