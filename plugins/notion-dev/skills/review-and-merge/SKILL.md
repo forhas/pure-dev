@@ -194,10 +194,23 @@ or classified `reason=silent`, and its findings go untriaged even though the rev
 ID snapshot has no such boundary condition.
 
 ```bash
-# immediately BEFORE the trigger — ids of reviews the reviewer has already submitted
+# immediately BEFORE the trigger — ids of reviews the reviewer has already submitted.
+# set -o pipefail: without it a failed `gh` still yields exit 0 from `jq`, leaving $SEEN empty.
+set -o pipefail
 SEEN=$(gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
   | jq -c "[.[][] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" or .user.login == \"Copilot\") | .id]")
 ```
+
+**Validate the snapshot before issuing the trigger — it is a read, so retrying it is free and
+safe.** The fetch and the parse must *both* succeed: `gh` exits non-zero on failure, but in a
+pipeline that status is discarded unless `pipefail` is set, and `jq` given no input exits 0
+with empty output. An unvalidated `$SEEN` fails in two directions — empty, so every existing
+review looks new and a stale one is triaged as this round's; or unset, so interpolating it
+produces invalid jq and the round cannot be read at all. Either way an already-completed review
+gets re-triggered or classified `reason=silent`. Require a non-empty, parseable JSON array
+(`[]` is valid and means "none yet"; an *unset or non-JSON* value is the failure) and retry the
+read until you have one. Only then send the mutating trigger — never trigger on an unvalidated
+baseline.
 
 A **new** review is then any matching review whose `.id` is absent from `$SEEN` — no wall-clock
 comparison at all. Do the same for codex (snapshot the ids of its reviews and issue comments).
@@ -223,7 +236,7 @@ Rounds are counted from the first reviewer trigger. **Hard cap: the resolved `re
 
 **At the start of every round**: `gh pr checks <pr>` — fix any failing check and re-green before handling any review comment.
 
-Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment authored by the bound profile's reviewer bot, created after the round's **trigger timestamp** (step 3: the `@codex review` comment's timestamp for codex, the captured request-start time for copilot). Authorship is an exact match against the profile's **set** of logins — never a substring or prefix test:
+Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment authored by the bound profile's reviewer bot whose **id is absent from the round's `$SEEN` snapshot** (step 3). Newness is decided by that snapshot alone — never by a wall-clock comparison, which has a second-precision boundary that silently drops a response submitted in the same second as the baseline. Authorship is an exact match against the profile's **set** of logins — never a substring or prefix test:
 
 - **codex** — `user.login` exactly equals `chatgpt-codex-connector[bot]` on every surface.
 - **copilot** — the bot renders under **two** logins, and filtering on either one alone silently drops half its output: `user.login` is `copilot-pull-request-reviewer[bot]` on the **review** object but `Copilot` on that review's **inline comments** (both carry the same `user.node_id`). Accept **either** login. Then attribute inline comments to the round by **review id**, not by login or timestamp — the review carries `submitted_at`, its inline comments do not:
