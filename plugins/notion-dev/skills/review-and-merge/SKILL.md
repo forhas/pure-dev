@@ -141,7 +141,15 @@ trigger command:
 
      Either → the request succeeded; continue (if (b), that review *is* the round's response —
      handle it, do not re-request). Neither → nothing landed; retry.
-2. **Retry at most 3 times** with a short backoff (~10s), re-checking state before each retry.
+2. **The state re-read must itself succeed before it decides anything.** A read that errors,
+   times out, or returns empty is not evidence of either outcome — it tells you nothing about
+   whether the mutation landed. Never compare a failed read's empty result against the
+   baseline and conclude from the difference that the state did (or did not) change: that
+   turns one network fault into a false verdict, and a false "it landed" silently skips the
+   round while a false "it didn't" double-triggers. Retry the **read** until it returns a
+   definite answer, then decide. This is the same rule one level up — a transport failure is
+   never a semantic signal.
+3. **Retry at most 3 times** with a short backoff (~10s), re-checking state before each retry.
    Still failing with no state change → stop and report. Do not fall through to the local loop
    on a transport fault.
 
