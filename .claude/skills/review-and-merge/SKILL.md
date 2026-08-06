@@ -197,9 +197,18 @@ gets re-triggered or classified `reason=silent`. Require a non-empty, parseable 
 read until you have one. Only then send the mutating trigger — never trigger on an unvalidated
 baseline.
 
-A **new** review is then any matching review whose `.id` is absent from `$SEEN` — no wall-clock
-comparison at all. Do the same for codex (snapshot the ids of its reviews and issue comments).
-Keep `$TS` for the report and as a secondary guard, but never let it alone decide whether a
+Snapshot **reviews** and, for codex, its **issue comments** (quota / unavailability notices) —
+but **never inline comments**. Inline comments are attributed to a round by their
+`pull_request_review_id`, never by snapshot membership. A PR that already carries reviewer
+inline comments from an earlier round or run would otherwise show every one of them as absent
+from `$SEEN`, so the poll would end instantly on already-handled feedback and walk to merge
+without ever waiting for the review it just requested. This applies to **both** reviewers, and
+codex is the more exposed of the two because it creates inline threads routinely.
+
+So: a **new response** is a review, or a codex issue comment, whose `.id` is absent from the
+corresponding snapshot. Its inline comments are then collected via
+`pull_request_review_id ∈ $RIDS` — the same path the copilot profile already uses. No
+wall-clock comparison anywhere. Keep `$TS` for the report only; never let it decide whether a
 response is new.
 
 **A next-round trigger refreshes this baseline; a silence re-trigger must not** — neither
@@ -296,7 +305,17 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
 4. Commit and push applied changes.
-5. If the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
+5. **Before treating the round as complete — in *either* branch below — confirm it has
+   settled.** A silence retry can leave two requests outstanding, so a second review can arrive
+   after the one just handled; the `$RIDS` query only saw what existed when it ran. The
+   dangerous case is a late **body-only** Copilot review: it creates no inline thread, so the
+   all-threads-resolved merge gate cannot catch it, and its findings would be merged past
+   silently. After handling the round's responses, poll once more (~60–90s) and — for copilot
+   — re-check `reviewRequests`. If the bot is still listed, or any id appears that is absent
+   from `$SEEN`, the round has **not** settled: handle the new review and repeat this check.
+   Only once a settle poll adds nothing may the round end.
+
+   Then: if the round counter is below the cap and the round **produced code changes**: increment the counter, re-trigger the bound reviewer per its profile (codex: re-comment `@codex review`; copilot: re-run the reviewer-request command), return to the top of the loop. Do **not** re-trigger when nothing changed: if every finding in the round was rejected with rationale — including rounds whose findings were only theoretical or insignificant, declined under the step-2 judgment bar — the reviewer would repeat the same findings; resolve the threads and treat the loop as ended.
 
 The reviewer loop ends on whichever comes first: **the reviewer reports no meaningful issues** per its profile's "no meaningful issues" row, the **judgment-based stop** in item 5 above, or the **round cap**. Then merge (step 5). If unavailability was detected instead, the local review loop below takes over with its own termination rules.
 
