@@ -47,7 +47,7 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 | review shape | `COMMENTED` review; actionable findings are inline threads (+ a summary body) | `COMMENTED` review whose findings are **often in the summary body only** — Copilot frequently generates zero inline comments, withholding low-confidence findings into a `<details><summary>Suppressed comments (N)</summary>` block in the body instead, so the body is a first-class finding source; inline threads appear only when it has line-level findings |
 | non-actionable boilerplate to ignore | Codex "About" block | **exactly two things**: the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer. A `<details><summary>Suppressed comments (N)</summary>` block is **not** boilerplate — despite also being a `<details>` block it carries real findings, and is triaged like any other finding |
 | "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
-| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | a **permanent rejection** of the reviewer-request: `HTTP 422`, or `403`/`404` whose message says the feature is not enabled. Transient statuses (`500`/`502`/`503`/`429`/rate-limit `403`) and bare transport errors are **not** signals — retry them (step 3) |
+| not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | a **permanent rejection** of the reviewer-request: a `422`/`403`/`404` whose **message** says Copilot review is not enabled. Status alone is never enough — GitHub documents `422` on this endpoint as "Validation failed, or the endpoint has been spammed". Transient statuses (`500`/`502`/`503`/`429`, rate-limit `403`, spam-protection `422`) and bare transport errors are **not** signals — retry them (step 3) |
 | quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent GitHub *rejection* is treated as `not-configured` |
 | silence | no response within ~10 min (20×30s polls) → confirm the request is really gone (definite re-read), then re-trigger once → `reason=silent` | same window, but **never re-trigger while the bot is still listed in `reviewRequests`** — it is slow, not silent (latency of ~16 min observed); keep polling to a ~30-min bound |
 
@@ -106,8 +106,8 @@ Never respond twice to the same comment — track handled comment IDs. If code c
 After all current comments are handled, trigger the bound reviewer per its profile:
 - **codex** → `gh pr comment <pr> --body "@codex review"`.
 - **copilot** → run the reviewer-request command. Treat it as `reason=not-configured` **only**
-  on a status that proves Copilot review is unavailable for this repo/org: `HTTP 422`, or a
-  `403`/`404` whose message says the feature is not enabled. Then post the unavailability note
+  when the response **message** says Copilot review is not enabled for this repo/org —
+  on a `422`, `403`, or `404` alike. The status code alone never proves it. Then post the unavailability note
   (step 4) and enter the local review loop — do not count a round. Every other failure is
   retryable, not a verdict — see the classification below.
 
@@ -168,8 +168,11 @@ On any non-zero exit from a trigger command:
 mere *presence* of an HTTP status distinguishes these. Read the status and message:
 
 - **Permanent rejection** → `reason=not-configured`. A status whose meaning is "Copilot review
-  is not available for this repo/org": `HTTP 422`, or a `403`/`404` whose message says the
-  feature is not enabled.
+  is not available for this repo/org" — a `422`, `403`, or `404` whose **message** says so.
+  The status alone is never sufficient: GitHub documents `422` on this endpoint as
+  "Validation failed, or the endpoint has been spammed", so a validation error or
+  spam-protection throttle returns the same code as a genuine not-enabled rejection. Read
+  the message; if it does not name Copilot review as unavailable, this is not a verdict.
 - **Transient response** → retry, **never** `not-configured`. `HTTP 500`, `502`, `503`, `429`,
   and any rate-limit `403` carry a status but say nothing about configuration. A rate-limit
   `403` in particular is indistinguishable from a permission `403` by status alone — the
@@ -184,7 +187,14 @@ local fallback and makes the final report claim a configuration problem the repo
 - **codex** → the `created_at` of the `@codex review` comment just posted.
 - **copilot** → the current UTC time captured **immediately before** the reviewer-request call (the REST request creates no comment). Capture it before the call so a review that lands during the request is not excluded.
 
-Every re-trigger (the silence retry in step 4, and the next-round trigger in the loop) **refreshes** this timestamp per the same rule.
+**A next-round trigger refreshes this timestamp; a silence re-trigger must not.** The
+silence retry is the *same logical round* — its purpose is to recover a response that never
+arrived, not to start a new one. Refreshing `$TS` there opens a hole: if the original review
+submits after the last pre-retry read but before the new timestamp is captured, its
+`submitted_at` falls *below* the new baseline, so the `submitted_at > "$TS"` query silently
+omits it — leaving its findings untriaged and its threads unresolved, which then blocks the
+merge gate. Keep the round's **original** trigger timestamp across a silence re-trigger, and
+refresh only when beginning a genuinely new round.
 
 Set the round counter to **1** when posting this first trigger (also when the PR had no
 reviews at all: run the green-CI gate first, then trigger).
@@ -232,7 +242,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 - **Quota** (codex only) — a new bot message whose body contains the case-insensitive substring `reached your codex usage limit`. `reason=quota`. Not applicable to copilot — copilot has no comment-based quota notice.
 - **Not-configured / error / refusal**:
   - **codex** — a message from the Codex app itself (author login exactly `chatgpt-codex-connector[bot]`, matching the response filter above) or explicitly about Codex (e.g. a workflow notice that Codex is disabled or not installed) that is *exclusively* an inability-to-review notice: it carries **no** `Reviewed commit` marker and **no** findings. Two guards matter here: the exclusivity guard — a normal review that merely mentions an error while still carrying findings or a reviewed-commit marker is a normal round, not an unavailability signal — and the author guard — another review/CI app's failure notice is never a codex signal. `reason=not-configured` when the message says Codex is disabled / not set up / no app installed; otherwise `reason=error`.
-  - **copilot** — only a **permanent rejection** is a signal: `HTTP 422`, or a `403`/`404` whose message says Copilot review is not enabled for the repo/org. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
+  - **copilot** — only a **permanent rejection** is a signal: a `422`, `403`, or `404` whose **message** says Copilot review is not enabled for the repo/org. Status alone is never enough — `422` on this endpoint also covers validation failure and spam protection, which are retryable. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
 - **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger.
   **The window elapsing is not proof the request is dead.** Reviewer latency varies widely:
   copilot has been observed responding in under 30 seconds on one round and ~16 minutes on
@@ -253,7 +263,8 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
   Once the request is confirmed gone (or the 30-minute bound is reached): **re-trigger the
   bound reviewer once per its profile** (codex: re-comment `@codex review`; copilot: re-run the
   reviewer-request command), re-poll one more ~10-minute window — this re-trigger does not
-  increment the round counter. If a review lands on the retry, continue normally. If the retry
+  increment the round counter **and does not refresh the trigger timestamp** (step 3): the
+  round keeps its original `$TS` so a late-arriving original review is still matched. If a review lands on the retry, continue normally. If the retry
   window is also silent: `reason=silent`.
 
   If a duplicate round does occur anyway (both the original and the re-triggered request
