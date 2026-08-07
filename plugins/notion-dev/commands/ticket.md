@@ -226,13 +226,14 @@ Non-plugin repos skip this entirely.
 git rev-parse --abbrev-ref HEAD
 ```
 
-Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't — most likely it reads `<PR_BASE>` because the branch was merged/deleted externally mid-run — **do not commit yet**. Recover with **only**:
+Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't — most likely it reads `<PR_BASE>` because the branch was merged/deleted externally mid-run — **do not commit yet**. Recover with:
 
 ```
 git checkout -b ticket/<project.key>-<id>-<slug>
+git branch -f <PR_BASE> origin/<PR_BASE>
 ```
 
-This is a checkout, not a reset, so it changes nothing: this run's uncommitted work and any commits already sitting on `<PR_BASE>` from an earlier iteration of this same bug both carry over onto the new branch intact — `checkout -b` only adds a ref pointing at the current commit; it never touches the working tree or history. **Do not also reset local `<PR_BASE>` to `origin/<PR_BASE>` here** — with the ticket branch just cut and now checked out, a `git reset --hard` runs against *that* branch (reset acts on whatever is currently checked out, not on the ref named in the command), silently discarding the very commits and working-tree changes this recovery exists to save. Local `<PR_BASE>` being left stale is harmless: this worktree has already moved off it, and it is corrected the next time it is pulled or reset in the primary checkout — not this command's concern. Continue below on the recovered branch and state the recovery plainly in the final report (Phase 10).
+The first line is a checkout, not a reset, so it changes nothing: this run's uncommitted work and any commits already sitting on `<PR_BASE>` from an earlier iteration of this same bug both carry over onto the new branch intact — `checkout -b` only adds a ref pointing at the current commit; it never touches the working tree or history. **Do not fold this into a `git reset --hard origin/<PR_BASE>` instead** — with the ticket branch just cut and now checked out, a hard reset runs against *that* branch (reset acts on whatever is currently checked out, not on the ref named in the command), silently discarding the very commits and working-tree changes this recovery exists to save. The second line is what actually repoints `<PR_BASE>` at `origin/<PR_BASE>` — safe specifically because `<PR_BASE>` was just abandoned by the checkout above and is therefore not checked out anywhere, and `git branch -f` touches only that ref, never the working tree, so it cannot disturb the branch just recovered. Without it, `<PR_BASE>` stays pinned at the same commit as the ticket branch, and once the PR is squash-merged that ref diverges from `origin/<PR_BASE>` in a way a later `git pull` there cannot cleanly resolve. If it fails (non-zero exit) — meaning `<PR_BASE>` turned out to be checked out in some other worktree after all — do not force it further: continue on the recovered branch and flag the discrepancy plainly in the final report (Phase 10) so it can be fixed by hand.
 
 Exclude `PLAN.md` from the commit:
 
