@@ -226,7 +226,7 @@ Non-plugin repos skip this entirely.
 git rev-parse --abbrev-ref HEAD
 ```
 
-Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't — most likely it reads `<PR_BASE>` because the branch was merged/deleted externally mid-run — **do not commit yet**. Recover with:
+Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't, **do not commit yet** — but only apply the recovery below when the mismatch is **exactly** `<PR_BASE>` (the branch was merged/deleted externally mid-run, the case this check exists for). Any other value — a detached HEAD, or some unrelated branch — is a different failure mode this recovery does not cover: stop and report the actual branch/state rather than guessing, since the repoint below assumes specifically that `<PR_BASE>` is what was abandoned, and forcing it against an unrelated branch's stale position could discard commits that have nothing to do with this run. When it is `<PR_BASE>`, recover with:
 
 ```
 git checkout -b ticket/<project.key>-<id>-<slug>
