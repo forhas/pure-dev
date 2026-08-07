@@ -226,7 +226,13 @@ Non-plugin repos skip this entirely.
 git rev-parse --abbrev-ref HEAD
 ```
 
-Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't — most likely it reads `<PR_BASE>` because the branch was merged/deleted externally mid-run — **do not commit yet**. Recover first: `git checkout -b ticket/<project.key>-<id>-<slug>` at the current HEAD (a checkout, not a reset, so this run's uncommitted work is preserved), confirm `<PR_BASE>` matches `origin/<PR_BASE>` and reset it if not (`git reset --hard origin/<PR_BASE>` — safe only because the just-cut branch already carries this run's work), then continue below on the recovered branch. State the recovery plainly in the final report (Phase 10).
+Must equal `ticket/<project.key>-<id>-<slug>` (2.1's branch name). If it doesn't — most likely it reads `<PR_BASE>` because the branch was merged/deleted externally mid-run — **do not commit yet**. Recover with **only**:
+
+```
+git checkout -b ticket/<project.key>-<id>-<slug>
+```
+
+This is a checkout, not a reset, so it changes nothing: this run's uncommitted work and any commits already sitting on `<PR_BASE>` from an earlier iteration of this same bug both carry over onto the new branch intact — `checkout -b` only adds a ref pointing at the current commit; it never touches the working tree or history. **Do not also reset local `<PR_BASE>` to `origin/<PR_BASE>` here** — with the ticket branch just cut and now checked out, a `git reset --hard` runs against *that* branch (reset acts on whatever is currently checked out, not on the ref named in the command), silently discarding the very commits and working-tree changes this recovery exists to save. Local `<PR_BASE>` being left stale is harmless: this worktree has already moved off it, and it is corrected the next time it is pulled or reset in the primary checkout — not this command's concern. Continue below on the recovered branch and state the recovery plainly in the final report (Phase 10).
 
 Exclude `PLAN.md` from the commit:
 
