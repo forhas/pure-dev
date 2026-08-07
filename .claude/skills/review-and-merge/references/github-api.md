@@ -68,22 +68,28 @@ request** — it has been observed returning empty while the bot's request was g
 everywhere this skill needs to know whether Copilot's review request is still outstanding:
 
 ```bash
-RESULT=$(gh api repos/{owner}/{repo}/pulls/<pr>/requested_reviewers --jq '.users[].login') || {
+if RESULT=$(gh api repos/{owner}/{repo}/pulls/<pr>/requested_reviewers --jq '.users[].login'); then
+  echo "$RESULT" | grep -qx 'copilot-pull-request-reviewer\[bot\]' && echo PENDING || echo NOT_PENDING
+else
   echo "READ_FAILED"   # gh itself errored — retry the read, per SKILL.md's rule that a
                         # failed read is never evidence; do not treat this as "not pending"
-}
-echo "$RESULT" | grep -qx 'copilot-pull-request-reviewer\[bot\]' && echo PENDING || echo NOT_PENDING
+fi
 ```
 
-**Capture `gh api`'s own exit status before piping into `grep`.** A pending list that is
-legitimately empty (nobody outstanding) makes `gh api --jq` print zero bytes and exit `0` — the
-*same* zero-byte output a failed call can also produce. Piping the raw command straight into
-`grep -q <login>` loses the distinction: `grep` finds no match either way, so its own exit code
-(`1`) can't tell "the call failed" from "the call succeeded and nobody is pending." Splitting the
-read from the membership test, as above, keeps the read's exit status visible on its own — a
-non-zero `gh api` exit means retry (never a verdict); a zero exit with `NOT_PENDING` is a
-legitimate, definite absence, distinct from an unread state, and safe to treat as "check for a
-submitted review" per the (b) branch in step 3 of SKILL.md.
+**Capture `gh api`'s own exit status before piping into `grep`, and never fall through past a
+failed read.** A pending list that is legitimately empty (nobody outstanding) makes `gh api --jq`
+print zero bytes and exit `0` — the *same* zero-byte output a failed call can also produce.
+Piping the raw command straight into `grep -q <login>` loses the distinction: `grep` finds no
+match either way, so its own exit code (`1`) can't tell "the call failed" from "the call
+succeeded and nobody is pending." Nesting the membership test **inside** the `if`'s success
+branch, as above, is what actually enforces the separation — an `||` handler that only prints
+`READ_FAILED` without an `exit`/`return`/`continue` still falls through to the membership test
+on the next line, emitting both `READ_FAILED` and `NOT_PENDING` with an overall zero exit status,
+which is exactly the ambiguity this check exists to remove. With the `if`/`else` form, a non-zero
+`gh api` exit can never reach the membership test at all — it always means retry, never a
+verdict; a zero exit with `NOT_PENDING` is a legitimate, definite absence, distinct from an
+unread state, and safe to treat as "check for a submitted review" per the (b) branch in step 3
+of SKILL.md.
 
 Bot login present (`PENDING`) → the request is live. `NOT_PENDING` → either it was never made,
 or Copilot already submitted and was auto-removed — absence alone is ambiguous (see the
