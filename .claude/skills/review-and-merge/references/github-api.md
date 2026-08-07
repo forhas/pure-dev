@@ -60,6 +60,41 @@ Rules that are easy to get wrong:
 - **Map every comment in a thread, not just the root.** A thread can contain replies; map every comment `databaseId` back to that thread's `id`/`isResolved`. Otherwise a reply's REST `comment_id` won't resolve to a thread and its state is lost.
 - **Re-run this query after each review round.** The REST polling reads do not return thread node ids, and new comments create new threads. Without a refresh, new threads have no `threadId` and the merge gate can never clear.
 
+## Copilot pending-review check
+
+`gh pr view <pr> --json reviewRequests` is **not a reliable source for a pending Copilot
+request** — it has been observed returning empty while the bot's request was genuinely live
+(confirmed via the REST endpoint below and the PR timeline). Use the REST endpoint instead
+everywhere this skill needs to know whether Copilot's review request is still outstanding:
+
+```bash
+if RESULT=$(gh api repos/{owner}/{repo}/pulls/<pr>/requested_reviewers --jq '.users[].login'); then
+  echo "$RESULT" | grep -qx 'copilot-pull-request-reviewer\[bot\]' && echo PENDING || echo NOT_PENDING
+else
+  echo "READ_FAILED"   # gh itself errored — retry the read, per SKILL.md's rule that a
+                        # failed read is never evidence; do not treat this as "not pending"
+fi
+```
+
+**Capture `gh api`'s own exit status before piping into `grep`, and never fall through past a
+failed read.** A pending list that is legitimately empty (nobody outstanding) makes `gh api --jq`
+print zero bytes and exit `0` — the *same* zero-byte output a failed call can also produce.
+Piping the raw command straight into `grep -q <login>` loses the distinction: `grep` finds no
+match either way, so its own exit code (`1`) can't tell "the call failed" from "the call
+succeeded and nobody is pending." Nesting the membership test **inside** the `if`'s success
+branch, as above, is what actually enforces the separation — an `||` handler that only prints
+`READ_FAILED` without an `exit`/`return`/`continue` still falls through to the membership test
+on the next line, emitting both `READ_FAILED` and `NOT_PENDING` with an overall zero exit status,
+which is exactly the ambiguity this check exists to remove. With the `if`/`else` form, a non-zero
+`gh api` exit can never reach the membership test at all — it always means retry, never a
+verdict; a zero exit with `NOT_PENDING` is a legitimate, definite absence, distinct from an
+unread state, and safe to treat as "check for a submitted review" per the (b) branch in step 3
+of SKILL.md.
+
+Bot login present (`PENDING`) → the request is live. `NOT_PENDING` → either it was never made,
+or Copilot already submitted and was auto-removed — absence alone is ambiguous (see the
+"response landed" check in step 3 of SKILL.md, which also checks for a submitted review).
+
 ## Replying
 
 In-thread reply to an inline review comment (use the REST `comment_id` / `databaseId`):

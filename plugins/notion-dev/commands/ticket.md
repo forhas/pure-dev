@@ -26,6 +26,7 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 
 - **Superpowers and feature-dev (required).** `dependencies.superpowers` **and** `dependencies.featureDev` in the config must both be `true` — if either is missing or false, abort and tell the user to re-run `/notion-dev:init` (which verifies and records both). Confirm `superpowers:writing-plans`, `superpowers:subagent-driven-development`, `superpowers:receiving-code-review`, and `feature-dev:feature-dev` are all available; this command delegates planning, execution, and review to them.
 - **GitHub access**: authenticated `gh` CLI is **required** — the Phase 7 review loop (`notion-dev:review-and-merge`) depends on `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform. Probe `gh auth status` at the top of the command; abort with "Install and authenticate `gh` (`gh auth login`), then re-run" if unavailable. The GitHub MCP (`mcp__github__create_pull_request` etc.) is optional: when present, prefer it for the operations it supports (PR create, metadata reads, merge) and fall back to `gh` when it fails or is absent.
+- **`jq` on `PATH` is required** — the same Phase 7 review loop parses `gh api` JSON responses with it throughout; `gh api`'s own `--jq` flag does not substitute for the standalone binary. Probe `jq --version` alongside the `gh` check; abort with install instructions if missing — not preinstalled on Windows (`winget install jqlang.jq`, or `choco install jq` / `scoop install jq`); usually already present on macOS/Linux (`brew install jq` / `apt install jq` otherwise).
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list`, i.e. the **primary checkout** root, never a worktree path. (This recipe is correct from anywhere, including the no-arg resume path invoked from inside the ticket worktree, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. All config reads — here and in every later phase or invoked skill — resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never the worktree: the worktree is cut from `origin/<git.baseBranch>`, which lacks the config whenever it is uncommitted, unpushed, or gitignored.
 - The repo has an `origin` remote.
@@ -218,6 +219,25 @@ If `.claude-plugin/plugin.json` exists at the worktree root, the manifest `versi
 Non-plugin repos skip this entirely.
 
 ### 6.2 Commit
+
+**Re-validate the branch before committing.** The branch/worktree decision was made back in Phase 1.2/2.1 and is never re-checked across the build — if another actor merges (and deletes) this ticket's branch while Phase 4 is still running, the working directory can end up back on `<PR_BASE>` by the time this step runs, and a commit here would land ticket work directly on the base branch:
+
+```
+git rev-parse --abbrev-ref HEAD
+```
+
+Must equal **the branch name recorded in 2.1** — never re-spell the `ticket/<project.key>-<id>-<slug>` template here: on a resume (1.2), 2.1 reused the branch already created by an earlier run, and its `<slug>` was kebab-cased from the ticket's title *at that earlier time*. If the title has since changed in Notion, re-deriving the slug from the current title produces a different string than the branch actually in use, and this check would misread a perfectly correct branch as a mismatch (recorded-name comparison and the `-D` in Phase 9 step 3 already follow the same rule for the same reason).
+
+If the recorded branch name doesn't match, **do not commit yet** — but only apply the recovery below when the mismatch is **exactly** `<PR_BASE>` (the branch was merged/deleted externally mid-run, the case this check exists for). Any other value — a detached HEAD, or some unrelated branch — is a different failure mode this recovery does not cover: stop and report the actual branch/state rather than guessing, since the repoint below assumes specifically that `<PR_BASE>` is what was abandoned, and forcing it against an unrelated branch's stale position could discard commits that have nothing to do with this run.
+
+When it is `<PR_BASE>`, **inspect what the checkout below would carry over before running it** — `git log --oneline origin/<PR_BASE>..HEAD`. Nothing in this command validates local `<PR_BASE>` at any earlier point (the clean-tree precondition checks whatever directory the command starts in, never this ref), so a commit sitting there could in principle predate and be unrelated to this run entirely. Every commit listed should be explainable as this run's own work (Phase 4/5's build, or an earlier pass of this same recovery) — if anything looks unrelated, stop and report the list rather than folding it into the ticket branch, since Phase 6.3 would then push it as part of this PR. When the list is clean, recover with:
+
+```
+git checkout -b <the branch name recorded in 2.1>
+git branch -f <PR_BASE> origin/<PR_BASE>
+```
+
+The first line is a checkout, not a reset, so it changes nothing: this run's uncommitted work and any commits already sitting on `<PR_BASE>` from an earlier iteration of this same bug both carry over onto the new branch intact — `checkout -b` only adds a ref pointing at the current commit; it never touches the working tree or history. **Do not fold this into a `git reset --hard origin/<PR_BASE>` instead** — with the ticket branch just cut and now checked out, a hard reset runs against *that* branch (reset acts on whatever is currently checked out, not on the ref named in the command), silently discarding the very commits and working-tree changes this recovery exists to save. The second line is what actually repoints `<PR_BASE>` at `origin/<PR_BASE>` — safe specifically because `<PR_BASE>` was just abandoned by the checkout above and is therefore not checked out anywhere, and `git branch -f` touches only that ref, never the working tree, so it cannot disturb the branch just recovered. Without it, `<PR_BASE>` stays pinned at the same commit as the ticket branch, and once the PR is squash-merged that ref diverges from `origin/<PR_BASE>` in a way a later `git pull` there cannot cleanly resolve. If it fails (non-zero exit) — meaning `<PR_BASE>` turned out to be checked out in some other worktree after all — do not force it further: continue on the recovered branch and flag the discrepancy plainly in the final report (Phase 10) so it can be fixed by hand.
 
 Exclude `PLAN.md` from the commit:
 

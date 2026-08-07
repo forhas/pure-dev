@@ -18,6 +18,8 @@ If no PR number is given, stop and ask for one. Do not guess.
 
 All GitHub interaction uses the `gh` CLI against the current repository. Run `gh pr view <pr>` up front to confirm the PR exists, is **open**, and is not a draft. If closed/merged/draft, stop and report.
 
+**Requires the standalone `jq` binary on `PATH`** — this skill pipes `gh api` output through it throughout (thread mapping, author filtering, review-id reconciliation); `gh api`'s own built-in `--jq` flag does not substitute for it. Probe with `jq --version` before step 1. If missing, stop and report install instructions rather than proceeding into a loop that would fail opaquely partway through: macOS `brew install jq`; Debian/Ubuntu `apt install jq`; Windows `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`).
+
 ## Reviewer
 
 This skill drives one of two configured reviewers. Resolve which **before step 3**:
@@ -49,7 +51,7 @@ This skill drives one of two configured reviewers. Resolve which **before step 3
 | "no meaningful issues" | review says no major issues / equivalent | the body carries no actionable findings, **no** `Suppressed comments (N)` block with N ≥ 1, and there are no (or only resolved) inline comments. The headline "generated no new comments" is **not** sufficient on its own — it co-occurs with a populated suppressed-comments block |
 | not-configured signal | a message from the Codex app that is *exclusively* an inability-to-review notice (no `Reviewed commit` marker, no findings) | a **permanent rejection** of the reviewer-request: a `422`/`403`/`404` whose **message** says Copilot review is not enabled. Status alone is never enough — GitHub documents `422` on this endpoint as "Validation failed, or the endpoint has been spammed". Transient statuses (`500`/`502`/`503`/`429`, rate-limit `403`, spam-protection `422`) and bare transport errors are **not** signals — retry them (step 3) |
 | quota signal | body contains the case-insensitive substring `reached your codex usage limit` | n/a — Copilot has no comment-based quota notice; a persistent GitHub *rejection* is treated as `not-configured` |
-| silence | no response within ~10 min (20×30s polls) → confirm the request is really gone (definite re-read), then re-trigger once → `reason=silent` | same window, but **never re-trigger while the bot is still listed in `reviewRequests`** — it is slow, not silent (latency of ~16 min observed); keep polling to a ~30-min bound |
+| silence | no response within ~10 min (20×30s polls) → confirm the request is really gone (definite re-read), then re-trigger once → `reason=silent` | same window, but **never re-trigger while the pending-request check (`references/github-api.md`) still shows the bot outstanding** — it is slow, not silent (latency of ~16 min observed); keep polling to a ~30-min bound. Do **not** use `gh pr view --json reviewRequests` for this — it has been observed empty while the request was genuinely live |
 
 ### Round cap
 
@@ -67,6 +69,12 @@ The resolved number caps the reviewer loop and the local fallback loop **indepen
 the fallback restarts its counter at 1, so a run that falls back can perform up to twice the
 cap in total. As with `reviewer`, this skill never writes the config: `reviewsCap` is
 hand-edited, and `/notion-dev:init` does not write it either.
+
+Copilot round-trip latency has been observed in the 3–20 minute range per round (mostly 15+),
+so the default cap of 15 is a many-hour worst case if every round produces a code change. The
+judgment-based stop ("no meaningful issues" / theoretical-only findings, step 4) is the loop's
+real brake — the cap is only a runaway backstop. For a PR with little or no code (docs-only,
+config-only), consider hand-setting a lower `reviewsCap` before starting the run.
 
 ## 1. Load the pull request
 
@@ -137,10 +145,12 @@ On any non-zero exit from a trigger command:
      landed; retry the post.
    - **copilot** → **two** states each mean the request landed, and checking only the first
      yields a false negative that re-requests the review:
-     - (a) the bot is listed in `gh pr view <pr> --json reviewRequests`, **or**
+     - (a) the bot is listed by the **pending-request check** (`references/github-api.md` —
+       the REST `requested_reviewers` endpoint, **never** `gh pr view --json reviewRequests`,
+       which has been observed empty for a genuinely live request), **or**
      - (b) a Copilot review has appeared that was **not in `$SEEN`** (the pre-trigger id
-       snapshot) — the bot is **auto-removed** from `reviewRequests` the moment it submits,
-       so a review that completes before this recovery read leaves no trace in (a):
+       snapshot) — the bot is **auto-removed** from the pending-request list the moment it
+       submits, so a review that completes before this recovery read leaves no trace in (a):
 
        ```bash
        gh api --paginate --slurp "repos/{owner}/{repo}/pulls/<pr>/reviews" \
@@ -289,11 +299,13 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
   another round of the *same* run. Re-triggering a request that is merely slow queues a second
   review and produces a duplicate round. So before re-triggering, confirm the request is
   actually gone:
-  - **copilot** → `gh pr view <pr> --json reviewRequests`. Bot **still listed** → the request
-    is live and just slow; do **not** re-trigger — keep polling. The request is genuinely gone
-    only when the bot is absent **and** no Copilot review has been submitted after the trigger
-    timestamp (the bot is auto-removed the moment it submits, so absence alone is ambiguous —
-    check for the review too, per step 3).
+  - **copilot** → the **pending-request check** (`references/github-api.md` — REST
+    `requested_reviewers`; **not** `gh pr view --json reviewRequests`, which has been observed
+    empty while the request was genuinely live). Bot **still listed** → the request is live and
+    just slow; do **not** re-trigger — keep polling. The request is genuinely gone only when the
+    bot is absent **and** no Copilot review has been submitted after the trigger timestamp (the
+    bot is auto-removed the moment it submits, so absence alone is ambiguous — check for the
+    review too, per step 3).
   - **codex** → no equivalent pending marker exists. Re-read reviews and issue comments with a
     **definite** read before concluding — a failed read is not silence.
 
@@ -335,10 +347,11 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    absent from it, and every settle poll would rediscover it, declare the round unsettled, and
    spin forever without ever reaching another round or the merge.
 
-   After handling the round's responses, poll once more (~60–90s) and — for copilot — re-check
-   `reviewRequests`. If any id appears that is absent from both sets, the round has **not**
-   settled: handle it, add it to `$HANDLED`, and repeat. If the bot is still listed in
-   `reviewRequests`, a request is still outstanding — keep waiting, but bound that wait by the
+   After handling the round's responses, poll once more (~60–90s) and — for copilot — re-run the
+   **pending-request check** (`references/github-api.md`; not `gh pr view --json
+   reviewRequests`). If any id appears that is absent from both sets, the round has **not**
+   settled: handle it, add it to `$HANDLED`, and repeat. If the bot is still listed as pending, a
+   request is still outstanding — keep waiting, but bound that wait by the
    same ~30-minute total as the silence rule, then proceed rather than stalling. Only once a
    settle poll adds nothing may the round end.
 

@@ -17,6 +17,7 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 ## Preconditions
 
 - **GitHub access**: authenticated `gh` CLI is **required** — the Phase 2 review loop (`notion-dev:review-and-merge`) depends on `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform. Probe `gh auth status` at the top of the command; abort with "Install and authenticate `gh` (`gh auth login`), then re-run" if unavailable. The GitHub MCP (`mcp__github__get_pull_request` etc.) is optional: when present, prefer it for the operations it supports (metadata reads, merge) and fall back to `gh` when it fails or is absent.
+- **`jq` on `PATH` is required for Phase 2** — the review loop invoked there parses `gh api` JSON responses with it throughout; `gh api`'s own `--jq` flag does not substitute for the standalone binary. **Not** a top-of-command gate and **not** required on the `MERGED` post-merge-recovery path above, which skips Phase 2 entirely — probing it here would block exactly the recovery this gate exists to keep working, on the platform (Windows) this dependency is least likely to already have. Probed instead at the start of Phase 2, immediately before invoking `notion-dev:review-and-merge`.
 - **Superpowers (required)**: confirm `superpowers:receiving-code-review` is available — the Phase 2 review loop evaluates every finding with it. If missing, abort before any Phase 1 side effects: "workflow requires the `superpowers` plugin — run `/notion-dev:init`". (feature-dev is not needed here; finalize runs no build flow.)
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list` — the **primary checkout** root, never a worktree path. (Correct from anywhere: `finalize` is most commonly invoked with no args from inside the ticket worktree itself, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. As in `/notion-dev:ticket`, all config reads resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never a worktree — the worktree may lack the config when it is uncommitted, unpushed, or gitignored.
@@ -50,6 +51,11 @@ Work PR-first — the PR number is the entry point, and the ticket id is derived
 ---
 
 ## Phase 2 — Review and merge
+
+Reached only when Phase 1 did **not** take the `MERGED` recovery path (that path skips this
+phase entirely). Probe `jq --version` here — abort with install instructions if missing:
+`winget install jqlang.jq` (or `choco install jq` / `scoop install jq`) on Windows, where it is
+commonly absent; `brew install jq` / `apt install jq` otherwise.
 
 Invoke the `notion-dev:review-and-merge` skill via the Skill tool with args:
 `<pr-number>`, plus `--non-interactive` when set, plus — when the target repo is a
