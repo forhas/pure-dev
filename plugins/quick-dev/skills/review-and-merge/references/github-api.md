@@ -60,6 +60,21 @@ Rules that are easy to get wrong:
 - **Map every comment in a thread, not just the root.** A thread can contain replies; map every comment `databaseId` back to that thread's `id`/`isResolved`. Otherwise a reply's REST `comment_id` won't resolve to a thread and its state is lost.
 - **Re-run this query after each review round.** The REST polling reads do not return thread node ids, and new comments create new threads. Without a refresh, new threads have no `threadId` and the merge gate can never clear.
 
+## Copilot pending-review check
+
+`gh pr view <pr> --json reviewRequests` is **not a reliable source for a pending Copilot
+request** — it has been observed returning empty while the bot's request was genuinely live
+(confirmed via the REST endpoint below and the PR timeline). Use the REST endpoint instead
+everywhere this skill needs to know whether Copilot's review request is still outstanding:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/<pr>/requested_reviewers --jq '.users[].login'
+```
+
+Bot login present in the output → the request is live. Absent → either it was never made, or
+Copilot already submitted and was auto-removed — absence alone is ambiguous (see the "response
+landed" check in step 3 of SKILL.md, which also checks for a submitted review).
+
 ## Replying
 
 In-thread reply to an inline review comment (use the REST `comment_id` / `databaseId`):

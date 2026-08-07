@@ -72,6 +72,7 @@ are declined with reasoning.
 ## Requirements
 
 - `git` and, for the PR flow, the `gh` CLI authenticated against the repo's GitHub remote.
+- `jq` on `PATH` — the review loop parses `gh api` JSON responses with it. Not preinstalled on Windows: `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`). Usually already present on macOS/Linux; if not, `brew install jq` / `apt install jq`.
 - The [feature-dev](https://github.com/anthropics/claude-code/tree/main/plugins/feature-dev) and [superpowers](https://github.com/obra/superpowers) plugins — installed automatically at **project scope** on first run if missing (a `/reload-plugins` is required after auto-install).
 - Optional: a GitHub code reviewer — the Codex app (`@codex review` rounds, the default) or Copilot code review (`reviewer: copilot`). See [Code reviewer](#code-reviewer-github-mode). Without one (or when the chosen reviewer is out of quota, misconfigured, or silent), the review loop falls back to a local review loop — a fresh agent per round applying the plugin's `local-code-review` skill.
 
