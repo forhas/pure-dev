@@ -135,10 +135,10 @@ From `$REPO_ROOT`:
 Append one outcome line to `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` per the schema in `skills/flow-triage/references/ledger.md`:
 
 ```json
-{"event":"outcome","run_id":"<KEY>-<id>","ts":"<UTC now>","result":"merged","review_rounds":N,"fix_commits":N,"files_changed":N,"insertions":N,"deletions":N,"duration_minutes":N}
+{"event":"outcome","run_id":"<KEY>-<id>","ts":"<UTC now>","result":"merged","review_rounds":N,"fix_commits":N,"files_changed":N,"insertions":N,"deletions":N,"duration_minutes":N,"triage_absorbed":N,"triage_filed":N,"triage_dropped":N,"triage_reclassified":N}
 ```
 
-Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
+Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --shortstat` of the merge commit (files changed, insertions, deletions); duration from `RUN_START` to now. The four `triage_*` counts come from `REVIEW_REPORT`'s `ABSORBED` / `FILED` / `DROPPED` lists, with `triage_reclassified` counting the `FILED` entries marked as reclassified from `absorb`. Write `null` for all four — never `0` — when no review produced a triage. Any metric that cannot be determined is `null`. A ledger append failure never fails the run.
 
 **Issue-log sweep.** Review this run for unexpected conditions not already recorded, and record them now via `notion-dev:issue-log`. Best-effort — a failure here never fails the run.
 
@@ -155,6 +155,8 @@ Print a summary covering:
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
+
+When `triage_reclassified` is greater than zero, state it in the report: `<n> of <m> absorb items were reclassified to `file` at the merge gate (criteria <list>)`. This is worth surfacing every time it happens — an `absorb` item became a `file` item only because a criterion turned out true that the earlier triage missed, and a run doing that repeatedly is the signal the blast-radius test is miscalibrated. Say nothing when the count is zero.
 
 ---
 

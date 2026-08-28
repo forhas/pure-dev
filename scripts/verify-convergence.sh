@@ -118,6 +118,18 @@ assert_has   "develop trailer names the criterion"  "$D" 'criterion <n>'
 assert_has   "develop gate requires reclassify"     "$D" 'reclassify and merge'
 assert_lacks "develop drops the bare merge-anyway"  "$D" 'merge anyway /'
 
+echo "== triage metrics =="
+for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/references/ledger.md; do
+  n=${L#plugins/}
+  assert_has "$n documents triage_reclassified" "$L" 'triage_reclassified'
+  assert_has "$n documents triage_filed"        "$L" 'triage_filed'
+done
+assert_has "ticket.md writes triage counts"    "$ND/commands/ticket.md"   'triage_reclassified'
+assert_has "finalize.md writes triage counts"  "$ND/commands/finalize.md" 'triage_reclassified'
+assert_has "develop writes triage counts"      "$QD/skills/develop/SKILL.md" 'triage_reclassified'
+assert_has "develop surfaces the reclassify rate" "$QD/skills/develop/SKILL.md" 'reclassified to `file`'
+assert_has "ticket.md surfaces the reclassify rate" "$ND/commands/ticket.md" 'reclassified to `file`'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
