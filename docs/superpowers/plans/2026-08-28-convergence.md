@@ -637,6 +637,16 @@ In the `## Merged` rendered example, after the `**Review resolution**` bullets, 
 
 and update the `**Review resolution**` example bullet `• Deferred 1 as follow-up (see STO-42).` to `• Absorbed 1 finding; deferred 1 as follow-up (see STO-42).`
 
+- [ ] **Step 8b: Update the Merged render contract (ruling PF-5)**
+
+`ticket-system/SKILL.md:204` states the `Merged` section's render contract, and its parenthetical enumerates the **list** fields: `(Review resolution as bullets, Deferred follow-ups as a bulleted list with linked ticket IDs where present)`. Step 8 adds two more list fields, so that enumeration is now incomplete. Replace the parenthetical with:
+
+```markdown
+(`Review resolution` as bullets, `Absorbed` as a bulleted list, `Deferred follow-ups` as a bulleted list with linked ticket IDs where present, `Dropped` as a bulleted list with each item's rationale)
+```
+
+The per-field scalar/list split rule below it already routes these correctly — this edit keeps the enumeration truthful, it does not change adapter behavior.
+
 - [ ] **Step 9: Run it to verify it passes**
 
 Run: `./scripts/verify-convergence.sh`
