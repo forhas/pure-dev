@@ -102,6 +102,20 @@ assert_has "develop's ledger site distinguishes a real completeness 0 from the n
 assert_has "ticket.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/commands/ticket.md"   'a check that ran and found nothing, not one that never ran'
 assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/commands/finalize.md" 'a check that ran and found nothing, not one that never ran'
 
+echo "== Task 7: docs, versions, and shared-wording parity =="
+assert_has "notion-dev README covers the gate" "$ND/README.md" 'completeness gate'
+assert_has "quick-dev README covers the gate"  "$QD/README.md" 'completeness gate'
+assert_has "notion-dev version bumped"         "$ND/.claude-plugin/plugin.json" '"version": "0.14.0"'
+assert_has "quick-dev version bumped"          "$QD/.claude-plugin/plugin.json" '"version": "0.9.0"'
+
+# Parity guard: the completeness-report bullet is near-verbatim shared between the two
+# plugins' review-and-merge skills, and nothing else asserts the two copies stay in sync.
+SHARED_COMPLETENESS_REPORT_BULLET='The report also carries a **`COMPLETENESS-REPORT`** section: the verifier'"'"'s keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict'"'"'s citation replaced by the gate'"'"'s resolution of it — the counts a caller consumes are always the gate'"'"'s, never the verifier'"'"'s raw ones, because the verifier cannot know which of its own citations resolved.'
+for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+  n=${RM#plugins/}
+  assert_has "$n keeps the completeness-report bullet in parity with its sibling plugin" "$RM" "$SHARED_COMPLETENESS_REPORT_BULLET"
+done
+
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
 else
