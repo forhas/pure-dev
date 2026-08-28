@@ -46,6 +46,14 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n requires one verdict per criterion"  "$RM" 'one per criterion, in criteria-file order'
 done
 
+echo "== Task 3: quick-dev criteria derivation =="
+FT=$QD/skills/flow-triage/SKILL.md
+assert_has "flow-triage emits CRITERIA"           "$FT" 'CRITERIA:'
+assert_has "flow-triage emits COVERAGE-MAP"       "$FT" 'COVERAGE-MAP:'
+assert_has "flow-triage caps the criteria count"  "$FT" '3-6 observable criteria'
+assert_has "flow-triage marks uncovered clauses"  "$FT" 'not covered'
+assert_has "flow-triage freezes before the build" "$FT" 'before any code exists'
+
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
 else

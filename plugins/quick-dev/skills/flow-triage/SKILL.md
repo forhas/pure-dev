@@ -56,9 +56,16 @@ Run the scorecard's report-only drift check over the last 5 completed runs. Any 
 
 ## Step 7 — Confirm, record, output
 
-1. **Confirm** (skip with `--auto`): present the full output block below, then ask the user to confirm the recommendation or override to the other flow (AskUserQuestion; on `borderline` confidence, say explicitly that their judgment matters most in the gray zone). `flow_chosen` is whatever they pick; with `--auto` it equals the recommendation.
-2. **Record** (skip with `--advise-only`): ensure the ledger directory exists with its self-ignoring `.gitignore` (commands in `references/ledger.md`), then append the decision line per the schema there.
-3. **Output** — end with exactly this block so callers can parse it:
+1. **Derive the acceptance criteria.** From the feature description alone — not from the scout findings or the micro-plan, which describe what *we* intend rather than what was *asked for* — state **3-6 observable criteria**: conditions a reader could check against the finished work without trusting the run's own account of it.
+
+   Then build the **coverage map** in the other direction: quote every substantive clause of the feature description and name the criterion covering it. A clause deliberately left uncovered gets an entry saying `not covered` and why.
+
+   The map is what catches weak criteria. Weakness never shows up as a bad-looking criterion — it shows up as part of the request that no criterion mentions, and only directional coverage makes that visible. The 3-6 cap is binding: a rambling description is explained in the map, never inflated into a dozen criteria.
+
+   This runs **before any code exists**, which is what stops the criteria being reverse-engineered from what was built. In interactive mode the user sees them in the confirmation below — they are the authority on what they asked for, and this is the only point in the flow where they can say so before there is code to defend.
+2. **Confirm** (skip with `--auto`): present the full output block below, then ask the user to confirm the recommendation or override to the other flow (AskUserQuestion; on `borderline` confidence, say explicitly that their judgment matters most in the gray zone). `flow_chosen` is whatever they pick; with `--auto` it equals the recommendation.
+3. **Record** (skip with `--advise-only`): ensure the ledger directory exists with its self-ignoring `.gitignore` (commands in `references/ledger.md`), then append the decision line per the schema there.
+4. **Output** — end with exactly this block so callers can parse it:
 
 ```
 FLOW: <feature-dev|superpowers>
@@ -74,10 +81,15 @@ SCORES:
 - plan_shape: <n> (weight 2) — <justification>
 LEDGER-EVIDENCE: <none | which run_ids influenced the decision and how>
 DRIFT: <none | warning text>
+CRITERIA:
+- <observable criterion>
+COVERAGE-MAP:
+- "<clause quoted from the feature description>" -> criterion <n>
+- "<clause quoted from the feature description>" -> not covered — <why>
 SCOUT-FINDINGS:
 <the scout's AFFECTED / PATTERN / OPEN-QUESTIONS sections verbatim, or "(skipped — flow was forced)" / "(unavailable — scout degraded)">
 MICRO-PLAN:
 <the scout's micro-plan sketch verbatim>
 ```
 
-`FLOW:` reflects `flow_chosen` (post-confirmation), not the raw recommendation. Callers hand the `MICRO-PLAN:` block to the chosen flow as seed context.
+`FLOW:` reflects `flow_chosen` (post-confirmation), not the raw recommendation. Callers hand the `MICRO-PLAN:` block to the chosen flow as seed context. `CRITERIA:` is the run's frozen definition of done — callers write it to a criteria file before the build and never regenerate it afterwards. On `--advise-only` both blocks are still emitted; on a forced flow they are still emitted, since neither depends on the scout.
