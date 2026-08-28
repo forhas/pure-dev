@@ -134,6 +134,7 @@ echo "== legacy skip disclosure =="
 assert_has "epic-update discloses legacy skips" "$E" 'recorded before `0.13.0`'
 assert_has "epic-update comments on the epic"   "$E" 'postComment'
 assert_has "epic-update logs legacy disclosure" "$E" '**Legacy follow-ups closed over**'
+assert_has "epic-update reads its legacy line back" "$E" 'unioned with what the legacy-spelling line yielded'
 
 echo
 if [ "$fails" -eq 0 ]; then
