@@ -40,6 +40,17 @@ assert_lacks  "rubric drops NOT-IN-SCOPE-PRESENT"   "$RUBRIC" 'NOT-IN-SCOPE-PRES
 assert_identical "rubric copies are byte-identical" \
   "$QD/skills/plan-review/references/reviewer-rubric.md" "$RUBRIC"
 
+echo "== Task 2: plan-review skill =="
+for P in "$ND" "$QD"; do
+  S=$P/skills/plan-review/SKILL.md
+  n=$(basename "$P")
+  assert_has   "$n plan-review parses TRIAGE-COMPLETE" "$S" 'TRIAGE-COMPLETE'
+  assert_has   "$n plan-review block has TRIAGE key"   "$S" 'TRIAGE:'
+  assert_has   "$n plan-review keeps nine-key rule"    "$S" 'nine keys'
+  assert_lacks "$n plan-review drops NOT-IN-SCOPE"     "$S" 'NOT-IN-SCOPE'
+  assert_has   "$n plan-review absorb→plan tasks"      "$S" 'absorb'
+done
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

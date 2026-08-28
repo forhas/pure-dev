@@ -54,19 +54,19 @@ Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empt
 
 Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (This matches how `../develop/SKILL.md` Phase 4 already spawns its local-mode reviewer.)
 
-Parse from its output: the findings list with severities, `NOT-IN-SCOPE-PRESENT`, and the `VERDICT` line.
+Parse from its output: the findings list with severities, `TRIAGE-COMPLETE` together with the per-item triage lines beneath it, and the `VERDICT` line.
 
-**Contract check.** The reviewer's output is only usable if it carries **every** element the rubric's output contract mandates — the `Reviewed plan:` echo, a `COVERAGE-MAP:` block, a findings list (one or more `- [<Severity>] …` lines, or the literal `No findings.`), a `NOT-IN-SCOPE-PRESENT` line, and a `VERDICT` line — plus, when the verdict is `NOT-CLEAN`, at least one parseable Critical or Required finding. A `COVERAGE-MAP:` whose whole body is `(no test suite in this repo)` satisfies that element; the rubric permits exactly that. Two failure shapes get different treatment:
+**Contract check.** The reviewer's output is only usable if it carries **every** element the rubric's output contract mandates — the `Reviewed plan:` echo, a `COVERAGE-MAP:` block, a findings list (one or more `- [<Severity>] …` lines, or the literal `No findings.`), a `TRIAGE-COMPLETE` line, and a `VERDICT` line — plus, when the verdict is `NOT-CLEAN`, at least one parseable Critical or Required finding. A `COVERAGE-MAP:` whose whole body is `(no test suite in this repo)` satisfies that element; the rubric permits exactly that. Two failure shapes get different treatment:
 
 - **Verdict contradicts its own findings** — `VERDICT: CLEAN` alongside a listed Critical or Required finding. Derive the verdict from the findings (`NOT-CLEAN`) and continue; the findings are what you triage. This is the safe direction and needs no retry.
 - **Output unusable** — any mandatory element above is missing or malformed, or the output **contradicts itself**: it declares a defect in one field while the findings list carries no Critical or Required finding to triage. Never resolve such a contradiction in favour of a clean plan — with nothing to triage the counts come out zero and the status computes to `clean`, silently converting a declared defect into a pass. The general rule: **every field that asserts a defect must be matched by its own blocking finding** — one blocking finding does not discharge two separate assertions. The three instances that arise in practice:
   - `VERDICT: NOT-CLEAN` with no blocking finding at all.
   - `COVERAGE-MAP:` listing a `GAP` entry with no blocking finding covering *that* gap — the rubric turns every gap into a finding, and the severity ladder makes "a new codepath with no verification" Required, so gaps paired with `No findings.` *or* with only non-blocking findings are contradictory.
-  - `NOT-IN-SCOPE-PRESENT: no` with no blocking finding naming the missing deferred work — the rubric emits `no` only when concrete deferrable work is missing from the plan, and requires a Required finding naming those items.
+  - `TRIAGE-COMPLETE: no` with no blocking finding naming the un-triaged items — the rubric emits `no` only when an `absorb` item is missing from the plan's task list or a `file` item lacks its criterion number, and requires a Required finding naming those items.
 
   Separately, a **missing** `COVERAGE-MAP:` is disqualifying on its own terms: it means the test-coverage axis was probably never performed, so a `clean` result would be unearned.
 
-**Degradation.** If the agent fails, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `NOT-IN-SCOPE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
+**Degradation.** If the agent fails, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `TRIAGE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
 
 ## Step 3 — Triage the findings
 
@@ -86,7 +86,9 @@ Non-blocking severities (`Optional`, `Nit`, `FYI`) may be applied or skipped at 
 
 Edit the plan file in place for every accepted finding. Keep edits surgical — fix the finding, do not rewrite the plan. Preserve its structure and its task numbering where possible, and keep every **remaining** task's `- [ ]` checkbox: callers rely on unchecked boxes for resume detection. A task an accepted finding deliberately merges away or deletes takes its checkbox with it — that is the fix landing, not a checkbox lost.
 
-If accepted findings identified deferrable work and the plan has no `## Not in scope` section, add one with those items and a one-line rationale each.
+Apply the triage. Every `absorb` item becomes a **task in the plan**, appended to the task list with an unchecked `- [ ]` checkbox so the resume detection callers rely on sees it. Only `file` items go to `## Not in scope` — add the section if it is missing, giving each item a one-line rationale and its blast-radius criterion number. `drop` items are recorded in the output block and are not written into the plan at all.
+
+Never resolve an `absorb` item by moving it to `## Not in scope`. If an item's blast radius was misjudged, re-triage it to `file` **and cite the criterion that turned out true** — that reclassification is a decision on the record, not a way of shelving the work.
 
 If task numbering must change, update every cross-reference to the renumbered tasks in the same edit.
 
@@ -120,8 +122,8 @@ ACCEPTED: <n>
 DECLINED: <n>
 UNRESOLVED-CRITICAL: <n>
 UNRESOLVED-REQUIRED: <n>
-NOT-IN-SCOPE:
-<deferred items, one per line with a one-line rationale, or NONE>
+TRIAGE:
+<one line per item as `<absorb | file | drop>: <item> — <rationale>`, with ` (criterion <n>)` on every file line, or NONE>
 DECLINED-WITH-REASONING:
 <finding — why it was declined, one per line, or NONE>
 UNRESOLVED:
