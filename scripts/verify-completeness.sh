@@ -83,7 +83,7 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
   assert_has "$n writes a criteria file"          "$C" 'criteria-<KEY>-<id>.md'
   assert_has "$n passes --criteria-file"          "$C" '--criteria-file'
   assert_has "$n ticks the acceptance criteria"   "$C" 'refreshAcceptanceCriteria'
-  assert_has "$n records a Completeness block"    "$C" 'Completeness'
+  assert_has "$n appends (never upserts) the Completeness block" "$C" 'appendToSection(id, "Implementation"'
   assert_has "$n reports unmet criteria"          "$C" 'acceptance criteria were not met'
 done
 assert_has "finalize splits the persisted report at ## Completeness on recovery" "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
