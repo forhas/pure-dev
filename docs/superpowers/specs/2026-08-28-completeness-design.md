@@ -1,7 +1,7 @@
 # Completeness gate: close a ticket against what it said it would do
 
 **Date:** 2026-08-28
-**Status:** Design, approved in brainstorm. Not yet planned or implemented.
+**Status:** Implemented. Plan: `../plans/2026-08-28-completeness.md`; both were executed on the `completeness` branch and ship in the same pull request as this document.
 **Scope:** `plugins/notion-dev`, `plugins/quick-dev`
 **Problem statement:** `2026-08-28-completeness-problem-statement.md`
 **Related:** `2026-08-28-convergence-design.md` — the same leak, a different exit. This design reuses its triage vocabulary, its gate position, and its escape semantics.

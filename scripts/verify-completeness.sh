@@ -31,12 +31,28 @@ assert_version_above() {
   v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$2" | head -1)
   if [ -z "$v" ]; then bad "$1 (no version key)"; return; fi
   if [ "$v" = "$3" ]; then bad "$1 (still at the pre-change $3)"; return; fi
-  if [ "$(printf '%s\n%s\n' "$3" "$v" | sort -V | head -1)" = "$3" ]; then
+  # Portable dotted-numeric compare. `sort -V` would be shorter, but it is a GNU
+  # extension with uneven BSD/macOS support, and this harness is meant to run
+  # wherever the repo does. awk is POSIX and numeric, so 0.10.0 > 0.9.0 holds —
+  # which a plain lexical compare gets wrong.
+  if awk -v a="$v" -v b="$3" 'BEGIN{
+        na=split(a,A,"."); nb=split(b,B,".");
+        n=(na>nb?na:nb);
+        for(i=1;i<=n;i++){ x=(i<=na?A[i]+0:0); y=(i<=nb?B[i]+0:0);
+          if(x>y) exit 0; if(x<y) exit 1 }
+        exit 1 }'; then
     ok "$1 ($v > $3)"
   else
     bad "$1 ($v is not above $3)"
   fi
 }
+
+echo "== spec status =="
+SPEC=docs/superpowers/specs/2026-08-28-completeness-design.md
+# The spec ships in the same PR as the implementation, so a "not yet implemented"
+# status is a stale claim of exactly the kind this change's own gate exists to catch.
+assert_lacks "spec status is not stale" "$SPEC" 'Not yet planned or implemented'
+assert_has   "spec status names its plan"  "$SPEC" '../plans/2026-08-28-completeness.md'
 
 echo "== Task 1: ticket-system write path =="
 TS=$ND/skills/ticket-system/SKILL.md
