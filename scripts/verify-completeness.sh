@@ -77,6 +77,17 @@ assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" '`-> not cover
 assert_has "2c retains its verification output for the completeness check" "$D" 'Record the output as `VERIFY_OUTPUT`'
 assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
 
+echo "== Task 5: notion-dev caller wiring =="
+for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
+  n=${C#plugins/}
+  assert_has "$n writes a criteria file"          "$C" 'criteria-<KEY>-<id>.md'
+  assert_has "$n passes --criteria-file"          "$C" '--criteria-file'
+  assert_has "$n ticks the acceptance criteria"   "$C" 'refreshAcceptanceCriteria'
+  assert_has "$n records a Completeness block"    "$C" 'Completeness'
+  assert_has "$n reports unmet criteria"          "$C" 'acceptance criteria were not met'
+done
+assert_has "finalize splits the persisted report at ## Completeness on recovery" "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
+
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
 else

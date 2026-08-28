@@ -65,6 +65,12 @@ Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the 
 
 Announce to the user: "Working on `<key>`: <title>" (`<key>` is the `key` field returned by `fetchTicket`, e.g. `"STO-67"` — display it as-is, don't rebuild it from `project.key`). Show the ticket URL.
 
+**Write the criteria file.** Write the ticket body's `## Acceptance Criteria` list — one criterion per line, verbatim, with the `- [ ]` markers stripped — to `$REPO_ROOT/.claude/notion-dev/criteria-<KEY>-<id>.md`, in the self-ignored directory the ledger, the rescued `PLAN.md`, and the persisted review report already share (`mkdir -p` plus its `.gitignore`, commands in `skills/flow-triage/references/ledger.md`). Record the path as `CRITERIA_FILE`.
+
+**Nothing is authored here.** The criteria come from Notion, which no part of this run can weaken — that is what makes them worth gating on.
+
+When the body has no `## Acceptance Criteria` section, or it is empty, write no file and leave `CRITERIA_FILE` unset. `/notion-dev:create-task` guards against that state, but this command accepts any ticket and must not invent a definition of done for one that has none.
+
 ### 1.2 Check for existing worktree (resumability)
 
 Compute worktree path from config template `worktree.prefix` (tokens: `{name}`, `{key}`, `{id}` — `{id}` is the numeric `idProperty value` from the fetched ticket), resolved relative to the parent directory of `REPO_ROOT` (the primary checkout recorded in 1.1 — not the current directory, which on the no-arg resume path is the worktree itself).
@@ -300,7 +306,8 @@ Also call `postComment(id, <one-line PR URL + "ready for review">)` so watchers 
 ## Phase 7 — Review and merge
 
 Invoke the `notion-dev:review-and-merge` skill via the Skill tool with args:
-`<pr-number>`, plus `--non-interactive` when set, plus — when the target repo is a
+`<pr-number>`, plus `--non-interactive` when set, plus — when `CRITERIA_FILE` is set —
+`--criteria-file "<CRITERIA_FILE>"`, plus — when the target repo is a
 plugin (6.1 applied or verified a bump) — the stale-bump guard:
 `--pre-merge-check "the manifest version in .claude-plugin/plugin.json on this branch
 must be strictly greater, as semver, than in
@@ -317,11 +324,13 @@ report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
 
 `REVIEW_REPORT` carries the skill's three triage lists verbatim — `ABSORBED`, `FILED`, `DROPPED` — and they must survive the persist below intact. **Only the `FILED` list is passed to `notion-dev:epic-update` in 8.2.** `ABSORBED` items are already merged and `DROPPED` items are already decided; filing either would recreate the non-convergence this split exists to stop.
 
+Record the report's `COMPLETENESS-REPORT` section — `COMPLETENESS`, the four `CRITERIA-*` counts, `VERDICTS`, `CLAIMS`, `CAVEATS`, `TRIAGE` — as `COMPLETENESS_REPORT`, alongside `REVIEW_REPORT`. It is present regardless of whether `CRITERIA_FILE` was set — with no criteria file it reads `COMPLETENESS: clean` (or `degraded`) with `CRITERIA-TOTAL: 0`.
+
 When that report
 shows the local fallback ran because the configured reviewer was unavailable, record
 `fallback:local-code-review` per `notion-dev:issue-log`.
 
-Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`). This is what lets `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) recover deferred follow-ups if this run dies before Phase 8 completes. Best-effort — a write failure here must not fail the run.
+Persist it: write `REVIEW_REPORT` to `$REPO_ROOT/.claude/notion-dev/review-report-<KEY>-<id>.md` (`mkdir -p` + self-ignoring `.gitignore` first — same self-ignored directory the ledger and the rescued `PLAN.md` live in, per `skills/flow-triage/references/ledger.md`, so it never appears in `git status`), then **append** `COMPLETENESS_REPORT` to that same file under a `## Completeness` heading — a second write, after `REVIEW_REPORT`'s, never folded into it: `/notion-dev:finalize`'s post-merge recovery path (its Phase 1 step 2) reads the `## Completeness` section back out **separately**, as its own `COMPLETENESS_REPORT`, and depends on everything above that heading staying exactly `REVIEW_REPORT` — nothing else. This is what lets `/notion-dev:finalize`'s post-merge recovery path recover both deferred follow-ups and completeness verdicts if this run dies before Phase 8 completes. Best-effort, exactly like the existing write — a failure here never fails the run.
 
 ---
 
@@ -340,6 +349,12 @@ It owns the whole epic-side record: filing deferred follow-ups as tickets under 
 Best-effort by construction — the skill never fails this run. A ticket with no epic is a no-op returning `EPIC-UPDATE: none`.
 
 ### 8.3 Update ticket
+
+**Tick the acceptance criteria.** From `COMPLETENESS_REPORT`'s `VERDICTS` block, build `verdicts` — one entry per criteria-file line, in file order, `{ criterion, verdict }` — and call `refreshAcceptanceCriteria(id, verdicts)` via `notion-dev:ticket-system`. Take each `criterion` from `CRITERIA_FILE`, **not** from the verdict line's echo of it: the file is the verbatim copy fetched from Notion, and a paraphrase written back would silently rewrite the ticket's own definition of done. Skip entirely when `CRITERIA_FILE` was unset or `COMPLETENESS_REPORT` is absent — an unticked box means "not met", and writing one for a ticket that never had criteria would assert something false.
+
+Then `appendToSection(id, "Implementation", …)` with a **Completeness** block: each criterion, its verdict (`met` / `not-met` / `unverified`), the gate's resolved citation, and — for any criterion escaped to `file` or `drop` — its label and rationale from `COMPLETENESS_REPORT`'s `TRIAGE`. Append rather than upsert: Phase 6.5 wrote `## Implementation` before the merge, and a replacing write here would clobber its Plan / Implementation / Files Changed / PR / Branch / Plan review / Notes fields.
+
+For an acceptance criterion, `file` and `drop` are **scope reductions**, not deferrals of extra work — which is why they land on the ticket rather than only in the PR. Someone tracking this work must be able to see that its stated definition of done shrank.
 
 Append a separate `## Merged` section — do **not** touch the `## Implementation` section written in Phase 6.5; the two are meant to coexist as a chronological record. This step runs **after** 8.2 deliberately: the "Deferred follow-ups" field below names actual follow-up ticket IDs, which do not exist until `epic-update` (8.2) files them. An earlier revision of this command wrote this section first and left that field promising links to tickets that were created only afterward, with nothing to ever backfill them — reordering closes that gap by writing the record once, after the data it needs exists.
 
@@ -398,6 +413,7 @@ Print a summary covering:
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
+- **Completeness** — when any criterion is not `met`: "<n> of <m> acceptance criteria were not met at the completeness gate", then each with its verdict, triage label, and rationale. State `CRITERIA-UNVERIFIED` separately whenever it is non-zero: `unverified` means the gate could not check, which is not the same as finding the work undone. Say nothing when every criterion is `met`.
 
 When `triage_reclassified` is greater than zero, state it in the report: "<n> of <m> `absorb` items were reclassified to `file` at the merge gate (criteria <list>)". This is worth surfacing every time it happens — an `absorb` item became a `file` item only because a criterion turned out true that the earlier triage missed, and a run doing that repeatedly is the signal the blast-radius test is miscalibrated. Say nothing when the count is zero.
 
