@@ -295,3 +295,41 @@ every deferred thought, which drops the branching factor below 1 in the normal c
   `review-and-merge/SKILL.md`, `local-code-review/SKILL.md`, `flow-triage/SKILL.md`).
 - Any change to `task-breakdown`, whose anti-split discipline is already correct.
 - Any change to the review loops' round cap, oscillation guard, or judgment bar.
+
+## Appendix: worked trace
+
+Ticket `STO-41` ("Add token refresh to the session handler"), superpowers flow, epic
+"Session Hardening". Its PR touches `src/session/handler.ts` and `src/session/token.ts`.
+
+**Plan review** turns up three items:
+
+| Item | Label | Why |
+|---|---|---|
+| "Cover the refresh path in the existing session test" | `absorb` | No criterion true — the test file is in the plan's declared set |
+| "Rate-limit the refresh endpoint" | `file` (criterion 2) | Needs a new config key |
+| "Rename `sess` to `session` throughout" | `drop` | Cosmetic churn under the judgment bar |
+
+Emitted as `TRIAGE-COMPLETE: yes` plus three triage lines. The `absorb` item is appended to
+`PLAN.md` as a task and built by `subagent-driven-development` — no gate needed.
+`## Not in scope` gets the rate-limit item with "criterion 2". `PLAN.md` is deleted at 6.6;
+the `file` and `drop` items survive in the ticket's `## Implementation` **Notes** (6.5).
+
+**Code review** turns up two more:
+
+| Item | Label | Why |
+|---|---|---|
+| "The TTL comparison is off by one" | `absorb` | Same file as the fix |
+| "Session storage should move to Redis" | `file` (criterion 1) | Reaches the storage layer, outside the diff |
+
+The absorb gate at merge step 5 holds until the TTL fix is pushed and reviewed; the round cap
+bounds that. `REVIEW_REPORT` records `ABSORBED` = [TTL fix], `FILED` = [Redis, rate-limit],
+`DROPPED` = [rename].
+
+**Phase 8.** `epic-update` receives **only** `FILED` — two items, not five. Both file. The
+user drops the rate-limit one at the prompt with "already tracked in infra backlog"; it lands
+in `DROPPED` and does **not** block closure. The Redis ticket is created, so closure
+condition 1 fails and the epic stays open — correctly, because real work is outstanding.
+
+The ticket's `## Merged` section shows **Absorbed** (2), **Deferred follow-ups** (1, with its
+ID), and **Dropped** (2, with rationales). Five findings; **one new ticket**. Under the old
+design, all five would have been filed.

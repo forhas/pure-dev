@@ -89,6 +89,26 @@ assert_has   "epic-update parses legacy log line"    "$E" '**Follow-ups skipped*
 assert_lacks "epic-update: SKIPPED no longer blocks" "$E" '`SKIPPED` is empty'
 assert_lacks "epic-update: SKIPPED key removed"      "$E" 'SKIPPED:'
 
+echo "== Task 7: docs and versions =="
+assert_has   "README describes absorb-first"   "$ND/README.md" 'absorb'
+assert_lacks "README drops old epic claim"     "$ND/README.md" 'no follow-ups are outstanding'
+assert_has   "create-task notes file-only"     "$ND/commands/create-task.md" 'already triaged `file`'
+assert_has   "notion-dev version bumped"       "$ND/.claude-plugin/plugin.json" '"version": "0.13.0"'
+assert_has   "quick-dev version bumped"        "$QD/.claude-plugin/plugin.json" '"version": "0.8.0"'
+assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28-convergence-design.md 'Appendix: worked trace'
+assert_lacks "issue-log signature drops SKIPPED" "$ND/skills/issue-log/references/signatures.md" 'SKIPPED'
+
+# The spec requires that no plugin invent a synonym for the vocabulary.
+for S in $ND/skills/plan-review/SKILL.md $QD/skills/plan-review/SKILL.md \
+         $ND/skills/plan-review/references/reviewer-rubric.md \
+         $QD/skills/plan-review/references/reviewer-rubric.md \
+         $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md \
+         $ND/skills/epic-update/SKILL.md; do
+  n=${S#plugins/}
+  assert_lacks "$n avoids synonym 'fold in'"   "$S" 'fold in'
+  assert_lacks "$n avoids synonym 'inline it'" "$S" 'inline it'
+done
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

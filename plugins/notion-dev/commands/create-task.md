@@ -101,6 +101,8 @@ Decide whether this is one ticket or a multi-task mission. The plugin defaults t
 
 In **non-interactive mode**, instruct `notion-dev:task-breakdown` to return `single` and skip 2.5.2 and 2.5.3 entirely. This mode exists to file one deferred review finding, which is one item by construction; running the breakdown and then discarding a mission result would be wasted work.
 
+Under absorb-by-default triage, this mode no longer receives every deferred item — an item reaching here was already triaged `file` upstream, with a blast-radius criterion recorded. Non-interactive runs absorb by default exactly as interactive ones do; what `--non-interactive` removes is the *confirmation prompt* on a `file` item, never the triage itself.
+
 ### 2.5.1 Invoke task-breakdown
 
 Invoke `notion-dev:task-breakdown` passing `{ title, body, sourceRef, type? }` from Phase 2. The skill returns either:
