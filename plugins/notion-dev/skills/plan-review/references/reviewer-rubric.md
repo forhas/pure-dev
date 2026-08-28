@@ -114,15 +114,42 @@ Every finding must say what to change **in the plan** — not in the eventual co
 
 ## Deferred work
 
-If your review identifies work the plan could reasonably defer, check whether the plan has a `## Not in scope` section listing it.
+If your review identifies work the plan could reasonably defer, **triage it — do not merely
+list it.** Assign every such item exactly one label:
 
-Emit the `NOT-IN-SCOPE-PRESENT:` line per these three cases:
+- **`absorb`** — do it in this ticket. **This is the default.**
+- **`file`** — genuinely separate work; it becomes its own ticket.
+- **`drop`** — theoretical or insignificant; recorded with a rationale, never built.
 
-- **Deferrable work found, and the section is absent *or* missing some of the items you identified** — raise one Required finding naming the items that are not listed, with a one-line rationale each, and emit `NOT-IN-SCOPE-PRESENT: no`. A section that exists but omits half the deferred work is the absent case, not the covered one.
-- **Deferrable work found, and the section already lists all of it** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`.
-- **Nothing to defer** — no finding; emit `NOT-IN-SCOPE-PRESENT: yes`, regardless of whether the heading exists. Requiring the heading for its own sake is exactly the cosmetic finding this rubric forbids.
+Evaluate `drop` first, under the judgment bar you already apply to every finding: an item
+that is speculative, cosmetic-only, or unverifiable is a `drop`. Do not manufacture work.
 
-The line reports whether the deferred-work requirement is *satisfied*, not merely whether the heading exists.
+Everything surviving `drop` is **`absorb`** unless **any** of these is true, in which case
+it is `file`:
+
+1. It **reaches code the ticket was not already changing** — files outside the plan's
+   declared file set. New files the plan itself creates count as *inside*.
+2. It requires a **new public interface, dependency, config key, or data migration**.
+3. It needs a design decision the plan's **acceptance criteria do not already settle**.
+
+None true → `absorb`. Every `file` item **must cite the criterion number** that made it one.
+A `file` item with no criterion number is not triaged.
+
+Then emit the `TRIAGE-COMPLETE:` line per these three cases:
+
+- **An `absorb` item is not present in the plan's task list, *or* a `file` item lacks its
+  criterion number** — raise one Required finding naming those specific items. For an
+  `absorb` item the fix is always *"add this task to the plan"* — never *"add it to Not in
+  scope."* Emit `TRIAGE-COMPLETE: no`.
+- **Every `absorb` item is already a plan task and every `file` item cites its criterion** —
+  no finding; emit `TRIAGE-COMPLETE: yes`. `file` items belong in the plan's `## Not in
+  scope` section with a one-line rationale and their criterion number.
+- **Nothing to triage** — no finding; emit `TRIAGE-COMPLETE: yes`, regardless of whether a
+  `## Not in scope` heading exists. Requiring the heading for its own sake is exactly the
+  cosmetic finding this rubric forbids.
+
+The line reports whether the triage requirement is *satisfied*, not merely whether a heading
+exists. Pushing work out of the plan is the exception you must justify, not the default.
 
 ## Output contract (MUST follow exactly)
 
@@ -133,7 +160,9 @@ Emit, in order:
 3. A findings list, each finding on the form:
    `- [<Severity>] <plan section or task> — <problem>. Fix: <concrete change to the plan>.`
    If there are no findings at all, write `No findings.`
-4. `NOT-IN-SCOPE-PRESENT: <yes | no>`
+4. `TRIAGE-COMPLETE: <yes | no>`, followed by one line per triaged item on the form
+   `<absorb | file | drop>: <item> — <rationale>`, with ` (criterion <n>)` appended on every
+   `file` line. Write `TRIAGE-COMPLETE: yes` alone when there was nothing to triage.
 5. A final line, alone, exactly one of:
    - `VERDICT: CLEAN` — iff there are **zero Critical and zero Required** findings.
    - `VERDICT: NOT-CLEAN` — iff there is **≥1 Critical or Required** finding.
