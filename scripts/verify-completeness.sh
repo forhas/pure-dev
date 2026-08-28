@@ -49,7 +49,7 @@ done
 echo "== Task 3: quick-dev criteria derivation =="
 FT=$QD/skills/flow-triage/SKILL.md
 assert_has "flow-triage emits CRITERIA"           "$FT" '- <observable criterion 1>'
-assert_has "flow-triage emits COVERAGE-MAP"       "$FT" 'COVERAGE-MAP:'
+assert_has "flow-triage emits COVERAGE-MAP"       "$FT" '- "<sentence from feature description>" ->'
 assert_has "flow-triage caps the criteria count"  "$FT" '3-6 observable criteria'
 assert_has "flow-triage marks uncovered clauses"  "$FT" '-> not covered —'
 assert_has "flow-triage freezes before the build" "$FT" 'before any code exists'
