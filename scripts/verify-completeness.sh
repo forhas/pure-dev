@@ -154,6 +154,12 @@ assert_has "ticket.md writes completeness counts"   "$ND/commands/ticket.md"    
 assert_has "finalize.md writes completeness counts" "$ND/commands/finalize.md"    'completeness_criteria'
 assert_has "develop writes completeness counts"     "$QD/skills/develop/SKILL.md" 'completeness_criteria'
 assert_has "develop's ledger site distinguishes a real completeness 0 from the null case" "$QD/skills/develop/SKILL.md" 'a check that ran and found nothing, not one that never ran'
+# An unset CRITERIA_FILE must NOT skip the whole record: the gate still runs charges 2
+# and 3 without a criteria file, so CLAIMS/CAVEATS/TRIAGE can carry real findings.
+for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
+  n=${C#plugins/}
+  assert_has "$n records claims/caveats even with no criteria file" "$C" 'An unset `CRITERIA_FILE` is not that case'
+done
 assert_has "ticket.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/commands/ticket.md"   'a check that ran and found nothing, not one that never ran'
 assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/commands/finalize.md" 'a check that ran and found nothing, not one that never ran'
 
