@@ -88,6 +88,17 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
 done
 assert_has "finalize splits the persisted report at ## Completeness on recovery" "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
 
+echo "== Task 6: completeness metrics =="
+for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/references/ledger.md; do
+  n=${L#plugins/}
+  assert_has "$n documents completeness_criteria"   "$L" 'completeness_criteria'
+  assert_has "$n documents completeness_unverified" "$L" 'completeness_unverified'
+done
+assert_has "ticket.md writes completeness counts"   "$ND/commands/ticket.md"      'completeness_criteria'
+assert_has "finalize.md writes completeness counts" "$ND/commands/finalize.md"    'completeness_criteria'
+assert_has "develop writes completeness counts"     "$QD/skills/develop/SKILL.md" 'completeness_criteria'
+assert_has "develop's ledger site distinguishes a real completeness 0 from the null case" "$QD/skills/develop/SKILL.md" 'a check that ran and found nothing, not one that never ran'
+
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
 else
