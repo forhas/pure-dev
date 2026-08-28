@@ -406,7 +406,7 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
    the oscillation guard, and the judgment-based stop all still end the loop. The gate only
    asserts that when the loop *does* end, nothing labeled `absorb` was left behind.
 
-4. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy gates 1–2 if that pushed new commits); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
+4. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
 Then squash-merge into the PR's base branch (`baseRefName` — never retarget) and delete the remote branch:
 
