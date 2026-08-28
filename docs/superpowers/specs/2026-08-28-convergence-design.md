@@ -1,7 +1,7 @@
 # Convergence: absorb-by-default triage for deferred work
 
 **Date:** 2026-08-28
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented. Plan: `../plans/2026-08-28-convergence.md`; both were executed on the `convergence` branch and ship in the same pull request as this document.
 **Scope:** `plugins/notion-dev`, `plugins/quick-dev`
 
 ## Problem
