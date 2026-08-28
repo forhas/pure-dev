@@ -717,6 +717,18 @@ with:
 **2. File deferred follow-ups.** Source: **only the `FILED` list** from `REVIEW_REPORT` — the same list written to the ticket's `## Merged` **Deferred follow-ups** field. `ABSORBED` items are already merged and `DROPPED` items are already decided; neither is ever filed. Reading any list but `FILED` here reinstates the unbounded ticket growth this split exists to stop.
 ```
 
+- [ ] **Step 3c: Echo the FILED-only constraint at the invocation site (ruling PF-6)**
+
+This step touches `plugins/notion-dev/commands/ticket.md`, which Task 5 owns — a deliberate exception, because the constraint it protects is this plan's central mechanism.
+
+Task 5 states the FILED-only rule in `ticket.md` **Phase 7**, as a forward reference ("…in 8.2"). But the actual `epic-update` invocation is in **Phase 8.2**, which currently just passes `REVIEW_REPORT` as context with no restatement. An agent reading only 8.2 would not see the constraint. In `finalize.md` the sentence already sits adjacent to its invocation, so only `ticket.md` needs this.
+
+At Phase 8.2, where `REVIEW_REPORT` is handed to `notion-dev:epic-update`, append:
+
+```markdown
+Pass **only the `FILED` list** from `REVIEW_REPORT` (Phase 7 states the contract in full). `ABSORBED` items are already merged and `DROPPED` items are already decided — filing either recreates the unbounded ticket growth this split exists to stop.
+```
+
 - [ ] **Step 4: Replace the Skip gate with a Drop gate**
 
 Replace the interactive-gate bullet:
