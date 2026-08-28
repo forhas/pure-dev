@@ -267,7 +267,7 @@ every deferred thought, which drops the branching factor below 1 in the normal c
 | Risk | Bound |
 |---|---|
 | Absorb makes PRs balloon — the mirror-image failure | Criterion 1 confines absorbed work to files already in the diff; the existing round cap bounds iterations |
-| Reclassify becomes a rubber stamp | The escape must name which criterion turned out true. The ledger can count reclassifications per run; a high rate is the signal the test is miscalibrated |
+| Reclassify becomes a rubber stamp | **Partially mitigated.** The escape must name which criterion turned out true, so every reclassification is auditable after the fact. But nothing *counts* them: an item is `absorb` precisely because no criterion was true, so an agent under round-cap pressure has a structural incentive to assert one, and a drift toward rubber-stamping would go unnoticed. A per-run reclassification count in the flow ledger is the missing signal — follow-up work, not delivered here |
 | Quality drops because absorbing rushes work | Absorbed work goes through the same review loop as everything else. Nothing skips review; only filing changes |
 | `epic-update`'s recovery logic breaks | Condition 3's deletion and the rename touch steps 1a, 2, 4, and 5 together. They are one atomic change, with the dual-spelling parser as an explicit requirement |
 | The rubric re-diverges between plugins | It is byte-identical today. The change must keep it so, verified by a `diff` check |

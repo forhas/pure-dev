@@ -202,6 +202,13 @@ An Epic page carries three sections:
 
 When the last unresolved child resolves and no filing has failed, the Epic's own status moves to `Implemented`. A follow-up you decline at the filing prompt is recorded as a **drop** — a decision, which closes work rather than blocking the Epic indefinitely.
 
+> **Upgrading to `0.13.0`: skim epics that close soon after the upgrade.**
+> Before this version, declining a follow-up at the filing prompt recorded a `SKIPPED` entry that blocked the Epic's closure **permanently** — one decline and the Epic could never reach `Implemented`. That is the bug this release fixes: a decline is now a recorded **drop**, and a drop does not block.
+>
+> The consequence on existing data: an Epic that was stuck behind such a decline will close on its next resolution — including one where the declined item was *genuine outstanding work* someone meant to come back to. Nothing is lost, but nothing is tracked either: that work exists only as a line in the Epic's `## Resolution Log`, never as a ticket.
+>
+> Both the new `**Follow-ups dropped**` wording and the pre-`0.13.0` `**Follow-ups skipped**` wording are parsed, so older Epics recover normally. To catch anything worth reviving, read the follow-up lines in any Epic that closes shortly after you upgrade, and file what still matters.
+
 **A note on Notion Sub-items.** `/notion-dev:init` can create the `Parent task` relation for you, but the Notion API cannot enable Notion's native *Sub-items* feature — so an API-created relation renders as an ordinary relation column rather than nested sub-rows. Grouping and every plugin behavior work identically either way. For the native nested rendering, enable Sub-items in the Notion UI **before** running `/notion-dev:init`, and init will bind to it instead of creating its own.
 
 ## Input sources
