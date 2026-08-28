@@ -79,6 +79,27 @@ Handle all review feedback with the `quick-dev:receiving-code-review` skill (shi
 
 This judgment bar governs **every** piece of review feedback in this flow — existing comments here, reviewer rounds, human comments arriving mid-loop, and local-reviewer findings (step 4) — and it also governs **loop stopping** in both review loops: when findings become theoretical or insignificant, stop — do not manufacture work to "address" them.
 
+**Triage is two-axis.** The agree / partially agree / disagree axis decides whether a finding
+is *right*. A second axis decides *where the work goes*, and applies to every finding you
+agreed with (fully or partly) that is not already fixed in this round:
+
+- **`drop`** — theoretical or insignificant under the judgment bar above. Record the
+  rationale; build nothing. A **disagreed** finding is already resolved and is not triaged —
+  it is a decline, not a `drop`.
+- **`absorb`** — do it in this PR, before merge. **This is the default.**
+- **`file`** — becomes its own ticket, and only when **any** of these is true:
+  1. It **reaches code this PR was not already changing** — files outside
+     `git diff --name-only origin/<PR_BASE>...HEAD`. New files this PR creates count as
+     *inside*.
+  2. It requires a **new public interface, dependency, config key, or data migration**.
+  3. It needs a design decision the ticket's **acceptance criteria do not already settle**.
+
+  Every `file` item must cite the criterion number that made it one.
+
+Absorbing does not skip review: the absorbed change is pushed like any other fix and the next
+round reviews it. That is why this cannot run away — absorbed work re-enters the existing
+round-capped loop, and the round cap is the backstop.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.
@@ -314,7 +335,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    - The prose overview, for any actionable request not tied to a line.
 
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
-2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
+2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
 4. Commit and push applied changes.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
@@ -355,7 +376,7 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Apply justified fixes, re-run tests/verification, commit and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification, commit and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - Every finding this round was declined with rationale (no code changed) → loop ended; a fresh agent on the same code would repeat the same findings; go to merge.
@@ -368,12 +389,24 @@ Local-reviewer output consists of plain PR comments — no GraphQL thread resolu
 
 ## 5. Merge
 
-Enter only when the loop has ended. Hard gates — both hold even under the round cap:
+Enter only when the loop has ended. Hard gates — all of these hold even under the round cap:
 
 1. **Checks gate**: every **required** check must pass — `gh pr checks <pr> --required`. Beware: this command exits non-zero **both** on failing required checks **and** when no required checks exist at all (cli/cli#9682) — if it fails with "no checks reported", the repo defines no required checks and the required gate is satisfied; do not treat that as a failure. Additionally, no check of any kind may be **failing** (`gh pr checks <pr>`, same "no checks reported" caveat) — a red optional check still blocks until fixed. Pending **optional** checks do not block the merge; pending **required** checks do — wait for them (`gh pr checks <pr> --required --watch`, or a 30-second sleep loop) with a bounded timeout of ~15 minutes; on timeout, stop and report.
 2. **All threads resolved**: re-run the GraphQL thread query, paging through every page, and verify every thread has `isResolved: true`.
 
-3. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy gates 1–2 if that pushed new commits); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
+3. **Absorb gate**: **No `absorb` item may be outstanding at merge.** Every finding triaged
+   `absorb` in step 2 or the local loop must be applied, pushed, and reviewed.
+
+   The only way past this gate is a **reclassification, not a bypass**: re-triage the item to
+   `file` and record which blast-radius criterion turned out true. A misjudged item can always
+   get out; it can never get out silently. Because the escape always exists, this gate cannot
+   deadlock a non-interactive run.
+
+   This gate composes with the loop terminators rather than replacing them — the round cap,
+   the oscillation guard, and the judgment-based stop all still end the loop. The gate only
+   asserts that when the loop *does* end, nothing labeled `absorb` was left behind.
+
+4. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
 Then squash-merge into the PR's base branch (`baseRefName` — never retarget) and delete the remote branch:
 
@@ -384,6 +417,15 @@ gh pr merge <pr> --squash --delete-branch
 If the merge command exits non-zero, do **not** re-run it — check `gh pr view <pr> --json state` first. `--delete-branch` can fail on its local-cleanup step *after* the remote squash-merge succeeded (typical when the branch is checked out in a worktree, as in the develop flow — see cli/cli#13380). If state is `MERGED`, the merge succeeded: just finish the remote branch deletion (`git push origin --delete <head-branch>`) and continue. Only if state is still `OPEN` diagnose the merge itself. Leave local branch and worktree removal to the caller.
 
 Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success. The final report states: which loop ran (the configured reviewer — Codex or Copilot — or the local fallback), rounds run, findings applied vs. declined (with reasons), and any judgment calls resolved autonomously in non-interactive mode. If the round cap was hit, note it and list the findings that were disagreed with or could not be fully addressed. **When the local fallback ran, state prominently that no cross-model reviewer validated this PR**, and why (`quota` / `not-configured` / `error` / `silent`).
+
+The report's triage outcome is **three named lists**, never one undifferentiated set:
+
+- `ABSORBED` — items done in this PR, each with what was changed.
+- `FILED` — items that must become their own ticket, each with its criterion number and
+  rationale. Reclassified items appear here, marked as reclassified from `absorb`.
+- `DROPPED` — items decided against, each with its rationale.
+
+Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
 
 ## Safety rules
 

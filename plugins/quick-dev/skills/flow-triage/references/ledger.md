@@ -21,7 +21,7 @@ Append-only JSONL. Two event kinds, joined by `run_id`:
 
 ```json
 {"event":"decision","run_id":"add-api-rate-limiting","ts":"2026-07-17T10:00:00Z","description":"Add rate limiting to the API","scores":{"blast_radius":1,"depth":2,"ambiguity":1,"novelty":1,"risk":2,"verification_cost":1,"plan_shape":1},"total":10,"flow_recommended":"feature-dev","flow_chosen":"superpowers","confidence":"borderline","ledger_influenced":false}
-{"event":"outcome","run_id":"add-api-rate-limiting","ts":"2026-07-17T11:05:00Z","result":"merged","review_rounds":2,"fix_commits":1,"files_changed":6,"insertions":180,"deletions":22,"duration_minutes":65,"plan_review_findings":5,"plan_review_accepted":3,"plan_review_declined":2,"plan_review_unresolved":0}
+{"event":"outcome","run_id":"add-api-rate-limiting","ts":"2026-07-17T11:05:00Z","result":"merged","review_rounds":2,"fix_commits":1,"files_changed":6,"insertions":180,"deletions":22,"duration_minutes":65,"plan_review_findings":5,"plan_review_accepted":3,"plan_review_declined":2,"plan_review_unresolved":0,"triage_absorbed":2,"triage_filed":1,"triage_dropped":1,"triage_reclassified":0}
 ```
 
 Field notes:
@@ -31,6 +31,7 @@ Field notes:
 - `flow_chosen` ≠ `flow_recommended` records a user override — the strongest calibration signal.
 - `result` is one of `"merged"`, `"stopped"`, `"failed"`.
 - `plan_review_*` — written by the `plan-review` step on the `superpowers` build path (total findings, accepted, declined, and accepted-but-unfixed). All `null` wherever there is no review signal: the `feature-dev` path, which has no plan artifact to review, and a degraded review, where the reviewer never ran — `null` rather than the zeros a degraded output block carries, since `0` findings would be indistinguishable from a review that ran clean. Added after the original schema; readers must tolerate their absence in older lines.
+- `triage_absorbed` / `triage_filed` / `triage_dropped` / `triage_reclassified` — the run's **code-review** triage outcome, counted from `review-and-merge`'s `ABSORBED` / `FILED` / `DROPPED` lists only. `plan-review`'s `TRIAGE:` items are deliberately **excluded**: its `absorb` items become plan tasks and are built as ordinary work, so they can never be reclassified at the merge gate. Counting them would inflate the denominator and understate `triage_reclassified / triage_absorbed`, which is the one ratio these fields exist to expose. The counts are how many code-review findings were absorbed into this change, filed as their own work, dropped with a rationale, and — of the absorbed ones — how many were later **reclassified** to `file` at the merge gate. `triage_reclassified` is the calibration signal: an item is `absorb` precisely because no blast-radius criterion was true, so a run that reclassifies a large share of them is evidence the criteria are miscalibrated or that round-cap pressure is driving escapes. Compare it against `triage_absorbed`, not against the total. All four are `null` — never `0` — wherever no review produced a triage (a degraded review, or a run that stopped before review), since `0` would be indistinguishable from a run that triaged nothing. Added after the original schema; readers must tolerate their absence in older lines.
 - Any outcome metric that cannot be determined is `null`, never guessed.
 
 ## Reading rules (tolerance)

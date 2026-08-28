@@ -188,7 +188,7 @@ This marker exists because shape alone is ambiguous: on a database upgraded to u
 
 - **Missions always get one.** When `/notion-dev:create-task` breaks a request into multiple tickets, it reuses a matching Epic page or creates one, and parents every task to it.
 - **Single tickets are offered attachment only when an existing Epic plausibly matches** the work — an incident, feature, or investigation already underway. With no plausible match there is no prompt, so routine single-ticket runs stay quiet.
-- **Follow-ups land in the same Epic.** When a review defers an item, `/notion-dev:ticket` and `/notion-dev:finalize` file it as a real ticket under the same Epic (always, in `--non-interactive` mode; on confirmation otherwise).
+- **Most review findings never become tickets.** When a review turns up work the ticket did not plan for, the flow triages it: `absorb` (do it now, in this PR — the default), `file` (its own ticket, only when it reaches code outside the PR, needs a new interface/dependency/config/migration, or needs a decision the acceptance criteria do not settle), or `drop` (recorded with a rationale, never built). Absorbed work is gated: `/notion-dev:ticket` will not merge while an `absorb` item is outstanding. Only `file` items become real tickets, and they land under the same Epic.
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
 - **`/notion-dev:ticket` reads its Epic before planning.** A starting ticket pulls the epic's `## Overview`, live sibling statuses (not the `## Tasks` snapshot), and the 3 most recent `## Resolution Log` entries as context — background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build.
 
@@ -198,9 +198,16 @@ An Epic page carries three sections:
 |---|---|
 | `## Overview` | What the initiative or incident is. Written once, at creation. |
 | `## Tasks` | Each child with its status: `- [x] [STO-67] Fix stale index — Implemented`. **Refreshed only when a child resolves**, so between resolutions it lags — the live view is Notion's `Parent task` relation column. |
-| `## Resolution Log` | Append-only history. Every time a child resolves, a divider and a dated entry are added with what was done, follow-ups filed, how many tasks remain, and what's next. |
+| `## Resolution Log` | Append-only history. Every time a child resolves, a divider and a dated entry are added with what was done, follow-ups filed and dropped, how many tasks remain, and what's next. |
 
-When the last unresolved child resolves and no follow-ups are outstanding, the Epic's own status moves to `Implemented`.
+When the last unresolved child resolves and no filing has failed, the Epic's own status moves to `Implemented`. A follow-up you decline at the filing prompt is recorded as a **drop** — a decision, which closes work rather than blocking the Epic indefinitely.
+
+> **Upgrading to `0.13.0`: skim epics that close soon after the upgrade.**
+> Before this version, declining a follow-up at the filing prompt recorded a `SKIPPED` entry that blocked the Epic's closure **permanently** — one decline and the Epic could never reach `Implemented`. That is the bug this release fixes: a decline is now a recorded **drop**, and a drop does not block.
+>
+> The consequence on existing data: an Epic that was stuck behind such a decline will close on its next resolution — including one where the declined item was *genuine outstanding work* someone meant to come back to. Nothing is lost, but nothing is tracked either: that work exists only as a line in the Epic's `## Resolution Log`, never as a ticket.
+>
+> Both the new `**Follow-ups dropped**` wording and the pre-`0.13.0` `**Follow-ups skipped**` wording are parsed, so older Epics recover normally. To catch anything worth reviving, read the follow-up lines in any Epic that closes shortly after you upgrade, and file what still matters.
 
 **A note on Notion Sub-items.** `/notion-dev:init` can create the `Parent task` relation for you, but the Notion API cannot enable Notion's native *Sub-items* feature — so an API-created relation renders as an ordinary relation column rather than nested sub-rows. Grouping and every plugin behavior work identically either way. For the native nested rendering, enable Sub-items in the Notion UI **before** running `/notion-dev:init`, and init will bind to it instead of creating its own.
 
