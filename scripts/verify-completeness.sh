@@ -79,8 +79,12 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n runs verification itself when the loop retained none" "$RM" 'before dispatching, and retains that as `VERIFY_OUTPUT`'
   # I2: pass 2 can still resolve a re-citation into pass 1's own commits.
   assert_has "$n scopes pass 2 to the new commits plus the original diff" "$RM" 'the new commits plus the original diff'
-  # I4: the stated limitation, at the gate a reader of the gate meets.
+  # I4: the stated limitation, at the gate a reader of the gate meets. The disclaimer
+  # literal below is a NEGATION — it survives the removal of the triage rule that is the
+  # only thing standing behind the decision to state this limitation rather than fix it.
+  # So the rule gets its own anchor, on the sentence that carries it.
   assert_has "$n states that completeness-absorb work is not code-reviewed" "$RM" '`absorb` work is not code-reviewed'
+  assert_has "$n keeps the triage rule that mitigates it"                   "$RM" 'prefer `file` over `absorb` for any'
   # `blocked` has a defined producer rather than being an undefined enum member.
   assert_has "$n defines when COMPLETENESS reads blocked" "$RM" 'the check ran and produced at least one item'
 done
