@@ -51,6 +51,17 @@ for P in "$ND" "$QD"; do
   assert_has   "$n plan-review absorb→plan tasks"      "$S" 'absorb'
 done
 
+echo "== Task 3: review-and-merge =="
+for P in "$ND" "$QD"; do
+  S=$P/skills/review-and-merge/SKILL.md
+  n=$(basename "$P")
+  assert_has "$n r&m has the absorb merge gate"  "$S" 'No `absorb` item may be outstanding at merge'
+  assert_has "$n r&m has the reclassify escape"  "$S" 'reclassification, not a bypass'
+  assert_has "$n r&m reports ABSORBED"           "$S" 'ABSORBED'
+  assert_has "$n r&m reports FILED"              "$S" 'FILED'
+  assert_has "$n r&m reports DROPPED"            "$S" 'DROPPED'
+done
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
