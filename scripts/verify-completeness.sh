@@ -29,6 +29,21 @@ assert_has "refreshAcceptanceCriteria has its own section"  "$TS" '## refreshAcc
 assert_has "it renders from the criteria file"              "$TS" 'never from the verifier'
 assert_has "it owns the Acceptance Criteria format"         "$TS" 'single owner of the `Acceptance Criteria` section'
 
+echo "== Task 2: completeness gate =="
+for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+  n=${RM#plugins/}
+  assert_has "$n documents --criteria-file"          "$RM" '--criteria-file'
+  assert_has "$n dispatches the verifier"            "$RM" 'completeness verifier'
+  assert_has "$n states the anti-circularity rule"   "$RM" 'never cite the deliverable'
+  assert_has "$n names the Completeness gate"        "$RM" 'Completeness gate'
+  assert_has "$n resolves citations gate-side"       "$RM" 'the gate resolves every citation'
+  assert_has "$n matches code citations by content"  "$RM" 'by content, never by line number'
+  assert_has "$n defines the unverified state"       "$RM" '`unverified`'
+  assert_has "$n files unverified when degraded"     "$RM" 'unverified — completeness check degraded'
+  assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
+  assert_has "$n uses NONE for empty blocks"         "$RM" 'the literal `NONE`'
+done
+
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
 else

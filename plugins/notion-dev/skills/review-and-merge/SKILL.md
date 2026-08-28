@@ -10,7 +10,9 @@ Drive a pull request to a clean, merged state: resolve existing review feedback,
 
 ## Input
 
-Arguments: `$ARGUMENTS` — the PR number, plus optional `--non-interactive`, plus optional `--pre-merge-check "<requirement>"` — a caller-supplied condition (with its remediation) that must hold immediately before the merge command runs; see step 5.
+Arguments: `$ARGUMENTS` — the PR number, plus optional `--non-interactive`, plus optional `--pre-merge-check "<requirement>"` — a caller-supplied condition (with its remediation) that must hold immediately before the merge command runs; see step 5 — plus optional `--criteria-file <path>`.
+
+`--criteria-file <path>` names a file holding the run's acceptance criteria, one per line, verbatim in their authoritative wording. It feeds the Completeness gate in `## 5. Merge`. **When it is absent** — `quick-dev` local mode, a manually opened PR, a ticket with no `## Acceptance Criteria` section — the gate still runs its claim and caveat charges and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it must never report criteria as met when it had none to check.
 
 Interactive mode (default) pauses for user input at exactly two points: (a) before merging while findings remain that were disagreed with or could not be addressed (round cap or oscillation guard), and (b) when a review suggestion conflicts with the PR's stated intent and both readings are defensible. With `--non-interactive`, never pause — resolve those calls autonomously and log them in the final report.
 
@@ -403,6 +405,59 @@ Each round:
 
 Local-reviewer output consists of plain PR comments — no GraphQL thread resolution applies to them. The all-threads-resolved merge gate in step 5 still applies to all review threads — pre-existing, human, and any reviewer threads, including late arrivals from pre-switch triggers.
 
+### The completeness verifier
+
+Dispatched by the Completeness gate below. A fresh `general-purpose` agent, synchronous — the gate needs the verdict before it can decide — spawned the same way the local review loop spawns its reviewer, and for the same reason: independence from the party that believes the work is done.
+
+Pass these as **file paths, not inline text**: the criteria file, the diff (`origin/<baseRefName>...HEAD`), the PR body, and the verification output already produced during the loop. Pass **nothing** from the implementer — not the plan, not the run's narrative, not prior reasoning. That exclusion is the point of the seat.
+
+Its three charges:
+
+1. **Per-criterion verdict.** `met` or `not-met` for each line of the criteria file, each with a **citation**: a command and its output, a named test and its result, or a quoted span with `file:line`. A `met` verdict carrying no citation is malformed output, not a passing criterion. Restating the criterion, "the implementation handles this", and pointing at a plan that said it would are all non-citations.
+
+2. **Unsupported completeness claims**, over text **this pull request changed** — not the whole repository. The finding is the **missing referent, not the claim**: report only "this text says X exists, is handled, is mitigated, or is durable; I looked for X and it is absent or materially different." A true claim produces no finding, so honest prose costs nothing.
+
+3. **Untriaged caveats.** Any stated gap, caveat, or known limitation — in the PR body or in docs this PR changed — carrying no `absorb` / `file` / `drop` label. A labeled caveat is fine and produces no finding. A limitation may exist; it may not exist unlabeled.
+
+**The anti-circularity rule: the verifier may never cite the deliverable's own claims as evidence.** The PR body, the spec, and the changed docs are what charge 2 is auditing. Admitting them as proof under charge 1 would let a false claim validate itself, and charges 1 and 2 would confirm each other instead of checking anything.
+
+Its output block, ending its response:
+
+```
+COMPLETENESS: <clean | blocked | degraded>
+CRITERIA-TOTAL: <n>
+CRITERIA-MET: <n>
+CRITERIA-NOT-MET: <n>
+CRITERIA-UNVERIFIED: <n>
+VERDICTS:
+- [<met|not-met>] <criterion verbatim> — <command|test|code>: <citation>
+CLAIMS:
+- <file:line> — claims <X>; <X> is absent or differs because <…>
+CAVEATS:
+- <where found> — <the caveat verbatim>
+TRIAGE:
+- [<absorb|file|drop>] <item> — <rationale; `file` cites its blast-radius criterion number>
+```
+
+`VERDICTS` / `CLAIMS` / `CAVEATS` / `TRIAGE` each take the literal `NONE` when empty, so an absent block is distinguishable from one that found nothing. Every key appears even on the degraded path.
+
+**Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A mismatch is a degradation, never a silent truncation.
+
+**Citation resolution — the gate resolves every citation, not the verifier.** A `met` verdict is a claim until the gate confirms it:
+
+- **Command citation** — the gate runs the command. The criterion is decided by exit status and output; no agent judgment is involved.
+- **Test citation** — the named test must appear, passing, in the verification output the gate already holds.
+- **Code citation** — the quoted span must appear in that file in the diff. Match **by content, never by line number**: a correct verdict whose line drifted by two must not be punished, and matching the span is stricter about substance while looser about position.
+
+A citation that does not resolve demotes its criterion to `unverified` — **not** to `not-met`. The verifier may have been right and merely sloppy in citing; the honest statement is that the gate could not confirm it.
+
+**Degradation.** If the agent fails, or its output fails the contract check, retry **once** with the same prompt. If it fails again, emit `COMPLETENESS: degraded` with every key present and every criterion counted in `CRITERIA-UNVERIFIED`. Then:
+
+- **Interactive** — stop and ask. The run has genuinely failed to establish whether the work is done, and that deserves a human rather than a default.
+- **Non-interactive** — record each unverified criterion as a `file` item with the reason `unverified — completeness check degraded`. It becomes tracked follow-up work rather than an absence.
+
+Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. `unverified` is neither.
+
 ## 5. Merge
 
 Enter only when the loop has ended. Hard gates — all of these hold even under the round cap:
@@ -422,12 +477,31 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
    the oscillation guard, and the judgment-based stop all still end the loop. The gate only
    asserts that when the loop *does* end, nothing labeled `absorb` was left behind.
 
-4. **Config pre-merge checks**: read `git.preMergeChecks` from
+4. **Completeness gate**: **Nothing incomplete may be unlabeled at merge.**
+
+   Run the completeness verifier (see `## 4. Review loop`), resolve its citations, and
+   triage what it returns. Every `not-met` criterion, every unsupported completeness
+   claim, and every untriaged caveat becomes an item on the same two axes as any review
+   finding: `absorb` — the default, because for an unmet criterion the ticket said it
+   would do this — `file` citing a blast-radius criterion number, or `drop` with a
+   rationale. `absorb` items are then held by the Absorb gate above; this gate adds no
+   second enforcement mechanism.
+
+   For an acceptance criterion, `file` and `drop` are **scope reductions**, not deferrals
+   of extra work. The caller records them where the work is tracked, not only in the PR.
+
+   `absorb` items are fixed, pushed, and re-checked. **The verifier runs at most twice.**
+   Pass 2 covers only the criteria that came back `not-met` or `unverified`, against only
+   the new commits — bounding both cost and wall-clock. Anything still unresolved after
+   pass 2 must be reclassified to `file` or `drop` with a rationale. As with the Absorb
+   gate, the escape always exists, so this gate cannot deadlock a non-interactive run.
+
+5. **Config pre-merge checks**: read `git.preMergeChecks` from
    `.claude/notion-dev.config.json` in the primary checkout (an ordered list of skill names; empty by default).
    Invoke each skill in order via the Skill tool. If any skill signals failure, stop
    and report which check failed and why — never merge past a failing configured check.
 
-5. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
+6. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
 Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget) and delete the remote branch:
 
@@ -447,6 +521,8 @@ The report's triage outcome is **three named lists**, never one undifferentiated
 - `DROPPED` — items decided against, each with its rationale.
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
+
+The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block verbatim, with each `met` verdict's citation replaced by the gate's resolution of it. Callers depend on this — `/notion-dev:ticket` and `/notion-dev:finalize` tick the ticket's to-do boxes from `VERDICTS`, and every caller writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
 
 ## Safety rules
 
