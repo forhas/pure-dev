@@ -460,6 +460,7 @@ echo "== Task 4: quick-dev develop =="
 D=$QD/skills/develop/SKILL.md
 assert_has "develop merge gate covers absorb" "$D" 'outstanding `absorb`'
 assert_has "develop reports FILED items"      "$D" 'FILED'
+assert_lacks "develop drops stale NOT-IN-SCOPE key" "$D" 'NOT-IN-SCOPE'
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
@@ -487,6 +488,17 @@ In the final-report section of `develop/SKILL.md`, add:
 
 ```markdown
 - **Triage outcome** — the `ABSORBED` / `FILED` / `DROPPED` lists from `review-and-merge`, merged with the `file` items from the plan review's `TRIAGE:` block. `quick-dev` has no ticket backend, so **`FILED` items are reported to the user here or they are lost** — this is their only durable destination. Report each with its blast-radius criterion number so the user can judge whether it deserves its own run of `/quick-dev:develop`.
+```
+
+- [ ] **Step 4b: Fix the stale `NOT-IN-SCOPE` key references (ruling PF-4)**
+
+`develop/SKILL.md:69` still consumes the plan-review block key that Task 2 renamed. Two edits in that one paragraph:
+
+- In the enumeration of the nine keys (`PLAN-REVIEW`, `FINDINGS`, … `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, `UNRESOLVED`), replace `NOT-IN-SCOPE` with `TRIAGE`. The list must still name exactly nine keys.
+- Replace the trailing clause `carry `NOT-IN-SCOPE` into the PR body in Phase 3` with:
+
+```markdown
+carry the `TRIAGE:` block's `file` items — with their criterion numbers — into the PR body in Phase 3, so a reviewer can see what was deliberately left out and why. `absorb` items are not carried: they are plan tasks and will be in the diff.
 ```
 
 - [ ] **Step 5: Run it to verify it passes**
@@ -536,6 +548,7 @@ for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
 done
 assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/SKILL.md" 'Absorbed'
 assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/SKILL.md" 'Dropped'
+assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/commands/ticket.md" 'NOT-IN-SCOPE'
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
@@ -556,6 +569,10 @@ with:
 ```markdown
   - **Notes** — optional. Any caveats for the reviewer, plus the plan review's `TRIAGE:` **`file`** items with their criterion numbers, which otherwise die with `PLAN.md` in 6.6. The plan review's `absorb` items are **not** listed here: they were appended to `PLAN.md` as tasks and are already built, so they belong in the **Implementation** bullet above like any other completed work. Its `drop` items are listed with their rationale, so a reader can see what was considered and decided against.
 ```
+
+- [ ] **Step 3b: Fix the stale `NOT-IN-SCOPE` key reference at `ticket.md:169` (ruling PF-4)**
+
+Phase 4's `PLAN_REVIEW_REPORT` capture enumerates the plan-review block's nine keys and still names the one Task 2 renamed. In that enumeration (`PLAN-REVIEW`, `FINDINGS`, … `NOT-IN-SCOPE`, `DECLINED-WITH-REASONING`, `UNRESOLVED`), replace `NOT-IN-SCOPE` with `TRIAGE`. The list must still name exactly nine keys. Change nothing else in that paragraph.
 
 - [ ] **Step 4: Update `ticket.md` Phase 7's `REVIEW_REPORT` capture**
 
