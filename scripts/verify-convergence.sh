@@ -79,6 +79,16 @@ assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/SKILL.md" 
 assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/SKILL.md" 'Dropped'
 assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/commands/ticket.md" 'NOT-IN-SCOPE'
 
+echo "== Task 6: epic-update =="
+E=$ND/skills/epic-update/SKILL.md
+assert_has   "epic-update sources FILED only"        "$E" 'only the `FILED` list'
+assert_has   "epic-update gate offers Drop"          "$E" 'Drop (with rationale)'
+assert_has   "epic-update records DROPPED"           "$E" 'DROPPED'
+assert_has   "epic-update writes new log line"       "$E" '**Follow-ups dropped**'
+assert_has   "epic-update parses legacy log line"    "$E" '**Follow-ups skipped**'
+assert_lacks "epic-update: SKIPPED no longer blocks" "$E" '`SKIPPED` is empty'
+assert_lacks "epic-update: SKIPPED key removed"      "$E" 'SKIPPED:'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
