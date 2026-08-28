@@ -31,7 +31,7 @@ That is one sentence and one gate. Every unmet acceptance criterion, every unsup
 
 A **Completeness gate** joins the hard gates in `review-and-merge` `## 5. Merge` (`notion-dev/skills/review-and-merge/SKILL.md:406`; the `quick-dev` copy at `:390`), in both plugins. It sits after the Absorb gate and before the config pre-merge checks.
 
-Nothing renumbers. The caller's pre-merge check already says to re-satisfy "every gate above," written ordinal-free precisely so a later insertion would not go stale — that phrasing was adopted in the convergence change after an enumeration silently omitted the Absorb gate.
+The numbered list renumbers, as any numbered list does when an item is inserted into it — `notion-dev`'s config pre-merge checks moves from 4 to 5 and the caller's check from 5 to 6. **No cross-reference breaks, because none uses ordinals.** The caller's pre-merge check already says to re-satisfy "every gate above," written ordinal-free precisely so a later insertion would not go stale — that phrasing was adopted in the convergence change after an enumeration silently omitted the Absorb gate.
 
 ### 1.2 A new argument
 
@@ -45,7 +45,7 @@ The file holds the run's acceptance criteria, one per line, verbatim, in their a
 
 **Why a first-class argument rather than reusing `--pre-merge-check`.** That argument is prose evaluated to a pass/fail. The completeness gate must return *structured per-criterion verdicts* to the caller, because the caller writes them back to Notion. A prose channel cannot carry that.
 
-**When the argument is absent** — `quick-dev` local mode, a manually opened PR, `finalize` reached with no recoverable ticket body — the gate runs charges 2 and 3 (claims and caveats) and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it never silently reports "all criteria met."
+**When the argument is absent** — a manually opened PR, invoked directly rather than through a ticket or feature flow, in either plugin; for `notion-dev`, a ticket with no `## Acceptance Criteria` section, or `finalize` reached with no recoverable ticket body; for `quick-dev`, a `develop` run resumed after its criteria file went missing — the gate runs charges 2 and 3 (claims and caveats) and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it never silently reports "all criteria met." (`quick-dev` local mode is not among these cases: it never invokes `review-and-merge` at all — see §2.2 and §6.2.)
 
 ### 1.3 Data flow
 
@@ -193,7 +193,7 @@ TRIAGE:
 
 `NONE` is the literal value for an empty `VERDICTS` / `CLAIMS` / `CAVEATS` / `TRIAGE` block, so an absent block is distinguishable from a block that found nothing.
 
-**Contract check.** The gate treats the output as usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, and `MET + NOT-MET + UNVERIFIED == TOTAL`. A mismatch is a degradation, not a silent truncation.
+**Contract check.** The gate treats the output as usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, `VERDICTS` carries exactly `CRITERIA-TOTAL` lines — one per criterion, in criteria-file order — and `MET + NOT-MET + UNVERIFIED == TOTAL`. A verdict count short of `CRITERIA-TOTAL` is not a criterion silently `met`; it is a mismatch, and a mismatch is a degradation, not a silent truncation.
 
 ---
 

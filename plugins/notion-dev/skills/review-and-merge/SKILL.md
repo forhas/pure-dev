@@ -443,7 +443,7 @@ TRIAGE:
 
 **The verifier itself only ever writes `met` or `not-met`** (charge 1) — `unverified` is not a token it chooses. The schema still carries it because this same block is re-emitted, with any demoted verdicts, once the gate has resolved citations; see below and `COMPLETENESS-REPORT` in `## 5. Merge`.
 
-**Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A mismatch is a degradation, never a silent truncation.
+**Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, `VERDICTS` carries exactly `CRITERIA-TOTAL` lines — one per criterion, in criteria-file order — and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A missing verdict line is not a criterion silently `met`; it is a mismatch, and a mismatch is a degradation, never a silent truncation.
 
 **Citation resolution — the gate resolves every citation, not the verifier.** A `met` verdict is a claim until the gate confirms it:
 

@@ -42,7 +42,8 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n files unverified when degraded"     "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
   assert_has "$n uses NONE for empty blocks"         "$RM" 'the literal `NONE`'
-  assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'COMPLETENESS-REPORT'
+  assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'the counts a caller consumes'
+  assert_has "$n requires one verdict per criterion"  "$RM" 'one per criterion, in criteria-file order'
 done
 
 if [ "$fails" -eq 0 ]; then

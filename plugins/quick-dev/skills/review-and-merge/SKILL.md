@@ -12,7 +12,7 @@ Drive a pull request to a clean, merged state: resolve existing review feedback,
 
 Arguments: `$ARGUMENTS` — the PR number, plus optional `--non-interactive`, plus optional `--pre-merge-check "<requirement>"` — a caller-supplied condition (with its remediation) that must hold immediately before the merge command runs; see step 5 — plus optional `--criteria-file <path>`.
 
-`--criteria-file <path>` names a file holding the run's acceptance criteria, one per line, verbatim in their authoritative wording. It feeds the Completeness gate in `## 5. Merge`. **When it is absent** — a manually opened PR, invoked directly rather than through `quick-dev:develop`, which freezes criteria at Phase 2a and always passes this argument — the gate still runs its claim and caveat charges and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it must never report criteria as met when it had none to check.
+`--criteria-file <path>` names a file holding the run's acceptance criteria, one per line, verbatim in their authoritative wording. It feeds the Completeness gate in `## 5. Merge`. **When it is absent** — a `quick-dev:develop` run resumed after its criteria file went missing (a resume path omits this argument rather than re-deriving criteria), or a manually opened PR invoked directly rather than through `quick-dev:develop` — the gate still runs its claim and caveat charges and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it must never report criteria as met when it had none to check.
 
 Interactive mode (default) pauses for user input at exactly two points: (a) before merging while findings remain that were disagreed with or could not be addressed (round cap or oscillation guard), and (b) when a review suggestion conflicts with the PR's stated intent and both readings are defensible. With `--non-interactive`, never pause — resolve those calls autonomously and log them in the final report.
 
@@ -427,7 +427,7 @@ TRIAGE:
 
 **The verifier itself only ever writes `met` or `not-met`** (charge 1) — `unverified` is not a token it chooses. The schema still carries it because this same block is re-emitted, with any demoted verdicts, once the gate has resolved citations; see below and `COMPLETENESS-REPORT` in `## 5. Merge`.
 
-**Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A mismatch is a degradation, never a silent truncation.
+**Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, `VERDICTS` carries exactly `CRITERIA-TOTAL` lines — one per criterion, in criteria-file order — and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A missing verdict line is not a criterion silently `met`; it is a mismatch, and a mismatch is a degradation, never a silent truncation.
 
 **Citation resolution — the gate resolves every citation, not the verifier.** A `met` verdict is a claim until the gate confirms it:
 
@@ -510,7 +510,7 @@ The report's triage outcome is **three named lists**, never one undifferentiated
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
 
-The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. Callers depend on this — the `quick-dev:develop` skill that invoked this run carries it into the PR body's completeness record (GitHub mode) or renders unmet items into the squash commit's `Unmet:` trailers (local mode), and writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
+The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. `quick-dev:develop` invokes this skill only in **GitHub mode** — its local mode never enters this skill at all; it spawns its own reviewer, runs its own merge gate, and squashes locally, and gains its own completeness check in a later task. The GitHub-mode caller posts this section as a **PR comment**, the same audit-trail-on-a-merged-PR pattern the local review loop already uses for its round findings, and writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
 
 ## Safety rules
 
