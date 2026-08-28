@@ -107,7 +107,7 @@ Step 2 must run before step 4, or a run that files a follow-up would close the e
 
 `postComment(EPIC_ID, …)` with a note naming every `LEGACY_SKIPPED` item verbatim and stating plainly that the epic closed over them: they were declined before `0.13.0`, when declining meant the work was left undone rather than decided against, so each may or may not still matter. Ask the reader to file what still does.
 
-The comment goes on the **epic page**, not the resolved ticket — the epic is what just closed, and it is where someone looking for this initiative's outstanding work will actually be. This is best-effort like the rest of the skill: a failed `postComment` never fails the run, and never reverts the close. Record `partial:epic-update` per `notion-dev:issue-log` if it fails.
+The comment goes on the **epic page**, not the resolved ticket — the epic is what just closed, and it is where someone looking for this initiative's outstanding work will actually be. This is best-effort like the rest of the skill: a failed `postComment` never fails the run, and never reverts the close. If it fails, record it per `notion-dev:issue-log` under the layer-1 `mcp-error:<tool>-<error-class>` vocabulary — **not** `partial:epic-update`, whose registry row scopes it to the `FAILED-TO-FILE` bucket and names `ticket.md` / `finalize.md` as its recorders, neither of which this is.
 
 **5. Append the log entry.** Runs *after* step 4, so the close has already been attempted and its outcome is known — this entry records what happened, it does not predict it. Invoke `appendToSection(EPIC_ID, "Resolution Log", <entry>)`. The entry is a `divider` block followed by:
 

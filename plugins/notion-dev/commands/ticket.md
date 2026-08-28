@@ -399,7 +399,7 @@ Print a summary covering:
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 
-When `triage_reclassified` is greater than zero, state it in the report: `<n> of <m> absorb items were reclassified to `file` at the merge gate (criteria <list>)`. This is worth surfacing every time it happens — an `absorb` item became a `file` item only because a criterion turned out true that the earlier triage missed, and a run doing that repeatedly is the signal the blast-radius test is miscalibrated. Say nothing when the count is zero.
+When `triage_reclassified` is greater than zero, state it in the report: "<n> of <m> `absorb` items were reclassified to `file` at the merge gate (criteria <list>)". This is worth surfacing every time it happens — an `absorb` item became a `file` item only because a criterion turned out true that the earlier triage missed, and a run doing that repeatedly is the signal the blast-radius test is miscalibrated. Say nothing when the count is zero.
 
 ---
 
