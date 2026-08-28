@@ -27,6 +27,22 @@ assert_identical() {
   if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
 }
 
+# assert_version_above <label> <plugin.json> <pre-change baseline version>
+# Pinning the exact version turns this suite red on the next unrelated bump.
+# Assert instead that a version key exists and is strictly greater than the
+# version this change started from.
+assert_version_above() {
+  local v
+  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$2" | head -1)
+  if [ -z "$v" ]; then bad "$1 (no version key)"; return; fi
+  if [ "$v" = "$3" ]; then bad "$1 (still at the pre-change $3)"; return; fi
+  if [ "$(printf '%s\n%s\n' "$3" "$v" | sort -V | head -1)" = "$3" ]; then
+    ok "$1 ($v > $3)"
+  else
+    bad "$1 ($v is not above $3)"
+  fi
+}
+
 echo "== Task 1: rubric =="
 RUBRIC=$ND/skills/plan-review/references/reviewer-rubric.md
 assert_has    "rubric declares 'absorb'"            "$RUBRIC" '`absorb`'
@@ -93,8 +109,8 @@ echo "== Task 7: docs and versions =="
 assert_has   "README describes absorb-first"   "$ND/README.md" 'absorb'
 assert_lacks "README drops old epic claim"     "$ND/README.md" 'no follow-ups are outstanding'
 assert_has   "create-task notes file-only"     "$ND/commands/create-task.md" 'already triaged `file`'
-assert_has   "notion-dev version bumped"       "$ND/.claude-plugin/plugin.json" '"version": "0.14.0"'
-assert_has   "quick-dev version bumped"        "$QD/.claude-plugin/plugin.json" '"version": "0.9.0"'
+assert_version_above "notion-dev version bumped" "$ND/.claude-plugin/plugin.json" 0.12.2
+assert_version_above "quick-dev version bumped"  "$QD/.claude-plugin/plugin.json" 0.7.2
 assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28-convergence-design.md 'Appendix: worked trace'
 assert_lacks "issue-log signature drops SKIPPED" "$ND/skills/issue-log/references/signatures.md" 'SKIPPED'
 assert_lacks "ticket.md has no stale SKIPPED"   "$ND/commands/ticket.md"   'SKIPPED'

@@ -1,7 +1,7 @@
 ---
 name: review-and-merge
 description: This skill should be used when the user asks to "review and merge" a pull request, "merge PR after review", "run the review loop on PR", "drive PR to merge", or when the quick-dev develop flow reaches its review phase. Resolves existing review comments, loops the configured code reviewer (Codex or Copilot) — falling back to a local fresh-agent review loop when the reviewer is unavailable (quota, not configured, erroring, or silent) — then squash-merges and deletes the remote branch.
-argument-hint: "<pr-number> [--non-interactive]"
+argument-hint: "<pr-number> [--non-interactive] [--pre-merge-check \"<requirement>\"] [--criteria-file <path>]"
 ---
 
 # review-and-merge
@@ -12,7 +12,7 @@ Drive a pull request to a clean, merged state: resolve existing review feedback,
 
 Arguments: `$ARGUMENTS` — the PR number, plus optional `--non-interactive`, plus optional `--pre-merge-check "<requirement>"` — a caller-supplied condition (with its remediation) that must hold immediately before the merge command runs; see step 5 — plus optional `--criteria-file <path>`.
 
-`--criteria-file <path>` names a file holding the run's acceptance criteria, one per line, verbatim in their authoritative wording. It feeds the Completeness gate in `## 5. Merge`. **When it is absent** — a `quick-dev:develop` run resumed after its criteria file went missing (a resume path omits this argument rather than re-deriving criteria), or a manually opened PR invoked directly rather than through `quick-dev:develop` — the gate still runs its claim and caveat charges and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it must never report criteria as met when it had none to check.
+`--criteria-file <path>` names a file holding the run's acceptance criteria, one per line, verbatim in their authoritative wording. It feeds the Completeness gate in `## 5. Merge`. **When it is absent** — a manually opened PR, invoked directly rather than through `quick-dev:develop`, or a `develop` run whose criteria file was removed by hand between Phase 2a and Phase 4 (it is gitignored and editable) — the gate still runs its claim and caveat charges and reports `CRITERIA-TOTAL: 0`. It degrades; it never becomes a hard failure, and it must never report criteria as met when it had none to check.
 
 Interactive mode (default) pauses for user input at exactly two points: (a) before merging while findings remain that were disagreed with or could not be addressed (round cap or oscillation guard), and (b) when a review suggestion conflicts with the PR's stated intent and both readings are defensible. With `--non-interactive`, never pause — resolve those calls autonomously and log them in the final report.
 
@@ -378,7 +378,7 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification, commit and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification and **retain that output as `VERIFY_OUTPUT`**, overwriting any earlier value — the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check — then commit and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - Every finding this round was declined with rationale (no code changed) → loop ended; a fresh agent on the same code would repeat the same findings; go to merge.
@@ -393,7 +393,9 @@ Local-reviewer output consists of plain PR comments — no GraphQL thread resolu
 
 Dispatched by the Completeness gate below. A fresh `general-purpose` agent, synchronous — the gate needs the verdict before it can decide — spawned the same way the local review loop spawns its reviewer, and for the same reason: independence from the party that believes the work is done.
 
-Pass these as **file paths, not inline text**: the criteria file, the diff (`origin/<baseRefName>...HEAD`), the PR body, and — when the loop applied fixes — the test output that re-run already produced (the local review loop's own re-run, `## 4. Review loop` step 4). Pass **nothing** from the implementer — not the plan, not the run's narrative, not prior reasoning. That exclusion is the point of the seat.
+Pass these as **file paths, not inline text**: the criteria file, the diff (`origin/<baseRefName>...HEAD`), the PR body, and `VERIFY_OUTPUT`. Pass **nothing** from the implementer — not the plan, not the run's narrative, not prior reasoning. That exclusion is the point of the seat.
+
+**`VERIFY_OUTPUT` is the project's test/build output the loop retained** — the local review loop's step 4 is the one site in this skill that re-runs tests, and it writes `VERIFY_OUTPUT`, overwriting the previous value, so it always holds the most recent verification of the current HEAD. **It is unset far more often than not**: the reviewer loop never runs tests at all, and the local loop runs them only when it applied fixes. **When it is unset, the gate discovers and runs the project's test/build command once itself, here, before dispatching, and retains that as `VERIFY_OUTPUT`** — the gate resolves test citations against this output (see "Citation resolution" below), so a gate holding nothing would demote every test-cited criterion to `unverified` and block a genuinely clean run. When the repo has no test or build command to discover, `VERIFY_OUTPUT` stays empty; say so in the verifier's prompt so it cites commands (which the gate runs itself) or code spans rather than test names it has no way to have resolved.
 
 Its three charges:
 
@@ -425,6 +427,14 @@ TRIAGE:
 
 `VERDICTS` / `CLAIMS` / `CAVEATS` / `TRIAGE` each take the literal `NONE` when empty, so an absent block is distinguishable from one that found nothing. Every key appears even on the degraded path.
 
+**`COMPLETENESS` takes exactly one of three values, and the gate decides which — never the verifier**, for the same reason the gate owns the counts: the verifier cannot know which of its own citations resolved.
+
+- **`clean`** — citation resolution left every criterion `met`, and charges 2 and 3 found nothing. The gate holds no item.
+- **`blocked`** — the check ran and produced at least one item: any `not-met` criterion, any `unverified` criterion, any unsupported claim, any untriaged caveat. The merge waits until each is absorbed or reclassified. A block re-emitted after that resolution reads `clean` when nothing is left; one that still reads `blocked` at merge means every remaining item was reclassified to `file` or `drop`, each with its rationale in `TRIAGE` — which is what a labeled incompleteness looks like, and is exactly what this gate exists to produce rather than prevent.
+- **`degraded`** — the verifier failed or failed the contract check twice, so nothing it returned can be trusted; every criterion is `unverified` (see "Degradation" below).
+
+The verifier writes its own best guess at this value; the gate's re-emitted block overwrites it, exactly as it overwrites the four counts.
+
 **The verifier itself only ever writes `met` or `not-met`** (charge 1) — `unverified` is not a token it chooses. The schema still carries it because this same block is re-emitted, with any demoted verdicts, once the gate has resolved citations; see below and `COMPLETENESS-REPORT` in `## 5. Merge`.
 
 **Contract check.** The output is usable only if every key is present, `CRITERIA-TOTAL` equals the criteria file's line count, `VERDICTS` carries exactly `CRITERIA-TOTAL` lines — one per criterion, in criteria-file order — and `CRITERIA-MET + CRITERIA-NOT-MET + CRITERIA-UNVERIFIED == CRITERIA-TOTAL`. A missing verdict line is not a criterion silently `met`; it is a mismatch, and a mismatch is a degradation, never a silent truncation.
@@ -432,17 +442,17 @@ TRIAGE:
 **Citation resolution — the gate resolves every citation, not the verifier.** A `met` verdict is a claim until the gate confirms it:
 
 - **Command citation** — the gate runs the command. The criterion is decided by exit status and output; no agent judgment is involved.
-- **Test citation** — the named test must appear, passing, in the verification output the gate already holds.
+- **Test citation** — the named test must appear, passing, in `VERIFY_OUTPUT` — the verification output the gate already holds, produced by the local review loop or by the gate's own run above.
 - **Code citation** — the quoted span must appear in that file in the diff. Match **by content, never by line number**: a correct verdict whose line drifted by two must not be punished, and matching the span is stricter about substance while looser about position.
 
 A citation that does not resolve demotes its criterion to `unverified`, a third state that is not `met` and not `not-met`. The verifier may have been right and merely sloppy in citing; the honest statement is that the gate could not confirm it.
 
 **Degradation.** If the agent fails, or its output fails the contract check, retry **once** with the same prompt. If it fails again, emit `COMPLETENESS: degraded` with every key present and every criterion counted in `CRITERIA-UNVERIFIED`. Then:
 
-- **Interactive** — stop and ask. The run has genuinely failed to establish whether the work is done, and that deserves a human rather than a default.
+- **Interactive** — stop and ask. The run has genuinely failed to establish whether the work is done, and that deserves a human rather than a default. **Whatever the user decides, every unverified criterion still becomes an item** — `file` by default — carrying the user's own words as its rationale. "Merge anyway" is a rationale, not an exemption: it is recorded on the item, and the criterion is still labeled. The user may reclassify an individual criterion to `drop` (superseded, wrong, irrelevant) or hold it as `absorb`; what is not available is a merge that raises no items at all.
 - **Non-interactive** — record each unverified criterion as a `file` item with the reason `unverified — completeness check degraded`. It becomes tracked follow-up work rather than an absence.
 
-Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. `unverified` is neither.
+Both branches end in the same place, and that is the point: the escape exists in either mode and costs exactly what every other escape in this design costs — a recorded rationale. Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. `unverified` is neither.
 
 ## 5. Merge
 
@@ -481,13 +491,31 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
 
    `absorb` items are fixed and pushed. **The gate stack then re-runs on the new HEAD,
    unconditionally** — not only when `--pre-merge-check` was supplied and fired; that
-   check's own re-run is one instance of this rule, not its source. **The verifier runs
-   at most twice.** Pass 2 covers only the criteria that came back `not-met` or
-   `unverified` from pass 1, against only the new commits — bounding both cost and
-   wall-clock. Anything still `not-met` or `unverified` after pass 2 — whichever state it
-   started in — must be reclassified to `file` or `drop` with a rationale. As with the
-   Absorb gate, the escape always exists, so this gate cannot deadlock a non-interactive
-   run.
+   check's own re-run is one instance of this rule, not its source. **The verifier runs at most twice.**
+   Pass 2 covers only the criteria that came back `not-met` or `unverified` from pass 1,
+   scoped to **the new commits plus the original diff** (`origin/<baseRefName>...HEAD` in
+   full) for any criterion being re-cited. The new commits alone would be wrong: the
+   stated remedy for `unverified` is a citation that actually resolves, and the work it
+   cites is by definition in pass 1's commits, so a pure re-citation would face an empty
+   diff, fail to resolve a second time, and convert "we could not confirm it" into a
+   recorded scope reduction for work that was already done. Pass 2 still re-reads only
+   those criteria, which is what bounds cost and wall-clock. Anything still `not-met` or
+   `unverified` after pass 2 — whichever state it started in — must be reclassified to
+   `file` or `drop` with a rationale. As with the Absorb gate, the escape always exists,
+   so this gate cannot deadlock a non-interactive run.
+
+   **Completeness `absorb` work is not code-reviewed, and that is a stated limitation of
+   this gate.** These items arise *after* the review loop has ended, and the re-run above
+   re-runs the gate stack, not the review loop — so a fix absorbed here reaches the merge
+   with CI, the other hard gates, and the verifier's own second pass as its only checks.
+   The Absorb gate's "the next round reviews it" holds for review findings, which arise
+   inside the loop; it does not hold for these. Re-entering the loop was considered and
+   rejected: each absorbed round can raise new completeness items and re-enter again,
+   which defeats the two-pass bound this gate is built on and the cost it is bounded for.
+   The mitigation is a triage rule, not a new loop: **prefer `file` over `absorb` for any
+   item whose fix is substantial new implementation** rather than a citation, a
+   documentation correction, or a small completion — a filed item is reviewed as its own
+   ticket, which is the review this path cannot give it.
 
 5. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
