@@ -71,9 +71,11 @@ assert_has "develop states review-and-merge does not post the report" "$D" 'prod
 assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — completeness check degraded'
 assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default, `file` must cite its blast-radius criterion number, and `drop` must carry a rationale'
 assert_has "local mode restates the completeness counts" "$D" "never the agent's raw counts, since it cannot know which of its own citations resolved"
-assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" "Phase 2c's own verification output"
+assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" 'pass `VERIFY_OUTPUT` (2c'"'"'s retained output) instead'
 assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 'never `Deferred:`, even when the merge gate'
 assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" '`-> not covered` lines verbatim'
+assert_has "2c retains its verification output for the completeness check" "$D" 'Record the output as `VERIFY_OUTPUT`'
+assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
 
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
