@@ -102,8 +102,8 @@ The defence is **when**, not **what**.
 CRITERIA:
 - <observable criterion, 3-6 of them>
 COVERAGE-MAP:
-- "<clause quoted from the feature description>" → criterion <n>
-- "<clause quoted from the feature description>" → not covered — <why>
+- "<clause quoted from the feature description>" -> criterion <n>
+- "<clause quoted from the feature description>" -> not covered — <why>
 ```
 
 Three properties follow from this placement:
