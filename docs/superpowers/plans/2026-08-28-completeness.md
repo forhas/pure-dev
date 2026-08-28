@@ -4,7 +4,7 @@
 
 **Goal:** Add a close-time gate that holds a merge when the ticket's own acceptance criteria are unmet, a completeness claim is unsupported, or a stated caveat carries no triage label.
 
-**Architecture:** One new hard gate in both `review-and-merge` copies, fed by a new `--criteria-file` argument. A fresh `general-purpose` verifier returns a keyed block; the *gate*, not the verifier, resolves every citation — running command citations, greping test citations, content-matching code citations. Unmet items enter the `absorb` / `file` / `drop` triage the Absorb gate already holds. `notion-dev` gets its criteria from Notion; `quick-dev` derives and freezes them at `flow-triage` before the build.
+**Architecture:** One new hard gate in both `review-and-merge` copies, fed by a new `--criteria-file` argument. A fresh `general-purpose` verifier returns a keyed block; the *gate*, not the verifier, resolves every citation — running command citations, grepping test citations, content-matching code citations. Unmet items enter the `absorb` / `file` / `drop` triage the Absorb gate already holds. `notion-dev` gets its criteria from Notion; `quick-dev` derives and freezes them at `flow-triage` before the build.
 
 **Tech Stack:** Markdown instruction files (Claude Code plugin skills and commands). No application code, no package manager, no test framework. `scripts/verify-completeness.sh` — `grep -F` and `diff` structural assertions — is the test suite.
 
