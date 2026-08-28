@@ -57,15 +57,23 @@ assert_has "flow-triage freezes before the build" "$FT" 'before any code exists'
 echo "== Task 4: quick-dev develop wiring =="
 D=$QD/skills/develop/SKILL.md
 assert_has "develop writes a criteria file"          "$D" 'one criterion per line, verbatim, no bullet markers'
-assert_has "develop freezes criteria in the PR"      "$D" 'The PR body is the freeze'
+assert_has "develop freezes criteria in the PR"      "$D" 'Compose the PR body to include the frozen acceptance criteria verbatim'
 assert_has "develop passes --criteria-file"          "$D" 'if set), plus `--criteria-file'
-assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as'
+assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as `met`:'
 assert_has "develop reports unmet criteria"          "$D" 'acceptance criteria were not met'
 assert_has "local mode runs its own completeness check" "$D" '**Completeness check** (local mode)'
 assert_has "local mode mirrors the verifier contract"   "$D" 'The completeness verifier'
 assert_has "local mode resolves citations gate-side"    "$D" 'gate resolves every citation'
 assert_has "local mode folds findings into the merge gate" "$D" 'completeness findings fold into this gate'
-assert_has "local mode skips cleanly with no criteria"  "$D" 'reporting zero criteria'
+assert_has "local mode distinguishes zero criteria from a check that never ran" "$D" 'this step running at all is what makes `0` the correct value here, never `null`'
+assert_has "develop posts the completeness report as a PR comment" "$D" 'gh pr comment <pr-number> --body-file <path>'
+assert_has "develop states review-and-merge does not post the report" "$D" 'produces the `COMPLETENESS-REPORT` section but does not post it'
+assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — completeness check degraded'
+assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default, `file` must cite its blast-radius criterion number, and `drop` must carry a rationale'
+assert_has "local mode restates the completeness counts" "$D" "never the agent's raw counts, since it cannot know which of its own citations resolved"
+assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" "Phase 2c's own verification output"
+assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 'never `Deferred:`, even when the merge gate'
+assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" '`-> not covered` lines verbatim'
 
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
