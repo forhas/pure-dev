@@ -130,6 +130,11 @@ assert_has "develop writes triage counts"      "$QD/skills/develop/SKILL.md" 'tr
 assert_has "develop surfaces the reclassify rate" "$QD/skills/develop/SKILL.md" 'reclassified to `file`'
 assert_has "ticket.md surfaces the reclassify rate" "$ND/commands/ticket.md" 'reclassified to `file`'
 
+echo "== legacy skip disclosure =="
+assert_has "epic-update discloses legacy skips" "$E" 'recorded before `0.13.0`'
+assert_has "epic-update comments on the epic"   "$E" 'postComment'
+assert_has "epic-update logs legacy disclosure" "$E" '**Legacy follow-ups closed over**'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
