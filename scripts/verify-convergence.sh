@@ -27,6 +27,31 @@ assert_identical() {
   if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
 }
 
+# assert_version_above <label> <plugin.json> <pre-change baseline version>
+# Pinning the exact version turns this suite red on the next unrelated bump.
+# Assert instead that a version key exists and is strictly greater than the
+# version this change started from.
+assert_version_above() {
+  local v
+  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$2" | head -1)
+  if [ -z "$v" ]; then bad "$1 (no version key)"; return; fi
+  if [ "$v" = "$3" ]; then bad "$1 (still at the pre-change $3)"; return; fi
+  # Portable dotted-numeric compare. `sort -V` would be shorter, but it is a GNU
+  # extension with uneven BSD/macOS support, and this harness is meant to run
+  # wherever the repo does. awk is POSIX and numeric, so 0.10.0 > 0.9.0 holds —
+  # which a plain lexical compare gets wrong.
+  if awk -v a="$v" -v b="$3" 'BEGIN{
+        na=split(a,A,"."); nb=split(b,B,".");
+        n=(na>nb?na:nb);
+        for(i=1;i<=n;i++){ x=(i<=na?A[i]+0:0); y=(i<=nb?B[i]+0:0);
+          if(x>y) exit 0; if(x<y) exit 1 }
+        exit 1 }'; then
+    ok "$1 ($v > $3)"
+  else
+    bad "$1 ($v is not above $3)"
+  fi
+}
+
 echo "== Task 1: rubric =="
 RUBRIC=$ND/skills/plan-review/references/reviewer-rubric.md
 assert_has    "rubric declares 'absorb'"            "$RUBRIC" '`absorb`'
@@ -93,8 +118,8 @@ echo "== Task 7: docs and versions =="
 assert_has   "README describes absorb-first"   "$ND/README.md" 'absorb'
 assert_lacks "README drops old epic claim"     "$ND/README.md" 'no follow-ups are outstanding'
 assert_has   "create-task notes file-only"     "$ND/commands/create-task.md" 'already triaged `file`'
-assert_has   "notion-dev version bumped"       "$ND/.claude-plugin/plugin.json" '"version": "0.13.0"'
-assert_has   "quick-dev version bumped"        "$QD/.claude-plugin/plugin.json" '"version": "0.8.0"'
+assert_version_above "notion-dev version bumped" "$ND/.claude-plugin/plugin.json" 0.12.2
+assert_version_above "quick-dev version bumped"  "$QD/.claude-plugin/plugin.json" 0.7.2
 assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28-convergence-design.md 'Appendix: worked trace'
 assert_lacks "issue-log signature drops SKIPPED" "$ND/skills/issue-log/references/signatures.md" 'SKIPPED'
 assert_lacks "ticket.md has no stale SKIPPED"   "$ND/commands/ticket.md"   'SKIPPED'
