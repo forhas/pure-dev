@@ -404,7 +404,7 @@ Renumber the subsequent gates (`Config pre-merge checks` and anything after it) 
 
 - [ ] **Step 6: Add the three lists to the final report (both plugins)**
 
-In the section describing the skill's final report, add:
+The final report has **no heading of its own** — it is the closing paragraph of `## 5. Merge`, beginning `Confirm `gh pr view <pr> --json state` reports `MERGED`` (notion-dev `:407`; locate the same paragraph in quick-dev by that opening text). Append to that paragraph — do **not** create a new `## 6.` section:
 
 ```markdown
 The report's triage outcome is **three named lists**, never one undifferentiated set:
@@ -532,7 +532,7 @@ for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
   n=$(basename "$F")
   assert_has "$n records ABSORBED" "$F" 'ABSORBED'
   assert_has "$n records DROPPED"  "$F" 'DROPPED'
-  assert_has "$n passes only FILED to epic-update" "$F" 'only the `FILED` list'
+  assert_has "$n passes only FILED to epic-update" "$F" 'the `FILED` list'
 done
 assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/SKILL.md" 'Absorbed'
 assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/SKILL.md" 'Dropped'
@@ -813,9 +813,11 @@ assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28
 
 # The spec requires that no plugin invent a synonym for the vocabulary.
 for S in $ND/skills/plan-review/SKILL.md $QD/skills/plan-review/SKILL.md \
+         $ND/skills/plan-review/references/reviewer-rubric.md \
+         $QD/skills/plan-review/references/reviewer-rubric.md \
          $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md \
          $ND/skills/epic-update/SKILL.md; do
-  n=$(basename "$(dirname "$S")")-$(basename "$(dirname "$(dirname "$S")")")
+  n=${S#plugins/}
   assert_lacks "$n avoids synonym 'fold in'"   "$S" 'fold in'
   assert_lacks "$n avoids synonym 'inline it'" "$S" 'inline it'
 done
@@ -824,7 +826,7 @@ done
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `./scripts/verify-convergence.sh`
-Expected: FAIL — 6 new failures. The 10 synonym assertions pass already (no copy uses those phrases today); they are regression guards for the edits in Tasks 2, 3, and 6, not red/green steps.
+Expected: FAIL — 6 new failures. The 14 synonym assertions pass already (no copy uses those phrases today); they are regression guards for the edits in Tasks 1, 2, 3, and 6, not red/green steps.
 
 - [ ] **Step 3: State the non-interactive contract in `create-task.md`**
 
