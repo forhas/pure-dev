@@ -62,6 +62,12 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m reports DROPPED"            "$S" 'DROPPED'
 done
 
+echo "== Task 4: quick-dev develop =="
+D=$QD/skills/develop/SKILL.md
+assert_has "develop merge gate covers absorb" "$D" 'outstanding `absorb`'
+assert_has "develop reports FILED items"      "$D" 'FILED'
+assert_lacks "develop drops stale NOT-IN-SCOPE key" "$D" 'NOT-IN-SCOPE'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
