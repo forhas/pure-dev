@@ -182,7 +182,7 @@ CRITERIA-MET: <n>
 CRITERIA-NOT-MET: <n>
 CRITERIA-UNVERIFIED: <n>
 VERDICTS:
-- [<met|not-met>] <criterion verbatim> — <citation kind>: <citation>
+- [<met|not-met|unverified>] <criterion verbatim> — <citation kind>: <citation>
 CLAIMS:
 - <file:line> — claims <X>; <X> is absent or differs because <…>
 CAVEATS:
@@ -207,7 +207,9 @@ This is the section that separates this design from an agent promising it checke
 2. **Test citations — the gate greps the verification output it already holds.** The named test must appear, and must have passed.
 3. **Code citations — the gate matches the quoted text against the file in the diff.** **By content, never by line number.** A correct verdict whose line drifted by two must not be punished; matching the quoted span is both stricter about substance and looser about position.
 
-A citation that does not resolve demotes its criterion to **`unverified`** — not to `not-met`. The verifier may have been right and merely sloppy in citing; the honest statement is that the gate could not confirm it. `unverified` has defined, safe handling (§7).
+A citation that does not resolve demotes its criterion to **`unverified`**, a third state that is not `met` and not `not-met`. The verifier may have been right and merely sloppy in citing; the honest statement is that the gate could not confirm it. `unverified` has defined, safe handling both as an ordinary gate item (§5.1) and, when the verifier itself fails outright, on the degraded path (§7).
+
+**The gate re-emits the block; it does not forward the verifier's copy.** The verifier's raw output is a claim, not the record. After resolution the gate produces the block that travels onward — to the report, and to §6's durable artifacts — with the verdict token corrected for any criterion it demoted (`met` → `unverified`), the four `CRITERIA-*` counts restated to match those corrected verdicts, and each surviving `met` verdict's citation replaced by the gate's own resolution of it. A caller consumes the gate's counts, never the verifier's: the verifier cannot know which of its own citations resolved, so its raw counts are provisional in exactly the cases that matter.
 
 Two consequences worth naming:
 
@@ -220,9 +222,9 @@ Two consequences worth naming:
 
 ### 5.1 What the gate holds
 
-Every `not-met` criterion, every unsupported claim, and every untriaged caveat becomes an item, triaged on the same two axes as any review finding.
+Every `not-met` criterion, every `unverified` criterion, every unsupported claim, and every untriaged caveat becomes an item, triaged on the same two axes as any review finding. `unverified` is not a special case reserved for total verifier failure (§7) — a single citation that fails to resolve (§4) produces exactly one `unverified` item here, on an otherwise-clean run, and it is held exactly like any other item. An `unverified` criterion that raised no item would let the Absorb gate see nothing to hold and let it merge unlabeled — the precise failure this design exists to close.
 
-**The default for an unmet criterion is `absorb`.** The ticket said it would do this. Doing it now is the expected resolution, not the exceptional one.
+**The default for both an unmet and an unverified criterion is `absorb`.** For `not-met`, the ticket said it would do this — doing it now is the expected resolution, not the exceptional one. For `unverified`, the usual remedy is cheaper than redoing the work: producing a citation that actually resolves — re-running the command, quoting the right span — because the underlying work may already be done and merely uncited.
 
 ### 5.2 Escapes
 
@@ -233,9 +235,9 @@ An item leaves the gate by reclassification, never by bypass:
 
 ### 5.3 The re-verify cap
 
-`absorb` items are fixed and pushed. The gate stack then re-runs on the new HEAD — which the caller's pre-merge check already mandates for any remediation that pushes commits, and which it states ordinal-free for the reason given in §1.1.
+`absorb` items are fixed and pushed. **The gate stack then re-runs on the new HEAD, unconditionally** — this holds whether or not a caller supplied `--pre-merge-check`; that check's own "re-satisfy every gate above" is one instance of the rule, stated ordinal-free for the reason given in §1.1, not the rule's source.
 
-**The verifier runs at most twice.** Pass 2 is scoped: only the previously `not-met` or `unverified` criteria, against only the new commits. Anything still unresolved after pass 2 must be reclassified to `file` or `drop` with a rationale.
+**The verifier runs at most twice.** Pass 2 is scoped: only the criteria that came back `not-met` or `unverified` from pass 1, against only the new commits. Whichever state an item entered pass 2 in, if it is still `not-met` or `unverified` after pass 2 it must be reclassified to `file` or `drop` with a rationale.
 
 This bounds both cost and wall-clock, and it preserves the property the convergence gate was deliberately built around: because the escape always exists, the gate cannot deadlock a non-interactive run.
 
@@ -282,6 +284,8 @@ Met criteria get no trailer — the commit is the evidence.
 ---
 
 ## 7. Degradation and the `unverified` state
+
+This section is the total-failure path: the verifier itself does not produce a usable result. It is distinct from the ordinary case (§4, §5.1) where the verifier succeeds and a single citation fails to resolve — that criterion is one `unverified` gate item among possibly-`met` others, defaults to `absorb`, and is handled by the normal re-verify cap (§5.3). Here, nothing the verifier returned can be trusted, so every criterion is `unverified` at once.
 
 The verifier fails, its output is unparseable, or it fails the contract check. It is retried once with the same prompt. It fails again.
 
