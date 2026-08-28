@@ -351,7 +351,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    - The prose overview, for any actionable request not tied to a line.
 
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
-2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice).
+2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled — this applies only to threads that actually exist (codex always creates inline threads for line-level findings; Copilot only when it has line-level findings).
 4. Re-run the step-2 verification (config `verify.steps`, when present), then commit and push applied changes.
 5. **Before treating the round as complete — in *either* branch below — confirm it has

@@ -97,6 +97,8 @@ assert_has   "notion-dev version bumped"       "$ND/.claude-plugin/plugin.json" 
 assert_has   "quick-dev version bumped"        "$QD/.claude-plugin/plugin.json" '"version": "0.8.0"'
 assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28-convergence-design.md 'Appendix: worked trace'
 assert_lacks "issue-log signature drops SKIPPED" "$ND/skills/issue-log/references/signatures.md" 'SKIPPED'
+assert_lacks "ticket.md has no stale SKIPPED"   "$ND/commands/ticket.md"   'SKIPPED'
+assert_lacks "finalize.md has no stale SKIPPED" "$ND/commands/finalize.md" 'SKIPPED'
 
 # The spec requires that no plugin invent a synonym for the vocabulary.
 for S in $ND/skills/plan-review/SKILL.md $QD/skills/plan-review/SKILL.md \
