@@ -111,6 +111,13 @@ for S in $ND/skills/plan-review/SKILL.md $QD/skills/plan-review/SKILL.md \
   assert_lacks "$n avoids synonym 'inline it'" "$S" 'inline it'
 done
 
+echo "== quick-dev deferred trailer =="
+D=$QD/skills/develop/SKILL.md
+assert_has   "develop writes a Deferred: trailer"   "$D" 'Deferred:'
+assert_has   "develop trailer names the criterion"  "$D" 'criterion <n>'
+assert_has   "develop gate requires reclassify"     "$D" 'reclassify and merge'
+assert_lacks "develop drops the bare merge-anyway"  "$D" 'merge anyway /'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
