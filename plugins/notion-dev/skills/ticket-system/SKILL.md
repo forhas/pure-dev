@@ -201,7 +201,7 @@ After the callout (if any), render section body:
 - **Acceptance Criteria** — always a **to-do list** (`- [ ]` → Notion to-do blocks). Never plain bullets; the checkability is the point.
 - **Open Questions** — bulleted list; consider using **red** inline text for the actual question and neutral for surrounding framing.
 - **Implementation** — a labeled block for `Plan`, `Implementation`, `Files Changed`, `PR`, `Branch`, `Notes`. Render labels as bold (`**Plan**`) followed by the value. For `Files Changed`, group by directory as a nested bulleted list. For `PR` and `Branch`, render as code-formatted text so they copy cleanly.
-- **Merged** — mixed render: a 2-column (Field / Value) Notion **table** for the scalar fields in the order they appear in the content dict (e.g. `PR`, `Merge commit`, `Merge strategy`, `Base branch`, `Merged at`), followed by **labeled list sections** for narrative/list fields (`Review resolution` as bullets, `Deferred follow-ups` as a bulleted list with linked ticket IDs where present). The adapter decides per-field which side of the split a value goes:
+- **Merged** — mixed render: a 2-column (Field / Value) Notion **table** for the scalar fields in the order they appear in the content dict (e.g. `PR`, `Merge commit`, `Merge strategy`, `Base branch`, `Merged at`), followed by **labeled list sections** for narrative/list fields (`Review resolution` as bullets, `Absorbed` as a bulleted list, `Deferred follow-ups` as a bulleted list with linked ticket IDs where present, `Dropped` as a bulleted list with each item's rationale). The adapter decides per-field which side of the split a value goes:
   - **scalar** (string, URL, timestamp, short identifier) → table row.
   - **list or multi-line markdown** → labeled section below the table.
   
@@ -218,11 +218,17 @@ After the callout (if any), render section body:
   
   **Review resolution**
   • Applied 4 comments across auth/session handling.
-  • Deferred 1 as follow-up (see STO-42).
+  • Absorbed 1 finding; deferred 1 as follow-up (see STO-42).
   • Disagreed on naming suggestion; left a reply.
-  
+
+  **Absorbed**
+  • Tightened the token TTL check the reviewer flagged (same file as the fix).
+
   **Deferred follow-ups**
-  • STO-42 — refactor session token storage
+  • STO-42 — refactor session token storage (criterion 1: touches storage layer)
+
+  **Dropped**
+  • Rename `sess` to `session` throughout — cosmetic churn, declined under the judgment bar.
   ```
 
 ### Heading attribute preservation

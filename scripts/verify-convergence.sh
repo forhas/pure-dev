@@ -68,6 +68,17 @@ assert_has "develop merge gate covers absorb" "$D" 'outstanding `absorb`'
 assert_has "develop reports FILED items"      "$D" 'FILED'
 assert_lacks "develop drops stale NOT-IN-SCOPE key" "$D" 'NOT-IN-SCOPE'
 
+echo "== Task 5: REVIEW_REPORT three lists =="
+for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
+  n=$(basename "$F")
+  assert_has "$n records ABSORBED" "$F" 'ABSORBED'
+  assert_has "$n records DROPPED"  "$F" 'DROPPED'
+  assert_has "$n passes only FILED to epic-update" "$F" 'the `FILED` list'
+done
+assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/SKILL.md" 'Absorbed'
+assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/SKILL.md" 'Dropped'
+assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/commands/ticket.md" 'NOT-IN-SCOPE'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
