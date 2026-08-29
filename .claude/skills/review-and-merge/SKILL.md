@@ -209,8 +209,14 @@ Finding: <ledger id>
 
 When two findings genuinely demand one inseparable edit — the same line, or a change neither
 half of which is valid alone — commit them together and list **every** id in the trailer. That
-entry then takes the **maximum** depth of its findings, and Rule 2 treats the commit as one
-chain link. Say it in the trailer rather than pretending the case does not arise; what is
+entry then takes the **maximum** depth of its findings, and — because Rule 2 branches on root
+severity, not depth — the **maximum severity**: `blocking` if any of its findings is blocking.
+Both maxima resolve the same way and for the same reason. A mixed commit that counted as
+`non-blocking`-rooted would send a later descendant down Rule 2's revert branch and tear out a
+blocking fix along with the cosmetic one it shared a commit with; treating it as
+`blocking`-rooted only ever means *keeping* work that was already justified. When the two
+branches disagree, take the one that cannot destroy a real fix. Rule 2 then treats the commit as
+one chain link. Say it in the trailer rather than pretending the case does not arise; what is
 forbidden is an unattributed batch, not a justified one.
 
 **Rule 1 — the severity ratchet. From round 3 onward, only a `blocking` finding may be triaged
