@@ -156,18 +156,26 @@ produce the `CONVERGENCE` block in the final report.
 **Severity normalizes mechanically.** Codex `P0` and `P1` — read from the `badge/P<n>` image URL
 in the finding body — and local-reviewer `Critical` and `Required` are **`blocking`**. Codex
 `P2` and below, and local-reviewer `Optional`, `Nit`, and `FYI`, are **`non-blocking`**.
-**Copilot emits no severity at all** — not on inline comments, not on `Suppressed comments`
-entries — so assign one by judging the finding against the `notion-dev:local-code-review`
-severity vocabulary, and record in the ledger that it was judged rather than read. Over-rating
+**Anything that carries no severity label gets a judged one.** Copilot emits none — not on
+inline comments, not on `Suppressed comments` entries — and neither does a human leaving
+actionable feedback mid-loop, which `## 4` routes through these same step-2 rules. For any such
+finding, assign a severity by judging it against the `notion-dev:local-code-review` severity
+vocabulary, and record in the ledger that it was judged rather than read. Without this, Rule 1
+cannot decide whether the finding may be absorbed after round 2 and Rule 2 cannot pick a branch
+for its descendants. Over-rating
 Copilot findings as `blocking` is the one way to defeat Rule 1, and the report's absorb rate is
 what makes that visible.
 
 **Induced findings.** A finding is **induced** when it points at code this run's own fixes
-wrote. Capture the baseline **once**, at the first reviewer response of the run — that review's
-own `commit_id`, the sha GitHub records it as submitted against — and never refresh it:
+wrote. Capture the baseline **once, at the very start of the run — before `## 2` processes any
+existing feedback** — and never refresh it. It is the HEAD the run began at, not the first
+review's `commit_id`: `## 2` commits and pushes fixes for pre-existing comments *before* the
+first reviewer response exists, so keying on that response would fold this run's own earliest
+fixes into the baseline and hide them from induced detection. This is the same baseline the
+local-only path uses, and the two paths must not disagree:
 
 ```bash
-R1_SHA=$(gh api "repos/{owner}/{repo}/pulls/<pr>/reviews/<first-review-id>" | jq -r .commit_id)
+R1_SHA=$(git rev-parse HEAD)   # captured at the start of the run, before ## 2 pushes anything
 # the lines this loop itself has written, in current-HEAD coordinates
 git diff --unified=0 "$R1_SHA"..HEAD
 ```
@@ -196,6 +204,16 @@ too low, which under-triggers Rule 2 and never falsely reverts work.
 An agreed **non-blocking** finding arriving at round 3 or later becomes `file` — citing a
 blast-radius criterion, as every `file` item must — or `drop`, with its rationale. Rounds 1 and
 2 are unchanged: absorb-by-default at any severity.
+
+**`drop` here has a second, distinct ground, and it must be stated as such.** A late
+non-blocking finding can be genuinely right — a real defect, inside files this PR already
+changes, needing no new interface and settling no open design question — and then *no*
+blast-radius criterion is true and `file` has nothing honest to cite. `drop` it, with the
+rationale that **the ratchet judged it not worth another round**, and never with the rationale
+that it was theoretical. Both grounds are recorded in `DROPPED`; only one of them is a claim
+about the finding's merit, and conflating them would launder a real defect into "insignificant".
+Trading a late marginal finding for termination is what this rule is *for* — the trade only
+stays honest while the report says which trade was made.
 
 **The round number Rule 1 tests is run-global** — reviewer rounds and local-fallback rounds
 counted together, from the run's first trigger. The local loop restarts its own counter at 1 for
@@ -233,7 +251,11 @@ hand:
   (`gh pr comment`) — never a second in-thread reply — naming the reverted commit, the root
   finding, and the chain that forced the revert.
 - **Root was `blocking`** → **keep the fixes**; the underlying defect was real and reverting
-  would reintroduce it. `file` the depth-2 finding, citing blast-radius criterion 3.
+  would reintroduce it. `file` the depth-2 finding, citing whichever blast-radius criterion is
+  true — **not criterion 3 by default**. A depth-2 finding is often a straightforward defect
+  that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
+  "never cite a criterion that is not true just to have one to cite". When none of the three is
+  true, `drop` it on Rule 1's second ground, with the chain as its rationale.
 
 Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
 untouched: a depth-2 finding that is wrong is **declined**, not filed.

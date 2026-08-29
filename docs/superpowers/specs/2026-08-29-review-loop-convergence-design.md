@@ -134,8 +134,10 @@ One diff, no per-commit bookkeeping:
 git diff --unified=0 "$R1_SHA"..HEAD
 ```
 
-where `$R1_SHA` is the **first** reviewer review's own `commit_id` — the sha GitHub records the
-review as having been submitted against — captured once, at round 1, and never refreshed. A
+where `$R1_SHA` is the HEAD the run began at, captured **before `## 2` processes any existing
+feedback** and never refreshed. It is deliberately not the first review's `commit_id`: `## 2`
+pushes fixes for pre-existing comments before any reviewer response exists, so that sha would
+already contain this run's earliest fixes and hide them from the test. A
 finding is **induced** if and only if its `(path, line)` falls inside — or within 5 lines of —
 an added hunk of that diff.
 
@@ -157,7 +159,11 @@ is `depth(ledger entry fixed by that commit) + 1`.
 **From round 3 onward, only a `blocking` finding may be triaged `absorb`.**
 
 An agreed non-blocking finding arriving at round 3 or later becomes `file` — citing a
-blast-radius criterion, as `file` items already must — or `drop`, with a rationale. This uses
+blast-radius criterion, as `file` items already must — or `drop`, with a rationale. `drop`
+carries two distinct grounds here and the report must say which: the finding was theoretical,
+or it was real but the ratchet judged it not worth another round. A late finding can be right
+and still satisfy no blast-radius criterion, which would otherwise leave it no honest
+disposition. This uses
 the existing triage vocabulary, the existing `ABSORBED` / `FILED` / `DROPPED` report lists, and
 the existing Absorb gate. No new machinery.
 
@@ -186,7 +192,9 @@ Two branches, decided by the severity of the chain's root:
   `file` or `drop` with the chain recorded as its rationale. A cosmetic finding that has now
   cost three patches was not worth the first one.
 - **Root was `blocking`** → keep the fixes; the underlying defect was real. `file` the depth-2
-  finding, citing blast-radius criterion 3.
+  finding, citing whichever blast-radius criterion is actually true, or `drop` it on Rule 1's
+  second ground when none is. Naming a fixed criterion here would contradict Rule 3's bar
+  against citing an untrue one.
 
 This rule, not the ratchet, is what handles the eleven induced P1s: they are `blocking`, so the
 ratchet would still absorb them. The two rules are complementary — the ratchet removes the
