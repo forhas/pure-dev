@@ -183,6 +183,29 @@ finding would have become a `FILED` item instead of an in-PR fix — tracked, ci
 reviewable as its own change, not lost. Rounds 3 and later otherwise contributed 34
 `non-blocking` findings and 11 self-inflicted `blocking` ones.
 
+**Rule 2 — the induced cap. A finding at `depth ≥ 2` is never absorbed.**
+
+A `depth = 1` finding — the first defect found in a fix — is triaged normally, subject to Rule
+1. The loop gets exactly **one** repair attempt per chain. `depth ≥ 2` means the repair itself
+drew a finding, and that is where the chain is cut. Which branch applies is decided by the
+severity of the chain's **root** — the `depth = 0` entry it descends from, not the finding in
+hand:
+
+- **Root was `non-blocking`** → **revert the chain's fixes** (`git revert` those fix commits, or
+  restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
+  chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
+  worth the first one.
+- **Root was `blocking`** → **keep the fixes**; the underlying defect was real and reverting
+  would reintroduce it. `file` the depth-2 finding, citing blast-radius criterion 3.
+
+Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
+untouched: a depth-2 finding that is wrong is **declined**, not filed.
+
+This rule, not Rule 1, is what handles self-inflicted **`blocking`** findings — the ratchet
+would still absorb those, and 11 of the 12 late high-severity findings in the measurement were
+exactly this. The two rules are complementary: Rule 1 removes the non-blocking tail, Rule 2
+removes the self-inflicted chain at any severity.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.

@@ -174,6 +174,9 @@ for P in "$ND" "$QD"; do
   assert_has   "$n r&m has the severity ratchet"     "$S" 'From round 3 onward, only a `blocking` finding may be triaged'
   assert_has   "$n r&m keeps the decline path"       "$S" 'a decline is not a `drop`'
   assert_lacks "$n r&m drops the stale runaway claim" "$S" 'That is why this cannot run away'
+  assert_has "$n r&m has the induced cap"        "$S" 'A finding at `depth ≥ 2` is never absorbed'
+  assert_has "$n r&m reverts non-blocking roots" "$S" 'revert the chain'
+  assert_has "$n r&m keeps blocking-root fixes"  "$S" 'keep the fixes'
 done
 
 echo
