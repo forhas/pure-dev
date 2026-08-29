@@ -292,9 +292,16 @@ removes the self-inflicted chain at any severity.
 
 Two tests, both checkable against the diff the fix produces:
 
-1. It **touches no file the finding did not name**. The one exception is a
-   **stated repository invariant** requiring a paired edit — a mirrored or duplicated copy that
-   must move together — and that invariant must be *named* in the reply, never assumed.
+1. It **touches no file beyond the finding's scope.** When the finding names files, that is its
+   scope — it touches no file the finding did not name. When it names none — a Copilot body-only
+   finding, a human "add tests", a completeness criterion, all of which these rules route and
+   which routinely carry no path — the scope is the **smallest set of files that actually
+   implements what the finding asks for**, and the reply must state that set before the fix is
+   applied. Naming the scope is what keeps the test meaningful for an unnamed finding; without
+   it the rule would make every body-level finding categorically unfixable, since any fix at all
+   touches a file the finding did not name. The one exception in either case is a **stated
+   repository invariant** requiring a paired edit — a mirrored or duplicated copy that must move
+   together — and that invariant must be *named* in the reply, never assumed.
 2. It **adds no rule, gate, config key, section, or public interface** the finding did not ask
    for.
 
