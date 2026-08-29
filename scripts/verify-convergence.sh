@@ -177,6 +177,9 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m has the induced cap"        "$S" 'A finding at `depth ≥ 2` is never absorbed'
   assert_has "$n r&m reverts non-blocking roots" "$S" 'revert the chain'
   assert_has "$n r&m keeps blocking-root fixes"  "$S" 'keep the fixes'
+  assert_has "$n r&m has the minimal-patch rule" "$S" 'smallest edit that resolves that finding'
+  assert_has "$n r&m bounds the fix by file"     "$S" 'touches no file the finding did not name'
+  assert_has "$n r&m names the paired-edit case" "$S" 'stated repository invariant'
 done
 
 echo

@@ -221,6 +221,24 @@ would still absorb those, and 11 of the 12 late high-severity findings in the me
 exactly this. The two rules are complementary: Rule 1 removes the non-blocking tail, Rule 2
 removes the self-inflicted chain at any severity.
 
+**Rule 3 — the minimal patch. A fix must be the smallest edit that resolves that finding.**
+
+Two tests, both checkable against the diff the fix produces:
+
+1. It **touches no file the finding did not name**. The one exception is a
+   **stated repository invariant** requiring a paired edit — a mirrored or duplicated copy that
+   must move together — and that invariant must be *named* in the reply, never assumed.
+2. It **adds no rule, gate, config key, section, or public interface** the finding did not ask
+   for.
+
+A fix that fails either test is **not applied**. Re-triage the finding to `file` under
+blast-radius criterion 1 (it reaches code this PR was not already changing) or 2 (it needs a new
+public interface, dependency, config key, or data migration), and say so in the reply.
+
+This is the one rule that lowers the *rate* at which fixes create findings rather than bounding
+the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
+that ranges beyond its finding is how that number gets paid.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.
