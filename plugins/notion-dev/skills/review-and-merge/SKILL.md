@@ -233,7 +233,7 @@ consume it are the two that `locatable = no` already settles.
 asymmetry deliberately rather than leaving it to fall out of an implementation. It cannot be a
 descendant because a descendant is identified by blame, and blame needs a line. It can be a root
 because its *fix* has a location even though it does not: a human "add tests" whose fix writes a
-new test file leaves that file inside `R1_SHA..$REVIEW_SHA`, so a defect found there in a later
+new test file leaves that file inside `$R1_SHA..$REVIEW_SHA`, so a defect found there in a later
 round is `induced` and blames to that fix commit. Its descendants need no special handling and
 no substitute sha — each is an ordinary located finding, blamed at **its own** `$REVIEW_SHA`,
 and the one-commit-per-finding rule maps the blamed sha to the root's ledger entry, giving
