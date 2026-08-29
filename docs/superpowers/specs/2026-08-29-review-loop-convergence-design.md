@@ -229,17 +229,20 @@ The final report gains a `CONVERGENCE` block, alongside the existing `COMPLETENE
 CONVERGENCE:
 ROUNDS: <n>
 FINDINGS-TOTAL: <n>
-APPLIED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
-APPLY-RATE: <pct>
+ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
+ABSORB-RATE: <pct>
 INDUCED: <n> (<pct> of findings after round 1)
 INDUCED-CHAINS-CUT: <n>
 RATCHET-ENGAGED-AT-ROUND: <n | never>
 ```
 
 Every key appears on every run; a key with nothing to report takes `0` or `never`, never
-absence. This exists because the problem was invisible until it was measured: an 84% apply rate
-and a 68% induced rate were both discoverable only by correlating the API against `git`, and
-neither appeared anywhere in a run's own output.
+absence. This exists because the problem was invisible until it was measured: an `ABSORB-RATE`
+near 88% — 61 of the 69 measured findings were acted on — is the signal that the judgment bar is
+not firing, and a 68% induced rate was likewise discoverable only by correlating the API against
+`git`, appearing nowhere in a run's own output. The four disposition counts partition the ledger
+exhaustively because the Absorb gate forbids an outstanding `absorb` at merge, so `absorb` is
+transient and never reported.
 
 `scripts/verify-convergence.sh` gains a section asserting each rule is present in both plugins'
 copies, in the same style as its existing sections — this repository ships markdown instruction
@@ -294,7 +297,7 @@ fixes would not have been made.
   omission — the same trade the 2026-08-28 spec already accepted for across-ticket work.
 - **Severity judgment for Copilot findings is a judgment call**, because Copilot emits no
   severity. A triage that systematically over-rates findings as `blocking` weakens the ratchet.
-  The `CONVERGENCE` block's apply rate is the detector: a run whose rate stays near 84% is
+  The `CONVERGENCE` block's absorb rate is the detector: a run whose rate stays near 88% is
   mis-rating.
 - **`git blame` attribution can be wrong** when a fix rewrote a line another fix had already
   rewritten. The failure mode is a depth that is too low, which under-triggers the cap — it

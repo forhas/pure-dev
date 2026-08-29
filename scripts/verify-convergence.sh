@@ -195,6 +195,17 @@ assert_has   "quick-dev r&m verifies at the step-2 push" \
 assert_lacks "quick-dev r&m drops the stale never-runs-tests claim" \
   "$QD/skills/review-and-merge/SKILL.md" 'the reviewer loop never runs tests at all'
 
+assert_identical "r&m mirror matches the quick-dev copy" \
+  "$QD/skills/review-and-merge/SKILL.md" .claude/skills/review-and-merge/SKILL.md
+assert_version_above "notion-dev bumped for review-loop convergence" "$ND/.claude-plugin/plugin.json" 0.14.0
+assert_version_above "quick-dev bumped for review-loop convergence"  "$QD/.claude-plugin/plugin.json" 0.9.0
+assert_lacks "2026-08-28 spec no longer claims within-ticket loops converge" \
+  docs/superpowers/specs/2026-08-28-convergence-design.md 'The *within-ticket* loops converge.'
+assert_lacks "2026-08-28 spec no longer claims the failure is entirely across-ticket" \
+  docs/superpowers/specs/2026-08-28-convergence-design.md 'The failure is entirely in *across-ticket filing*.'
+assert_has "review-loop spec carries the measurement" \
+  docs/superpowers/specs/2026-08-29-review-loop-convergence-design.md '68%'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
