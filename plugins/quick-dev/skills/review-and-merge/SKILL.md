@@ -133,6 +133,7 @@ produce the `CONVERGENCE` block in the final report.
 | `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
 | `round` | the **run-global** round it arrived in, reviewer and local rounds counted together — `0` for comments that predate the first trigger |
 | `path`, `line` | its location, as the review reported it |
+| `locatable` | `yes` / `no` — `no` when the finding carries no `(path, line)`, or no reviewed commit sha to read that line against |
 | `severity` | **normalized** to `blocking` or `non-blocking` — see below |
 | `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
 | `depth` | induced-chain depth — see below |
@@ -176,8 +177,9 @@ committed, so a late review reports lines against a commit HEAD has already move
 Measuring a stale line against HEAD's hunks misclassifies `induced` and blames an unrelated
 line — which can pick the wrong Rule 2 branch and revert valid fixes. Diffing to `$REVIEW_SHA`
 puts both sides in one coordinate system by construction, for early and late reviews alike, and
-needs no translation step. No per-commit range table is needed either. Do not substitute a per-commit walk: a single diff against a single fixed baseline
-cannot go stale, and one rebuilt each round can. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
+needs no translation step. Do not substitute a per-commit walk: one diff over
+`$R1_SHA..$REVIEW_SHA` uses two shas the round already knows, while a per-commit table must be
+rebuilt every round and can go stale between them. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
 straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so induced detection still works on a local-only run.
 
 **Chain depth** attributes an induced finding to the fix that caused it:
@@ -193,6 +195,46 @@ If that sha is **not** one of this run's fix commits, the finding is `depth = 0`
 the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
 rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
 too low, which under-triggers Rule 2 and never falsely reverts work.
+
+**Findings with no location.** Three of the classes these rules route carry no `(path, line)`:
+Copilot `Suppressed comments` entries, human PR-level comments arriving mid-loop — which `## 4`
+routes through these same step-2 rules — and completeness-gate items, which Rule 1 exempts but
+Rules 3 and 4 still reach. Before treating any of them as locationless, recover the one
+location that is stated in prose: a Copilot `Suppressed comments` entry carries a
+`**<path>:<line>**` header. Parse that header and use that as the location. Its line number is
+relative to the review's own commit — the same `$REVIEW_SHA` coordinate system the diff and the
+blame already use — so adopting it is coordinate-correct rather than a guess, and it recovers
+`induced` and `depth` for the largest class that would otherwise have neither. When no such
+header is present, or it does not parse to both a path and a line, the finding is locationless.
+
+A locationless finding records `locatable = no`, and takes `induced = false` and `depth = 0`.
+Both values follow from having no coordinates, not from evidence about the code, so the ledger
+keeps the distinction and the report discloses it — see the `CONVERGENCE` block's `INDUCED`
+line. `$REVIEW_SHA` is undefined for a finding that belongs to no review object at all, such as
+a human PR-level comment; nothing here needs it, because the only two computations that would
+consume it are the two that `locatable = no` already settles.
+
+**Belonging to no GitHub review object does not by itself make a finding locationless.** What
+decides it is whether a `(path, line)` and a commit to read that line against both exist, and
+**a local-reviewer finding has both** — so it is `locatable = yes`.
+`quick-dev:local-code-review`'s output contract emits every finding as
+`- [<Severity>] <file>:<line> — …` and heads its report with a `Reviewed commit: <sha>` echo,
+which **is** that round's `$REVIEW_SHA`. Reading the review-object clause literally would mark
+every local-loop finding unlocatable, switching Rule 2 off for the whole fallback path — no
+chain there could ever be cut — and dropping every local finding from the induced denominator.
+It would also contradict the induced baseline above, which fixes `$R1_SHA` at the run's starting
+HEAD precisely so that induced detection keeps working on a local-only run.
+
+**A locationless finding may be a chain root, and can never be a chain descendant.** State that
+asymmetry deliberately rather than leaving it to fall out of an implementation. It cannot be a
+descendant because a descendant is identified by blame, and blame needs a line. It can be a root
+because its *fix* has a location even though it does not: a human "add tests" whose fix writes a
+new test file leaves that file inside `$R1_SHA..$REVIEW_SHA`, so a defect found there in a later
+round is `induced` and blames to that fix commit. Its descendants need no special handling and
+no substitute sha — each is an ordinary located finding, blamed at **its own** `$REVIEW_SHA`,
+and the one-commit-per-finding rule maps the blamed sha to the root's ledger entry, giving
+`depth = 0 + 1 = 1`. Rule 2 then branches on the root's severity, which for a locationless
+finding is the **judged** one.
 
 **One commit per finding — this is what makes "the ledger entry that sha fixed" a function.**
 Batching a round's fixes into a single commit breaks chain depth outright: the blamed sha maps
@@ -236,6 +278,11 @@ about the finding's merit, and conflating them would launder a real defect into 
 Trading a late marginal finding for termination is what this rule is *for* — the trade only
 stays honest while the report says which trade was made.
 
+**This ground is Rule 1's alone**, and it carries the round-3 precondition with it wherever it is
+cited; Rule 2's chain cuts use their own ground, stated with that rule. The two must not be
+merged into one: Rule 1 is indexed by round and Rule 2 by depth, so a ground shared across them
+would carry one rule's index into the other.
+
 **The round number Rule 1 tests is run-global** — reviewer rounds and local-fallback rounds
 counted together, from the run's first trigger. The local loop restarts its own counter at 1 for
 the round *cap*, which is counted independently on purpose; the ratchet must not read that
@@ -264,7 +311,9 @@ hand:
 
 - **Root was `non-blocking`** → **revert the chain's fixes** (`git revert` those fix commits, or
   restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
-  chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
+  chain recorded as its rationale — that `drop` is on the induced-cap ground stated below the
+  branches, available at any round, because a root whose chain was cut has commonly arrived
+  before round 3. A cosmetic finding that has now cost three patches was not
   worth the first one.
   **Every entry in the chain gets a final disposition, not just the root.** A revert removes
   work from the PR, so leaving the intermediate entries at `applied` would count reverted work
@@ -272,9 +321,9 @@ hand:
   counts entirely — either one falsifies the partition that calls those four buckets
   exhaustive. Rewrite each intermediate entry's disposition from `applied` to `drop`, rationale
   `fix reverted with its chain`; and give the depth-2 finding that forced the revert its own
-  disposition — `file` if a blast-radius criterion is true; otherwise `drop` on Rule 1's second
-  ground with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
-  it citing the induced cap, exactly as the blocking-root branch above requires. A `blocking`
+  disposition — `file` if a blast-radius criterion is true; otherwise `drop` citing the induced
+  cap with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
+  it citing that same cap, exactly as the blocking-root branch above requires. A `blocking`
   finding is never dropped in either branch.
   The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
   §2 forbids replying twice to the same comment. That rule exists to stop findings being
@@ -287,7 +336,10 @@ hand:
   that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
   "never cite a criterion that is not true just to have one to cite". When none of the three is
   true, the disposition depends on the depth-2 finding's **own** severity:
-  - **non-blocking** → `drop` it on Rule 1's second ground, with the chain as its rationale.
+  - **non-blocking** → `drop` it citing **the induced cap**, with the chain as its rationale,
+    at **any** round — see the ground stated below the branches. Never on Rule 1's second
+    ground, which is scoped to round 3 onward and would leave this case with no legal
+    disposition before then.
   - **`blocking`** → **never dropped.** `file` it citing **the induced cap itself** as the
     ground. Rule 1's second ground does not reach here — it is scoped to a late *non-blocking*
     finding, deliberately, because dropping a known blocking defect is not a trade this design
@@ -295,6 +347,33 @@ hand:
     because of blast radius, and the cap exists precisely to refuse a third repair attempt.
     Mark the item `blocking` in `FILED` so the caller sees that a known defect was deferred
     rather than a nicety.
+
+**Rule 2's `drop` ground is the cap, not the ratchet — and it carries no round precondition.**
+Wherever a branch above drops a **non-blocking** entry for want of a true blast-radius criterion,
+the rationale is that **the induced cap cut the chain**, with the chain itself recorded. Do not
+reach for Rule 1's second ground there. That ground reads "the ratchet judged it not worth
+another round" and is scoped to a finding arriving from round 3 onward, while this rule is
+indexed by depth — and a chain reaches `depth = 2` well before round 3 whenever `## 2` fixes a
+pre-existing comment first, which is the common case rather than the exotic one. Borrowing the
+ratchet's ground would import its round-3 precondition into a depth-indexed rule and strand a
+real, non-blocking, uncitable depth-2 finding at round 1 or 2 with no legal disposition at all:
+not absorbable under this rule, not filable with no criterion true, not droppable with the
+ratchet not yet engaged, and not declinable because it is right. An agent left with no legal
+move improvises, and both improvisations are ones this design forbids elsewhere — inventing a
+blast-radius criterion, or recording a real defect as theoretical.
+
+The two grounds stay distinct because they are different claims, and `DROPPED` records both:
+Rule 1's is about **time** — a late marginal finding traded for termination — and Rule 2's is
+about **structure** — this chain has already had the one repair attempt the cap allows. Neither
+is ever a claim that the finding was theoretical, and **neither reaches a `blocking` finding**:
+those are filed citing the cap and marked `blocking` in `FILED`, at any round, in both branches.
+
+**A root may be locationless**, and that changes nothing about which branch applies: both
+branches read the root's severity, never its position, and a locationless root's severity is the
+judged one. On the revert branch, restore the pre-fix text and re-triage the root to `file` or
+`drop` exactly as written — a blast-radius criterion is judged against what the fix reached, not
+against a path the finding never carried. The PR-level note that branch already mandates is also
+the only reply channel such a root has, having no inline thread to reply in.
 
 Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
 untouched: a depth-2 finding that is wrong is **declined**, not filed.
@@ -833,7 +912,7 @@ ROUNDS: <n>
 FINDINGS-TOTAL: <n>
 ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
 ABSORB-RATE: <pct>
-INDUCED: <n> (<pct> of findings after round 1)
+INDUCED: <n> (<pct> of findings after round 1, excluding <n> unlocatable)
 INDUCED-CHAINS-CUT: <n>
 RATCHET-ENGAGED-AT-ROUND: <n | never>
 ```
@@ -846,6 +925,20 @@ merge, so by the time the report is written every `absorb` has already become `a
 gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
 and never a reported one. `ABSORB-RATE` is
 `ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
+
+`INDUCED`'s parenthetical is scoped to the same population as the percentage — findings that
+arrived **after round 1** — and names how many of those were `locatable = no` and are therefore
+excluded from the percentage's denominator. Both numbers take `0` like every other count.
+Counting the unlocatable ones silently as "not induced" would report an undecidable as a
+negative, in the one metric this whole design is calibrated against.
+
+**When the denominator is zero, `<pct>` reads `n/a`.** Either no finding arrived after round 1
+at all, or every one that did was unlocatable — the two report the same way on purpose, because
+in both there is nothing to take a rate over. It is never `0%`, which would claim a measured
+population induced nothing. Both counts still print, so
+`INDUCED: 0 (n/a of findings after round 1, excluding 3 unlocatable)` is a well-formed line.
+`n/a` is this block's one non-count value, and it satisfies "never absence" exactly as `0` and
+`never` do.
 
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
 an absent key is indistinguishable from a run that did not measure. This block
