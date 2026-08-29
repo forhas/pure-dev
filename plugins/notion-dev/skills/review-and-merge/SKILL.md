@@ -148,7 +148,7 @@ produce the `CONVERGENCE` block in the final report.
 | `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
 | `round` | the **run-global** round it arrived in, reviewer and local rounds counted together — `0` for comments that predate the first trigger |
 | `path`, `line` | its location, as the review reported it |
-| `locatable` | `yes` / `no` — `no` when the finding carries no `(path, line)`, or belongs to no review object |
+| `locatable` | `yes` / `no` — `no` when the finding carries no `(path, line)`, or no reviewed commit sha to read that line against |
 | `severity` | **normalized** to `blocking` or `non-blocking` — see below |
 | `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
 | `depth` | induced-chain depth — see below |
@@ -228,6 +228,17 @@ keeps the distinction and the report discloses it — see the `CONVERGENCE` bloc
 line. `$REVIEW_SHA` is undefined for a finding that belongs to no review object at all, such as
 a human PR-level comment; nothing here needs it, because the only two computations that would
 consume it are the two that `locatable = no` already settles.
+
+**Belonging to no GitHub review object does not by itself make a finding locationless.** What
+decides it is whether a `(path, line)` and a commit to read that line against both exist, and
+**a local-reviewer finding has both** — so it is `locatable = yes`.
+`notion-dev:local-code-review`'s output contract emits every finding as
+`- [<Severity>] <file>:<line> — …` and heads its report with a `Reviewed commit: <sha>` echo,
+which **is** that round's `$REVIEW_SHA`. Reading the review-object clause literally would mark
+every local-loop finding unlocatable, switching Rule 2 off for the whole fallback path — no
+chain there could ever be cut — and dropping every local finding from the induced denominator.
+It would also contradict the induced baseline above, which fixes `$R1_SHA` at the run's starting
+HEAD precisely so that induced detection keeps working on a local-only run.
 
 **A locationless finding may be a chain root, and can never be a chain descendant.** State that
 asymmetry deliberately rather than leaving it to fall out of an implementation. It cannot be a
