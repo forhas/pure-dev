@@ -287,8 +287,10 @@ hand:
   counts entirely — either one falsifies the partition that calls those four buckets
   exhaustive. Rewrite each intermediate entry's disposition from `applied` to `drop`, rationale
   `fix reverted with its chain`; and give the depth-2 finding that forced the revert its own
-  disposition — `file` if a blast-radius criterion is true, otherwise `drop` on Rule 1's second
-  ground with the chain as its rationale.
+  disposition — `file` if a blast-radius criterion is true; otherwise `drop` on Rule 1's second
+  ground with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
+  it citing the induced cap, exactly as the blocking-root branch above requires. A `blocking`
+  finding is never dropped in either branch.
   The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
   §2 forbids replying twice to the same comment. That rule exists to stop findings being
   re-litigated; it does not license leaving a false record. Post a **PR-level note**
@@ -299,7 +301,15 @@ hand:
   true — **not criterion 3 by default**. A depth-2 finding is often a straightforward defect
   that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
   "never cite a criterion that is not true just to have one to cite". When none of the three is
-  true, `drop` it on Rule 1's second ground, with the chain as its rationale.
+  true, the disposition depends on the depth-2 finding's **own** severity:
+  - **non-blocking** → `drop` it on Rule 1's second ground, with the chain as its rationale.
+  - **`blocking`** → **never dropped.** `file` it citing **the induced cap itself** as the
+    ground. Rule 1's second ground does not reach here — it is scoped to a late *non-blocking*
+    finding, deliberately, because dropping a known blocking defect is not a trade this design
+    makes. The honest statement is that the work leaves this PR because the chain was cut, not
+    because of blast radius, and the cap exists precisely to refuse a third repair attempt.
+    Mark the item `blocking` in `FILED` so the caller sees that a known defect was deferred
+    rather than a nicety.
 
 Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
 untouched: a depth-2 finding that is wrong is **declined**, not filed.
