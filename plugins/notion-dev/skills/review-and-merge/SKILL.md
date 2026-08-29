@@ -376,16 +376,28 @@ For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true
 
 Never respond twice to the same comment — track handled comment IDs. If code changed, first re-run the project's verification when the repo configures it (`verify.steps` in `.claude/notion-dev.config.json` — read from the primary checkout, not the worktree, honoring per-step `retries`) — a broken fix would surface as red CI next round, but repos without covering CI have only this gate — **and retain that run's output as `VERIFY_OUTPUT`, overwriting any earlier value**: the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check., then commit **one applied finding per commit** with its `Finding:` trailer, per the per-finding-commit rule above, and push once at the end:
 
+**Apply and commit serially — one finding at a time.** Make that finding's edit, run Rule 4's
+verification, commit it, and only then start the next. Do not edit several findings into the
+tree and try to separate them at `git add` time:
+
 ```bash
-# for each applied finding, staging only the paths that finding's fix touched:
+# per finding, in sequence — edit, verify, commit:
+<apply this finding's fix>
+<run the project's verification>
 git add <paths for this finding> && git commit -m "review: <what this fixes>
 
 Finding: <ledger id>"
-# after the last one:
+# after the last finding:
 git push
 ```
 
-`git add -A` is wrong here: it sweeps every finding's fix into one commit, which is exactly what makes the blame-to-ledger mapping ambiguous.
+Two staging mistakes both recreate the ambiguous mapping this rule exists to remove. `git add -A`
+sweeps every finding's fix into one commit. Less obviously, `git add <path>` does the same
+whenever **two findings touch different hunks of the same file** — the first commit takes both
+fixes and the second is empty, so one sha again maps to two ledger entries. Serial
+edit-verify-commit avoids the problem instead of managing it. When edits are already sitting in
+the tree together, `git add -p` (`--patch`, "select hunks interactively") is the recovery path,
+not the normal one.
 
 ## 3. Trigger a review
 
