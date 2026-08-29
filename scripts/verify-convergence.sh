@@ -202,6 +202,8 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m emits INDUCED-CHAINS-CUT"       "$S" 'INDUCED-CHAINS-CUT:'
   assert_has "$n r&m emits RATCHET-ENGAGED-AT-ROUND" "$S" 'RATCHET-ENGAGED-AT-ROUND:'
   assert_has "$n r&m forbids an absent key"          "$S" 'never absence'
+  assert_has "$n r&m scopes the unlocatable count"   "$S" 'scoped to the same population as the percentage'
+  assert_has "$n r&m defines the zero-denominator rate" "$S" 'When the denominator is zero, `<pct>` reads `n/a`'
   assert_has "$n r&m emits ROUNDS"          "$S" 'ROUNDS:'
   assert_has "$n r&m emits FINDINGS-TOTAL"  "$S" 'FINDINGS-TOTAL:'
   assert_has "$n r&m emits ABSORBED"        "$S" 'ABSORBED:'

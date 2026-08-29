@@ -915,10 +915,19 @@ gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a tra
 and never a reported one. `ABSORB-RATE` is
 `ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
 
-`INDUCED`'s parenthetical names how many findings were `locatable = no` and are therefore
-excluded from the percentage's denominator; it takes `0` like every other count. Counting them
-silently as "not induced" would report an undecidable as a negative, in the one metric this
-whole design is calibrated against.
+`INDUCED`'s parenthetical is scoped to the same population as the percentage — findings that
+arrived **after round 1** — and names how many of those were `locatable = no` and are therefore
+excluded from the percentage's denominator. Both numbers take `0` like every other count.
+Counting the unlocatable ones silently as "not induced" would report an undecidable as a
+negative, in the one metric this whole design is calibrated against.
+
+**When the denominator is zero, `<pct>` reads `n/a`.** Either no finding arrived after round 1
+at all, or every one that did was unlocatable — the two report the same way on purpose, because
+in both there is nothing to take a rate over. It is never `0%`, which would claim a measured
+population induced nothing. Both counts still print, so
+`INDUCED: 0 (n/a of findings after round 1, excluding 3 unlocatable)` is a well-formed line.
+`n/a` is this block's one non-count value, and it satisfies "never absence" exactly as `0` and
+`never` do.
 
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
 an absent key is indistinguishable from a run that did not measure. This block
