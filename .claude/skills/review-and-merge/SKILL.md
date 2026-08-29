@@ -267,6 +267,11 @@ about the finding's merit, and conflating them would launder a real defect into 
 Trading a late marginal finding for termination is what this rule is *for* — the trade only
 stays honest while the report says which trade was made.
 
+**This ground is Rule 1's alone**, and it carries the round-3 precondition with it wherever it is
+cited; Rule 2's chain cuts use their own ground, stated with that rule. The two must not be
+merged into one: Rule 1 is indexed by round and Rule 2 by depth, so a ground shared across them
+would carry one rule's index into the other.
+
 **The round number Rule 1 tests is run-global** — reviewer rounds and local-fallback rounds
 counted together, from the run's first trigger. The local loop restarts its own counter at 1 for
 the round *cap*, which is counted independently on purpose; the ratchet must not read that
@@ -295,7 +300,9 @@ hand:
 
 - **Root was `non-blocking`** → **revert the chain's fixes** (`git revert` those fix commits, or
   restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
-  chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
+  chain recorded as its rationale — that `drop` is on the induced-cap ground stated below the
+  branches, available at any round, because a root whose chain was cut has commonly arrived
+  before round 3. A cosmetic finding that has now cost three patches was not
   worth the first one.
   **Every entry in the chain gets a final disposition, not just the root.** A revert removes
   work from the PR, so leaving the intermediate entries at `applied` would count reverted work
@@ -303,9 +310,9 @@ hand:
   counts entirely — either one falsifies the partition that calls those four buckets
   exhaustive. Rewrite each intermediate entry's disposition from `applied` to `drop`, rationale
   `fix reverted with its chain`; and give the depth-2 finding that forced the revert its own
-  disposition — `file` if a blast-radius criterion is true; otherwise `drop` on Rule 1's second
-  ground with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
-  it citing the induced cap, exactly as the blocking-root branch above requires. A `blocking`
+  disposition — `file` if a blast-radius criterion is true; otherwise `drop` citing the induced
+  cap with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
+  it citing that same cap, exactly as the blocking-root branch above requires. A `blocking`
   finding is never dropped in either branch.
   The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
   §2 forbids replying twice to the same comment. That rule exists to stop findings being
@@ -318,7 +325,10 @@ hand:
   that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
   "never cite a criterion that is not true just to have one to cite". When none of the three is
   true, the disposition depends on the depth-2 finding's **own** severity:
-  - **non-blocking** → `drop` it on Rule 1's second ground, with the chain as its rationale.
+  - **non-blocking** → `drop` it citing **the induced cap**, with the chain as its rationale,
+    at **any** round — see the ground stated below the branches. Never on Rule 1's second
+    ground, which is scoped to round 3 onward and would leave this case with no legal
+    disposition before then.
   - **`blocking`** → **never dropped.** `file` it citing **the induced cap itself** as the
     ground. Rule 1's second ground does not reach here — it is scoped to a late *non-blocking*
     finding, deliberately, because dropping a known blocking defect is not a trade this design
@@ -326,6 +336,26 @@ hand:
     because of blast radius, and the cap exists precisely to refuse a third repair attempt.
     Mark the item `blocking` in `FILED` so the caller sees that a known defect was deferred
     rather than a nicety.
+
+**Rule 2's `drop` ground is the cap, not the ratchet — and it carries no round precondition.**
+Wherever a branch above drops a **non-blocking** entry for want of a true blast-radius criterion,
+the rationale is that **the induced cap cut the chain**, with the chain itself recorded. Do not
+reach for Rule 1's second ground there. That ground reads "the ratchet judged it not worth
+another round" and is scoped to a finding arriving from round 3 onward, while this rule is
+indexed by depth — and a chain reaches `depth = 2` well before round 3 whenever `## 2` fixes a
+pre-existing comment first, which is the common case rather than the exotic one. Borrowing the
+ratchet's ground would import its round-3 precondition into a depth-indexed rule and strand a
+real, non-blocking, uncitable depth-2 finding at round 1 or 2 with no legal disposition at all:
+not absorbable under this rule, not filable with no criterion true, not droppable with the
+ratchet not yet engaged, and not declinable because it is right. An agent left with no legal
+move improvises, and both improvisations are ones this design forbids elsewhere — inventing a
+blast-radius criterion, or recording a real defect as theoretical.
+
+The two grounds stay distinct because they are different claims, and `DROPPED` records both:
+Rule 1's is about **time** — a late marginal finding traded for termination — and Rule 2's is
+about **structure** — this chain has already had the one repair attempt the cap allows. Neither
+is ever a claim that the finding was theoretical, and **neither reaches a `blocking` finding**:
+those are filed citing the cap and marked `blocking` in `FILED`, at any round, in both branches.
 
 **A root may be locationless**, and that changes nothing about which branch applies: both
 branches read the root's severity, never its position, and a locationless root's severity is the
