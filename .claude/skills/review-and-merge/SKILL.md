@@ -183,13 +183,35 @@ straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so 
 **Chain depth** attributes an induced finding to the fix that caused it:
 
 ```bash
-git blame -L "<line>,<line>" --porcelain -- "<path>" | head -1   # -> the sha that wrote it
+git blame -L "<line>,<line>" --porcelain "$REVIEW_SHA" -- "<path>" | head -1   # -> the sha that wrote it
 ```
+
+Blame at `$REVIEW_SHA` for the same reason the diff stops there: the line number came from that
+commit.
 
 If that sha is **not** one of this run's fix commits, the finding is `depth = 0`. Otherwise it is
 the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
 rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
 too low, which under-triggers Rule 2 and never falsely reverts work.
+
+**One commit per finding — this is what makes "the ledger entry that sha fixed" a function.**
+Batching a round's fixes into a single commit breaks chain depth outright: the blamed sha maps
+to several entries with different depths and root severities, so both `depth` and Rule 2's
+branch become undecidable, and Rule 2's revert would tear out unrelated fixes with the one it
+targets. Commit each applied finding on its own, naming it in a trailer so the mapping is
+recoverable from git alone:
+
+```
+review: <what this fixes>
+
+Finding: <ledger id>
+```
+
+When two findings genuinely demand one inseparable edit — the same line, or a change neither
+half of which is valid alone — commit them together and list **every** id in the trailer. That
+entry then takes the **maximum** depth of its findings, and Rule 2 treats the commit as one
+chain link. Say it in the trailer rather than pretending the case does not arise; what is
+forbidden is an unattributed batch, not a justified one.
 
 **Rule 1 — the severity ratchet. From round 3 onward, only a `blocking` finding may be triaged
 `absorb`.**
