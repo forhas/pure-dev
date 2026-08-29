@@ -148,6 +148,7 @@ produce the `CONVERGENCE` block in the final report.
 | `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
 | `round` | the **run-global** round it arrived in, reviewer and local rounds counted together — `0` for comments that predate the first trigger |
 | `path`, `line` | its location, as the review reported it |
+| `locatable` | `yes` / `no` — `no` when the finding carries no `(path, line)`, or belongs to no review object |
 | `severity` | **normalized** to `blocking` or `non-blocking` — see below |
 | `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
 | `depth` | induced-chain depth — see below |
@@ -191,8 +192,9 @@ committed, so a late review reports lines against a commit HEAD has already move
 Measuring a stale line against HEAD's hunks misclassifies `induced` and blames an unrelated
 line — which can pick the wrong Rule 2 branch and revert valid fixes. Diffing to `$REVIEW_SHA`
 puts both sides in one coordinate system by construction, for early and late reviews alike, and
-needs no translation step. No per-commit range table is needed either. Do not substitute a per-commit walk: a single diff against a single fixed baseline
-cannot go stale, and one rebuilt each round can. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
+needs no translation step. Do not substitute a per-commit walk: one diff over
+`$R1_SHA..$REVIEW_SHA` uses two shas the round already knows, while a per-commit table must be
+rebuilt every round and can go stale between them. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
 straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so induced detection still works on a local-only run.
 
 **Chain depth** attributes an induced finding to the fix that caused it:
@@ -208,6 +210,35 @@ If that sha is **not** one of this run's fix commits, the finding is `depth = 0`
 the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
 rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
 too low, which under-triggers Rule 2 and never falsely reverts work.
+
+**Findings with no location.** Three of the classes these rules route carry no `(path, line)`:
+Copilot `Suppressed comments` entries, human PR-level comments arriving mid-loop — which `## 4`
+routes through these same step-2 rules — and completeness-gate items, which Rule 1 exempts but
+Rules 2, 3 and 4 still reach. Before treating any of them as locationless, recover the one
+location that is stated in prose: a Copilot `Suppressed comments` entry carries a
+`**<path>:<line>**` header. Parse that header and use that as the location. Its line number is
+relative to the review's own commit — the same `$REVIEW_SHA` coordinate system the diff and the
+blame already use — so adopting it is coordinate-correct rather than a guess, and it recovers
+`induced` and `depth` for the largest class that would otherwise have neither. When no such
+header is present, or it does not parse to both a path and a line, the finding is locationless.
+
+A locationless finding records `locatable = no`, and takes `induced = false` and `depth = 0`.
+Both values follow from having no coordinates, not from evidence about the code, so the ledger
+keeps the distinction and the report discloses it — see the `CONVERGENCE` block's `INDUCED`
+line. `$REVIEW_SHA` is undefined for a finding that belongs to no review object at all, such as
+a human PR-level comment; nothing here needs it, because the only two computations that would
+consume it are the two that `locatable = no` already settles.
+
+**A locationless finding may be a chain root, and can never be a chain descendant.** State that
+asymmetry deliberately rather than leaving it to fall out of an implementation. It cannot be a
+descendant because a descendant is identified by blame, and blame needs a line. It can be a root
+because its *fix* has a location even though it does not: a human "add tests" whose fix writes a
+new test file leaves that file inside `R1_SHA..$REVIEW_SHA`, so a defect found there in a later
+round is `induced` and blames to that fix commit. Its descendants need no special handling and
+no substitute sha — each is an ordinary located finding, blamed at **its own** `$REVIEW_SHA`,
+and the one-commit-per-finding rule maps the blamed sha to the root's ledger entry, giving
+`depth = 0 + 1 = 1`. Rule 2 then branches on the root's severity, which for a locationless
+finding is the **judged** one.
 
 **One commit per finding — this is what makes "the ledger entry that sha fixed" a function.**
 Batching a round's fixes into a single commit breaks chain depth outright: the blamed sha maps
@@ -310,6 +341,13 @@ hand:
     because of blast radius, and the cap exists precisely to refuse a third repair attempt.
     Mark the item `blocking` in `FILED` so the caller sees that a known defect was deferred
     rather than a nicety.
+
+**A root may be locationless**, and that changes nothing about which branch applies: both
+branches read the root's severity, never its position, and a locationless root's severity is the
+judged one. On the revert branch, restore the pre-fix text and re-triage the root to `file` or
+`drop` exactly as written — a blast-radius criterion is judged against what the fix reached, not
+against a path the finding never carried. The PR-level note that branch already mandates is also
+the only reply channel such a root has, having no inline thread to reply in.
 
 Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
 untouched: a depth-2 finding that is wrong is **declined**, not filed.
@@ -852,7 +890,7 @@ ROUNDS: <n>
 FINDINGS-TOTAL: <n>
 ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
 ABSORB-RATE: <pct>
-INDUCED: <n> (<pct> of findings after round 1)
+INDUCED: <n> (<pct> of findings after round 1, excluding <n> unlocatable)
 INDUCED-CHAINS-CUT: <n>
 RATCHET-ENGAGED-AT-ROUND: <n | never>
 ```
@@ -865,6 +903,11 @@ merge, so by the time the report is written every `absorb` has already become `a
 gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
 and never a reported one. `ABSORB-RATE` is
 `ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
+
+`INDUCED`'s parenthetical names how many findings were `locatable = no` and are therefore
+excluded from the percentage's denominator; it takes `0` like every other count. Counting them
+silently as "not induced" would report an undecidable as a negative, in the one metric this
+whole design is calibrated against.
 
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
 an absent key is indistinguishable from a run that did not measure. This block
