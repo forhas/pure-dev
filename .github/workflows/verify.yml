@@ -1,0 +1,56 @@
+name: verify
+
+# This repo ships markdown instruction files, not code — no build, no package
+# manager, no test framework. The scripts/verify-*.sh harnesses ARE the test
+# suite, and until this workflow existed nothing ran them: they only executed
+# when a person or agent remembered to. That is how the review-and-merge mirror
+# drifted twice, the second time despite a README rule telling contributors to
+# re-sync in the same commit.
+#
+# Every harness is plain bash plus grep, diff and awk, so the default runner
+# needs no setup step.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Discovered rather than listed: a new scripts/verify-*.sh is picked up
+      # without editing this file. A harness nobody runs is the failure mode
+      # this workflow exists to remove, and a hardcoded list reintroduces it
+      # the first time someone adds a script and forgets this file.
+      - name: Run every verification harness
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          scripts=(scripts/verify-*.sh)
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No verification harnesses found — expected at least one."
+            exit 1
+          fi
+          failed=0
+          for s in "${scripts[@]}"; do
+            echo "::group::$s"
+            if bash "$s"; then
+              echo "$s: OK"
+            else
+              echo "$s: FAILED"
+              failed=$((failed + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo
+          if [ "$failed" -gt 0 ]; then
+            echo "$failed harness(es) failed."
+            exit 1
+          fi
+          echo "All ${#scripts[@]} harness(es) passed."
