@@ -239,6 +239,17 @@ This is the one rule that lowers the *rate* at which fixes create findings rathe
 the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
 that ranges beyond its finding is how that number gets paid.
 
+**Rule 4 — verify before push. Never push a review fix that has not passed the project's
+verification.**
+
+Step 2, `## 4` item 4, and the local review loop's step 4 already do this via the config
+`verify.steps` key, retaining the output as `VERIFY_OUTPUT`. The rule restates it here as a
+**convergence control**, not only as a Completeness-gate input: a broken fix that gets pushed
+costs a full round-trip — 3–20 minutes with copilot — to learn something a local run answers in
+seconds, and it comes back as a *new finding*, which is then induced surface for Rule 2 to deal
+with. When the repo configures no `verify.steps`, say so in the final report and leave
+`VERIFY_OUTPUT` empty.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.

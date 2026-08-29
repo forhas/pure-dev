@@ -224,6 +224,19 @@ This is the one rule that lowers the *rate* at which fixes create findings rathe
 the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
 that ranges beyond its finding is how that number gets paid.
 
+**Rule 4 — verify before push. Never push a review fix that has not passed the project's
+verification.**
+
+Discover the project's test/build command — the same discovery the Completeness gate performs —
+and run it before **every** push of review fixes, at `## 2` and in both loops. Retain the output
+as `VERIFY_OUTPUT`, overwriting any earlier value. If it fails, correct or revert the fix
+**before** pushing.
+
+A broken fix that gets pushed costs a full round-trip — 3–20 minutes with copilot — to learn
+something a local run answers in seconds, and it comes back as a *new finding*, which is then
+induced surface for Rule 2 to deal with. When the repo has no test or build command to discover,
+say so in the final report and leave `VERIFY_OUTPUT` empty.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.
@@ -236,7 +249,7 @@ For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true
 
 **Non-inline feedback has no thread-resolution state and must not be skipped**: review summary bodies and PR-level issue comments with actionable requests (e.g. "add tests") get the same agree/partially/disagree treatment, with the reply posted via `gh pr comment <pr> --body "..."`. Track them by comment ID — that tracking is their only "resolved" marker. Ignore non-actionable bot boilerplate per the bound reviewer's profile (e.g. the Codex "About" block, or Copilot's per-file summary table and custom-instructions footer).
 
-Never respond twice to the same comment — track handled comment IDs. If code changed, commit and push:
+Never respond twice to the same comment — track handled comment IDs. If code changed, **run Rule 4's verification first and retain its output as `VERIFY_OUTPUT`**, then commit and push:
 `git add -A && git commit -m "review: address PR feedback" && git push`
 
 ## 3. Trigger a review
@@ -461,7 +474,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
-4. Commit and push applied changes.
+4. **Run Rule 4's verification and retain its output as `VERIFY_OUTPUT`**, then commit and push applied changes. A fix that fails verification is corrected or reverted here, never pushed for the next round to find.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
    settled.** A silence retry can leave two requests outstanding, so a second review can arrive
    after the one just handled; the `$RIDS` query only saw what existed when it ran. The
@@ -517,7 +530,7 @@ Dispatched by the Completeness gate below. A fresh `general-purpose` agent, sync
 
 Pass these as **file paths, not inline text**: the criteria file, the diff (`origin/<baseRefName>...HEAD`), the PR body, and `VERIFY_OUTPUT`. Pass **nothing** from the implementer — not the plan, not the run's narrative, not prior reasoning. That exclusion is the point of the seat.
 
-**`VERIFY_OUTPUT` is the project's test/build output the loop retained** — the local review loop's step 4 is the one site in this skill that re-runs tests, and it writes `VERIFY_OUTPUT`, overwriting the previous value, so it always holds the most recent verification of the current HEAD. **It is unset far more often than not**: the reviewer loop never runs tests at all, and the local loop runs them only when it applied fixes. **When it is unset, the gate discovers and runs the project's test/build command once itself, here, before dispatching, and retains that as `VERIFY_OUTPUT`** — the gate resolves test citations against this output (see "Citation resolution" below), so a gate holding nothing would demote every test-cited criterion to `unverified` and block a genuinely clean run. When the repo has no test or build command to discover, `VERIFY_OUTPUT` stays empty; say so in the verifier's prompt so it cites commands (which the gate runs itself) or code spans rather than test names it has no way to have resolved.
+**`VERIFY_OUTPUT` is the project's test/build output the loop retained** — step 2, the reviewer loop's item 4, and the local review loop's step 4 each write it under Rule 4, overwriting the previous value, so it always holds the most recent verification of the current HEAD. **It can still legitimately be unset**: every one of those sites runs verification only when code changed, so a run whose rounds changed nothing never sets it. **When it is unset, the gate discovers and runs the project's test/build command once itself, here, before dispatching, and retains that as `VERIFY_OUTPUT`** — the gate resolves test citations against this output (see "Citation resolution" below), so a gate holding nothing would demote every test-cited criterion to `unverified` and block a genuinely clean run. When the repo has no test or build command to discover, `VERIFY_OUTPUT` stays empty; say so in the verifier's prompt so it cites commands (which the gate runs itself) or code spans rather than test names it has no way to have resolved.
 
 Its three charges:
 

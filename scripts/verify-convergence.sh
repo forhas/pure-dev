@@ -180,7 +180,13 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m has the minimal-patch rule" "$S" 'smallest edit that resolves that finding'
   assert_has "$n r&m bounds the fix by file"     "$S" 'touches no file the finding did not name'
   assert_has "$n r&m names the paired-edit case" "$S" 'stated repository invariant'
+  assert_has "$n r&m has verify-before-push" "$S" 'Rule 4 — verify before push'
 done
+
+assert_has   "quick-dev r&m verifies at the step-2 push" \
+  "$QD/skills/review-and-merge/SKILL.md" "run Rule 4's verification first"
+assert_lacks "quick-dev r&m drops the stale never-runs-tests claim" \
+  "$QD/skills/review-and-merge/SKILL.md" 'the reviewer loop never runs tests at all'
 
 echo
 if [ "$fails" -eq 0 ]; then
