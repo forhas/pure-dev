@@ -141,8 +141,10 @@ already contain this run's earliest fixes and hide them from the test. A
 finding is **induced** if and only if its `(path, line)` falls inside — or within 5 lines of —
 an added hunk of that diff.
 
-Both sides are in current-HEAD coordinates, so line drift is a non-issue and no range table
-needs maintaining across commits. This is deliberately simpler than tracking each fix commit's
+Both sides are measured against the **reviewed commit** — the review object's own `commit_id`,
+not HEAD — so they share one coordinate system by construction. That matters because a late
+review caught by the settle poll reports lines against a commit HEAD has already moved past;
+measuring those against HEAD would misclassify `induced` and blame an unrelated line. This is deliberately simpler than tracking each fix commit's
 hunks: a single diff against a single fixed baseline cannot go stale.
 
 **Chain depth** is attributed with `git blame`:

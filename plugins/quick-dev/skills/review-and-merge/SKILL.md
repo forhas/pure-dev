@@ -161,14 +161,22 @@ local-only path uses, and the two paths must not disagree:
 
 ```bash
 R1_SHA=$(git rev-parse HEAD)   # captured at the start of the run, before ## 2 pushes anything
-# the lines this loop itself has written, in current-HEAD coordinates
-git diff --unified=0 "$R1_SHA"..HEAD
+# the lines this loop had written as of the commit the review actually inspected
+git diff --unified=0 "$R1_SHA".."$REVIEW_SHA"
 ```
 
-A finding is `induced` **iff** its `(path, line)` falls inside — or within 5 lines of — an added
-hunk (`@@ … +start,count @@` under a `+++ b/<path>`) of that diff. Both sides are in
-current-HEAD coordinates, so line drift needs no correction and no per-commit range table needs
-maintaining. Do not substitute a per-commit walk: a single diff against a single fixed baseline
+`$REVIEW_SHA` is the reviewed commit — the review object's own `commit_id`, **not** HEAD. A
+finding is `induced` **iff** its `(path, line)` falls inside — or within 5 lines of — an added
+hunk (`@@ … +start,count @@` under a `+++ b/<path>`) of that diff.
+
+**Classify against the reviewed commit, never against HEAD.** An inline comment's `line` is
+relative to the commit its review inspected, and that is not always HEAD: the settle poll in
+`## 4` exists precisely to catch a second review arriving *after* this round's fixes were
+committed, so a late review reports lines against a commit HEAD has already moved past.
+Measuring a stale line against HEAD's hunks misclassifies `induced` and blames an unrelated
+line — which can pick the wrong Rule 2 branch and revert valid fixes. Diffing to `$REVIEW_SHA`
+puts both sides in one coordinate system by construction, for early and late reviews alike, and
+needs no translation step. No per-commit range table is needed either. Do not substitute a per-commit walk: a single diff against a single fixed baseline
 cannot go stale, and one rebuilt each round can. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
 straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so induced detection still works on a local-only run.
 
