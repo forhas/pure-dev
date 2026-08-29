@@ -333,8 +333,18 @@ For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true
 
 **Non-inline feedback has no thread-resolution state and must not be skipped**: review summary bodies and PR-level issue comments with actionable requests (e.g. "add tests") get the same agree/partially/disagree treatment, with the reply posted via `gh pr comment <pr> --body "..."`. Track them by comment ID — that tracking is their only "resolved" marker. Ignore non-actionable bot boilerplate per the bound reviewer's profile (e.g. the Codex "About" block, or Copilot's per-file summary table and custom-instructions footer).
 
-Never respond twice to the same comment — track handled comment IDs. If code changed, **run Rule 4's verification first and retain its output as `VERIFY_OUTPUT`**, then commit and push:
-`git add -A && git commit -m "review: address PR feedback" && git push`
+Never respond twice to the same comment — track handled comment IDs. If code changed, **run Rule 4's verification first and retain its output as `VERIFY_OUTPUT`**, then commit **one applied finding per commit** with its `Finding:` trailer, per the per-finding-commit rule above, and push once at the end:
+
+```bash
+# for each applied finding, staging only the paths that finding's fix touched:
+git add <paths for this finding> && git commit -m "review: <what this fixes>
+
+Finding: <ledger id>"
+# after the last one:
+git push
+```
+
+`git add -A` is wrong here: it sweeps every finding's fix into one commit, which is exactly what makes the blame-to-ledger mapping ambiguous.
 
 ## 3. Trigger a review
 
@@ -558,7 +568,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
-4. **Run Rule 4's verification and retain its output as `VERIFY_OUTPUT`**, then commit and push applied changes. A fix that fails verification is corrected or reverted here, never pushed for the next round to find.
+4. **Run Rule 4's verification and retain its output as `VERIFY_OUTPUT`**, then commit applied changes **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push. A fix that fails verification is corrected or reverted here, never pushed for the next round to find.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
    settled.** A silence retry can leave two requests outstanding, so a second review can arrive
    after the one just handled; the `$RIDS` query only saw what existed when it ran. The
@@ -597,7 +607,7 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification and **retain that output as `VERIFY_OUTPUT`**, overwriting any earlier value — the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check — then commit and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification and **retain that output as `VERIFY_OUTPUT`**, overwriting any earlier value — the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check — then commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - **No code changed this round** — whatever the reason. Every finding was declined with
