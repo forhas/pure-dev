@@ -29,6 +29,11 @@ jobs:
       # this workflow exists to remove, and a hardcoded list reintroduces it
       # the first time someone adds a script and forgets this file.
       - name: Run every verification harness
+        # Explicit, because this step genuinely depends on bash: `shopt`, arrays,
+        # and `${#arr[@]}` are not POSIX sh. Without the key GitHub would fall
+        # back to `sh` if bash were ever absent, failing obscurely rather than
+        # loudly — and a job-level `defaults.run.shell` could change it silently.
+        shell: bash
         run: |
           set -uo pipefail
           shopt -s nullglob
