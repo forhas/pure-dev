@@ -299,9 +299,9 @@ Two tests, both checkable against the diff the fix produces:
    implements what the finding asks for**, and the reply must state that set before the fix is
    applied. Naming the scope is what keeps the test meaningful for an unnamed finding; without
    it the rule would make every body-level finding categorically unfixable, since any fix at all
-   touches a file the finding did not name. The one exception in either case is a **stated
-   repository invariant** requiring a paired edit — a mirrored or duplicated copy that must move
-   together — and that invariant must be *named* in the reply, never assumed.
+   touches a file the finding did not name. The one exception in either case is a
+   **stated repository invariant** requiring a paired edit — a mirrored or duplicated copy
+   that must move together — and that invariant must be *named* in the reply, never assumed.
 2. It **adds no rule, gate, config key, section, or public interface** the finding did not ask
    for.
 
