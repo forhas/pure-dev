@@ -188,6 +188,12 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m emits INDUCED-CHAINS-CUT"       "$S" 'INDUCED-CHAINS-CUT:'
   assert_has "$n r&m emits RATCHET-ENGAGED-AT-ROUND" "$S" 'RATCHET-ENGAGED-AT-ROUND:'
   assert_has "$n r&m forbids an absent key"          "$S" 'never absence'
+  assert_has "$n r&m emits ROUNDS"          "$S" 'ROUNDS:'
+  assert_has "$n r&m emits FINDINGS-TOTAL"  "$S" 'FINDINGS-TOTAL:'
+  assert_has "$n r&m emits ABSORBED"        "$S" 'ABSORBED:'
+  assert_has "$n r&m binds the ratchet run-global" "$S" 'run-global'
+  assert_has "$n r&m exempts completeness from Rule 1" "$S" 'outside Rule 1'
+  assert_has "$n r&m terminates the local loop on no-change" "$S" 'never as "everything was'
 done
 
 assert_has   "quick-dev r&m verifies at the step-2 push" \

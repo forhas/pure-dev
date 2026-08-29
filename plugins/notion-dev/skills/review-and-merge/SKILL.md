@@ -127,9 +127,17 @@ raised after round 1 landed inside lines the loop's own fixes had just written**
 was 84%, and 11 of the 12 highest-severity findings arriving at round 3 or later were caused by
 the loop itself. Rounds 3 onward were almost entirely the loop cleaning up after its own
 patches. The controls below exist to stop that, and they bind **every** finding from every
-source — existing comments here, reviewer rounds, local-reviewer findings, and the Completeness
-gate's items. The measurement is in
+source — existing comments here, reviewer rounds, and local-reviewer findings. The measurement is in
 `docs/superpowers/specs/2026-08-29-review-loop-convergence-design.md`.
+
+**The Completeness gate's items are outside Rule 1.** That gate runs *after* the loop has ended,
+so its items carry no round for "from round 3 onward" to test, and a `not-met` or `unverified`
+criterion has no severity source to normalize — it is neither a Codex badge nor a local-reviewer
+label. It also needs no ratchet: it is already bounded by its own two-pass limit. Applying Rule 1
+there would force `file` on an `unverified` criterion, which is precisely what that gate's own
+pass-2 paragraph forbids — converting "we could not confirm it" into a recorded scope reduction
+for work that was already done. **Rules 3 and 4 do apply** to any fix made for a completeness
+item: keep it minimal, and verify before pushing it.
 
 **The findings ledger.** Keep one in-memory record per finding for the life of the run. It is
 never written to disk and never committed; it exists to make the rules below decidable and to
@@ -138,7 +146,7 @@ produce the `CONVERGENCE` block in the final report.
 | field | value |
 |---|---|
 | `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
-| `round` | the round it arrived in — `0` for comments that predate the first trigger |
+| `round` | the **run-global** round it arrived in, reviewer and local rounds counted together — `0` for comments that predate the first trigger |
 | `path`, `line` | its location, as the review reported it |
 | `severity` | **normalized** to `blocking` or `non-blocking` — see below |
 | `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
@@ -151,7 +159,7 @@ in the finding body — and local-reviewer `Critical` and `Required` are **`bloc
 **Copilot emits no severity at all** — not on inline comments, not on `Suppressed comments`
 entries — so assign one by judging the finding against the `notion-dev:local-code-review`
 severity vocabulary, and record in the ledger that it was judged rather than read. Over-rating
-Copilot findings as `blocking` is the one way to defeat Rule 1, and the report's apply rate is
+Copilot findings as `blocking` is the one way to defeat Rule 1, and the report's absorb rate is
 what makes that visible.
 
 **Induced findings.** A finding is **induced** when it points at code this run's own fixes
@@ -168,7 +176,8 @@ A finding is `induced` **iff** its `(path, line)` falls inside — or within 5 l
 hunk (`@@ … +start,count @@` under a `+++ b/<path>`) of that diff. Both sides are in
 current-HEAD coordinates, so line drift needs no correction and no per-commit range table needs
 maintaining. Do not substitute a per-commit walk: a single diff against a single fixed baseline
-cannot go stale, and one rebuilt each round can.
+cannot go stale, and one rebuilt each round can. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
+straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so induced detection still works on a local-only run.
 
 **Chain depth** attributes an induced finding to the fix that caused it:
 
@@ -186,8 +195,16 @@ too low, which under-triggers Rule 2 and never falsely reverts work.
 
 An agreed **non-blocking** finding arriving at round 3 or later becomes `file` — citing a
 blast-radius criterion, as every `file` item must — or `drop`, with its rationale. Rounds 1 and
-2 are unchanged: absorb-by-default at any severity. **Record the round at which the ratchet
-first changed an outcome**; the final report names it.
+2 are unchanged: absorb-by-default at any severity.
+
+**The round number Rule 1 tests is run-global** — reviewer rounds and local-fallback rounds
+counted together, from the run's first trigger. The local loop restarts its own counter at 1 for
+the round *cap*, which is counted independently on purpose; the ratchet must not read that
+counter. A run that exhausts the reviewer's quota at round 6 and switches to the local loop is
+eight rounds into its findings, not one, and re-permitting absorb-by-default for two more rounds
+there would reopen exactly the tail this rule exists to cut.
+
+**Record the round at which the ratchet first changed an outcome**; the final report names it.
 
 The ratchet governs only *where agreed work goes*. It does **not** touch the agree / partially
 agree / disagree axis: a finding that is simply wrong is still **declined** with a technical
@@ -210,6 +227,11 @@ hand:
   restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
   chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
   worth the first one.
+  The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
+  §2 forbids replying twice to the same comment. That rule exists to stop findings being
+  re-litigated; it does not license leaving a false record. Post a **PR-level note**
+  (`gh pr comment`) — never a second in-thread reply — naming the reverted commit, the root
+  finding, and the chain that forced the revert.
 - **Root was `blocking`** → **keep the fixes**; the underlying defect was real and reverting
   would reintroduce it. `file` the depth-2 finding, citing blast-radius criterion 3.
 
@@ -233,7 +255,9 @@ Two tests, both checkable against the diff the fix produces:
 
 A fix that fails either test is **not applied**. Re-triage the finding to `file` under
 blast-radius criterion 1 (it reaches code this PR was not already changing) or 2 (it needs a new
-public interface, dependency, config key, or data migration), and say so in the reply.
+public interface, dependency, config key, or data migration), and say so in the reply. When neither criterion is true — the over-large fix would have stayed inside this PR's own
+files and added no new interface — `drop` it instead, with the rationale that the finding's
+remedy exceeded its value. Never cite a criterion that is not true just to have one to cite.
 
 This is the one rule that lowers the *rate* at which fixes create findings rather than bounding
 the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
@@ -530,7 +554,15 @@ Each round:
 4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification (**retaining its output as `VERIFY_OUTPUT`**, as step 2 does), commit and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
-   - Every finding this round was declined with rationale (no code changed) → loop ended; a fresh agent on the same code would repeat the same findings; go to merge.
+   - **No code changed this round** — whatever the reason. Every finding was declined with
+     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file` or `drop`; or some
+     mixture. → loop ended; a fresh agent on identical code returns identical findings, so another
+     round buys nothing; go to merge. **Read this as "nothing changed", never as "everything was
+     declined"** — a round whose findings were all filed changed no code either, and requiring
+     declines specifically would strand such a round with no terminator at all: it is `NOT-CLEAN`,
+     so bullet 1 does not fire; it applied no fixes, so the oscillation guard does not fire; and it
+     would spin to the round cap re-finding and re-filing the same thing every round. This is the
+     local loop's counterpart to the reviewer loop's "do not re-trigger when nothing changed".
    - **Oscillation guard**: the same Critical/Required finding (or finding-set) recurs across rounds even though fixes addressing it were applied and pushed → stop early and treat it as a disagreed finding (interactive: pause per pause point (a); non-interactive: resolve autonomously and log).
    - Round counter reaches the cap → stop; go to merge under the cap semantics.
    - **Contract violation**: the reviewer's output has no `VERDICT` line, or its verdict contradicts its own listed severities → derive the verdict from the findings (`CLEAN` iff zero Critical/Required) and proceed with these rules. If the output is unusable (no parseable findings at all), discard it and spawn one replacement reviewer without incrementing the counter; if the replacement also fails, stop and report.
@@ -687,7 +719,7 @@ The report's triage outcome is **three named lists**, never one undifferentiated
 
 - `ABSORBED` — items done in this PR, each with what was changed.
 - `FILED` — items that must become their own ticket, each with its criterion number and
-  rationale. Reclassified items appear here, marked as reclassified from `absorb`.
+  rationale. Reclassified items appear here, marked as reclassified from `absorb` — or from `applied`, when Rule 2 reverted the fix.
 - `DROPPED` — items decided against, each with its rationale.
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
@@ -711,14 +743,14 @@ disposition `applied` or `partial`, plus any `absorb` item the Absorb gate then 
 fixed. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What makes
 the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
 merge, so `absorb` is a transient state and never a reported one. `ABSORB-RATE` is
-`ABSORBED / FINDINGS-TOTAL`.
+`ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
 
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
 an absent key is indistinguishable from a run that did not measure. This block
 exists because the failure it guards against was invisible until someone correlated the GitHub
 API against `git`: an 84% apply rate and a 68% induced rate appeared nowhere in any run's own
 output. Read it as a calibration signal — an `ABSORB-RATE` near 88% — the measured baseline, 61 of 69 findings acted on — means the judgment bar is not firing, or that Copilot findings are being over-rated as `blocking`; a `FILED` count that dwarfs
-`APPLIED` is the opposite mis-calibration, with Rule 3 filing work that should have been fixed.
+`ABSORBED` is the opposite mis-calibration, with Rule 3 filing work that should have been fixed.
 
 The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. Callers depend on this — `/notion-dev:ticket` and `/notion-dev:finalize` tick the ticket's to-do boxes from `VERDICTS`, and every caller writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
 

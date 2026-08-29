@@ -319,7 +319,7 @@ This repository ships markdown, so verification is structural, per the existing 
 5. `2026-08-28-convergence-design.md` no longer asserts the within-ticket loops converge.
 
 The behavioural check is the next substantial pull request driven through the loop: its
-`CONVERGENCE` block should report rounds in the low single digits, an apply rate well below 84%,
+`CONVERGENCE` block should report rounds in the low single digits, an absorb rate well below 88%,
 and a non-zero `RATCHET-ENGAGED-AT-ROUND` only when it genuinely ran past round 2.
 
 ## Not in scope
