@@ -347,6 +347,21 @@ seconds, and it comes back as a *new finding*, which is then induced surface for
 with. When the repo configures no `verify.steps`, say so in the final report and leave
 `VERIFY_OUTPUT` empty.
 
+**A reverted fix must be un-said, not just un-pushed.** By the time verification runs, `## 2`
+has already replied `Agreed and applied.`, marked the comment handled, and resolved its thread.
+Reverting there and stopping would leave the ledger at `applied`, the thread claiming a fix that
+does not exist, and the Absorb gate satisfied — so the PR could merge without the agreed change
+while its audit trail says otherwise. That is the one outcome this skill must never produce. So
+whenever a fix is reverted for failing verification:
+
+- **Set the ledger entry back to `absorb`** if it will be retried in this round, or re-triage it
+  to `file` or `drop` with the failure as its rationale. What it must not stay is `applied`.
+  Leaving it `absorb` is the safe default: the Absorb gate then holds the merge until the fix
+  genuinely lands, which is the enforcement this case needs and already has.
+- **Post a PR-level correction** (`gh pr comment`) naming the finding, the reverted commit, and
+  the verification failure — never a second in-thread reply, for the same reason Rule 2's revert
+  branch uses a PR-level note.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.
