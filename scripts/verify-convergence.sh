@@ -171,6 +171,9 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m names both severity values"   "$S" '`non-blocking`'
   assert_has "$n r&m pins the induced baseline"    "$S" 'R1_SHA'
   assert_has "$n r&m defines chain depth"          "$S" 'git blame -L'
+  assert_has   "$n r&m has the severity ratchet"     "$S" 'From round 3 onward, only a `blocking` finding may be triaged'
+  assert_has   "$n r&m keeps the decline path"       "$S" 'a decline is not a `drop`'
+  assert_lacks "$n r&m drops the stale runaway claim" "$S" 'That is why this cannot run away'
 done
 
 echo

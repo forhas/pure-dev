@@ -99,8 +99,11 @@ agreed with (fully or partly) that is not already fixed in this round:
   Every `file` item must cite the criterion number that made it one.
 
 Absorbing does not skip review: the absorbed change is pushed like any other fix and the next
-round reviews it. That is why this cannot run away — absorbed work re-enters the existing
-round-capped loop, and the round cap is the backstop.
+round reviews it. That re-entry is also what makes absorption expensive — the absorbed change is
+new unreviewed surface, and it draws findings of its own. **The round cap alone does not keep
+this bounded**; measurement showed the loop running ten and eleven rounds against it. The
+**Convergence controls** below are what bound it, and the round cap goes back to being the
+runaway backstop it is documented as.
 
 ### Convergence controls
 
@@ -162,6 +165,23 @@ If that sha is **not** one of this run's fix commits, the finding is `depth = 0`
 the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
 rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
 too low, which under-triggers Rule 2 and never falsely reverts work.
+
+**Rule 1 — the severity ratchet. From round 3 onward, only a `blocking` finding may be triaged
+`absorb`.**
+
+An agreed **non-blocking** finding arriving at round 3 or later becomes `file` — citing a
+blast-radius criterion, as every `file` item must — or `drop`, with its rationale. Rounds 1 and
+2 are unchanged: absorb-by-default at any severity. **Record the round at which the ratchet
+first changed an outcome**; the final report names it.
+
+The ratchet governs only *where agreed work goes*. It does **not** touch the agree / partially
+agree / disagree axis: a finding that is simply wrong is still **declined** with a technical
+reason, and a decline is not a `drop`.
+
+Measured cost of this rule across five pull requests: exactly one genuine latent `blocking`
+finding would have become a `FILED` item instead of an in-PR fix — tracked, cited, and
+reviewable as its own change, not lost. Rounds 3 and later otherwise contributed 34
+`non-blocking` findings and 11 self-inflicted `blocking` ones.
 
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
