@@ -698,19 +698,26 @@ The report also carries a **`CONVERGENCE`** block, computed from the findings le
 CONVERGENCE:
 ROUNDS: <n>
 FINDINGS-TOTAL: <n>
-APPLIED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
-APPLY-RATE: <pct>
+ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
+ABSORB-RATE: <pct>
 INDUCED: <n> (<pct> of findings after round 1)
 INDUCED-CHAINS-CUT: <n>
 RATCHET-ENGAGED-AT-ROUND: <n | never>
 ```
 
+The four disposition counts are exhaustive, and they are the same buckets as the three named
+lists above plus declines. `ABSORBED` counts every finding fixed in this PR — ledger
+disposition `applied` or `partial`, plus any `absorb` item the Absorb gate then required to be
+fixed. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What makes
+the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
+merge, so `absorb` is a transient state and never a reported one. `ABSORB-RATE` is
+`ABSORBED / FINDINGS-TOTAL`.
+
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
 an absent key is indistinguishable from a run that did not measure. This block
 exists because the failure it guards against was invisible until someone correlated the GitHub
 API against `git`: an 84% apply rate and a 68% induced rate appeared nowhere in any run's own
-output. Read it as a calibration signal — an `APPLY-RATE` near 84% means the judgment bar is not
-firing, or that Copilot findings are being over-rated as `blocking`; a `FILED` count that dwarfs
+output. Read it as a calibration signal — an `ABSORB-RATE` near 88% — the measured baseline, 61 of 69 findings acted on — means the judgment bar is not firing, or that Copilot findings are being over-rated as `blocking`; a `FILED` count that dwarfs
 `APPLIED` is the opposite mis-calibration, with Rule 3 filing work that should have been fixed.
 
 The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. Callers depend on this — `/notion-dev:ticket` and `/notion-dev:finalize` tick the ticket's to-do boxes from `VERDICTS`, and every caller writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
