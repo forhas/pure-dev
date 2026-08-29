@@ -260,6 +260,14 @@ hand:
   restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
   chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
   worth the first one.
+  **Every entry in the chain gets a final disposition, not just the root.** A revert removes
+  work from the PR, so leaving the intermediate entries at `applied` would count reverted work
+  as `ABSORBED` and leaving the triggering depth-2 finding untriaged would drop it from the
+  counts entirely — either one falsifies the partition that calls those four buckets
+  exhaustive. Rewrite each intermediate entry's disposition from `applied` to `drop`, rationale
+  `fix reverted with its chain`; and give the depth-2 finding that forced the revert its own
+  disposition — `file` if a blast-radius criterion is true, otherwise `drop` on Rule 1's second
+  ground with the chain as its rationale.
   The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
   §2 forbids replying twice to the same comment. That rule exists to stop findings being
   re-litigated; it does not license leaving a false record. Post a **PR-level note**
