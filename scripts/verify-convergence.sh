@@ -161,6 +161,18 @@ assert_has "epic-update comments on the epic"   "$E" 'postComment'
 assert_has "epic-update logs legacy disclosure" "$E" '**Legacy follow-ups closed over**'
 assert_has "epic-update reads its legacy line back" "$E" 'unioned with what the legacy-spelling line yielded'
 
+echo "== review-loop convergence =="
+for P in "$ND" "$QD"; do
+  S=$P/skills/review-and-merge/SKILL.md
+  n=$(basename "$P")
+  assert_has "$n r&m has the convergence controls" "$S" '### Convergence controls'
+  assert_has "$n r&m has the findings ledger"      "$S" '**The findings ledger.**'
+  assert_has "$n r&m normalizes severity"          "$S" 'normalizes mechanically'
+  assert_has "$n r&m names both severity values"   "$S" '`non-blocking`'
+  assert_has "$n r&m pins the induced baseline"    "$S" 'R1_SHA'
+  assert_has "$n r&m defines chain depth"          "$S" 'git blame -L'
+done
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

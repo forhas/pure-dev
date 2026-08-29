@@ -117,6 +117,67 @@ Absorbing does not skip review: the absorbed change is pushed like any other fix
 round reviews it. That is why this cannot run away — absorbed work re-enters the existing
 round-capped loop, and the round cap is the backstop.
 
+### Convergence controls
+
+Measured across 37 reviewer rounds on this plugin's own pull requests: **68% of every finding
+raised after round 1 landed inside lines the loop's own fixes had just written**, the apply rate
+was 84%, and 11 of the 12 highest-severity findings arriving at round 3 or later were caused by
+the loop itself. Rounds 3 onward were almost entirely the loop cleaning up after its own
+patches. The controls below exist to stop that, and they bind **every** finding from every
+source — existing comments here, reviewer rounds, local-reviewer findings, and the Completeness
+gate's items. The measurement is in
+`docs/superpowers/specs/2026-08-29-review-loop-convergence-design.md`.
+
+**The findings ledger.** Keep one in-memory record per finding for the life of the run. It is
+never written to disk and never committed; it exists to make the rules below decidable and to
+produce the `CONVERGENCE` block in the final report.
+
+| field | value |
+|---|---|
+| `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
+| `round` | the round it arrived in — `0` for comments that predate the first trigger |
+| `path`, `line` | its location, as the review reported it |
+| `severity` | **normalized** to `blocking` or `non-blocking` — see below |
+| `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
+| `depth` | induced-chain depth — see below |
+| `fix_sha` | for an applied finding, the commit that fixed it |
+
+**Severity normalizes mechanically.** Codex `P0` and `P1` — read from the `badge/P<n>` image URL
+in the finding body — and local-reviewer `Critical` and `Required` are **`blocking`**. Codex
+`P2` and below, and local-reviewer `Optional`, `Nit`, and `FYI`, are **`non-blocking`**.
+**Copilot emits no severity at all** — not on inline comments, not on `Suppressed comments`
+entries — so assign one by judging the finding against the `notion-dev:local-code-review`
+severity vocabulary, and record in the ledger that it was judged rather than read. Over-rating
+Copilot findings as `blocking` is the one way to defeat Rule 1, and the report's apply rate is
+what makes that visible.
+
+**Induced findings.** A finding is **induced** when it points at code this run's own fixes
+wrote. Capture the baseline **once**, at the first reviewer response of the run — that review's
+own `commit_id`, the sha GitHub records it as submitted against — and never refresh it:
+
+```bash
+R1_SHA=$(gh api "repos/{owner}/{repo}/pulls/<pr>/reviews/<first-review-id>" | jq -r .commit_id)
+# the lines this loop itself has written, in current-HEAD coordinates
+git diff --unified=0 "$R1_SHA"...HEAD
+```
+
+A finding is `induced` **iff** its `(path, line)` falls inside — or within 5 lines of — an added
+hunk (`@@ … +start,count @@` under a `+++ b/<path>`) of that diff. Both sides are in
+current-HEAD coordinates, so line drift needs no correction and no per-commit range table needs
+maintaining. Do not substitute a per-commit walk: a single diff against a single fixed baseline
+cannot go stale, and one rebuilt each round can.
+
+**Chain depth** attributes an induced finding to the fix that caused it:
+
+```bash
+git blame -L "<line>,<line>" --porcelain -- "<path>" | head -1   # -> the sha that wrote it
+```
+
+If that sha is **not** one of this run's fix commits, the finding is `depth = 0`. Otherwise it is
+the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
+rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
+too low, which under-triggers Rule 2 and never falsely reverts work.
+
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
 1. Read the comment against the actual code and the PR's intent. Validate every suggestion.
