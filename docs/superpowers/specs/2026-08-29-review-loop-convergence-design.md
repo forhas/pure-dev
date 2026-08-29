@@ -14,12 +14,16 @@ This is measurable, and it was measured. Every bot review round on this reposito
 requests — #4, #6, #7, #14, #16 — was correlated against the lines the loop's own fix commits
 wrote. Methodology is in the appendix; it is reproducible from the GitHub API and `git`.
 
-**37 reviewer rounds. 69 bot findings.**
+**37 reviewer rounds. 69 bot findings.** Every count below is of **inline** findings, attributed
+to a round by `pull_request_review_id`. Copilot also emits body-only findings in a
+`Suppressed comments` block, which this count deliberately excludes because they carry no
+`(path, line)` and so cannot be tested for induction — the measurement's whole subject. Where
+that exclusion changes a statement, the statement says so.
 
 | Metric | Value |
 |---|---|
 | Reviewer rounds on a substantial PR | **10–11** (#4: 10, #6: 10, #7: 11) |
-| Rounds that returned zero findings | **0** |
+| Rounds that returned zero *inline* findings | **3 of 37** — all Copilot, each carrying body-only findings instead |
 | Findings arriving after round 1 | 56 |
 | **Fix-induced** — within ±8 lines of text a prior fix in the same run wrote | **38 / 56 = 68%** |
 | Latent — in original-diff code no fix ever touched | 18 / 56 = 32% |
@@ -29,8 +33,8 @@ wrote. Methodology is in the appendix; it is reproducible from the GitHub API an
 Two mechanisms produce this, and they need different remedies.
 
 **Mechanism 1 — the loop reviews its own patches (68% of findings).** Every applied fix is
-unreviewed code that enters the next round's review surface. PR #6 is the clearest case: twelve
-findings across nine rounds, all inside `epic-update/SKILL.md:16–70` — the exact region each
+unreviewed code that enters the next round's review surface. PR #6 is the clearest case: thirteen
+findings across eight rounds, all inside `epic-update/SKILL.md:16–70` — the exact region each
 fix rewrote. The measured **induction rate is 0.62 new findings per applied fix**.
 
 That rate is subcritical, so the loop does converge — geometrically, with ratio 0.62. A round-1
