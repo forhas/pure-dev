@@ -131,7 +131,7 @@ One diff, no per-commit bookkeeping:
 
 ```bash
 # the lines this loop itself has written, in current-HEAD coordinates
-git diff --unified=0 "$R1_SHA"...HEAD
+git diff --unified=0 "$R1_SHA"..HEAD
 ```
 
 where `$R1_SHA` is the **first** reviewer review's own `commit_id` — the sha GitHub records the

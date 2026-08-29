@@ -169,7 +169,7 @@ own `commit_id`, the sha GitHub records it as submitted against — and never re
 ```bash
 R1_SHA=$(gh api "repos/{owner}/{repo}/pulls/<pr>/reviews/<first-review-id>" | jq -r .commit_id)
 # the lines this loop itself has written, in current-HEAD coordinates
-git diff --unified=0 "$R1_SHA"...HEAD
+git diff --unified=0 "$R1_SHA"..HEAD
 ```
 
 A finding is `induced` **iff** its `(path, line)` falls inside — or within 5 lines of — an added
@@ -738,11 +738,12 @@ RATCHET-ENGAGED-AT-ROUND: <n | never>
 ```
 
 The four disposition counts are exhaustive, and they are the same buckets as the three named
-lists above plus declines. `ABSORBED` counts every finding fixed in this PR — ledger
-disposition `applied` or `partial`, plus any `absorb` item the Absorb gate then required to be
-fixed. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What makes
-the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
-merge, so `absorb` is a transient state and never a reported one. `ABSORB-RATE` is
+lists above plus declines. `ABSORBED` counts ledger disposition `applied` or `partial` — and
+only those. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What
+makes the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
+merge, so by the time the report is written every `absorb` has already become `applied` (the
+gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
+and never a reported one. `ABSORB-RATE` is
 `ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
 
 Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
