@@ -41,9 +41,13 @@ Two things are notably *not* broken and are preserved by this design:
   anti-patterns. Creation-time fragmentation is not the problem.
 - Both review loops already have real stopping rules — "neither loop manufactures work from
   theoretical findings" (`review-and-merge/SKILL.md:419`), the oscillation guard, the round
-  cap. The *within-ticket* loops converge.
+  cap. Those stopping rules were **not** sufficient in practice: measurement of 37 reviewer
+  rounds found the within-ticket review loop running ten and eleven rounds, 68% of its findings
+  self-inflicted. See `2026-08-29-review-loop-convergence-design.md`, which supersedes this
+  paragraph. The across-ticket analysis below is unaffected.
 
-The failure is entirely in *across-ticket filing*.
+The failure *this* design addresses is in *across-ticket filing*; the within-ticket review loop
+has a separate convergence failure, addressed by `2026-08-29-review-loop-convergence-design.md`.
 
 ### Secondary defect: `SKIPPED` blocks closure forever
 

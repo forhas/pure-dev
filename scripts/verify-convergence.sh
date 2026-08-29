@@ -161,6 +161,58 @@ assert_has "epic-update comments on the epic"   "$E" 'postComment'
 assert_has "epic-update logs legacy disclosure" "$E" '**Legacy follow-ups closed over**'
 assert_has "epic-update reads its legacy line back" "$E" 'unioned with what the legacy-spelling line yielded'
 
+echo "== review-loop convergence =="
+for P in "$ND" "$QD"; do
+  S=$P/skills/review-and-merge/SKILL.md
+  n=$(basename "$P")
+  assert_has "$n r&m has the convergence controls" "$S" '### Convergence controls'
+  assert_has "$n r&m has the findings ledger"      "$S" '**The findings ledger.**'
+  assert_has "$n r&m normalizes severity"          "$S" 'normalizes mechanically'
+  assert_has "$n r&m names both severity values"   "$S" '`non-blocking`'
+  assert_has "$n r&m pins the induced baseline"    "$S" 'R1_SHA'
+  assert_has "$n r&m defines chain depth"          "$S" 'git blame -L'
+  assert_has   "$n r&m has the severity ratchet"     "$S" 'From round 3 onward, only a `blocking` finding may be triaged'
+  assert_has   "$n r&m keeps the decline path"       "$S" 'a decline is not a `drop`'
+  assert_lacks "$n r&m drops the stale runaway claim" "$S" 'That is why this cannot run away'
+  assert_has "$n r&m has the induced cap"        "$S" 'A finding at `depth ≥ 2` is never absorbed'
+  assert_has "$n r&m reverts non-blocking roots" "$S" 'revert the chain'
+  assert_has "$n r&m keeps blocking-root fixes"  "$S" 'keep the fixes'
+  assert_has "$n r&m has the minimal-patch rule" "$S" 'smallest edit that resolves that finding'
+  assert_has "$n r&m bounds the fix by scope"    "$S" 'touches no file beyond the finding'"'"'s scope'
+  assert_has "$n r&m scopes unnamed findings"    "$S" 'smallest set of files that actually'
+  assert_has "$n r&m names the paired-edit case" "$S" 'stated repository invariant'
+  assert_has "$n r&m has verify-before-push" "$S" 'Rule 4 — verify before push'
+  assert_has "$n r&m emits a CONVERGENCE block"      "$S" 'CONVERGENCE:'
+  assert_has "$n r&m emits ABSORB-RATE"             "$S" 'ABSORB-RATE:'
+  assert_has "$n r&m defines the disposition partition"  "$S" 'never a reported one'
+  assert_has "$n r&m emits INDUCED"                  "$S" 'INDUCED:'
+  assert_has "$n r&m emits INDUCED-CHAINS-CUT"       "$S" 'INDUCED-CHAINS-CUT:'
+  assert_has "$n r&m emits RATCHET-ENGAGED-AT-ROUND" "$S" 'RATCHET-ENGAGED-AT-ROUND:'
+  assert_has "$n r&m forbids an absent key"          "$S" 'never absence'
+  assert_has "$n r&m emits ROUNDS"          "$S" 'ROUNDS:'
+  assert_has "$n r&m emits FINDINGS-TOTAL"  "$S" 'FINDINGS-TOTAL:'
+  assert_has "$n r&m emits ABSORBED"        "$S" 'ABSORBED:'
+  assert_has "$n r&m binds the ratchet run-global" "$S" 'run-global'
+  assert_has "$n r&m exempts completeness from Rule 1" "$S" 'outside Rule 1'
+  assert_has "$n r&m terminates the local loop on no-change" "$S" 'never as "everything was'
+done
+
+assert_has   "quick-dev r&m verifies at the step-2 push" \
+  "$QD/skills/review-and-merge/SKILL.md" "run Rule 4's verification first"
+assert_lacks "quick-dev r&m drops the stale never-runs-tests claim" \
+  "$QD/skills/review-and-merge/SKILL.md" 'the reviewer loop never runs tests at all'
+
+assert_identical "r&m mirror matches the quick-dev copy" \
+  "$QD/skills/review-and-merge/SKILL.md" .claude/skills/review-and-merge/SKILL.md
+assert_version_above "notion-dev bumped for review-loop convergence" "$ND/.claude-plugin/plugin.json" 0.14.0
+assert_version_above "quick-dev bumped for review-loop convergence"  "$QD/.claude-plugin/plugin.json" 0.9.0
+assert_lacks "2026-08-28 spec no longer claims within-ticket loops converge" \
+  docs/superpowers/specs/2026-08-28-convergence-design.md 'The *within-ticket* loops converge.'
+assert_lacks "2026-08-28 spec no longer claims the failure is entirely across-ticket" \
+  docs/superpowers/specs/2026-08-28-convergence-design.md 'The failure is entirely in *across-ticket filing*.'
+assert_has "review-loop spec carries the measurement" \
+  docs/superpowers/specs/2026-08-29-review-loop-convergence-design.md '68%'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

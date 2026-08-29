@@ -114,8 +114,263 @@ agreed with (fully or partly) that is not already fixed in this round:
   Every `file` item must cite the criterion number that made it one.
 
 Absorbing does not skip review: the absorbed change is pushed like any other fix and the next
-round reviews it. That is why this cannot run away — absorbed work re-enters the existing
-round-capped loop, and the round cap is the backstop.
+round reviews it. That re-entry is also what makes absorption expensive — the absorbed change is
+new unreviewed surface, and it draws findings of its own. **The round cap alone does not keep
+this bounded**; measurement showed the loop running ten and eleven rounds against it. The
+**Convergence controls** below are what bound it, and the round cap goes back to being the
+runaway backstop it is documented as.
+
+### Convergence controls
+
+Measured across 37 reviewer rounds on this plugin's own pull requests: **68% of every finding
+raised after round 1 landed inside lines the loop's own fixes had just written**, the apply rate
+was 84%, and 11 of the 12 highest-severity findings arriving at round 3 or later were caused by
+the loop itself. Rounds 3 onward were almost entirely the loop cleaning up after its own
+patches. The controls below exist to stop that, and they bind **every** finding from every
+source — existing comments here, reviewer rounds, and local-reviewer findings. The measurement is in
+`docs/superpowers/specs/2026-08-29-review-loop-convergence-design.md`.
+
+**The Completeness gate's items are outside Rule 1.** That gate runs *after* the loop has ended,
+so its items carry no round for "from round 3 onward" to test, and a `not-met` or `unverified`
+criterion has no severity source to normalize — it is neither a Codex badge nor a local-reviewer
+label. It also needs no ratchet: it is already bounded by its own two-pass limit. Applying Rule 1
+there would force `file` on an `unverified` criterion, which is precisely what that gate's own
+pass-2 paragraph forbids — converting "we could not confirm it" into a recorded scope reduction
+for work that was already done. **Rules 3 and 4 do apply** to any fix made for a completeness
+item: keep it minimal, and verify before pushing it.
+
+**The findings ledger.** Keep one in-memory record per finding for the life of the run. It is
+never written to disk and never committed; it exists to make the rules below decidable and to
+produce the `CONVERGENCE` block in the final report.
+
+| field | value |
+|---|---|
+| `id` | the GitHub comment id; for a body-level or local-reviewer finding, any stable synthetic id |
+| `round` | the **run-global** round it arrived in, reviewer and local rounds counted together — `0` for comments that predate the first trigger |
+| `path`, `line` | its location, as the review reported it |
+| `severity` | **normalized** to `blocking` or `non-blocking` — see below |
+| `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
+| `depth` | induced-chain depth — see below |
+| `fix_sha` | for an applied finding, the commit that fixed it |
+
+**Severity normalizes mechanically.** Codex `P0` and `P1` — read from the `badge/P<n>` image URL
+in the finding body — and local-reviewer `Critical` and `Required` are **`blocking`**. Codex
+`P2` and below, and local-reviewer `Optional`, `Nit`, and `FYI`, are **`non-blocking`**.
+**Anything that carries no severity label gets a judged one.** Copilot emits none — not on
+inline comments, not on `Suppressed comments` entries — and neither does a human leaving
+actionable feedback mid-loop, which `## 4` routes through these same step-2 rules. For any such
+finding, assign a severity by judging it against the `notion-dev:local-code-review` severity
+vocabulary, and record in the ledger that it was judged rather than read. Without this, Rule 1
+cannot decide whether the finding may be absorbed after round 2 and Rule 2 cannot pick a branch
+for its descendants. Over-rating
+Copilot findings as `blocking` is the one way to defeat Rule 1, and the report's absorb rate is
+what makes that visible.
+
+**Induced findings.** A finding is **induced** when it points at code this run's own fixes
+wrote. Capture the baseline **once, at the very start of the run — before `## 2` processes any
+existing feedback** — and never refresh it. It is the HEAD the run began at, not the first
+review's `commit_id`: `## 2` commits and pushes fixes for pre-existing comments *before* the
+first reviewer response exists, so keying on that response would fold this run's own earliest
+fixes into the baseline and hide them from induced detection. This is the same baseline the
+local-only path uses, and the two paths must not disagree:
+
+```bash
+R1_SHA=$(git rev-parse HEAD)   # captured at the start of the run, before ## 2 pushes anything
+# the lines this loop had written as of the commit the review actually inspected
+git diff --unified=0 "$R1_SHA".."$REVIEW_SHA"
+```
+
+`$REVIEW_SHA` is the reviewed commit — the review object's own `commit_id`, **not** HEAD. A
+finding is `induced` **iff** its `(path, line)` falls inside — or within 5 lines of — an added
+hunk (`@@ … +start,count @@` under a `+++ b/<path>`) of that diff.
+
+**Classify against the reviewed commit, never against HEAD.** An inline comment's `line` is
+relative to the commit its review inspected, and that is not always HEAD: the settle poll in
+`## 4` exists precisely to catch a second review arriving *after* this round's fixes were
+committed, so a late review reports lines against a commit HEAD has already moved past.
+Measuring a stale line against HEAD's hunks misclassifies `induced` and blames an unrelated
+line — which can pick the wrong Rule 2 branch and revert valid fixes. Diffing to `$REVIEW_SHA`
+puts both sides in one coordinate system by construction, for early and late reviews alike, and
+needs no translation step. No per-commit range table is needed either. Do not substitute a per-commit walk: a single diff against a single fixed baseline
+cannot go stale, and one rebuilt each round can. When no reviewer review ever arrives — the run detects unavailability before round 1 and goes
+straight to the local loop — use the HEAD the run started at as `$R1_SHA`, so induced detection still works on a local-only run.
+
+**Chain depth** attributes an induced finding to the fix that caused it:
+
+```bash
+git blame -L "<line>,<line>" --porcelain "$REVIEW_SHA" -- "<path>" | head -1   # -> the sha that wrote it
+```
+
+Blame at `$REVIEW_SHA` for the same reason the diff stops there: the line number came from that
+commit.
+
+If that sha is **not** one of this run's fix commits, the finding is `depth = 0`. Otherwise it is
+the `depth` of the ledger entry that sha fixed, **plus 1**. Blame under-counts when one fix
+rewrote a line an earlier fix had already rewritten; that failure mode yields a depth that is
+too low, which under-triggers Rule 2 and never falsely reverts work.
+
+**One commit per finding — this is what makes "the ledger entry that sha fixed" a function.**
+Batching a round's fixes into a single commit breaks chain depth outright: the blamed sha maps
+to several entries with different depths and root severities, so both `depth` and Rule 2's
+branch become undecidable, and Rule 2's revert would tear out unrelated fixes with the one it
+targets. Commit each applied finding on its own, naming it in a trailer so the mapping is
+recoverable from git alone:
+
+```
+review: <what this fixes>
+
+Finding: <ledger id>
+```
+
+When two findings genuinely demand one inseparable edit — the same line, or a change neither
+half of which is valid alone — commit them together and list **every** id in the trailer. That
+entry then takes the **maximum** depth of its findings, and — because Rule 2 branches on root
+severity, not depth — the **maximum severity**: `blocking` if any of its findings is blocking.
+Both maxima resolve the same way and for the same reason. A mixed commit that counted as
+`non-blocking`-rooted would send a later descendant down Rule 2's revert branch and tear out a
+blocking fix along with the cosmetic one it shared a commit with; treating it as
+`blocking`-rooted only ever means *keeping* work that was already justified. When the two
+branches disagree, take the one that cannot destroy a real fix. Rule 2 then treats the commit as
+one chain link. Say it in the trailer rather than pretending the case does not arise; what is
+forbidden is an unattributed batch, not a justified one.
+
+**Rule 1 — the severity ratchet. From round 3 onward, only a `blocking` finding may be triaged
+`absorb`.**
+
+An agreed **non-blocking** finding arriving at round 3 or later becomes `file` — citing a
+blast-radius criterion, as every `file` item must — or `drop`, with its rationale. Rounds 1 and
+2 are unchanged: absorb-by-default at any severity.
+
+**`drop` here has a second, distinct ground, and it must be stated as such.** A late
+non-blocking finding can be genuinely right — a real defect, inside files this PR already
+changes, needing no new interface and settling no open design question — and then *no*
+blast-radius criterion is true and `file` has nothing honest to cite. `drop` it, with the
+rationale that **the ratchet judged it not worth another round**, and never with the rationale
+that it was theoretical. Both grounds are recorded in `DROPPED`; only one of them is a claim
+about the finding's merit, and conflating them would launder a real defect into "insignificant".
+Trading a late marginal finding for termination is what this rule is *for* — the trade only
+stays honest while the report says which trade was made.
+
+**The round number Rule 1 tests is run-global** — reviewer rounds and local-fallback rounds
+counted together, from the run's first trigger. The local loop restarts its own counter at 1 for
+the round *cap*, which is counted independently on purpose; the ratchet must not read that
+counter. A run that exhausts the reviewer's quota at round 6 and switches to the local loop is
+eight rounds into its findings, not one, and re-permitting absorb-by-default for two more rounds
+there would reopen exactly the tail this rule exists to cut.
+
+**Record the round at which the ratchet first changed an outcome**; the final report names it.
+
+The ratchet governs only *where agreed work goes*. It does **not** touch the agree / partially
+agree / disagree axis: a finding that is simply wrong is still **declined** with a technical
+reason, and a decline is not a `drop`.
+
+Measured cost of this rule across five pull requests: exactly one genuine latent `blocking`
+finding would have become a `FILED` item instead of an in-PR fix — tracked, cited, and
+reviewable as its own change, not lost. Rounds 3 and later otherwise contributed 34
+`non-blocking` findings and 11 self-inflicted `blocking` ones.
+
+**Rule 2 — the induced cap. A finding at `depth ≥ 2` is never absorbed.**
+
+A `depth = 1` finding — the first defect found in a fix — is triaged normally, subject to Rule
+1. The loop gets exactly **one** repair attempt per chain. `depth ≥ 2` means the repair itself
+drew a finding, and that is where the chain is cut. Which branch applies is decided by the
+severity of the chain's **root** — the `depth = 0` entry it descends from, not the finding in
+hand:
+
+- **Root was `non-blocking`** → **revert the chain's fixes** (`git revert` those fix commits, or
+  restore the pre-fix text), then re-triage the **root** finding to `file` or `drop` with the
+  chain recorded as its rationale. A cosmetic finding that has now cost three patches was not
+  worth the first one.
+  **Every entry in the chain gets a final disposition, not just the root.** A revert removes
+  work from the PR, so leaving the intermediate entries at `applied` would count reverted work
+  as `ABSORBED` and leaving the triggering depth-2 finding untriaged would drop it from the
+  counts entirely — either one falsifies the partition that calls those four buckets
+  exhaustive. Rewrite each intermediate entry's disposition from `applied` to `drop`, rationale
+  `fix reverted with its chain`; and give the depth-2 finding that forced the revert its own
+  disposition — `file` if a blast-radius criterion is true; otherwise `drop` on Rule 1's second
+  ground with the chain as its rationale if it is non-blocking, or, if it is `blocking`, `file`
+  it citing the induced cap, exactly as the blocking-root branch above requires. A `blocking`
+  finding is never dropped in either branch.
+  The reverted fix's thread already carries `Agreed and applied.` and is already resolved, and
+  §2 forbids replying twice to the same comment. That rule exists to stop findings being
+  re-litigated; it does not license leaving a false record. Post a **PR-level note**
+  (`gh pr comment`) — never a second in-thread reply — naming the reverted commit, the root
+  finding, and the chain that forced the revert.
+- **Root was `blocking`** → **keep the fixes**; the underlying defect was real and reverting
+  would reintroduce it. `file` the depth-2 finding, citing whichever blast-radius criterion is
+  true — **not criterion 3 by default**. A depth-2 finding is often a straightforward defect
+  that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
+  "never cite a criterion that is not true just to have one to cite". When none of the three is
+  true, the disposition depends on the depth-2 finding's **own** severity:
+  - **non-blocking** → `drop` it on Rule 1's second ground, with the chain as its rationale.
+  - **`blocking`** → **never dropped.** `file` it citing **the induced cap itself** as the
+    ground. Rule 1's second ground does not reach here — it is scoped to a late *non-blocking*
+    finding, deliberately, because dropping a known blocking defect is not a trade this design
+    makes. The honest statement is that the work leaves this PR because the chain was cut, not
+    because of blast radius, and the cap exists precisely to refuse a third repair attempt.
+    Mark the item `blocking` in `FILED` so the caller sees that a known defect was deferred
+    rather than a nicety.
+
+Either branch **cuts one chain** — count it for the report. As with Rule 1, the decline path is
+untouched: a depth-2 finding that is wrong is **declined**, not filed.
+
+This rule, not Rule 1, is what handles self-inflicted **`blocking`** findings — the ratchet
+would still absorb those, and 11 of the 12 late high-severity findings in the measurement were
+exactly this. The two rules are complementary: Rule 1 removes the non-blocking tail, Rule 2
+removes the self-inflicted chain at any severity.
+
+**Rule 3 — the minimal patch. A fix must be the smallest edit that resolves that finding.**
+
+Two tests, both checkable against the diff the fix produces:
+
+1. It **touches no file beyond the finding's scope.** When the finding names files, that is its
+   scope — it touches no file the finding did not name. When it names none — a Copilot body-only
+   finding, a human "add tests", a completeness criterion, all of which these rules route and
+   which routinely carry no path — the scope is the **smallest set of files that actually
+   implements what the finding asks for**, and the reply must state that set before the fix is
+   applied. Naming the scope is what keeps the test meaningful for an unnamed finding; without
+   it the rule would make every body-level finding categorically unfixable, since any fix at all
+   touches a file the finding did not name. The one exception in either case is a
+   **stated repository invariant** requiring a paired edit — a mirrored or duplicated copy
+   that must move together — and that invariant must be *named* in the reply, never assumed.
+2. It **adds no rule, gate, config key, section, or public interface** the finding did not ask
+   for.
+
+A fix that fails either test is **not applied**. Re-triage the finding to `file` under
+blast-radius criterion 1 (it reaches code this PR was not already changing) or 2 (it needs a new
+public interface, dependency, config key, or data migration), and say so in the reply. When neither criterion is true — the over-large fix would have stayed inside this PR's own
+files and added no new interface — `drop` it instead, with the rationale that the finding's
+remedy exceeded its value. Never cite a criterion that is not true just to have one to cite.
+
+This is the one rule that lowers the *rate* at which fixes create findings rather than bounding
+the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
+that ranges beyond its finding is how that number gets paid.
+
+**Rule 4 — verify before push. Never push a review fix that has not passed the project's
+verification.**
+
+Step 2, `## 4` item 4, and the local review loop's step 4 already do this via the config
+`verify.steps` key, retaining the output as `VERIFY_OUTPUT`. The rule restates it here as a
+**convergence control**, not only as a Completeness-gate input: a broken fix that gets pushed
+costs a full round-trip — 3–20 minutes with copilot — to learn something a local run answers in
+seconds, and it comes back as a *new finding*, which is then induced surface for Rule 2 to deal
+with. When the repo configures no `verify.steps`, say so in the final report and leave
+`VERIFY_OUTPUT` empty.
+
+**A reverted fix must be un-said, not just un-pushed.** By the time verification runs, `## 2`
+has already replied `Agreed and applied.`, marked the comment handled, and resolved its thread.
+Reverting there and stopping would leave the ledger at `applied`, the thread claiming a fix that
+does not exist, and the Absorb gate satisfied — so the PR could merge without the agreed change
+while its audit trail says otherwise. That is the one outcome this skill must never produce. So
+whenever a fix is reverted for failing verification:
+
+- **Set the ledger entry back to `absorb`** if it will be retried in this round, or re-triage it
+  to `file` or `drop` with the failure as its rationale. What it must not stay is `applied`.
+  Leaving it `absorb` is the safe default: the Absorb gate then holds the merge until the fix
+  genuinely lands, which is the enforcement this case needs and already has.
+- **Post a PR-level correction** (`gh pr comment`) naming the finding, the reverted commit, and
+  the verification failure — never a second in-thread reply, for the same reason Rule 2's revert
+  branch uses a PR-level note.
 
 For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true` — a prior reply alone does not resolve a thread):
 
@@ -129,8 +384,30 @@ For **each unresolved** thread (skip threads whose GraphQL `isResolved` is `true
 
 **Non-inline feedback has no thread-resolution state and must not be skipped**: review summary bodies and PR-level issue comments with actionable requests (e.g. "add tests") get the same agree/partially/disagree treatment, with the reply posted via `gh pr comment <pr> --body "..."`. Track them by comment ID — that tracking is their only "resolved" marker. Ignore non-actionable bot boilerplate per the bound reviewer's profile (e.g. the Codex "About" block, or Copilot's per-file summary table and custom-instructions footer).
 
-Never respond twice to the same comment — track handled comment IDs. If code changed, first re-run the project's verification when the repo configures it (`verify.steps` in `.claude/notion-dev.config.json` — read from the primary checkout, not the worktree, honoring per-step `retries`) — a broken fix would surface as red CI next round, but repos without covering CI have only this gate — **and retain that run's output as `VERIFY_OUTPUT`, overwriting any earlier value**: the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check. Then commit and push:
-`git add -A && git commit -m "review: address PR feedback" && git push`
+Never respond twice to the same comment — track handled comment IDs. If code changed, first re-run the project's verification when the repo configures it (`verify.steps` in `.claude/notion-dev.config.json` — read from the primary checkout, not the worktree, honoring per-step `retries`) — a broken fix would surface as red CI next round, but repos without covering CI have only this gate — **and retain that run's output as `VERIFY_OUTPUT`, overwriting any earlier value**: the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check., then commit **one applied finding per commit** with its `Finding:` trailer, per the per-finding-commit rule above, and push once at the end:
+
+**Apply and commit serially — one finding at a time.** Make that finding's edit, run Rule 4's
+verification, commit it, and only then start the next. Do not edit several findings into the
+tree and try to separate them at `git add` time:
+
+```bash
+# per finding, in sequence — edit, verify, commit:
+<apply this finding's fix>
+<run the project's verification>
+git add <paths for this finding> && git commit -m "review: <what this fixes>
+
+Finding: <ledger id>"
+# after the last finding:
+git push
+```
+
+Two staging mistakes both recreate the ambiguous mapping this rule exists to remove. `git add -A`
+sweeps every finding's fix into one commit. Less obviously, `git add <path>` does the same
+whenever **two findings touch different hunks of the same file** — the first commit takes both
+fixes and the second is empty, so one sha again maps to two ledger entries. Serial
+edit-verify-commit avoids the problem instead of managing it. When edits are already sitting in
+the tree together, `git add -p` (`--patch`, "select hunks interactively") is the recovery path,
+not the normal one.
 
 ## 3. Trigger a review
 
@@ -355,7 +632,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
 2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled — this applies only to threads that actually exist (codex always creates inline threads for line-level findings; Copilot only when it has line-level findings).
-4. Re-run the step-2 verification (config `verify.steps`, when present), **retaining its output as `VERIFY_OUTPUT`** exactly as step 2 does, then commit and push applied changes.
+4. Re-run the step-2 verification (config `verify.steps`, when present), **retaining its output as `VERIFY_OUTPUT`** exactly as step 2 does, then commit applied changes **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
    settled.** A silence retry can leave two requests outstanding, so a second review can arrive
    after the one just handled; the `$RIDS` query only saw what existed when it ran. The
@@ -394,10 +671,18 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification (**retaining its output as `VERIFY_OUTPUT`**, as step 2 does), commit and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification (**retaining its output as `VERIFY_OUTPUT`**, as step 2 does), commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
-   - Every finding this round was declined with rationale (no code changed) → loop ended; a fresh agent on the same code would repeat the same findings; go to merge.
+   - **No code changed this round** — whatever the reason. Every finding was declined with
+     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file` or `drop`; or some
+     mixture. → loop ended; a fresh agent on identical code returns identical findings, so another
+     round buys nothing; go to merge. **Read this as "nothing changed", never as "everything was
+     declined"** — a round whose findings were all filed changed no code either, and requiring
+     declines specifically would strand such a round with no terminator at all: it is `NOT-CLEAN`,
+     so bullet 1 does not fire; it applied no fixes, so the oscillation guard does not fire; and it
+     would spin to the round cap re-finding and re-filing the same thing every round. This is the
+     local loop's counterpart to the reviewer loop's "do not re-trigger when nothing changed".
    - **Oscillation guard**: the same Critical/Required finding (or finding-set) recurs across rounds even though fixes addressing it were applied and pushed → stop early and treat it as a disagreed finding (interactive: pause per pause point (a); non-interactive: resolve autonomously and log).
    - Round counter reaches the cap → stop; go to merge under the cap semantics.
    - **Contract violation**: the reviewer's output has no `VERDICT` line, or its verdict contradicts its own listed severities → derive the verdict from the findings (`CLEAN` iff zero Critical/Required) and proceed with these rules. If the output is unusable (no parseable findings at all), discard it and spawn one replacement reviewer without incrementing the counter; if the replacement also fails, stop and report.
@@ -554,10 +839,39 @@ The report's triage outcome is **three named lists**, never one undifferentiated
 
 - `ABSORBED` — items done in this PR, each with what was changed.
 - `FILED` — items that must become their own ticket, each with its criterion number and
-  rationale. Reclassified items appear here, marked as reclassified from `absorb`.
+  rationale. Reclassified items appear here, marked as reclassified from `absorb` — or from `applied`, when Rule 2 reverted the fix.
 - `DROPPED` — items decided against, each with its rationale.
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
+
+The report also carries a **`CONVERGENCE`** block, computed from the findings ledger:
+
+```
+CONVERGENCE:
+ROUNDS: <n>
+FINDINGS-TOTAL: <n>
+ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
+ABSORB-RATE: <pct>
+INDUCED: <n> (<pct> of findings after round 1)
+INDUCED-CHAINS-CUT: <n>
+RATCHET-ENGAGED-AT-ROUND: <n | never>
+```
+
+The four disposition counts are exhaustive, and they are the same buckets as the three named
+lists above plus declines. `ABSORBED` counts ledger disposition `applied` or `partial` — and
+only those. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What
+makes the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
+merge, so by the time the report is written every `absorb` has already become `applied` (the
+gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
+and never a reported one. `ABSORB-RATE` is
+`ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
+
+Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
+an absent key is indistinguishable from a run that did not measure. This block
+exists because the failure it guards against was invisible until someone correlated the GitHub
+API against `git`: an 84% apply rate and a 68% induced rate appeared nowhere in any run's own
+output. Read it as a calibration signal — an `ABSORB-RATE` near 88% — the measured baseline, 61 of 69 findings acted on — means the judgment bar is not firing, or that Copilot findings are being over-rated as `blocking`; a `FILED` count that dwarfs
+`ABSORBED` is the opposite mis-calibration, with Rule 3 filing work that should have been fixed.
 
 The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. Callers depend on this — `/notion-dev:ticket` and `/notion-dev:finalize` tick the ticket's to-do boxes from `VERDICTS`, and every caller writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
 
