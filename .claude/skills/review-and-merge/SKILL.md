@@ -199,7 +199,7 @@ too low, which under-triggers Rule 2 and never falsely reverts work.
 **Findings with no location.** Three of the classes these rules route carry no `(path, line)`:
 Copilot `Suppressed comments` entries, human PR-level comments arriving mid-loop — which `## 4`
 routes through these same step-2 rules — and completeness-gate items, which Rule 1 exempts but
-Rules 2, 3 and 4 still reach. Before treating any of them as locationless, recover the one
+Rules 3 and 4 still reach. Before treating any of them as locationless, recover the one
 location that is stated in prose: a Copilot `Suppressed comments` entry carries a
 `**<path>:<line>**` header. Parse that header and use that as the location. Its line number is
 relative to the review's own commit — the same `$REVIEW_SHA` coordinate system the diff and the

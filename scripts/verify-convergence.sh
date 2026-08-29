@@ -172,6 +172,8 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m pins the induced baseline"    "$S" 'R1_SHA'
   assert_has "$n r&m defines chain depth"          "$S" 'git blame -L'
   assert_has "$n r&m defines the locationless case"  "$S" '**Findings with no location.**'
+  assert_has   "$n r&m matches the Rule 1 completeness carve-out" "$S" 'Rules 3 and 4 still reach'
+  assert_lacks "$n r&m does not claim Rule 2 reaches completeness items" "$S" 'Rules 2, 3 and 4 still reach'
   assert_has "$n r&m has a locatable ledger field"   "$S" '| `locatable` |'
   assert_has "$n r&m keys locatable on a reviewed sha" "$S" 'no reviewed commit sha to read that line against'
   assert_has "$n r&m keeps local findings locatable"   "$S" '**a local-reviewer finding has both**'
