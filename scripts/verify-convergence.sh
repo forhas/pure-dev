@@ -181,6 +181,12 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m bounds the fix by file"     "$S" 'touches no file the finding did not name'
   assert_has "$n r&m names the paired-edit case" "$S" 'stated repository invariant'
   assert_has "$n r&m has verify-before-push" "$S" 'Rule 4 — verify before push'
+  assert_has "$n r&m emits a CONVERGENCE block"      "$S" 'CONVERGENCE:'
+  assert_has "$n r&m emits APPLY-RATE"               "$S" 'APPLY-RATE:'
+  assert_has "$n r&m emits INDUCED"                  "$S" 'INDUCED:'
+  assert_has "$n r&m emits INDUCED-CHAINS-CUT"       "$S" 'INDUCED-CHAINS-CUT:'
+  assert_has "$n r&m emits RATCHET-ENGAGED-AT-ROUND" "$S" 'RATCHET-ENGAGED-AT-ROUND:'
+  assert_has "$n r&m forbids an absent key"          "$S" 'never absence'
 done
 
 assert_has   "quick-dev r&m verifies at the step-2 push" \

@@ -673,6 +673,27 @@ The report's triage outcome is **three named lists**, never one undifferentiated
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
 
+The report also carries a **`CONVERGENCE`** block, computed from the findings ledger:
+
+```
+CONVERGENCE:
+ROUNDS: <n>
+FINDINGS-TOTAL: <n>
+APPLIED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
+APPLY-RATE: <pct>
+INDUCED: <n> (<pct> of findings after round 1)
+INDUCED-CHAINS-CUT: <n>
+RATCHET-ENGAGED-AT-ROUND: <n | never>
+```
+
+Every key appears on every run. A key with nothing to report takes `0` or `never`, **never absence** —
+an absent key is indistinguishable from a run that did not measure. This block
+exists because the failure it guards against was invisible until someone correlated the GitHub
+API against `git`: an 84% apply rate and a 68% induced rate appeared nowhere in any run's own
+output. Read it as a calibration signal — an `APPLY-RATE` near 84% means the judgment bar is not
+firing, or that Copilot findings are being over-rated as `blocking`; a `FILED` count that dwarfs
+`APPLIED` is the opposite mis-calibration, with Rule 3 filing work that should have been fixed.
+
 The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict's citation replaced by the gate's resolution of it — the counts a caller consumes are always the gate's, never the verifier's raw ones, because the verifier cannot know which of its own citations resolved. `quick-dev:develop` invokes this skill only in **GitHub mode** — its local mode never enters this skill at all; it spawns its own reviewer, runs its own merge gate, and squashes locally, with its own completeness check (`develop/SKILL.md`'s Phase 4 step 4). The GitHub-mode caller posts this section as a **PR comment**, the same audit-trail-on-a-merged-PR pattern the local review loop already uses for its round findings, and writes its counts to the ledger. When no verifier ran, the section is present and reads `COMPLETENESS: degraded` with its reason, never absent.
 
 ## Safety rules
