@@ -277,7 +277,7 @@ for f in "${HEADREPO_DOCS[@]}"; do
   assert_order "$f: resolve head repo before deleting" \
     "$f" 1 "$total" \
     "gh pr view --json state"          '^gh pr view <pr> --json state' \
-    "head repository resolution"       '^gh pr view <pr> --json headRepositoryOwner' \
+    "head repo + repo + ref fields"    '^gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName' \
     "DELETE targets the encoded ref"   '^gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"'
   # Two separate things, and the DELETE anchor above is the load-bearing one.
   # Matching %23 anywhere in the file only proves the encoding is *explained*:
