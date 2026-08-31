@@ -135,8 +135,10 @@ Merge and confirm:
 gh pr merge <pr> --squash
 gh pr view <pr> --json state             # must report MERGED before deleting anything
 gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName
-gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch>"
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
+
+**Percent-encode the ref.** `gh api` takes a URL path, so a `#` or `?` that is legal in a git ref is parsed as a fragment or query and silently dropped — `…/heads/feature/foo#bar` is sent as `…/heads/feature/foo`, deleting an unrelated branch. Encode `%` first, then `#` (`%23`) and `?` (`%3F`); leave `/` as-is.
 
 **Delete from the head repository, not `origin`.** On a fork-based PR the head branch lives in the fork while `origin` is the base repo, so `git push origin --delete <head-branch>` either fails or deletes a same-named base branch instead. Resolve the head repo from the PR and target it. A `403` on a fork you cannot write to is expected — report it and continue.
 

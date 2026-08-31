@@ -891,8 +891,16 @@ Then squash-merge into the PR's base branch (`baseRefName` — never retarget), 
 gh pr merge <pr> --squash
 gh pr view <pr> --json state             # must report MERGED before the next line runs
 gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName   # -> <headOwner>/<headRepo>, <head-branch>
-gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch>"
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
+
+**`<head-branch-encoded>` is percent-encoded, and skipping that deletes the wrong ref.** `gh api`'s positional argument is a URL path, not a shell string, so a character that is legal in a git ref but special in a URL is parsed rather than sent. `git check-ref-format refs/heads/feature/foo#bar` succeeds, but the request actually issued is `DELETE /repos/…/git/refs/heads/feature/foo` — `#bar` is read as a URL fragment and dropped — so an unrelated `feature/foo` is deleted instead. `?` behaves the same way, becoming a query string. Encode `%` **first**, then `#` and `?`, and leave `/` alone (the API expects `heads/<branch>` as a path):
+
+```
+%  →  %25        #  →  %23        ?  →  %3F
+```
+
+Verified against the installed `gh`: `GH_DEBUG=api gh api "…/heads/feature/foo#bar"` sends `…/heads/feature/foo`, while `…/heads/feature/foo%23bar` sends the ref intact.
 
 **Delete from the repository that owns the head branch, never from `origin` unconditionally.** On a fork-based PR the head branch lives in the *fork* while `origin` is the base repository, so `git push origin --delete <head-branch>` either fails — leaving the real head branch behind — or, if the base repository happens to carry an unrelated branch of the same name, **deletes that one instead**. `--delete-branch` got this right by resolving the head repository, and dropping the flag must not drop that. When the head repository *is* the base repository — the `develop` flow's normal case, since it pushes the feature branch to `origin` — the `gh api` call above is the same operation `git push origin --delete` would have performed. A `403` on a fork you have no write access to is the expected outcome, not a failure: report it and continue; the branch is the contributor's to delete.
 
