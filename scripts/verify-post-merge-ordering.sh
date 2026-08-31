@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+# Post-merge cleanup ordering — the contract PRs #20 and #23 shipped.
+#
+# A ticket run merges a PR, then cleans up: remove the worktree, delete the
+# local branch, move the primary checkout onto the base branch, run post-merge
+# hooks. Get that order wrong and the primary's `checkout` collides with a
+# worktree still holding the base branch, or a hook commits and pushes from
+# whatever branch the primary happened to be on. That defect recurred on five
+# consecutive ticket runs before #20 fixed it.
+#
+# The fix is prose — an ordering and a set of assertions written in markdown —
+# which is exactly the kind of thing an edit reverts by accident. Same argument
+# as verify-mirror.sh beside this file: a written reminder is not a mechanism;
+# this is.
+#
+# Like verify-mirror.sh and unlike verify-completeness.sh / verify-convergence.sh,
+# this asserts a standing invariant. It carries no baseline and no version floor,
+# so it has nothing to go stale against.
+#
+# It matches MECHANISM, not wording: command strings, the relative order of the
+# lines that carry them, the presence of each assertion line. Where prose must be
+# matched, it matches the shortest distinctive fragment. Rewording a paragraph
+# must not fail this harness; changing what the flow does must.
+#
+# Run from anywhere: ./scripts/verify-post-merge-ordering.sh
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+fails=0
+ok()  { printf '  PASS  %s\n' "$1"; }
+bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+
+# The two flows that own a worktree and clean it up.
+TICKET=plugins/notion-dev/commands/ticket.md
+FINALIZE=plugins/notion-dev/commands/finalize.md
+DEVELOP=plugins/quick-dev/skills/develop/SKILL.md
+
+# Every copy of the merge-and-delete sequence. The .claude/ mirror is included
+# deliberately: verify-mirror.sh proves it matches the plugin, this proves the
+# thing it matches is still correct, and the mirror is the copy this repo drives
+# its own PRs with.
+MERGE_DOCS=(
+  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/skills/review-and-merge/references/github-api.md
+  plugins/quick-dev/skills/review-and-merge/SKILL.md
+  plugins/quick-dev/skills/review-and-merge/references/github-api.md
+  .claude/skills/review-and-merge/SKILL.md
+  .claude/skills/review-and-merge/references/github-api.md
+)
+
+# quick-dev resolves the head repository and percent-encodes the ref (#23).
+# notion-dev still deletes from `origin` unconditionally — a known gap, tracked
+# separately. Listing the files that must have the fix, rather than asserting it
+# repo-wide, is what keeps this harness honest about which copies actually do.
+HEADREPO_DOCS=(
+  plugins/quick-dev/skills/review-and-merge/SKILL.md
+  plugins/quick-dev/skills/review-and-merge/references/github-api.md
+  .claude/skills/review-and-merge/SKILL.md
+  .claude/skills/review-and-merge/references/github-api.md
+)
+
+# ---------------------------------------------------------------- primitives
+
+# first line number matching <regex> in <file> within [<start>,<end>]; empty if none
+find_line() {
+  awk -v s="$2" -v e="$3" -v re="$4" \
+    'NR >= s && NR <= e && $0 ~ re { print NR; exit }' "$1"
+}
+
+# how many lines match <regex> in <file> within [<start>,<end>]
+count_lines() {
+  awk -v s="$2" -v e="$3" -v re="$4" \
+    'NR >= s && NR <= e && $0 ~ re { n++ } END { print n + 0 }' "$1"
+}
+
+total_lines() { wc -l < "$1" | tr -d ' '; }
+
+# assert_present <label> <file> <start> <end> <regex>
+assert_present() {
+  if [ -n "$(find_line "$2" "$3" "$4" "$5")" ]; then ok "$1"; else bad "$1"; fi
+}
+
+# assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
+# Fails on the first anchor that is missing or out of sequence, and says which.
+assert_order() {
+  local label=$1 file=$2 start=$3 end=$4; shift 4
+  local prev=0 prev_name="" name re ln
+  while [ $# -gt 1 ]; do
+    name=$1; re=$2; shift 2
+    ln=$(find_line "$file" "$start" "$end" "$re")
+    if [ -z "$ln" ]; then
+      bad "$label — nothing matches '$name'"; return
+    fi
+    if [ "$ln" -le "$prev" ]; then
+      bad "$label — '$name' (line $ln) does not follow '$prev_name' (line $prev)"; return
+    fi
+    prev=$ln; prev_name=$name
+  done
+  ok "$label"
+}
+
+# ------------------------------------------------- 1-2. cleanup step ordering
+
+# Asserts, for one flow's cleanup section: the worktree goes first, the local
+# branch next, the primary's checkout second-to-last, the rmdir last — and that
+# the pull is --ff-only. Returns the section bounds via CLEAN_START/CLEAN_END so
+# the hook checks below can reuse them.
+check_cleanup() {
+  local label=$1 file=$2 start_re=$3 end_re=$4
+  CLEAN_START=""; CLEAN_END=""
+
+  if [ ! -f "$file" ]; then bad "$label cleanup section (missing: $file)"; return; fi
+
+  local start end
+  start=$(find_line "$file" 1 "$(total_lines "$file")" "$start_re")
+  if [ -z "$start" ]; then bad "$label — no cleanup section heading in $file"; return; fi
+  end=$(find_line "$file" $((start + 1)) "$(total_lines "$file")" "$end_re")
+  [ -n "$end" ] || end=$(total_lines "$file")
+  CLEAN_START=$start; CLEAN_END=$end
+
+  assert_order "$label cleanup order: worktree -> branch -> checkout -> rmdir" \
+    "$file" "$start" "$end" \
+    "git worktree remove"           'git worktree remove' \
+    "git branch -D"                 'git branch -D' \
+    "git checkout .. && git pull"   'git checkout .* && git pull' \
+    "rmdir"                         'rmdir'
+
+  # Separate from the ordering check on purpose: dropping --ff-only is its own
+  # regression (a diverged primary would manufacture a merge commit, which is
+  # the original STO-97 damage) and deserves its own named failure.
+  assert_present "$label pull is --ff-only" \
+    "$file" "$start" "$end" 'git pull --ff-only origin'
+}
+
+echo "== cleanup step ordering =="
+check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### '
+TICKET_CLEAN_END=$CLEAN_END
+check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### '
+FINALIZE_CLEAN_END=$CLEAN_END
+check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6'
+
+# ------------------------------------------- 3-4. hooks run after the cleanup
+
+# Only notion-dev has post-merge hooks (git.postMergeHooks); quick-dev's develop
+# flow has no hook step, so it is not checked here.
+#
+# Anchored on the hook INVOCATION line, not on the section heading. An earlier
+# draft keyed on `### Post-merge hooks` and failed the moment that heading was
+# reworded with nothing else changed — which is the failure this harness is
+# supposed to avoid, not cause.
+HOOK_RUN='postMergeHooks. skills in order'
+
+check_hooks() {
+  local label=$1 file=$2 clean_end=$3
+  local total; total=$(total_lines "$file")
+
+  # Exactly one place invokes the hooks. A reinstated pre-cleanup hook step (the
+  # `8.4` this ordering removed) brings its own invocation line, so it shows up
+  # here as a second one — no need to hardcode the section number it carried.
+  local n; n=$(count_lines "$file" 1 "$total" "$HOOK_RUN")
+  if [ "$n" -eq 1 ]; then
+    ok "$label invokes postMergeHooks in exactly one place"
+  else
+    bad "$label invokes postMergeHooks in $n places (expected 1)"
+  fi
+
+  local hooks; hooks=$(find_line "$file" 1 "$total" "$HOOK_RUN")
+  if [ -z "$hooks" ]; then
+    bad "$label — nothing invokes git.postMergeHooks"; return
+  fi
+  if [ "$hooks" -gt "$clean_end" ]; then
+    ok "$label hooks run after cleanup (invocation line $hooks)"
+  else
+    bad "$label hooks run BEFORE cleanup ends (invocation line $hooks <= $clean_end)"
+  fi
+
+  # The three preconditions a hook must clear before it is invoked. Each catches
+  # something the others do not — name-only, contains-the-merge, and only-the-merge
+  # — so all three are asserted individually rather than as one block.
+  assert_present "$label hook assertion 1/3: branch name" \
+    "$file" "$hooks" "$total" 'rev-parse --abbrev-ref HEAD'
+  assert_present "$label hook assertion 2/3: merge is an ancestor" \
+    "$file" "$hooks" "$total" 'merge-base --is-ancestor'
+  assert_present "$label hook assertion 3/3: HEAD == origin/<base>" \
+    "$file" "$hooks" "$total" 'rev-parse origin/'
+}
+
+echo
+echo "== post-merge hooks run after cleanup =="
+if [ -n "$TICKET_CLEAN_END" ]; then check_hooks "ticket.md" "$TICKET" "$TICKET_CLEAN_END"; fi
+if [ -n "$FINALIZE_CLEAN_END" ]; then check_hooks "finalize.md" "$FINALIZE" "$FINALIZE_CLEAN_END"; fi
+
+# ----------------------------------------------------- 5. no --delete-branch
+
+echo
+echo "== gh pr merge --delete-branch is not used =="
+# Every surviving mention must be a prohibition. Testing for 'never' on the same
+# line, rather than counting occurrences, means a new prohibition sentence needs
+# no harness edit while a reinstated flag fails immediately.
+offenders=$(grep -rn --include='*.md' --include='*.json' --exclude-dir=.git -- \
+  '--delete-branch' . | grep -vi 'never')
+if [ -z "$offenders" ]; then
+  ok "every --delete-branch mention is a prohibition"
+else
+  bad "--delete-branch used outside a prohibition:"
+  printf '%s\n' "$offenders" | sed 's/^/          /'
+fi
+
+# ------------------------------- 6. MERGED gate sits between merge and delete
+
+echo
+echo "== merge -> MERGED gate -> branch deletion =="
+for f in "${MERGE_DOCS[@]}"; do
+  if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
+  assert_order "$f: merge, then MERGED, then delete" \
+    "$f" 1 "$(total_lines "$f")" \
+    "gh pr merge"                  '^gh pr merge <pr> --' \
+    "gh pr view --json state"      '^gh pr view <pr> --json state' \
+    "remote branch deletion"       '^(git push origin --delete|gh api --method DELETE)'
+done
+
+# --------------------- 7. quick-dev deletes from the head repo, ref encoded
+
+echo
+echo "== head-repository resolution and ref encoding (quick-dev) =="
+for f in "${HEADREPO_DOCS[@]}"; do
+  if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
+  total=$(total_lines "$f")
+  # The resolution must sit between the MERGED gate and the deletion: a DELETE
+  # that runs before the head repo is known is the fork bug #23 fixed.
+  assert_order "$f: resolve head repo before deleting" \
+    "$f" 1 "$total" \
+    "gh pr view --json state"          '^gh pr view <pr> --json state' \
+    "head repository resolution"       '^gh pr view <pr> --json headRepositoryOwner' \
+    "gh api DELETE against that repo"  '^gh api --method DELETE "repos/<headOwner>/<headRepo>/'
+  # %23 is the whole mechanism: unencoded, a '#' in a ref is read as a URL
+  # fragment and an unrelated branch is deleted.
+  assert_present "$f: documents the %23 encoding" "$f" 1 "$total" '%23'
+done
+
+echo
+if [ "$fails" -eq 0 ]; then
+  echo "ALL CHECKS PASSED"
+else
+  echo "$fails CHECK(S) FAILED"
+  echo
+  echo "This harness pins the post-merge cleanup contract from PRs #20 and #23."
+  echo "If a failure above is a deliberate change to that contract, change the"
+  echo "assertion with it — in the same commit, with the reasoning. If it is not,"
+  echo "the ordering has regressed; see:"
+  echo "  $TICKET (Phase 9)"
+  echo "  $FINALIZE (Phase 4)"
+  echo "  $DEVELOP (Phase 5)"
+fi
+exit $(( fails > 0 ? 1 : 0 ))
