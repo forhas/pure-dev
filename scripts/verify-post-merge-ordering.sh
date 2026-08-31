@@ -364,7 +364,12 @@ done
 # literal `%` would then encode to a ref that does not exist.
 for f in "${PCT25_DOCS[@]}"; do
   if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
-  assert_present "$f: the % row maps to %25" "$f" 1 "$(total_lines "$f")" '^%.*%25'
+  # Both sides of the row. '^%.*%25' accepted `%24  →  %25`, which no longer
+  # says that a literal `%` is the thing being encoded. Requiring whitespace
+  # immediately after the leading `%` pins the source token to the bare
+  # character without hard-coding the arrow glyph or the column spacing.
+  assert_present "$f: the % row maps % itself to %25" \
+    "$f" 1 "$(total_lines "$f")" '^%[[:space:]].*%25'
 done
 
 echo
