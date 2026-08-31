@@ -152,10 +152,13 @@ Run `git.postMergeHooks` skills in order (empty default — no-op). These run **
 Assert that before invoking anything:
 
 ```bash
-git -C $REPO_ROOT rev-parse --abbrev-ref HEAD   # must equal <baseRefName>
+git -C $REPO_ROOT rev-parse --abbrev-ref HEAD                    # must equal <baseRefName>
+git -C $REPO_ROOT merge-base --is-ancestor <merge-commit> HEAD   # must exit 0
 ```
 
-If it does not equal `<baseRefName>` — step 4 is best-effort and may have failed — **skip the hook step entirely** and report that hooks were skipped, on which branch the primary was found, and that they need a manual re-run after a successful checkout. Never run a configured hook on an unasserted branch: the ordering makes the right branch overwhelmingly likely, and this assertion makes it certain.
+**Both lines, not just the first.** Step 4 chains `checkout && pull`, so a `checkout` that succeeds and a `pull` that then fails (network, divergence, a dirty primary) leaves HEAD on the right branch but *behind* — and a name-only assertion passes on that stale checkout, handing the hook exactly the state this ordering promised to prevent. The second line is what makes "freshly pulled" checkable: `<merge-commit>` is the SHA `review-and-merge` returned and the run already records, and asserting it is an ancestor of HEAD proves the merge is actually present, whatever the pull did.
+
+If **either** assertion fails, **skip the hook step entirely** and report that hooks were skipped, which assertion failed, the branch the primary was found on, and that they need a manual re-run after a successful checkout and pull. Never run a configured hook on an unasserted branch: the ordering makes the right state overwhelmingly likely, and these assertions make it certain.
 
 The cost of this ordering is stated deliberately: by the time hooks run, the worktree is gone, so a hook cannot inspect the branch's working tree. That is consistent with the documented hook contract — `git.postMergeHooks` is specified as "skills invoked after merging", the merge is a squash by default so the branch's tree is not the merged tree anyway, and on the `MERGED` recovery path the worktree is frequently absent before this command even starts. A hook needing the pre-merge working tree must read it from git history instead.
 
@@ -183,7 +186,7 @@ Print a summary covering:
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups absorbed, filed (with their IDs), and dropped, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
-- Post-merge hooks: which ran, or — when the Phase 4 branch assertion failed — that they were **skipped**, the branch the primary was actually on, and that they need a manual re-run. Omit the line entirely when `git.postMergeHooks` is empty.
+- Post-merge hooks: which ran, or — when a Phase 4 hook assertion failed — that they were **skipped**, the branch the primary was actually on, and that they need a manual re-run. Omit the line entirely when `git.postMergeHooks` is empty.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - **Completeness** — say nothing when `CRITERIA_FILE` was unset (the ticket had no criteria to check). Otherwise: when `COMPLETENESS_REPORT` was absent or its `CRITERIA-TOTAL` didn't match `CRITERIA_FILE`'s line count, state that explicitly — the completeness gate produced no usable verdict for this record, and the unticked boxes are not a verdict — rather than saying nothing; an unchecked run and a clean `met` result must never render the same. Otherwise, when any criterion is not `met`: "<n> of <m> acceptance criteria were not met at the completeness gate" — `<n>` counts `not-met` criteria only — then each with its verdict, triage label, and rationale. State `CRITERIA-UNVERIFIED` separately whenever it is non-zero, as a third state never folded into `<n>`: `unverified` means the gate could not check, which is not the same as finding the work undone. Say nothing only when every criterion is `met`.
 
