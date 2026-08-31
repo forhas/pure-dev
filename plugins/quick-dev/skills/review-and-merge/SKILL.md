@@ -885,13 +885,30 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
 
 5. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
-Then squash-merge into the PR's base branch (`baseRefName` — never retarget) and delete the remote branch:
+Then squash-merge into the PR's base branch (`baseRefName` — never retarget), **confirm it actually merged**, and only then delete the remote branch:
 
 ```bash
-gh pr merge <pr> --squash --delete-branch
+gh pr merge <pr> --squash
+gh pr view <pr> --json state             # must report MERGED before the next line runs
+gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName   # -> <headOwner>/<headRepo>, <head-branch>
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
 
-If the merge command exits non-zero, do **not** re-run it — check `gh pr view <pr> --json state` first. `--delete-branch` can fail on its local-cleanup step *after* the remote squash-merge succeeded (typical when the branch is checked out in a worktree, as in the develop flow — see cli/cli#13380). If state is `MERGED`, the merge succeeded: just finish the remote branch deletion (`git push origin --delete <head-branch>`) and continue. Only if state is still `OPEN` diagnose the merge itself. Leave local branch and worktree removal to the caller.
+**`<head-branch-encoded>` is percent-encoded, and skipping that deletes the wrong ref.** `gh api`'s positional argument is a URL path, not a shell string, so a character that is legal in a git ref but special in a URL is parsed rather than sent. Exactly two characters are both: **`#`** and **`%`** (`git check-ref-format refs/heads/feature/foo#bar` and `…foo%bar` both succeed). `git check-ref-format` already rejects `?`, `*`, `[`, `~`, `^`, and `:`, so those cannot reach here and are not part of the hazard. Encode `%` **first** — it is the escape character itself, so encoding it second would mangle the escapes just written — and leave `/` alone, since the API expects `heads/<branch>` as a path:
+
+```
+%  →  %25        #  →  %23
+```
+
+Unencoded, `feature/foo#bar` is sent as `DELETE /repos/…/git/refs/heads/feature/foo`: `#bar` is read as a URL fragment and dropped, so an unrelated `feature/foo` is deleted instead. Verified against the installed `gh`: `GH_DEBUG=api gh api "…/heads/feature/foo#bar"` sends `…/heads/feature/foo`, while `…/heads/feature/foo%23bar` sends the ref intact.
+
+**Delete from the repository that owns the head branch, never from `origin` unconditionally.** On a fork-based PR the head branch lives in the *fork* while `origin` is the base repository, so `git push origin --delete <head-branch>` either fails — leaving the real head branch behind — or, if the base repository happens to carry an unrelated branch of the same name, **deletes that one instead**. `--delete-branch` got this right by resolving the head repository, and dropping the flag must not drop that. When the head repository *is* the base repository — the `develop` flow's normal case, since it pushes the feature branch to `origin` — the `gh api` call above is the same operation `git push origin --delete` would have performed. A `403` on a fork you have no write access to is the expected outcome, not a failure: report it and continue; the branch is the contributor's to delete.
+
+**The deletion is gated on `MERGED`, never on the merge command's exit code.** When the base branch has a **merge queue**, `gh pr merge` succeeds by *enqueuing* the PR — `gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue" — and the PR is not merged yet; `state` still reads `OPEN`. Deleting the head branch there destroys the ref the queue is still building from and can drop the PR out of the queue, discarding the branch with it. So poll `gh pr view <pr> --json state` until it reports `MERGED` — 30-second intervals, bounded at ~15 minutes, the same shape as the required-checks wait in gate 1 — and delete only then. On timeout, stop and report: the PR is queued and the branch is intact, which is a state to hand back, not one to force.
+
+**Never pass `--delete-branch`.** To delete the *local* branch, `gh` must first move whatever worktree holds the head branch onto the base branch — and in the develop flow the primary checkout is already holding the base branch, so git refuses (`fatal: '<base>' is already used by worktree at '<primary>'`; cli/cli#13380). The remote merge has already succeeded by then, so the flag's only effect is a spurious non-zero exit plus a worktree left in an unpredictable state. Doing the remote deletion ourselves removes that failure mode instead of recovering from it. A deletion failing because the branch is already gone (GitHub's own auto-delete-on-merge setting) is not an error — swallow it.
+
+If `gh pr merge` itself exits non-zero, do **not** re-run it — read `gh pr view <pr> --json state` first and decide from that: `MERGED` means the merge landed and only the response was lost, so continue to the deletion; only a state still `OPEN` is a real merge failure to diagnose. Leave local branch and worktree removal to the caller.
 
 Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success. The final report states: which loop ran (the configured reviewer — Codex or Copilot — or the local fallback), rounds run, findings applied vs. declined (with reasons), and any judgment calls resolved autonomously in non-interactive mode. If the round cap was hit, note it and list the findings that were disagreed with or could not be fully addressed. **When the local fallback ran, state prominently that no cross-model reviewer validated this PR**, and why (`quota` / `not-configured` / `error` / `silent`).
 

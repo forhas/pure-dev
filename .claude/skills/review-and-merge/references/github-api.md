@@ -132,15 +132,24 @@ gh pr checks <pr>                       # nothing failing anywhere; pending opti
 Merge and confirm:
 
 ```bash
-gh pr merge <pr> --squash --delete-branch
-gh pr view <pr> --json state            # must report MERGED
+gh pr merge <pr> --squash
+gh pr view <pr> --json state             # must report MERGED before deleting anything
+gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
 
-On a non-zero exit from the merge command, check state before anything else — `--delete-branch` can fail on local cleanup after the remote merge already succeeded (branch checked out in a worktree; cli/cli#13380):
+**Percent-encode the ref.** `gh api` takes a URL path, so a `#` — legal in a git ref, special in a URL — is parsed as a fragment and silently dropped: `…/heads/feature/foo#bar` is sent as `…/heads/feature/foo`, deleting an unrelated branch. Encode `%` first (it is the escape character), then `#` (`%23`); leave `/` as-is. `?` needs no handling — `git check-ref-format` rejects it, so it cannot appear in a branch name.
+
+**Delete from the head repository, not `origin`.** On a fork-based PR the head branch lives in the fork while `origin` is the base repo, so `git push origin --delete <head-branch>` either fails or deletes a same-named base branch instead. Resolve the head repo from the PR and target it. A `403` on a fork you cannot write to is expected — report it and continue.
+
+**Order matters — never delete before `state` reads `MERGED`.** With a merge queue on the base branch, `gh pr merge` exits 0 having only *enqueued* the PR (`gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue"), and `state` still reads `OPEN`. Deleting the head branch then destroys the ref the queue is building from. Poll at 30s intervals to a ~15-minute bound, then stop and report rather than deleting.
+
+**Never `--delete-branch`**: its local-cleanup step has to move the worktree holding the head branch onto the base branch, which the primary checkout already holds, so git refuses (`fatal: '<base>' is already used by worktree at '<primary>'`) and the command exits non-zero *after* the remote merge has already succeeded (cli/cli#13380). Deleting the remote branch explicitly avoids the whole path. A `--delete` that fails because the branch is already gone (auto-delete-on-merge) is not an error.
+
+On a non-zero exit from `gh pr merge`, check state before anything else — never re-run the merge:
 
 ```bash
 gh pr view <pr> --json state   # MERGED → merge succeeded; do NOT re-run gh pr merge
-git push origin --delete <head-branch>   # finish the remote deletion, continue cleanup
 ```
 
 Only if state is still `OPEN` treat it as a real merge failure and diagnose.

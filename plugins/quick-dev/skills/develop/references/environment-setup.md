@@ -77,4 +77,4 @@ Anything less → local mode. Local mode is a first-class path, not an error: sa
 
 ## Dirty primary checkout at cleanup time
 
-Phase 5 runs `git checkout "$MAIN"` in the primary checkout. If the user made unrelated edits there mid-run and checkout fails, do NOT stash or discard anything. Skip the checkout, finish the rest of the cleanup (worktree + branches), and report that `$MAIN` should be checked out / pulled manually.
+Phase 5 runs `git checkout "$MAIN" && git pull --ff-only origin "$MAIN"` in the primary checkout — as its **second-to-last** step (only the `rmdir` follows), after the worktree and branches are already gone. If the user made unrelated edits there mid-run and the checkout fails, or `$MAIN` has diverged and `--ff-only` refuses, do NOT stash or discard anything. Skip that step and report that `$MAIN` should be checked out / pulled manually. Nothing is left waiting on it: the worktree and branch cleanup ran before it precisely so a blocked primary cannot strand them.
