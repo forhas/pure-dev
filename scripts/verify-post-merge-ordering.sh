@@ -89,6 +89,16 @@ assert_present() {
   if [ -n "$(find_line "$2" "$3" "$4" "$5")" ]; then ok "$1"; else bad "$1"; fi
 }
 
+# Every anchor below carries its OPERAND, not just its command name. Five review
+# rounds each found another anchor that pinned the shape of a command while
+# saying nothing about what it acted on — a cleanup retargeted to <headRefName>,
+# an ancestor test with reversed arguments, a truncated --json field list. The
+# remaining anchors were swept for the same defect in one pass rather than
+# waiting for them to surface one per round. Two were left deliberately:
+# `rmdir` needs no operand (a regression to `rm -rf` removes the token itself,
+# which the order check already catches), and `gh pr merge <pr> --` leaves the
+# strategy free because the strategy is configurable and is not the invariant.
+#
 # assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
 # Fails on the first anchor that is missing or out of sequence, and says which.
 assert_order() {
@@ -115,7 +125,7 @@ assert_order() {
 # the pull is --ff-only. Returns the section bounds via CLEAN_START/CLEAN_END so
 # the hook checks below can reuse them.
 check_cleanup() {
-  local label=$1 file=$2 start_re=$3 end_re=$4 base=$5
+  local label=$1 file=$2 start_re=$3 end_re=$4 base=$5 wt=$6 branch=$7
   CLEAN_START=""; CLEAN_END=""
 
   if [ ! -f "$file" ]; then bad "$label cleanup section (missing: $file)"; return; fi
@@ -129,8 +139,8 @@ check_cleanup() {
 
   assert_order "$label cleanup order: worktree -> branch -> checkout -> rmdir" \
     "$file" "$start" "$end" \
-    "git worktree remove"           'git worktree remove' \
-    "git branch -D"                 'git branch -D' \
+    "git worktree remove <wt>"      "git worktree remove $wt" \
+    "git branch -D <branch>"        "git branch -D $branch" \
     "git checkout <base> && git pull" "git checkout $base && git pull" \
     "rmdir"                         'rmdir'
 
@@ -147,11 +157,11 @@ check_cleanup() {
 }
 
 echo "== cleanup step ordering =="
-check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>'
+check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>'
 TICKET_CLEAN_END=$CLEAN_END
-check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>'
+check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>'
 FINALIZE_CLEAN_END=$CLEAN_END
-check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"'
+check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"'
 
 # ------------------------------------------- 3-4. hooks run after the cleanup
 
@@ -286,7 +296,7 @@ for f in "${MERGE_DOCS[@]}"; do
     "$f" 1 "$(total_lines "$f")" \
     "gh pr merge"                  '^gh pr merge <pr> --' \
     "gh pr view --json state"      '^gh pr view <pr> --json state' \
-    "remote branch deletion"       '^(git push origin --delete|gh api --method DELETE)'
+    "remote branch deletion"       '^(git push origin --delete <head-branch>|gh api --method DELETE)'
   check_merged_gate "$f" "$(total_lines "$f")"
 done
 
