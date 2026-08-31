@@ -238,9 +238,12 @@ for f in "${HEADREPO_DOCS[@]}"; do
     "$f" 1 "$total" \
     "gh pr view --json state"          '^gh pr view <pr> --json state' \
     "head repository resolution"       '^gh pr view <pr> --json headRepositoryOwner' \
-    "gh api DELETE against that repo"  '^gh api --method DELETE "repos/<headOwner>/<headRepo>/'
-  # %23 is the whole mechanism: unencoded, a '#' in a ref is read as a URL
-  # fragment and an unrelated branch is deleted.
+    "DELETE targets the encoded ref"   '^gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"'
+  # Two separate things, and the DELETE anchor above is the load-bearing one.
+  # Matching %23 anywhere in the file only proves the encoding is *explained*:
+  # the command could regress from <head-branch-encoded> to <head-branch> with
+  # the paragraph left intact, which is why the anchor pins the placeholder the
+  # command actually substitutes. This check keeps the rule documented.
   assert_present "$f: documents the %23 encoding" "$f" 1 "$total" '%23'
 done
 
