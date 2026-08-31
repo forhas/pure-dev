@@ -188,14 +188,18 @@ check_hooks() {
     "$file" "$hooks" "$total" 'rev-parse --abbrev-ref HEAD.*<baseRefName>'
   assert_present "$label hook assertion 2/3: <merge-commit> is an ancestor of HEAD" \
     "$file" "$hooks" "$total" 'merge-base --is-ancestor <merge-commit> HEAD'
-  # The equality TEST, not merely one of its operands. Deleting the `test …` line
-  # leaves `rev-parse origin/<baseRefName>` behind on the following line, so an
-  # operand-only match stays green while the precondition itself is gone.
-  # Requiring `" = ` also rejects an inverted `" != `.
-  assert_present "$label hook assertion 3/3a: the HEAD equality test" \
-    "$file" "$hooks" "$total" '^test .*rev-parse HEAD.*" = '
-  assert_present "$label hook assertion 3/3b: compared against origin/<base>" \
-    "$file" "$hooks" "$total" 'rev-parse origin/'
+  # Both halves as ONE assertion, bound by adjacency. The test spans two lines,
+  # and searching for them independently anywhere in the section let the equality
+  # compare HEAD to any ref at all while a stray `rev-parse origin/<baseRefName>`
+  # in the prose below satisfied the operand half. Requiring `" = ` rather than a
+  # bare `=` also rejects an inverted `" != `.
+  local eq_ln; eq_ln=$(find_line "$file" "$hooks" "$total" '^test .*rev-parse HEAD.*" = ')
+  if [ -z "$eq_ln" ]; then
+    bad "$label hook assertion 3/3: no HEAD equality test"
+  else
+    assert_present "$label hook assertion 3/3: HEAD == origin/<base>, both halves" \
+      "$file" $((eq_ln + 1)) $((eq_ln + 1)) 'rev-parse origin/<baseRefName>'
+  fi
 }
 
 echo
