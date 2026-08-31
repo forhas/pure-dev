@@ -117,7 +117,7 @@ Then:
 | `/notion-dev:init` | One-time (or re-runnable) setup. Writes config, patches `.mcp.json`, bootstraps the ticket database. |
 | `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). Flags: `--non-interactive` (answers its own interview via a fresh subagent grounded in `--context-file`), `--context-file=<path>`, `--epic=<name>`, `--parent=<id>`, `--assignee=<id>`. |
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → plan review (superpowers path) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
-| `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → run post-merge hooks → update ticket → clean up. |
+| `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
 
 Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 
@@ -226,7 +226,7 @@ Add a new source by creating `skills/input-source/<name>.md` matching the output
 
 The following configuration field exists today but accepts an empty list by default. Phase 2 will ship skills and extra commands that populate it:
 
-- `git.postMergeHooks` — skills invoked after merging (e.g. hotfix-sync, epic-progress-report), run by `/notion-dev:ticket` and `/notion-dev:finalize`.
+- `git.postMergeHooks` — skills invoked after merging (e.g. hotfix-sync, epic-progress-report), run by `/notion-dev:ticket` and `/notion-dev:finalize` as the last step of their cleanup phase, with the primary checkout asserted to be on a freshly pulled base branch. The ticket worktree is already removed by then, so a hook reads the merge from git history, not from a working tree.
 - Additional commands planned: `prepare-release`, `hotfix`, `hotfix-sync`, `release-fix`, `resume-merges`, `prod-deploy`.
 
 No v1 refactor required to adopt phase 2.

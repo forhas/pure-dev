@@ -132,7 +132,7 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "Ordered list of skill names invoked after merge. Empty in simple flow."
+          "description": "Ordered list of skill names invoked after merge, as the last step of the cleanup phase — the primary checkout is on a freshly pulled base branch and the ticket worktree is already removed. Empty in simple flow."
         }
       }
     },

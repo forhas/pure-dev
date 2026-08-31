@@ -232,7 +232,7 @@ Non-plugin repos skip this entirely.
 git rev-parse --abbrev-ref HEAD
 ```
 
-Must equal **the branch name recorded in 2.1** — never re-spell the `ticket/<project.key>-<id>-<slug>` template here: on a resume (1.2), 2.1 reused the branch already created by an earlier run, and its `<slug>` was kebab-cased from the ticket's title *at that earlier time*. If the title has since changed in Notion, re-deriving the slug from the current title produces a different string than the branch actually in use, and this check would misread a perfectly correct branch as a mismatch (recorded-name comparison and the `-D` in Phase 9 step 3 already follow the same rule for the same reason).
+Must equal **the branch name recorded in 2.1** — never re-spell the `ticket/<project.key>-<id>-<slug>` template here: on a resume (1.2), 2.1 reused the branch already created by an earlier run, and its `<slug>` was kebab-cased from the ticket's title *at that earlier time*. If the title has since changed in Notion, re-deriving the slug from the current title produces a different string than the branch actually in use, and this check would misread a perfectly correct branch as a mismatch (recorded-name comparison and the `-D` in Phase 9 step 2 already follow the same rule for the same reason).
 
 If the recorded branch name doesn't match, **do not commit yet** — but only apply the recovery below when the mismatch is **exactly** `<PR_BASE>` (the branch was merged/deleted externally mid-run, the case this check exists for). Any other value — a detached HEAD, or some unrelated branch — is a different failure mode this recovery does not cover: stop and report the actual branch/state rather than guessing, since the repoint below assumes specifically that `<PR_BASE>` is what was abandoned, and forcing it against an unrelated branch's stale position could discard commits that have nothing to do with this run.
 
@@ -373,23 +373,40 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Deferred follow-ups** — items from `REVIEW_REPORT`'s `FILED` list, each with its blast-radius criterion number and its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 8.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `DROPPED` or `FAILED-TO-FILE`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 8.2's outcome.
 - **Dropped** — items from `REVIEW_REPORT`'s `DROPPED` list, each with its rationale. Omit the field when the list is empty. A recorded drop is a decision, not an omission.
 
-### 8.4 Post-merge hooks
-
-Run `git.postMergeHooks` skills in order (empty default — no-op).
-
 ---
 
 ## Phase 9 — Clean up
 
 Only start cleanup after confirming the merge landed: `gh pr view <pr> --json state` reports `MERGED`. **Never delete unmerged work.**
 
-From `$REPO_ROOT`:
+From `$REPO_ROOT` — `cd $REPO_ROOT` first if the run is still inside the worktree, since step 1 removes it out from under the current directory. **The worktree goes first and the primary checkout's `checkout` goes last** — nothing in worktree removal or branch deletion needs the primary to be on the base branch, and doing the primary's checkout while a worktree may still be sitting on that branch is what produced `fatal: '<baseRefName>' is already used by worktree at '<primary>'`:
 
-1. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull origin <baseRefName>`. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
-2. Confirm `<worktree-path>` is the worktree this flow created (the path computed in Phase 1.2/2.1), then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts — PLAN.md itself is already gone per 6.6), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`.
-3. `git branch -D <branch>` using the branch name recorded in 2.1 (`ticket/<project.key>-<id>-<slug>`) — do not re-spell the template here (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above).
-4. Verify the remote branch is gone (`git ls-remote --heads origin <branch>`); if not, `git push origin --delete <branch>` (swallow "already deleted" errors).
+1. Confirm `<worktree-path>` is the worktree this flow created (the path computed in Phase 1.2/2.1), then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts — PLAN.md itself is already gone per 6.6), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`.
+2. `git branch -D <branch>` using the branch name recorded in 2.1 (`ticket/<project.key>-<id>-<slug>`) — do not re-spell the template here (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above). If it fails because `<branch>` is checked out in the primary checkout, run step 4 first and retry this step after it.
+3. Verify the remote branch is gone (`git ls-remote --heads origin <branch>`); if not, `git push origin --delete <branch>` (swallow "already deleted" errors). `notion-dev:review-and-merge` deletes the remote branch itself as its own command after the merge, so this is normally a no-op confirmation — it stays because that deletion is not guaranteed to have been reached.
+4. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull --ff-only origin <baseRefName>`. **`--ff-only` is required, not stylistic**: a primary whose base branch carries local-only commits has diverged, and a default `pull` would silently manufacture a merge commit to reconcile it — the exact unintended merge commit this whole ordering exists to prevent. `--ff-only` aborts instead, which is what "do not stash or discard anything" means for a diverged branch. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
 5. Remove the worktrees parent directory if now empty: `rmdir` (not `rm -rf`).
+
+### Post-merge hooks
+
+Run `git.postMergeHooks` skills in order (empty default — no-op). These run **after** cleanup, not before it: a hook such as `knowledge-capture` commits and pushes from the primary checkout, and only here is the primary guaranteed to be on a freshly pulled `<baseRefName>` containing the merge commit the hook reads. Running them earlier meant committing and pushing to whatever branch the primary happened to be on.
+
+Assert that before invoking anything:
+
+```bash
+git -C $REPO_ROOT rev-parse --abbrev-ref HEAD                    # must equal <baseRefName>
+git -C $REPO_ROOT merge-base --is-ancestor <merge-commit> HEAD   # must exit 0
+test "$(git -C $REPO_ROOT rev-parse HEAD)" = \
+     "$(git -C $REPO_ROOT rev-parse origin/<baseRefName>)"       # must be equal
+```
+
+**All three lines, and each catches something the others do not.** Step 4 chains `checkout && pull`, so a `checkout` that succeeds and a `pull` that then fails (network, a dirty primary) leaves HEAD on the right branch but *behind* — a name-only assertion passes on that stale checkout, handing the hook exactly the state this ordering promised to prevent. Line 2 makes "contains the merge" checkable: `<merge-commit>` is the SHA `review-and-merge` returned and the run already records, and its being an ancestor of HEAD proves the merge is present whatever the pull did — including when the local `origin/<baseRefName>` ref is itself stale, which is why line 3 does not replace it.
+
+Line 3 is what makes it *only* the merge. A primary carrying local-only commits satisfies both earlier lines — the branch name is right and the merge commit is an ancestor — while HEAD also holds commits that were never pushed and never reviewed. A hook is free to commit and push — the contract constrains *when* hooks run, not what they do, and `knowledge-capture`, the consumer-repo hook that motivated this ordering, does exactly that — so a hook running on a diverged primary publishes that unreviewed local work to the base branch as a side effect of a ticket run. Requiring HEAD to equal `origin/<baseRefName>` exactly rejects divergence rather than reconciling it, which is also why step 4 pulls `--ff-only`.
+
+If **any** assertion fails, **skip the hook step entirely** and report that hooks were skipped, which assertion failed, the branch and HEAD the primary was found on, and that they need a manual re-run after a successful checkout and fast-forward pull. Never run a configured hook on an unasserted branch: the ordering makes the right state overwhelmingly likely, and these assertions make it certain.
+
+The cost of this ordering is stated deliberately: by the time hooks run, the worktree is gone, so a hook cannot inspect the branch's working tree. That is consistent with the documented hook contract — `git.postMergeHooks` is specified as "skills invoked after merging", the merge is a squash by default so the branch's tree is not the merged tree anyway, and the flow already deleted the remote branch. A hook needing the pre-merge working tree must read it from git history instead.
 
 ### Ledger outcome
 
@@ -416,6 +433,7 @@ Print a summary covering:
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups absorbed, filed (with their IDs), and dropped, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
+- Post-merge hooks: which ran, or — when a Phase 9 hook assertion failed — that they were **skipped**, the branch the primary was actually on, and that they need a manual re-run. Omit the line entirely when `git.postMergeHooks` is empty.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - **Completeness** — say nothing when `CRITERIA_FILE` was unset (the ticket had no criteria to check). Otherwise: when `COMPLETENESS_REPORT` was absent or its `CRITERIA-TOTAL` didn't match `CRITERIA_FILE`'s line count, state that explicitly — the completeness gate produced no usable verdict for this record, and the unticked boxes are not a verdict — rather than saying nothing; an unchecked run and a clean `met` result must never render the same. Otherwise, when any criterion is not `met`: "<n> of <m> acceptance criteria were not met at the completeness gate" — `<n>` counts `not-met` criteria only — then each with its verdict, triage label, and rationale. State `CRITERIA-UNVERIFIED` separately whenever it is non-zero, as a third state never folded into `<n>`: `unverified` means the gate could not check, which is not the same as finding the work undone. Say nothing only when every criterion is `met`.
 
