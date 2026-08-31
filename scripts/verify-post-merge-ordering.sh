@@ -59,6 +59,14 @@ HEADREPO_DOCS=(
   .claude/skills/review-and-merge/references/github-api.md
 )
 
+# Only the SKILL.md copies carry the encoding TABLE with the `% → %25` mapping;
+# the reference copies state the rule in prose and never give the %25 literal.
+# That asymmetry is in PR #23's text, not this PR's, so it is recorded as
+# follow-up rather than papered over by asserting %25 where it does not exist.
+PCT25_DOCS=(
+  plugins/quick-dev/skills/review-and-merge/SKILL.md
+  .claude/skills/review-and-merge/SKILL.md
+)
 
 # ---------------------------------------------------------------- primitives
 
@@ -309,6 +317,13 @@ for f in "${HEADREPO_DOCS[@]}"; do
   assert_present "$f: encodes % before #" "$f" 1 "$total" 'Encode .%. [*]*first'
 done
 
+# The mapping itself, wherever it is stated. Ordering alone is not enough: with
+# every %25 rewritten to %24 the harness stayed green, and a branch containing a
+# literal `%` would then encode to a ref that does not exist.
+for f in "${PCT25_DOCS[@]}"; do
+  if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
+  assert_present "$f: the % row maps to %25" "$f" 1 "$(total_lines "$f")" '^%.*%25'
+done
 
 echo
 if [ "$fails" -eq 0 ]; then
