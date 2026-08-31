@@ -134,8 +134,11 @@ Merge and confirm:
 ```bash
 gh pr merge <pr> --squash
 gh pr view <pr> --json state             # must report MERGED before deleting anything
-git push origin --delete <head-branch>   # remote deletion, gated on that MERGED
+gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch>"
 ```
+
+**Delete from the head repository, not `origin`.** On a fork-based PR the head branch lives in the fork while `origin` is the base repo, so `git push origin --delete <head-branch>` either fails or deletes a same-named base branch instead. Resolve the head repo from the PR and target it. A `403` on a fork you cannot write to is expected — report it and continue.
 
 **Order matters — never delete before `state` reads `MERGED`.** With a merge queue on the base branch, `gh pr merge` exits 0 having only *enqueued* the PR (`gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue"), and `state` still reads `OPEN`. Deleting the head branch then destroys the ref the queue is building from. Poll at 30s intervals to a ~15-minute bound, then stop and report rather than deleting.
 
