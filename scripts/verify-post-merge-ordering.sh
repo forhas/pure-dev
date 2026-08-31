@@ -50,8 +50,9 @@ MERGE_DOCS=(
 
 # quick-dev resolves the head repository and percent-encodes the ref (#23).
 # notion-dev still deletes from `origin` unconditionally — a known gap, tracked
-# separately. Listing the files that must have the fix, rather than asserting it
-# repo-wide, is what keeps this harness honest about which copies actually do.
+# in issue #25. Listing the files that must have the fix, rather than asserting
+# it repo-wide, is what keeps this harness honest about which copies actually do.
+# Widen this list when #25 lands.
 HEADREPO_DOCS=(
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   plugins/quick-dev/skills/review-and-merge/references/github-api.md
@@ -61,8 +62,9 @@ HEADREPO_DOCS=(
 
 # Only the SKILL.md copies carry the encoding TABLE with the `% → %25` mapping;
 # the reference copies state the rule in prose and never give the %25 literal.
-# That asymmetry is in PR #23's text, not this PR's, so it is recorded as
-# follow-up rather than papered over by asserting %25 where it does not exist.
+# That asymmetry is in PR #23's text, not this PR's, so it is filed as issue #26
+# rather than papered over by asserting %25 where it does not exist. Widen this
+# list when #26 lands.
 PCT25_DOCS=(
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   .claude/skills/review-and-merge/SKILL.md
@@ -94,10 +96,13 @@ assert_present() {
 # saying nothing about what it acted on — a cleanup retargeted to <headRefName>,
 # an ancestor test with reversed arguments, a truncated --json field list. The
 # remaining anchors were swept for the same defect in one pass rather than
-# waiting for them to surface one per round. Two were left deliberately:
-# `rmdir` needs no operand (a regression to `rm -rf` removes the token itself,
-# which the order check already catches), and `gh pr merge <pr> --` leaves the
-# strategy free because the strategy is configurable and is not the invariant.
+# waiting for them to surface one per round. Two are still unbound:
+# `gh pr merge <pr> --` leaves the strategy free deliberately, because the
+# strategy is configurable and is not the invariant; `rmdir` is unbound because
+# the guarded documents name its target only in prose, so binding it needs a doc
+# change first — issue #27. A regression to `rm -rf` is caught either way, since
+# it removes the `rmdir` token the order check looks for, but a wrong target is
+# NOT caught today.
 #
 # assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
 # Fails on the first anchor that is missing or out of sequence, and says which.
