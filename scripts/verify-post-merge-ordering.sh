@@ -180,10 +180,14 @@ check_hooks() {
   # The three preconditions a hook must clear before it is invoked. Each catches
   # something the others do not — name-only, contains-the-merge, and only-the-merge
   # — so all three are asserted individually rather than as one block.
-  assert_present "$label hook assertion 1/3: branch name" \
-    "$file" "$hooks" "$total" 'rev-parse --abbrev-ref HEAD'
-  assert_present "$label hook assertion 2/3: merge is an ancestor" \
-    "$file" "$hooks" "$total" 'merge-base --is-ancestor'
+  # Each anchor carries the CONDITION, not just the command name. Matching the
+  # name alone let `# must equal <baseRefName>` be deleted outright, and let the
+  # ancestor test be reversed to `--is-ancestor HEAD <merge-commit>` — which
+  # inverts the check into one that passes while the merge is absent from HEAD.
+  assert_present "$label hook assertion 1/3: HEAD is on <baseRefName>" \
+    "$file" "$hooks" "$total" 'rev-parse --abbrev-ref HEAD.*<baseRefName>'
+  assert_present "$label hook assertion 2/3: <merge-commit> is an ancestor of HEAD" \
+    "$file" "$hooks" "$total" 'merge-base --is-ancestor <merge-commit> HEAD'
   # The equality TEST, not merely one of its operands. Deleting the `test …` line
   # leaves `rev-parse origin/<baseRefName>` behind on the following line, so an
   # operand-only match stays green while the precondition itself is gone.
