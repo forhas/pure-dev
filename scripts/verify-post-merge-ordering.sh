@@ -148,7 +148,10 @@ check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6
 # draft keyed on `### Post-merge hooks` and failed the moment that heading was
 # reworded with nothing else changed — which is the failure this harness is
 # supposed to avoid, not cause.
-HOOK_RUN='postMergeHooks. skills in order'
+# The affirmative directive, not just the hook name: `Never run
+# `git.postMergeHooks` skills in order` contains the name fragment too, so a
+# name-only match would report a flow that invokes no hooks at all as compliant.
+HOOK_RUN='^Run .git[.]postMergeHooks. skills in order'
 
 check_hooks() {
   local label=$1 file=$2 clean_end=$3
