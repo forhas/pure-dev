@@ -106,7 +106,7 @@ assert_order() {
 # the pull is --ff-only. Returns the section bounds via CLEAN_START/CLEAN_END so
 # the hook checks below can reuse them.
 check_cleanup() {
-  local label=$1 file=$2 start_re=$3 end_re=$4
+  local label=$1 file=$2 start_re=$3 end_re=$4 base=$5
   CLEAN_START=""; CLEAN_END=""
 
   if [ ! -f "$file" ]; then bad "$label cleanup section (missing: $file)"; return; fi
@@ -122,22 +122,27 @@ check_cleanup() {
     "$file" "$start" "$end" \
     "git worktree remove"           'git worktree remove' \
     "git branch -D"                 'git branch -D' \
-    "git checkout .. && git pull"   'git checkout .* && git pull' \
+    "git checkout <base> && git pull" "git checkout $base && git pull" \
     "rmdir"                         'rmdir'
 
   # Separate from the ordering check on purpose: dropping --ff-only is its own
   # regression (a diverged primary would manufacture a merge commit, which is
   # the original STO-97 damage) and deserves its own named failure.
-  assert_present "$label pull is --ff-only" \
-    "$file" "$start" "$end" 'git pull --ff-only origin'
+  #
+  # Both anchors carry the base-branch operand. Without it, retargeting the
+  # cleanup to `git checkout <headRefName> && git pull --ff-only origin
+  # <headRefName>` satisfied every check while the primary ended up on the wrong
+  # branch — which is the entire invariant, not a detail of it.
+  assert_present "$label pull is --ff-only onto the base branch" \
+    "$file" "$start" "$end" "git pull --ff-only origin $base"
 }
 
 echo "== cleanup step ordering =="
-check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### '
+check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>'
 TICKET_CLEAN_END=$CLEAN_END
-check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### '
+check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>'
 FINALIZE_CLEAN_END=$CLEAN_END
-check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6'
+check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"'
 
 # ------------------------------------------- 3-4. hooks run after the cleanup
 
