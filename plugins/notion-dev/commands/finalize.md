@@ -131,23 +131,33 @@ Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with t
 - **Deferred follow-ups** — items from `REVIEW_REPORT`'s `FILED` list, each with its blast-radius criterion number and its actual follow-up ticket ID/URL from `EPIC_REPORT`'s `FILED` ∪ `ALREADY_FILED` (both now known, since 3.2 already ran). `epic-update` remains best-effort: when `EPIC_REPORT` is `EPIC-UPDATE: none`, or a given item isn't in either list (e.g. `epic-update` failed partway, or the item is in `DROPPED` or `FAILED-TO-FILE`), list that item with no ID rather than inventing one — this section is still written with whatever is known, never blocked on 3.2's outcome.
 - **Dropped** — items from `REVIEW_REPORT`'s `DROPPED` list, each with its rationale. Omit the field when the list is empty. A recorded drop is a decision, not an omission.
 
-### 3.4 Post-merge hooks
-
-Run `git.postMergeHooks` skills in order (empty default — no-op).
-
 ---
 
 ## Phase 4 — Clean up
 
 Only start cleanup after confirming the merge landed: `gh pr view <pr> --json state` reports `MERGED`. **Never delete unmerged work.**
 
-From `$REPO_ROOT`:
+From `$REPO_ROOT` — `cd $REPO_ROOT` first if the run is still inside the worktree, since step 1 removes it out from under the current directory. **The worktree goes first and the primary checkout's `checkout` goes last** — nothing in worktree removal or branch deletion needs the primary to be on the base branch, and doing the primary's checkout while a worktree may still be sitting on that branch is what produced `fatal: '<baseRefName>' is already used by worktree at '<primary>'`. Every step below stays independently skippable, which is what the `MERGED` recovery path (where the worktree may already be absent, and the remote branch already deleted) depends on:
 
-1. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull origin <baseRefName>`. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
-2. If `<worktree-path>` is a registered worktree (`git worktree list` contains it — on the post-merge recovery path Phase 1 deliberately does not recreate a missing one, and a prior interrupted run may have already removed it), confirm it is the worktree resolved/created in Phase 1, then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`. Absent → skip; only bookkeeping remains.
-3. `git branch -D <headRefName>` using the branch name recorded in Phase 1 (`<slug>` is never defined in this command — use the actual `headRefName`) (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above; skip silently when the local branch no longer exists).
-4. Verify the remote branch is gone (`git ls-remote --heads origin <headRefName>`); if not, `git push origin --delete <headRefName>` (swallow "already deleted" errors).
+1. If `<worktree-path>` is a registered worktree (`git worktree list` contains it — on the post-merge recovery path Phase 1 deliberately does not recreate a missing one, and a prior interrupted run may have already removed it), confirm it is the worktree resolved/created in Phase 1, then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`. Absent → skip; only bookkeeping remains.
+2. `git branch -D <headRefName>` using the branch name recorded in Phase 1 (`<slug>` is never defined in this command — use the actual `headRefName`) (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above; skip silently when the local branch no longer exists). If it fails because `<headRefName>` is checked out in the primary checkout — reachable on the recovery path, where no worktree was holding it — run step 4 first and retry this step after it.
+3. Verify the remote branch is gone (`git ls-remote --heads origin <headRefName>`); if not, `git push origin --delete <headRefName>` (swallow "already deleted" errors). `notion-dev:review-and-merge` deletes the remote branch itself as its own command after the merge, so on the normal path this is a no-op confirmation; on the `MERGED` recovery path it is the step that actually does it.
+4. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull origin <baseRefName>`. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
 5. Remove the worktrees parent directory if now empty: `rmdir` (not `rm -rf`).
+
+### Post-merge hooks
+
+Run `git.postMergeHooks` skills in order (empty default — no-op). These run **after** cleanup, not before it: a hook such as `knowledge-capture` commits and pushes from the primary checkout, and only here is the primary guaranteed to be on a freshly pulled `<baseRefName>` containing the merge commit the hook reads. Running them earlier meant committing and pushing to whatever branch the primary happened to be on — and this command in particular can be invoked from inside the worktree, so the primary's branch was never asserted at all.
+
+Assert that before invoking anything:
+
+```bash
+git -C $REPO_ROOT rev-parse --abbrev-ref HEAD   # must equal <baseRefName>
+```
+
+If it does not equal `<baseRefName>` — step 4 is best-effort and may have failed — **skip the hook step entirely** and report that hooks were skipped, on which branch the primary was found, and that they need a manual re-run after a successful checkout. Never run a configured hook on an unasserted branch: the ordering makes the right branch overwhelmingly likely, and this assertion makes it certain.
+
+The cost of this ordering is stated deliberately: by the time hooks run, the worktree is gone, so a hook cannot inspect the branch's working tree. That is consistent with the documented hook contract — `git.postMergeHooks` is specified as "skills invoked after merging", the merge is a squash by default so the branch's tree is not the merged tree anyway, and on the `MERGED` recovery path the worktree is frequently absent before this command even starts. A hook needing the pre-merge working tree must read it from git history instead.
 
 ### Ledger outcome
 
@@ -173,6 +183,7 @@ Print a summary covering:
 - Epic outcome, when the ticket had one: the epic's ID and URL, follow-ups absorbed, filed (with their IDs), and dropped, and whether the epic closed. Omit the line entirely when the ticket had no epic.
 - Non-interactive decisions taken during the run, if any.
 - Clean-workspace evidence (worktree removed, branch gone locally and remotely, base branch up to date).
+- Post-merge hooks: which ran, or — when the Phase 4 branch assertion failed — that they were **skipped**, the branch the primary was actually on, and that they need a manual re-run. Omit the line entirely when `git.postMergeHooks` is empty.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - **Completeness** — say nothing when `CRITERIA_FILE` was unset (the ticket had no criteria to check). Otherwise: when `COMPLETENESS_REPORT` was absent or its `CRITERIA-TOTAL` didn't match `CRITERIA_FILE`'s line count, state that explicitly — the completeness gate produced no usable verdict for this record, and the unticked boxes are not a verdict — rather than saying nothing; an unchecked run and a clean `met` result must never render the same. Otherwise, when any criterion is not `met`: "<n> of <m> acceptance criteria were not met at the completeness gate" — `<n>` counts `not-met` criteria only — then each with its verdict, triage label, and rationale. State `CRITERIA-UNVERIFIED` separately whenever it is non-zero, as a third state never folded into `<n>`: `unverified` means the gate could not check, which is not the same as finding the work undone. Say nothing only when every criterion is `met`.
 

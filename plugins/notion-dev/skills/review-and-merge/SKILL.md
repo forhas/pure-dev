@@ -904,13 +904,16 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
 
 6. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
-Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget) and delete the remote branch:
+Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget), and delete the remote branch as a **separate** command:
 
 ```bash
-gh pr merge <pr> --<strategy> --delete-branch   # <strategy> = git.mergeStrategy, default squash
+gh pr merge <pr> --<strategy>            # <strategy> = git.mergeStrategy, default squash
+git push origin --delete <head-branch>   # remote only — local branch and worktree are the caller's
 ```
 
-If the merge command exits non-zero, do **not** re-run it — check `gh pr view <pr> --json state` first. `--delete-branch` can fail on its local-cleanup step *after* the remote merge succeeded (typical when the branch is checked out in a worktree, as in the ticket and finalize flows — see cli/cli#13380). If state is `MERGED`, the merge succeeded: just finish the remote branch deletion (`git push origin --delete <head-branch>`) and continue. Only if state is still `OPEN` diagnose the merge itself. Leave local branch and worktree removal to the caller.
+**Never pass `--delete-branch`.** To delete the *local* branch, `gh` must first move whatever worktree holds the head branch onto the base branch — and in the ticket and finalize flows the primary checkout is already holding the base branch, so git refuses (`fatal: '<base>' is already used by worktree at '<primary>'`; cli/cli#13380). The remote merge has already succeeded by then, so the flag's only effect is a spurious non-zero exit plus a worktree left in an unpredictable state. Doing the remote deletion ourselves removes that failure mode instead of recovering from it. `git push origin --delete` failing because the branch is already gone (GitHub's own auto-delete-on-merge setting) is not an error — swallow it.
+
+If `gh pr merge` itself exits non-zero, do **not** re-run it — read `gh pr view <pr> --json state` first and decide from that: `MERGED` means the merge landed and only the response was lost, so continue to the deletion; only a state still `OPEN` is a real merge failure to diagnose. Leave local branch and worktree removal to the caller.
 
 Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success. The final report states: which reviewer/loop ran (Codex, Copilot, or the local fallback), rounds run, findings applied vs. declined (with reasons), the merge commit SHA (`gh pr view <pr> --json mergeCommit` after the merge), the number of fix commits pushed during the loop, and any judgment calls resolved autonomously in non-interactive mode — callers consume the merge SHA and counts for their ticket records and ledger metrics. If the round cap was hit, note it and list the findings that were disagreed with or could not be fully addressed. **When the local fallback ran, state prominently that no cross-model review validated this PR**, and why (`quota` / `not-configured` / `error` / `silent`).
 
