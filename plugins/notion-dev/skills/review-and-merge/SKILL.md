@@ -904,12 +904,15 @@ Enter only when the loop has ended. Hard gates — all of these hold even under 
 
 6. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
-Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget), and delete the remote branch as a **separate** command:
+Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget), **confirm it actually merged**, and only then delete the remote branch:
 
 ```bash
 gh pr merge <pr> --<strategy>            # <strategy> = git.mergeStrategy, default squash
+gh pr view <pr> --json state             # must report MERGED before the next line runs
 git push origin --delete <head-branch>   # remote only — local branch and worktree are the caller's
 ```
+
+**The deletion is gated on `MERGED`, never on the merge command's exit code.** When the base branch has a **merge queue**, `gh pr merge` succeeds by *enqueuing* the PR — `gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue" — and the PR is not merged yet; `state` still reads `OPEN`. Deleting the head branch there destroys the ref the queue is still building from and can drop the PR out of the queue, discarding the branch with it. So poll `gh pr view <pr> --json state` until it reports `MERGED` — 30-second intervals, bounded at ~15 minutes, the same shape as the required-checks wait in gate 1 — and delete only then. On timeout, stop and report: the PR is queued and the branch is intact, which is a state to hand back, not one to force.
 
 **Never pass `--delete-branch`.** To delete the *local* branch, `gh` must first move whatever worktree holds the head branch onto the base branch — and in the ticket and finalize flows the primary checkout is already holding the base branch, so git refuses (`fatal: '<base>' is already used by worktree at '<primary>'`; cli/cli#13380). The remote merge has already succeeded by then, so the flag's only effect is a spurious non-zero exit plus a worktree left in an unpredictable state. Doing the remote deletion ourselves removes that failure mode instead of recovering from it. `git push origin --delete` failing because the branch is already gone (GitHub's own auto-delete-on-merge setting) is not an error — swallow it.
 

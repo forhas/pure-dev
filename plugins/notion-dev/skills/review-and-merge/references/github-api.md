@@ -133,9 +133,11 @@ Merge and confirm:
 
 ```bash
 gh pr merge <pr> --<strategy>            # <strategy> = git.mergeStrategy from .claude/notion-dev.config.json, default squash
-git push origin --delete <head-branch>   # remote deletion, as its own command
-gh pr view <pr> --json state             # must report MERGED
+gh pr view <pr> --json state             # must report MERGED before deleting anything
+git push origin --delete <head-branch>   # remote deletion, gated on that MERGED
 ```
+
+**Order matters — never delete before `state` reads `MERGED`.** With a merge queue on the base branch, `gh pr merge` exits 0 having only *enqueued* the PR (`gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue"), and `state` still reads `OPEN`. Deleting the head branch then destroys the ref the queue is building from. Poll at 30s intervals to a ~15-minute bound, then stop and report rather than deleting.
 
 **Never `--delete-branch`**: its local-cleanup step has to move the worktree holding the head branch onto the base branch, which the primary checkout already holds, so git refuses (`fatal: '<base>' is already used by worktree at '<primary>'`) and the command exits non-zero *after* the remote merge has already succeeded (cli/cli#13380). Deleting the remote branch explicitly avoids the whole path. A `--delete` that fails because the branch is already gone (auto-delete-on-merge) is not an error.
 
