@@ -283,8 +283,13 @@ for f in "${HEADREPO_DOCS[@]}"; do
   # Matching %23 anywhere in the file only proves the encoding is *explained*:
   # the command could regress from <head-branch-encoded> to <head-branch> with
   # the paragraph left intact, which is why the anchor pins the placeholder the
-  # command actually substitutes. This check keeps the rule documented.
+  # command actually substitutes. These checks keep the rule documented.
   assert_present "$f: documents the %23 encoding" "$f" 1 "$total" '%23'
+  # BOTH characters, and the order between them. `%` is the escape character, so
+  # encoding it second mangles the escapes just written — dropping that half left
+  # %23 present and the harness green. The bracket class matches the literal `%`;
+  # `[*]*` absorbs the bold markers one copy uses and the other does not.
+  assert_present "$f: encodes % before #" "$f" 1 "$total" 'Encode .%. [*]*first'
 done
 
 echo
