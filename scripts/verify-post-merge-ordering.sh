@@ -59,6 +59,7 @@ HEADREPO_DOCS=(
   .claude/skills/review-and-merge/references/github-api.md
 )
 
+
 # ---------------------------------------------------------------- primitives
 
 # first line number matching <regex> in <file> within [<start>,<end>]; empty if none
@@ -216,17 +217,33 @@ if [ -n "$FINALIZE_CLEAN_END" ]; then check_hooks "finalize.md" "$FINALIZE" "$FI
 
 echo
 echo "== gh pr merge --delete-branch is not used =="
-# Every surviving mention must be a prohibition. Testing for 'never' on the same
-# line, rather than counting occurrences, means a new prohibition sentence needs
-# no harness edit while a reinstated flag fails immediately.
-offenders=$(grep -rn --include='*.md' --include='*.json' --exclude-dir=.git -- \
-  '--delete-branch' . | grep -vi 'never')
-if [ -z "$offenders" ]; then
-  ok "every --delete-branch mention is a prohibition"
+# Two assertions, because the invariant is two things and the original check was
+# neither of them precisely. It filtered out any line containing `never`, which
+# let `Never omit --delete-branch` — an instruction to REINSTATE the flag — pass
+# as though it were a ban. Tightening that filter then flagged SKILL.md:905,
+# which legitimately *refers* to the flag ("`--delete-branch` got this right by
+# resolving the head repository") and was only passing before because the same
+# sentence happens to say "never from `origin`".
+#
+# So: a mention is not the thing to police. A USE is.
+if grep -rqn --include='*.md' --include='*.json' --exclude-dir=.git -E \
+     'gh pr merge[^`]*--delete-branch' .; then
+  bad "--delete-branch is passed to gh pr merge:"
+  grep -rn --include='*.md' --include='*.json' --exclude-dir=.git -E \
+    'gh pr merge[^`]*--delete-branch' . | sed 's/^/          /'
 else
-  bad "--delete-branch used outside a prohibition:"
-  printf '%s\n' "$offenders" | sed 's/^/          /'
+  ok "no gh pr merge command passes --delete-branch"
 fi
+
+# And the ban must stay written down in every copy that documents the merge, so
+# deleting the paragraph is caught too. The verb list is closed on purpose: a new
+# phrasing fails loudly and gets read by a person, which is the right outcome for
+# a rule this load-bearing.
+for f in "${MERGE_DOCS[@]}"; do
+  if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
+  assert_present "$f: states the --delete-branch prohibition" \
+    "$f" 1 "$(total_lines "$f")" '[Nn]ever( pass| use| add)? .?--delete-branch'
+done
 
 # ------------------------------- 6. MERGED gate sits between merge and delete
 
@@ -291,6 +308,7 @@ for f in "${HEADREPO_DOCS[@]}"; do
   # `[*]*` absorbs the bold markers one copy uses and the other does not.
   assert_present "$f: encodes % before #" "$f" 1 "$total" 'Encode .%. [*]*first'
 done
+
 
 echo
 if [ "$fails" -eq 0 ]; then
