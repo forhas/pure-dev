@@ -181,7 +181,13 @@ check_hooks() {
     "$file" "$hooks" "$total" 'rev-parse --abbrev-ref HEAD'
   assert_present "$label hook assertion 2/3: merge is an ancestor" \
     "$file" "$hooks" "$total" 'merge-base --is-ancestor'
-  assert_present "$label hook assertion 3/3: HEAD == origin/<base>" \
+  # The equality TEST, not merely one of its operands. Deleting the `test …` line
+  # leaves `rev-parse origin/<baseRefName>` behind on the following line, so an
+  # operand-only match stays green while the precondition itself is gone.
+  # Requiring `" = ` also rejects an inverted `" != `.
+  assert_present "$label hook assertion 3/3a: the HEAD equality test" \
+    "$file" "$hooks" "$total" '^test .*rev-parse HEAD.*" = '
+  assert_present "$label hook assertion 3/3b: compared against origin/<base>" \
     "$file" "$hooks" "$total" 'rev-parse origin/'
 }
 
