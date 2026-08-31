@@ -217,6 +217,12 @@ for f in "${MERGE_DOCS[@]}"; do
     "gh pr merge"                  '^gh pr merge <pr> --' \
     "gh pr view --json state"      '^gh pr view <pr> --json state' \
     "remote branch deletion"       '^(git push origin --delete|gh api --method DELETE)'
+  # Position alone is not the invariant. The order check above proves a state
+  # lookup happens between the merge and the deletion; it says nothing about
+  # which state permits the deletion, so all six copies could be reworded to
+  # gate on OPEN and still pass. MERGED is the API's own value, not prose.
+  assert_present "$f: the gate requires MERGED, not merely a state read" \
+    "$f" 1 "$(total_lines "$f")" '^gh pr view <pr> --json state.*MERGED'
 done
 
 # --------------------- 7. quick-dev deletes from the head repo, ref encoded
