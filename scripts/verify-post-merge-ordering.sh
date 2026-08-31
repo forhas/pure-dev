@@ -224,6 +224,14 @@ check_hooks() {
     assert_present "$label hook assertion 3/3: HEAD == origin/<base>, both halves" \
       "$file" $((eq_ln + 1)) $((eq_ln + 1)) 'rev-parse origin/<baseRefName>'
   fi
+
+  # Requiring the three preconditions says nothing about what happens when one
+  # fails. With the skip instruction deleted from both documents the harness
+  # stayed green, and a hook is then free to commit and push from a HEAD that is
+  # dirty, diverged, or behind the merge — the exact state the preconditions are
+  # there to detect. Detection without a consequence is not a gate.
+  assert_present "$label skips hooks when a precondition fails" \
+    "$file" "$hooks" "$total" 'skip the hook step entirely'
 }
 
 echo
