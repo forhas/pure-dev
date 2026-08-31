@@ -261,6 +261,30 @@ else
   ok "no gh pr merge command passes --delete-branch"
 fi
 
+# The check above is line-based, and grep cannot see a shell line continuation:
+#
+#     gh pr merge <pr> --squash \
+#       --delete-branch
+#
+# is a valid command that re-enables the flag while every line-scoped pattern
+# stays green. Rather than teach the pattern about backslashes, scan by REGION —
+# the flag must not appear inside a fenced code block at all. Prose that merely
+# refers to the flag (SKILL.md explains why dropping it must not drop head-repo
+# resolution) is outside every fence and stays legal, which is the distinction
+# the earlier prohibition heuristic kept getting wrong.
+fenced=$(for f in $(grep -rl --include='*.md' --exclude-dir=.git -- '--delete-branch' .); do
+  awk -v F="$f" '
+    /^```/            { inblock = !inblock; next }
+    inblock && /--delete-branch/ { printf "%s:%d:%s\n", F, NR, $0 }
+  ' "$f"
+done)
+if [ -z "$fenced" ]; then
+  ok "--delete-branch appears in no fenced code block"
+else
+  bad "--delete-branch appears inside a code block:"
+  printf '%s\n' "$fenced" | sed 's/^/          /'
+fi
+
 # And the ban must stay written down in every copy that documents the merge, so
 # deleting the paragraph is caught too. The verb list is closed on purpose: a new
 # phrasing fails loudly and gets read by a person, which is the right outcome for
