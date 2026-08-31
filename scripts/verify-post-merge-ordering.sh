@@ -208,6 +208,29 @@ fi
 
 # ------------------------------- 6. MERGED gate sits between merge and delete
 
+# Position alone is not the invariant: the order check proves a state lookup sits
+# between the merge and the deletion, not which state permits it. MERGED is the
+# API's own value, so requiring it pins mechanism rather than comment wording.
+#
+# It must be bound to THAT line rather than searched for across the file. Each
+# references/github-api.md carries a second standalone `--json state` example
+# further down — the non-zero-exit recovery path — which also says MERGED, so a
+# whole-file search stays green while the real gate is reworded to OPEN.
+check_merged_gate() {
+  local f=$1 total=$2
+  local merge_ln del_ln gate_ln
+  # Each bail-out below is a case assert_order has already failed on and
+  # explained; re-reporting it here would double-count one regression.
+  merge_ln=$(find_line "$f" 1 "$total" '^gh pr merge <pr> --')
+  [ -n "$merge_ln" ] || return 0
+  del_ln=$(find_line "$f" "$merge_ln" "$total" '^(git push origin --delete|gh api --method DELETE)')
+  [ -n "$del_ln" ] || return 0
+  gate_ln=$(find_line "$f" "$merge_ln" "$del_ln" '^gh pr view <pr> --json state')
+  [ -n "$gate_ln" ] || return 0
+  assert_present "$f: the gate line itself requires MERGED" \
+    "$f" "$gate_ln" "$gate_ln" 'MERGED'
+}
+
 echo
 echo "== merge -> MERGED gate -> branch deletion =="
 for f in "${MERGE_DOCS[@]}"; do
@@ -217,12 +240,7 @@ for f in "${MERGE_DOCS[@]}"; do
     "gh pr merge"                  '^gh pr merge <pr> --' \
     "gh pr view --json state"      '^gh pr view <pr> --json state' \
     "remote branch deletion"       '^(git push origin --delete|gh api --method DELETE)'
-  # Position alone is not the invariant. The order check above proves a state
-  # lookup happens between the merge and the deletion; it says nothing about
-  # which state permits the deletion, so all six copies could be reworded to
-  # gate on OPEN and still pass. MERGED is the API's own value, not prose.
-  assert_present "$f: the gate requires MERGED, not merely a state read" \
-    "$f" 1 "$(total_lines "$f")" '^gh pr view <pr> --json state.*MERGED'
+  check_merged_gate "$f" "$(total_lines "$f")"
 done
 
 # --------------------- 7. quick-dev deletes from the head repo, ref encoded
