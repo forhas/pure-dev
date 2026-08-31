@@ -894,13 +894,13 @@ gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName   # -> <he
 gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
 
-**`<head-branch-encoded>` is percent-encoded, and skipping that deletes the wrong ref.** `gh api`'s positional argument is a URL path, not a shell string, so a character that is legal in a git ref but special in a URL is parsed rather than sent. `git check-ref-format refs/heads/feature/foo#bar` succeeds, but the request actually issued is `DELETE /repos/…/git/refs/heads/feature/foo` — `#bar` is read as a URL fragment and dropped — so an unrelated `feature/foo` is deleted instead. `?` behaves the same way, becoming a query string. Encode `%` **first**, then `#` and `?`, and leave `/` alone (the API expects `heads/<branch>` as a path):
+**`<head-branch-encoded>` is percent-encoded, and skipping that deletes the wrong ref.** `gh api`'s positional argument is a URL path, not a shell string, so a character that is legal in a git ref but special in a URL is parsed rather than sent. Exactly two characters are both: **`#`** and **`%`** (`git check-ref-format refs/heads/feature/foo#bar` and `…foo%bar` both succeed). `git check-ref-format` already rejects `?`, `*`, `[`, `~`, `^`, and `:`, so those cannot reach here and are not part of the hazard. Encode `%` **first** — it is the escape character itself, so encoding it second would mangle the escapes just written — and leave `/` alone, since the API expects `heads/<branch>` as a path:
 
 ```
-%  →  %25        #  →  %23        ?  →  %3F
+%  →  %25        #  →  %23
 ```
 
-Verified against the installed `gh`: `GH_DEBUG=api gh api "…/heads/feature/foo#bar"` sends `…/heads/feature/foo`, while `…/heads/feature/foo%23bar` sends the ref intact.
+Unencoded, `feature/foo#bar` is sent as `DELETE /repos/…/git/refs/heads/feature/foo`: `#bar` is read as a URL fragment and dropped, so an unrelated `feature/foo` is deleted instead. Verified against the installed `gh`: `GH_DEBUG=api gh api "…/heads/feature/foo#bar"` sends `…/heads/feature/foo`, while `…/heads/feature/foo%23bar` sends the ref intact.
 
 **Delete from the repository that owns the head branch, never from `origin` unconditionally.** On a fork-based PR the head branch lives in the *fork* while `origin` is the base repository, so `git push origin --delete <head-branch>` either fails — leaving the real head branch behind — or, if the base repository happens to carry an unrelated branch of the same name, **deletes that one instead**. `--delete-branch` got this right by resolving the head repository, and dropping the flag must not drop that. When the head repository *is* the base repository — the `develop` flow's normal case, since it pushes the feature branch to `origin` — the `gh api` call above is the same operation `git push origin --delete` would have performed. A `403` on a fork you have no write access to is the expected outcome, not a failure: report it and continue; the branch is the contributor's to delete.
 
