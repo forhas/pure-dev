@@ -45,6 +45,11 @@ if [ ! -f "$LIB" ]; then
   exit 1
 fi
 
+# <name> is the shared library's helper set. Three definition forms:
+#   name()            name ()            function name  [()]
+HELPER_NAMES='assert_[a-z_]+|find_line|count_lines|scan_region|skeleton|label_[a-z_]+'
+HELPER_DEF_RE="^[[:space:]]*(function[[:space:]]+($HELPER_NAMES)[[:space:]]*(\(\))?|($HELPER_NAMES)[[:space:]]*\(\))[[:space:]]*\{?"
+
 harnesses=0
 for h in scripts/verify-*.sh; do
   [ "$h" = "scripts/verify-assertions.sh" ] && continue
@@ -59,7 +64,14 @@ for h in scripts/verify-*.sh; do
   # A local definition would shadow the library's, silently restoring the loose
   # behaviour. Match the definition form, not a mention: these files discuss
   # `assert_present` in their comments.
-  if locals=$(grep -nE '^[[:space:]]*(assert_[a-z_]+|find_line|count_lines|scan_region|skeleton|label_[a-z_]+)\(\)' "$h"); then
+  #
+  # All three shell definition forms, not just `name()`. POSIX allows whitespace
+  # between the name and the parens, and bash also accepts `function name { … }`
+  # with no parens at all — so a matcher keyed on `name()` alone lets a harness
+  # define `assert_present () { … }` after sourcing the library, shadowing the
+  # shared implementation while this check reports that nothing was defined.
+  # That is A3 defeated by whitespace. The forms are proven in the fixture below.
+  if locals=$(grep -nE "$HELPER_DEF_RE" "$h"); then
     bad "$h defines its own assertion helper(s): $(printf '%s' "$locals" | tr '\n' ' ')"
   else
     ok "$h defines no assertion helper of its own"
@@ -71,6 +83,40 @@ if [ "$harnesses" -gt 0 ]; then
 else
   bad "no scripts/verify-*.sh found — the harness set cannot be empty"
 fi
+
+echo
+echo "== the no-opt-out matcher catches every shell definition form =="
+
+# A matcher that misses a form is a matcher that lets a harness shadow the shared
+# implementation while this file reports it clean — A3 defeated by whitespace.
+DEFS=$(mktemp)
+cat > "$DEFS" <<'FORMS'
+assert_present() { :; }
+assert_present () { :; }
+function assert_present { :; }
+function assert_present() { :; }
+  scan_region() { :; }
+FORMS
+n=$(grep -cE "$HELPER_DEF_RE" "$DEFS")
+if [ "$n" -eq 5 ]; then
+  ok "all 5 definition forms are caught (name(), name (), function name, function name(), indented)"
+else
+  bad "only $n of 5 definition forms caught — a harness could shadow the library undetected"
+fi
+
+# ...and does not fire on a mention. Every harness discusses these names in prose.
+cat > "$DEFS" <<'FORMS'
+# assert_present requires exactly one matching line
+  assert_present "label" "$f" 1 10 'regex'
+echo "see assert_present() in the library"
+FORMS
+n=$(grep -cE "$HELPER_DEF_RE" "$DEFS" || true)
+if [ "$n" -eq 0 ]; then
+  ok "a call, a comment and a prose mention are not definitions"
+else
+  bad "the matcher fired on $n non-definition line(s) — every harness would fail"
+fi
+rm -f "$DEFS"
 
 # ---------------------------------------------------------------------------
 # A4 — the library's own checks, proven in both directions

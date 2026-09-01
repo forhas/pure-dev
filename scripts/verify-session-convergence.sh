@@ -216,7 +216,18 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" \
       "branch.<b>.remote" 'config --get "branch[.][$]b[.]remote"' \
       "branch.<b>.merge"  'config --get "branch[.][$]b[.]merge"' \
-      "ls-remote compare" 'ls-remote "[$]r" "[$]m"'
+      "fetch the ref"     'fetch -q "[$]r" "[$]m"'
+    # Direction, not difference: a sha inequality is equally true of a branch that
+    # is merely BEHIND, and reporting that as a tail on a pre-merge gate demands a
+    # push that would clobber whoever pushed to the fork.
+    assert_present "$f: a behind branch is observed, not judged a tail" \
+      "$f" "$enum" "$phrase" 'behind [$]r [$]m — observed, NOT a tail'
+    assert_present "$f: a diverged branch is a tail a plain push must not resolve" \
+      "$f" "$enum" "$phrase" 'diverged from [$]r [$]m — a tail, and one a plain push must not resolve'
+    assert_order "$f: ahead and behind are told apart by ancestry, in that order" \
+      "$f" "$enum" "$phrase" \
+      "remote is ancestor of local" 'merge-base --is-ancestor "[$]remote_sha" "[$]local_sha"' \
+      "local is ancestor of remote" 'merge-base --is-ancestor "[$]local_sha" "[$]remote_sha"'
     assert_absent "$f: does not use git branch --merged (blind to squash merges)" \
       "$f" "$enum" "$phrase" '^[^#]*git branch --merged <base>'
     assert_present "$f: detects a stale branch by its PR state, not by ancestry" \

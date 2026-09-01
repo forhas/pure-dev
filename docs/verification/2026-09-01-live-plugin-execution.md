@@ -98,17 +98,36 @@ against the file it guards.
 
 ## What this does not cover
 
-Stated so the next reader does not over-read the table above. These are facts
-about the run's scope, not open work:
+Stated so the next reader does not over-read the table above. Each carries an
+explicit disposition, because an unlabeled limitation is exactly what this
+repository's completeness gate exists to refuse — and each of these was raised as
+an untriaged caveat by that gate on the pull request that added this file, which
+is how they came to be labeled here.
 
-- The `superpowers` build path (`writing-plans` → `plan-review` →
+- **`drop`** — The `superpowers` build path (`writing-plans` → `plan-review` →
   `subagent-driven-development`) was not exercised: triage scored PDS-1 at 5/24
   and chose `feature-dev`, and the local-mode run forced `feature-dev` too.
-- No epic container was created, so `epic-update`, `findEpics`, `createEpic` and
-  `getEpicContext` ran only on their no-epic paths.
-- No review round produced a code change, so the multi-round loop, the severity
-  ratchet, the oscillation guard and the round cap were not driven — those are
-  covered instead by this repository's own PRs #23, #24, #28 and #29, which drove
-  them through the `.claude/` mirror.
-- `/notion-dev:create-task` and `/notion-dev:init` were not run as commands; the
-  ticket and the config were produced by following their documented output shapes.
+- **`drop`** — No epic container was created, so `epic-update`, `findEpics`,
+  `createEpic` and `getEpicContext` ran only on their no-epic paths.
+- **`drop`** — `/notion-dev:create-task` and `/notion-dev:init` were not run as
+  commands; the ticket and the config were produced by following their documented
+  output shapes.
+
+  These three share one rationale, and it is a scope judgment rather than a
+  deferral. Issue #31's own suggested resolution names exactly the runs that
+  happened — one `/notion-dev:ticket` through to merge, then `/quick-dev:develop`
+  in local mode — and this session added the fork-PR `finalize` path on top of
+  them. Covering the rest means another live-execution session against a Notion
+  workspace plus whatever it surfaces: real work, but **new** scope, and none of
+  it is a known defect. Recording it as a `file` item would mean an open ticket
+  for work nobody has asked for; recording it as nothing at all would be the
+  unlabeled limitation. `drop` with this rationale is the honest third option,
+  and it is reversible — the scratch repository and database this run built are
+  what a later session would start from.
+- **`drop`** — No review round in the *scratch* runs produced a code change, so
+  the multi-round loop, the severity ratchet, the oscillation guard and the round
+  cap were not driven there. No gap remains: those mechanisms were driven in
+  production by this repository's own PRs #23, #24, #28 and #29 through the
+  `.claude/` mirror — which is what issue #31 itself records as already-verified
+  for quick-dev — and again by the three-round loop on the pull request that
+  added this file.

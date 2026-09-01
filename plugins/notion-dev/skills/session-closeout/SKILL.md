@@ -94,11 +94,26 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
      r=$(git -C "$w" config --get "branch.$b.remote") || r=""
      m=$(git -C "$w" config --get "branch.$b.merge") || m=""
      if [ -n "$r" ] && [ -n "$m" ]; then
-       remote_sha=$(git -C "$w" ls-remote "$r" "$m" | cut -f1)
-       if [ -z "$remote_sha" ]; then
-         echo "$w ($b): pushes to $r but the ref is absent there — unpushed"
-       elif [ "$remote_sha" != "$(git -C "$w" rev-parse HEAD)" ]; then
-         echo "$w ($b): differs from $r $m — unpushed"
+       # A sha INEQUALITY is not evidence of unpushed work — it is equally true of
+       # a local branch that is merely BEHIND, which happens whenever anyone else
+       # pushes to the fork. Reporting that as a tail on a pre-merge gate would
+       # demand a push that would clobber their commit. Fetch the ref and ask for
+       # direction, not difference.
+       if git -C "$w" fetch -q "$r" "$m" 2>/dev/null; then
+         local_sha=$(git -C "$w" rev-parse HEAD)
+         remote_sha=$(git -C "$w" rev-parse FETCH_HEAD)
+         if [ "$local_sha" = "$remote_sha" ]; then
+           :                                            # in sync — not a tail
+         elif git -C "$w" merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+           n=$(git -C "$w" rev-list --count "$remote_sha..$local_sha")
+           echo "$w ($b): $n unpushed commit(s) ahead of $r $m"
+         elif git -C "$w" merge-base --is-ancestor "$local_sha" "$remote_sha"; then
+           echo "$w ($b): behind $r $m — observed, NOT a tail; nothing of this run is unpushed"
+         else
+           echo "$w ($b): diverged from $r $m — a tail, and one a plain push must not resolve"
+         fi
+       else
+         echo "$w ($b): pushes to $r but the ref could not be fetched — unpushed"
        fi
      else
        echo "$w ($b): no upstream — never pushed"

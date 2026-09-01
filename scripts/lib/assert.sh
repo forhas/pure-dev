@@ -109,10 +109,11 @@ total_lines() { wc -l < "$1" | tr -d ' '; }
 # backticked one — without the check demanding the punctuation match too. What it
 # still cannot do is let a regex OMIT the literal, which is the whole defect.
 #
-# Parameter expansion, not `tr`. This runs once per literal per assertion, and at
-# ~205 assertions the fork cost is the dominant term: with `tr` here the suite went
-# from 1.6s to 23.8s, a 15x regression that would train people to skip the very
-# checks it guards.
+# Parameter expansion, not `tr`. This runs once per literal per assertion — about
+# 1230 calls per suite run — so it is the largest single multiplier, worth ~1.3x
+# of suite time on its own. It is NOT where the 15x came from: that figure (1.6s
+# to 23.8s) was the aggregate of every fork this file added, and attributing it to
+# this line alone was an overstatement the completeness gate caught.
 skeleton() { local s=${1//[!A-Za-z0-9]/}; printf '%s' "$s"; }
 
 # label_literals <label> -> tab-separated `<class>\t<literal>` lines, where class
@@ -138,8 +139,9 @@ skeleton() { local s=${1//[!A-Za-z0-9]/}; printf '%s' "$s"; }
 # the first match consumes the separating space, so the second has no leading
 # boundary left, and "the block keys are SWEPT ABSORBED" reported only SWEPT.
 #
-# One awk, not a pipeline of greps: this is called once per assertion and the
-# forks are what made the suite 15x slower. BODY goes through ENVIRON for the
+# One awk, not a pipeline of greps: this is called once per assertion, and the
+# forks across this file are what made the suite 15x slower in aggregate (1.6s to
+# 23.8s; 5.2s after all of it). BODY goes through ENVIRON for the
 # same reason every regex here does — `-v` performs escape processing.
 label_literals() {
   BODY="$1" awk 'BEGIN {
