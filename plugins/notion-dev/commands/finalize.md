@@ -63,6 +63,16 @@ phase entirely). Probe `jq --version` here — abort with install instructions i
 `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`) on Windows, where it is
 commonly absent; `brew install jq` / `apt install jq` otherwise.
 
+**Closeout — completion pass, before the merge.** The review-and-merge skill performs the merge
+itself, so its `--pre-merge-check` is the last moment a fix can still enter this pull request.
+Always pass the **completion pass** of `notion-dev:session-closeout` there — on every repo,
+plugin or not — appending the stale-bump clause below when the target repo is a plugin:
+`--pre-merge-check "the completion pass of notion-dev:session-closeout must come back with no
+unresolved tail: no uncommitted or unpushed work in any worktree, every FILED item tracked with
+its ticket URL, the project's verification re-run and passing on this HEAD, and no unsupported
+claim or unstated caveat left in the PR body — resolve anything it finds on this branch and push
+before merging"`.
+
 Invoke the `notion-dev:review-and-merge` skill via the Skill tool with args:
 `<pr-number>`, plus `--non-interactive` when set, plus — when `CRITERIA_FILE` is set —
 `--criteria-file "<CRITERIA_FILE>"`, plus — when the target repo is a
@@ -182,7 +192,7 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 
 ## Phase 5 — Report
 
-**Closeout — zero tails.** Before printing anything below, invoke the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly. It enumerates loose ends from git, `gh`, Notion, and the draft report itself, and forces every one into `resolved`, `tracked: <url>`, or `blocked: <external cause>`. It runs **before** the report rather than inside it, because a tail found while writing a report gets written down instead of fixed. Every `FILED` follow-up must come out of it as `tracked:` with its Notion ticket URL — a filed item named only in this summary is a tail, not a record. End the report with its `CLOSEOUT:` block verbatim, followed by any `tracked:` and `blocked:` lines; a report ending `TRACKED: 0` / `BLOCKED: 0` says the run is finished, with no trailing caveat.
+**Closeout — zero tails.** Before printing anything below, invoke the **workspace pass** of the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly — its completion pass already ran before the merge, as that skill's "When to run" section requires. It enumerates loose ends from git, `gh`, Notion, and the draft report itself, and forces every one into `resolved`, `tracked: <url>`, or `blocked: <external cause>`. It runs **before** the report rather than inside it, because a tail found while writing a report gets written down instead of fixed. Every `FILED` follow-up must come out of it as `tracked:` with its Notion ticket URL — a filed item named only in this summary is a tail, not a record. End the report with its `CLOSEOUT:` block verbatim, followed by any `tracked:` and `blocked:` lines; a report ending `TRACKED: 0` / `BLOCKED: 0` says the run is finished, with no trailing caveat.
 
 Print a summary covering:
 - Flow: `n/a — finalize entry point`, unless the ledger has a recorded `flow_chosen` for this `run_id`, in which case report that value instead.

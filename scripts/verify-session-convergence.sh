@@ -169,6 +169,15 @@ for f in $CLOSEOUT_DOCS; do
 
   assert_present "$f: declares name session-closeout" "$f" 1 10 '^name: session-closeout$'
 
+  # The two passes, and the ordering constraint that is the whole point of them.
+  assert_order "$f: defines a completion pass before the merge and a workspace pass after" \
+    "$f" 1 "$n" \
+    "When to run"      '^## When to run — two passes' \
+    "completion pass"  '^- [*][*]Completion pass — before the merge' \
+    "workspace pass"   '^- [*][*]Workspace pass — after cleanup'
+  assert_present "$f: names --pre-merge-check as the completion pass's hook" \
+    "$f" 1 "$n" 'pre-merge-check' 
+
   assert_order "$f: the three states are defined in order, and there is no fourth" \
     "$f" 1 "$n" \
     "resolved"        '[|] .resolved. [|]' \
@@ -249,6 +258,19 @@ check_caller() {
     "$file" "$inv" $((inv + 4)) 'before'
   ok "$label references $skillref in its report phase"
 }
+
+# The completion pass must be wired BEFORE the merge, or the split is decorative.
+check_premerge() {
+  local label=$1 file=$2 n
+  n=$(total_lines "$file")
+  assert_present "$label passes the closeout completion pass as a pre-merge check" \
+    "$file" 1 "$n" 'completion pass of (quick|notion)-dev:session-closeout'
+  assert_present "$label states the merge is the last moment a fix can enter the PR" \
+    "$file" 1 "$n" '(last moment|before the merge)'
+}
+check_premerge "develop"  "$QD/skills/develop/SKILL.md"
+check_premerge "ticket"   "$ND/commands/ticket.md"
+check_premerge "finalize" "$ND/commands/finalize.md"
 
 check_caller "develop Phase 6" \
   "$QD/skills/develop/SKILL.md" '^## Phase 6 ' 'quick-dev:session-closeout'

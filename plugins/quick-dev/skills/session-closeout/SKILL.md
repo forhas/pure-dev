@@ -29,13 +29,34 @@ can give. It is **not** for work that is merely long, tedious, or unreviewed.
 A `blocked` item with an internal cause is a tail wearing a label, and it is the single most
 common way this rule is defeated.
 
+## When to run — two passes
+
+**A tail whose fix belongs in the pull request has to be found before the merge, not after it.**
+The sources in step 1 are ordered by kind, not by timing, and a caller that merges has two
+distinct moments to use them:
+
+- **Completion pass — before the merge.** Sources 1, 2, 5, 6, 7 and 8: uncommitted and unpushed
+  work, untracked `FILED` items, deferred trailers, a fresh verification run, and the draft
+  report's own claims. Every one of these has a fix that belongs *in the pull request*. Run it
+  while the branch is still open — a caller driving `review-and-merge` passes it as a
+  `--pre-merge-check` requirement, which is precisely the hook for a condition that must hold
+  immediately before the merge command runs.
+- **Workspace pass — after cleanup.** Sources 3 and 4: leftover worktrees and branches, and open
+  pull requests. These are only *answerable* once the merge and cleanup have happened, and none
+  of them is fixed by changing code.
+
+**Running only the workspace pass is the failure this split exists to prevent.** The completion
+sources would then be read after the branch was deleted, so a defect the fresh test run turned up
+could no longer enter the reviewed pull request — it would need the very second pull request this
+whole design exists to avoid, or it would be left sitting on the base branch.
+
 ## 1. Enumerate — from sources, never from memory
 
 Do not recall what is outstanding; **query it**. Recall is what produces "one thing left".
 
-1. **Uncommitted work** — `git status --porcelain` in the primary checkout and in every worktree
+1. *(completion)* **Uncommitted work** — `git status --porcelain` in the primary checkout and in every worktree
    (`git worktree list --porcelain`). Non-empty is a tail.
-2. **Unpushed work** — in **every** worktree, not just the current one, and a branch with *no*
+2. *(completion)* **Unpushed work** — in **every** worktree, not just the current one, and a branch with *no*
    upstream is a tail too. `@{upstream}` **fails** rather than reporting that case, so an
    unguarded `rev-list` reads as an error, not as zero — handle it explicitly:
 
@@ -50,7 +71,7 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
      fi
    done
    ```
-3. **Leftover worktrees and branches** — a worktree, or a local branch whose work has landed, is
+3. *(workspace)* **Leftover worktrees and branches** — a worktree, or a local branch whose work has landed, is
    a tail. **Do not reach for `git branch --merged`.** Where the project squash-merges, a
    squashed branch's commits are not ancestors of the squash commit, so `--merged` lists nothing
    and the check silently passes on exactly the branch it exists to catch. (`develop`'s own
@@ -72,17 +93,17 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    has instead is better than any inference: it knows the branch it created, so it checks that
    branch by name. Only a session cleaning up after someone else is left guessing, and that case
    needs a human, not a command.
-4. **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
+4. *(workspace)* **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
    for human review was the session's stated deliverable**, in which case it is `resolved` and
    the report says so. An open PR nobody asked to be left open is unfinished work.
-5. **Open issues this session filed**, plus every item in a review report's `FILED` list —
+5. *(completion)* **Open issues this session filed**, plus every item in a review report's `FILED` list —
    `gh issue list --state open`. Each needs `tracked:` with its URL at minimum.
-6. **Work already recorded as deferred** — `git log --grep '^Deferred:' --grep '^Unmet:'` across
+6. *(completion)* **Work already recorded as deferred** — `git log --grep '^Deferred:' --grep '^Unmet:'` across
    this session's commits.
-7. **Verification** — run the project's full test / build / lint suite *now*. A failing check is
+7. *(completion)* **Verification** — run the project's full test / build / lint suite *now*. A failing check is
    a tail; so is never having run it. Do not report a session as done on the strength of a suite
    that last passed several commits ago.
-8. **Your own draft report.** Read it before sending. Every caveat, limitation, "note that", and
+8. *(completion)* **Your own draft report.** Read it before sending. Every caveat, limitation, "note that", and
    unverified claim in it is a tail that has not been assigned a state.
 
 ## 2. The phrase check
