@@ -896,10 +896,24 @@ once, at the end. Rewrite each swept entry's disposition to `applied` or `partia
 response through `## 2`'s judgment bar as usual, with three differences that are what make the
 round terminal:
 
-1. **Nothing from the sweep round may be absorbed.** Every agreed non-blocking finding is `file`
-   or `drop`, whatever its round number or depth. This is a stronger constraint than Rule 1, not
-   an instance of it: it binds even at round 1 of a run that swept early, and it is what
-   guarantees the sweep cannot produce a second batch.
+1. **The sweep round buys no further review *round*; it does not forbid a further *fix*.** Those
+   are different things, and conflating them was a defect this design shipped with — one it hit
+   on its own pull request within the hour. The terminal round surfaced three small, real,
+   non-blocking defects inside files the PR already changed, and a flat "file or drop" would have
+   deferred six lines of markdown into a follow-up pull request: precisely the cost the sweep
+   exists to remove, reintroduced by the sweep's own rule.
+
+   So a non-blocking finding from the sweep round **may be fixed**, under Rule 3 (minimal patch)
+   and Rule 4 (verify before push), when the fix is small and inside files this pull request
+   already touches. What it must never do is trigger **another review round**. Such a fix
+   therefore reaches the merge with CI and the gate stack as its only checks — the same
+   limitation the Completeness gate discloses — and the report must name which findings took it.
+
+   **`file` or `drop` remains the answer for anything larger.** A finding needing a new public
+   interface, settling an open design question, or large enough to obscure this pull request is a
+   real follow-up; taking it here would be new unreviewed scope rather than a correction. That
+   boundary — not a blanket ban on fixing — is what keeps the sweep terminal, since no second
+   batch can form out of edits required to stay small and reviewless.
 2. **A `blocking` finding the sweep induced is reverted, not fixed.** Compute `induced` exactly
    as Rule 2 does — the sweep commits sit inside `$R1_SHA..$REVIEW_SHA` like any other fix.
    Revert the sweep commit blame names, re-triage that item back to `file` with the sweep revert

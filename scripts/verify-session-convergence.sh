@@ -138,8 +138,12 @@ for f in $RAM_DOCS; do
     "$f" "$sweep" "$merge" 'none of the three .file. criteria'
   assert_present "$f: the sweep keeps one commit per item with its Finding trailer" \
     "$f" "$sweep" "$merge" 'one item per commit'
-  assert_present "$f: nothing from the sweep round may be absorbed" \
-    "$f" "$sweep" "$merge" 'may be absorbed'
+  assert_present "$f: the sweep round bars another review round, not another fix" \
+    "$f" "$sweep" "$merge" 'buys no further review [*]round[*]; it does not forbid'
+  assert_present "$f: a reviewless sweep-round fix must stay small and in-scope" \
+    "$f" "$sweep" "$merge" 'never do is trigger'
+  assert_present "$f: anything larger is still filed or dropped" \
+    "$f" "$sweep" "$merge" 'remains the answer for anything larger'
   assert_present "$f: a sweep-induced blocking finding is reverted, not fixed" \
     "$f" "$sweep" "$merge" 'reverted, not fixed'
   assert_present "$f: a blocking finding the sweep did not induce is fixed, not filed" \
