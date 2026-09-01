@@ -138,7 +138,7 @@ check_cleanup() {
     "git worktree remove <wt>"      "git worktree remove $wt" \
     "git branch -D <branch>"        "git branch -D $branch" \
     "git checkout <base> && git pull" "git checkout $base && git pull" \
-    "rmdir <worktrees-parent>"      "$rmdir_re"
+    "rmdir <parent of the worktree>" "$rmdir_re"
 
   # Separate from the ordering check on purpose: dropping --ff-only is its own
   # regression (a diverged primary would manufacture a merge commit, which is
@@ -153,11 +153,11 @@ check_cleanup() {
 }
 
 echo "== cleanup step ordering =="
-check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>' 'rmdir <worktrees-parent>'
+check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>' 'rmdir .*dirname <worktree-path>'
 TICKET_CLEAN_END=$CLEAN_END
-check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>' 'rmdir <worktrees-parent>'
+check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>' 'rmdir .*dirname <worktree-path>'
 FINALIZE_CLEAN_END=$CLEAN_END
-check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"' 'rmdir .*-worktrees"'
+check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"' 'rmdir .*dirname "[$]WORKTREE"'
 
 # ------------------------------------------- 3-4. hooks run after the cleanup
 
