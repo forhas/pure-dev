@@ -1,6 +1,6 @@
 {
   "name": "quick-dev",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "One-command feature development: /develop takes a feature description, triages it to the feature-dev or superpowers flow, builds it in an isolated git worktree, drives the PR through review to a squash-merge, then cleans up the worktree, branch, and PR — leaving a clean, up-to-date main.",
   "author": {
     "name": "Yogev",

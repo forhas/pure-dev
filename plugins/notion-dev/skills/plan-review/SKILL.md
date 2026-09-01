@@ -59,6 +59,10 @@ Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empt
 
 Dispatch **one** `general-purpose` agent, **synchronously**, with that prompt. (This matches how `../review-and-merge/SKILL.md` already spawns its local fallback reviewer.)
 
+**Invoking this skill *is* the request for that agent.** Whatever reached this step — an orchestrating flow on the superpowers path, or a user who asked for a plan review — asked for a review by an agent that did not write the plan, because that is the whole of what this skill does. A standing rule of the shape *do not dispatch subagents unless the user asks for one* is therefore already satisfied here, and is not grounds to skip the dispatch or to review the plan yourself. Reviewing it yourself is never the fallback: whoever runs this skill wrote the plan or ordered it written, so a self-review verifies nothing and would report a `clean` that no independent reader earned.
+
+**Unless the user explicitly disallowed it.** Only an instruction that forbids *this* dispatch counts — the user saying not to use subagents at all, or not for this review — as does a harness that refuses the call outright. Then do not retry, and do not substitute yourself: emit the output block with `PLAN-REVIEW: degraded` per **Degradation** below, name the prohibition on the `UNRESOLVED:` line, and say plainly in the report that the plan went unreviewed. The build still proceeds.
+
 Parse from its output: the findings list with severities, `TRIAGE-COMPLETE` together with the per-item triage lines beneath it, and the `VERDICT` line.
 
 **Contract check.** The reviewer's output is only usable if it carries **every** element the rubric's output contract mandates — the `Reviewed plan:` echo, a `COVERAGE-MAP:` block, a findings list (one or more `- [<Severity>] …` lines, or the literal `No findings.`), a `TRIAGE-COMPLETE` line, and a `VERDICT` line — plus, when the verdict is `NOT-CLEAN`, at least one parseable Critical or Required finding. A `COVERAGE-MAP:` whose whole body is `(no test suite in this repo)` satisfies that element; the rubric permits exactly that. Two failure shapes get different treatment:
@@ -114,7 +118,7 @@ Status is computed from the **unresolved counts, not from the reviewer's raw ver
 | `blocked` | ≥1 unresolved **Critical** |
 | `proceed-with-warnings` | 0 unresolved Critical, ≥1 unresolved **Required** |
 | `clean` | 0 unresolved Critical and 0 unresolved Required |
-| `degraded` | reviewer unavailable after one retry (Step 2) |
+| `degraded` | reviewer unavailable after one retry, or the dispatch explicitly disallowed by the user (Step 2) |
 
 A review whose `VERDICT` was `NOT-CLEAN` but whose findings were **all declined with reasoning** therefore yields `PLAN-REVIEW: clean`. That is correct, not a contradiction — the declines are listed under `DECLINED-WITH-REASONING` for the human to overrule.
 

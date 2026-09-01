@@ -744,6 +744,19 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 
 The reviewer loop ends on whichever comes first: **the reviewer reports no meaningful issues** per its profile's "no meaningful issues" row, the **judgment-based stop** in item 5 above, or the **round cap**. Then merge (step 5). If unavailability was detected instead, the local review loop below takes over with its own termination rules.
 
+### Dispatching this skill's agents
+
+Two seats in this skill are filled by a fresh `general-purpose` agent — the local review loop's reviewer immediately below, and **the completeness verifier** after it. Both exist for one reason: independence from the party that believes the work is done. Whoever runs this skill *is* that party, so filling either seat yourself is not a fallback — it is the absence of the check, reported as the check.
+
+**Invoking this skill is the request for those agents.** A standing rule of the shape *do not dispatch subagents unless the user asks for one* is already satisfied by reaching this step, and is not grounds to skip a dispatch or to fill a seat yourself.
+
+**Unless the user explicitly disallowed it** — the user saying not to use subagents at all, or not for these reviewers, or a harness that refuses the call outright. Then take that seat's own no-agent path, never your own judgment in its place. The two seats part company here, because what they gate differs:
+
+- **Local reviewer** — the diff would have no independent reader and this loop has nothing to degrade to, so **stop before the merge** and report the prohibition as the reason. Never merge on your own reading of the diff. This is the same stop the loop already takes when a replacement reviewer fails.
+- **Completeness verifier** — take its **Degradation** path exactly as written: `COMPLETENESS: degraded`, every key present, every criterion counted in `CRITERIA-UNVERIFIED`, the prohibition as its reason, and the interactive and non-interactive handling that follows it unchanged. It never resolves to `clean`.
+
+Either way, name the unfilled seat and the prohibition in the final report. A run that skipped one of these did not have it.
+
 ### Local review loop (reviewer unavailable)
 
 Entered only from unavailability detection — the reviewer loop's structural twin, with "spawn a fresh reviewer agent" replacing "trigger the bound reviewer". Fresh context per round is the point: the reviewer never sees prior rounds' reasoning, so its findings are independent. Round counter starts at 1; **hard cap: the same resolved `reviewsCap`, counted independently of the reviewer loop's rounds** — a runaway backstop only; the judgment-based stops below are expected to end the loop much earlier.
@@ -916,7 +929,10 @@ round terminal:
 **If the bound reviewer is unavailable** for the sweep round, run one local review round instead
 (`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
 available, say so plainly: the sweep batch merged unreviewed, and `SWEEP-ROUND: unreviewed`
-records it.
+records it. **A local reviewer the user prohibited is not "unavailable" in that sense.** The
+dispatch rule above stops before the merge and this branch does not override it: leave the pull
+request unmerged and report the prohibition. `SWEEP-ROUND: unreviewed` records a reviewer that
+could not be reached, never one that was forbidden.
 
 **Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
 batch can form, and no gate in `## 5` re-enters it.

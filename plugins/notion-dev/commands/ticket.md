@@ -199,6 +199,8 @@ Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blo
 - **Tick the file checkboxes**: as each task completes, mark its `- [ ]` as `- [x]` in `PLAN.md`. This keeps execution resumable across sessions — if interrupted, the next run resumes from the first unchecked task (paired with the resume detection in Phase 1.2).
 - **Stop before `superpowers:finishing-a-development-branch`**: do not let the delegation proceed into it. Ship, review, merge, and cleanup are owned by Phases 6–9 below, not by this delegation.
 
+**If the user has explicitly disallowed subagents**, this delegation is the one place in this command that may substitute: its subagents buy context hygiene and throughput, not independence, so execute the plan's tasks yourself in the plan's order, ticking each checkbox as it lands, and say so in the final report. The review seats never substitute this way — plan review degrades, and Phase 7's review loop stops.
+
 State the explicit deviations from stock superpowers when invoking, so the flows do not fight: skip `superpowers:using-git-worktrees` (Phase 2 already made the worktree); the end-of-branch review that `subagent-driven-development`/`finishing-a-development-branch` would normally run is not a substitute for Phase 7's review loop, which runs identically for both build flows.
 
 ### 4.3 Non-interactive mode and shared context
