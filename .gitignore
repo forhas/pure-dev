@@ -11,8 +11,9 @@
 #
 # What this un-ignoring would otherwise risk — sweeping a contributor's project-local
 # scratch skill into a commit — is covered by a mechanism rather than by scoping:
-# scripts/verify-mirror.sh fails on any directory here with no counterpart under
-# plugins/quick-dev/skills/, and now also on any mirrored file git is not tracking.
+# scripts/verify-mirror.sh rejects EVERY file under this directory that has no
+# counterpart under plugins/quick-dev/skills/ — recursively, not just SKILL.md and
+# references/* — and also any mirrored file git is not tracking.
 !.claude/skills/
 
 node_modules/

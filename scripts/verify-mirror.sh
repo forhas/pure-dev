@@ -56,47 +56,48 @@ for mdir in "$MIRROR_ROOT"/*/; do
     continue
   fi
 
-  assert_identical "$skill: SKILL.md matches the quick-dev plugin" \
-    "$src/SKILL.md" "$mdir/SKILL.md"
+  # Forward: every file the plugin ships must be mirrored, byte for byte. Walking
+  # the tree rather than naming paths keeps a newly added file from being silently
+  # unmirrored — the failure mode a fixed list would miss.
+  while IFS= read -r f; do
+    rel=${f#"$src"/}
+    assert_identical "$skill: $rel matches the quick-dev plugin" "$f" "$mdir$rel"
+  done < <(find "$src" -type f | sort)
+
+  # Reverse: EVERY file in the mirror must have a plugin counterpart — recursively,
+  # not only SKILL.md and references/*. A file with none is a project-local fork,
+  # invisible to everyone who installs the plugin, and .gitignore no longer hides
+  # one: the whole mirror directory is un-ignored, so an unmatched scratch file
+  # here is visible to `git add -A`. This loop is the mechanism that makes that
+  # exposure safe, and it only works if it inspects every path. README.md is the
+  # one legitimate exception — it documents the mirroring rule and has no plugin
+  # counterpart.
+  while IFS= read -r f; do
+    rel=${f#"$mdir"}
+    if [ "$rel" = "README.md" ]; then
+      ok "$skill: README.md is the documented mirror-only exception"
+      continue
+    fi
+    if [ -f "$src/$rel" ]; then
+      ok "$skill: $rel has a plugin counterpart"
+    else
+      bad "$skill: $rel exists only in the mirror (project-local file)"
+    fi
+  done < <(find "$mdir" -type f | sort)
 
   # Present on disk is not the invariant — *versioned* is. A mirror file that
   # .gitignore excludes passes every content check locally and then vanishes on a
   # fresh checkout, which is how a mirrored skill first shipped untracked: `git
   # add -A` skipped it silently and only CI noticed. Ask git, not the filesystem.
   if [ "$IN_GIT" = yes ]; then
-    for f in "$mdir"SKILL.md "$mdir"references/*; do
-      [ -e "$f" ] || continue
+    while IFS= read -r f; do
       if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
         ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
       else
         bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
       fi
-    done
+    done < <(find "$mdir" -type f | sort)
   fi
-
-  # Every reference the plugin ships must be mirrored, byte for byte. Looping
-  # rather than naming them keeps a newly added reference from being silently
-  # unmirrored — the failure mode a fixed list would miss.
-  for f in "$src"/references/*; do
-    [ -e "$f" ] || continue
-    base=$(basename "$f")
-    assert_identical "$skill: references/$base matches the quick-dev plugin" \
-      "$f" "$mdir/references/$base"
-  done
-
-  # The reverse direction: a file in the mirror with no counterpart in the
-  # plugin is a project-local fork, invisible to everyone who installs the
-  # plugin. README.md is the one legitimate exception — it documents the
-  # mirroring rule itself and has no plugin counterpart.
-  for f in "$mdir"/references/*; do
-    [ -e "$f" ] || continue
-    base=$(basename "$f")
-    if [ -f "$src/references/$base" ]; then
-      ok "$skill: references/$base has a plugin counterpart"
-    else
-      bad "$skill: references/$base exists only in the mirror (project-local fork)"
-    fi
-  done
 done
 
 echo "== mirror set =="
