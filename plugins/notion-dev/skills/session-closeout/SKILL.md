@@ -41,9 +41,10 @@ distinct moments to use them:
   while the branch is still open — a caller driving `review-and-merge` passes it as a
   `--pre-merge-check` requirement, which is precisely the hook for a condition that must hold
   immediately before the merge command runs.
-- **Workspace pass — after cleanup.** Sources 3 and 4: leftover worktrees and branches, and open
-  pull requests — plus the *second half* of source 5, the `FILED` items' ticket URLs, which do not
-  exist until the filing step has run. These are only *answerable* once the merge and cleanup have
+- **Workspace pass — after cleanup.** Sources 3, 4 and 8: leftover worktrees and branches, open
+  pull requests, and the finished draft report — plus the *second half* of source 5, the `FILED`
+  items' ticket URLs, which do not exist until the filing step has run. Source 8 is here rather
+  than in the completion pass for the same reason: at completion time there is no report to read. These are only *answerable* once the merge and cleanup have
   happened, and none of them is fixed by changing code.
 
 **Running only the workspace pass is the failure this split exists to prevent.** The completion
@@ -157,12 +158,20 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
 7. *(completion)* **Verification** — run the project's full test / build / lint suite *now*. A failing check is
    a tail; so is never having run it. Do not report a session as done on the strength of a suite
    that last passed several commits ago.
-8. *(completion)* **Your own draft report.** Read it before sending. Every caveat, limitation, "note that", and
-   unverified claim in it is a tail that has not been assigned a state.
+8. *(workspace, on the finished draft)* **Your own draft report.** Every caveat, limitation,
+   "note that", and unverified claim in it is a tail that has not been assigned a state.
+
+   **This source is worthless unless the draft it reads already exists in final form.** It cannot
+   run at completion time — the report does not exist yet — and it cannot run before the workspace
+   pass, because the merge, record, cleanup, hook and workspace outcomes are written after that.
+   So the order is: **compose the full draft, then run this source and step 2 over it, then send.**
+   Inspecting a draft that predates the outcomes, and never re-reading the one actually sent, is a
+   zero-tails gate that never sees the artifact it exists to check.
 
 ## 2. The phrase check
 
-Search the draft report for these before it goes out:
+Search the draft report for these before it goes out — over the **finished** draft, the one that
+already carries the merge, cleanup and workspace outcomes, not an earlier version of it:
 
 > "one thing left" · "one honest note" · "worth flagging" · "remaining open"
 > "the only remaining item" · "for a follow-up" · "should probably" · "left for later"
