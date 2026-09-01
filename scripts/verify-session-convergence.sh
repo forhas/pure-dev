@@ -246,7 +246,10 @@ for f in $CLOSEOUT_DOCS; do
   fi
 
   assert_present "$f: resolved is the default disposition" "$f" 1 "$n" '.resolved. is the default'
-  assert_present "$f: the closeout itself is bounded at two passes" "$f" 1 "$n" 'at most twice'
+  assert_present "$f: the retry bound is counted per lifecycle pass" \
+    "$f" 1 "$n" 'Each lifecycle pass runs at most twice'
+  assert_present "$f: the retry bound is not a budget the two passes share" \
+    "$f" 1 "$n" 'not a budget of'
   assert_present "$f: the closeout must not start new scope" "$f" 1 "$n" 'Do not start new scope'
 
   cl=$(find_line "$f" 1 "$n" '^CLOSEOUT:')

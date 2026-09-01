@@ -168,10 +168,15 @@ but "can this be finished in this one?"
 
 Two bounds keep the closeout from running away:
 
-- **It runs at most twice.** Resolving items can surface new ones and the second pass covers
-  those. Anything still open after pass 2 takes `tracked:` with a real URL, or `blocked:` with a
-  named external cause. There is no pass 3, and this is what keeps the closeout from becoming
-  the thing that prevents the session from ending.
+- **Each lifecycle pass runs at most twice.** This is a *retry* bound, and it is counted
+  **per pass** — completion may scan twice, and workspace may scan twice. It is not a budget of
+  two scans that the two lifecycle passes above consume between them; reading it that way would
+  mean a completion tail whose fix surfaced another tail could never be rechecked, since the
+  workspace pass would have spent the remaining scan. Resolving items surfaces new ones, and the
+  second scan of *that* pass is what covers them. Anything still open after a pass's second scan
+  takes `tracked:` with a real URL, or `blocked:` with a named external cause. There is no third
+  scan of either pass, and that is what keeps the closeout from becoming the thing that prevents
+  the session from ending.
 - **Do not start new scope.** A tail is something this session created, touched, or promised. An
   improvement merely *noticed* along the way is not a tail — at most it is a `tracked:` item, and
   usually it is nothing at all. Widening the session to fix everything observed is the opposite
