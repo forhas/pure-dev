@@ -93,8 +93,11 @@ for f in $CRITERIA_DOCS; do
     "$f" 1 "$n" '^[[:space:]]*[0-9]+[.] It [*][*]reaches code'
 
   # ...and the replacement is stated, not merely absent.
+  # NOT the bare fragment: the Contract check's "A missing verdict line is not a criterion
+  # silently met" satisfies it, so re-instating file location as "criterion 4" left this
+  # green — the harness stayed silent about the exact regression it exists to prevent.
   assert_present "$f: states that reaching a new file is not a criterion" \
-    "$f" 1 "$n" 'is not a criterion'
+    "$f" 1 "$n" 'was not already changing. is not a criterion'
 
   assert_order "$f: criteria are renumbered 1=interface 2=design-decision 3=obscures-the-change" \
     "$f" 1 "$n" \
@@ -137,7 +140,7 @@ for f in $RAM_DOCS; do
   assert_present "$f: sweep eligibility is 'none of the three file criteria is true'" \
     "$f" "$sweep" "$merge" 'none of the three .file. criteria'
   assert_present "$f: the sweep keeps one commit per item with its Finding trailer" \
-    "$f" "$sweep" "$merge" 'one item per commit'
+    "$f" "$sweep" "$merge" 'one item per commit[*][*] with its .Finding:. trailer'
   assert_present "$f: the sweep round bars another review round, not another fix" \
     "$f" "$sweep" "$merge" 'buys no further review [*]round[*]; it does not forbid'
   assert_present "$f: a reviewless sweep-round fix must stay small and in-scope" \
@@ -306,8 +309,12 @@ check_premerge() {
   n=$(total_lines "$file")
   assert_present "$label passes the closeout completion pass as a pre-merge check" \
     "$file" 1 "$n" 'completion pass of (quick|notion)-dev:session-closeout'
+  # NOT '(last moment|before the merge)': the second alternative is satisfied by the
+  # closeout invocation sentence ("already ran before the merge") and, in the notion-dev
+  # callers, by an unrelated appendToSection line — so deleting the mechanism and flipping
+  # the heading to "after the merge" left this green. Anchor on the mechanism alone.
   assert_present "$label states the merge is the last moment a fix can enter the PR" \
-    "$file" 1 "$n" '(last moment|before the merge)'
+    "$file" 1 "$n" 'last moment a fix can still enter'
 }
 check_premerge "develop"  "$QD/skills/develop/SKILL.md"
 # Local mode squash-merges itself and never enters review-and-merge, so the
