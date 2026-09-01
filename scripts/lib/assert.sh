@@ -84,10 +84,16 @@ count_lines() {
     'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { n++ } END { print n + 0 }' "$1"
 }
 
-# nth_line <file> <start> <end> <ere> -> the TEXT of the first matching line
-matched_text() {
+# scan_region <file> <start> <end> <ere> -> two lines: the match count, then the
+# TEXT of the first matching line (empty when there is none).
+#
+# One awk for both, because `assert_present` needs both and two calls meant two
+# forks per assertion over the same region — at ~205 assertions that is the
+# dominant cost, and a slow suite is a skipped suite.
+scan_region() {
   RE="$4" awk -v s="$2" -v e="$3" \
-    'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { print; exit }' "$1"
+    'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { n++; if (n == 1) first = $0 }
+     END { print n + 0; print first }' "$1"
 }
 
 total_lines() { wc -l < "$1" | tr -d ' '; }
@@ -102,64 +108,60 @@ total_lines() { wc -l < "$1" | tr -d ' '; }
 # repo's escaping idioms — `[*][*]Finding` for **Finding, `.Finding:.` for a
 # backticked one — without the check demanding the punctuation match too. What it
 # still cannot do is let a regex OMIT the literal, which is the whole defect.
-skeleton() { printf '%s' "$1" | tr -cd '[:alnum:]'; }
-
-# label_body <label> -> the label with its "<file>: " scaffolding prefix removed.
 #
-# Harness labels are built as "$f: ..." and "$label ...", so the expanded string
-# begins with a path. Left in, every path segment would read as a literal the
-# regex must cover.
-label_body() { printf '%s' "$1" | sed -E 's@^[^[:space:]]*[/.][^[:space:]]*:[[:space:]]+@@'; }
+# Parameter expansion, not `tr`. This runs once per literal per assertion, and at
+# ~205 assertions the fork cost is the dominant term: with `tr` here the suite went
+# from 1.6s to 23.8s, a 15x regression that would train people to skip the very
+# checks it guards.
+skeleton() { local s=${1//[!A-Za-z0-9]/}; printf '%s' "$s"; }
 
-# label_literals <label> -> newline-separated distinctive tokens named by a label.
+# label_literals <label> -> tab-separated `<class>\t<literal>` lines, where class
+# is `B` for a backticked span (required unconditionally) or `C` for one of the
+# conditional classes (required only when the matched line says it too).
 #
 # Five classes, chosen because each is something a document says literally rather
 # than something prose says about it:
-#   `backticked`   an explicit literal — always required, matched line or not
+#   `backticked`   an explicit literal
 #   ALLCAPS        report keys and states: MERGED, SWEPT, CONVERGENCE
 #   --flag         command-line switches: --pre-merge-check
 #   <placeholder>  template slots: <baseRefName>
-#   Capitalized    proper mechanism names: Finding, Phase, Overview
-# The first label token is skipped for the Capitalized class only: a label opens
-# with a sentence-initial capital that names nothing.
+#   Capitalized    proper mechanism names: Finding, Overview
+# The first label word is skipped: a label opens with a sentence-initial capital
+# that names nothing.
+#
+# TOKENIZE FIRST, then classify. Matching the classes against the prose with
+# `(^| )…( |$)` boundaries silently misses the second of two ADJACENT literals:
+# the first match consumes the separating space, so the second has no leading
+# boundary left, and "the block keys are SWEPT ABSORBED" reported only SWEPT.
+#
+# One awk, not a pipeline of greps: this is called once per assertion and the
+# forks are what made the suite 15x slower. BODY goes through ENVIRON for the
+# same reason every regex here does — `-v` performs escape processing.
 label_literals() {
-  local body first
-  body=$(label_body "$1")
-  # Backticked spans, always required.
-  printf '%s' "$body" | grep -oE '`[^`]+`' | sed 's/`//g'
-  # Strip backticked spans before scanning for the conditional classes, so a
-  # token that is already backticked is not also reported unquoted.
-  body=$(printf '%s' "$body" | sed -E 's/`[^`]*`/ /g')
-  # Drop the label's first word before tokenizing: a label opens with a
-  # sentence-initial capital that names nothing.
-  first=${body%% *}
-  body=" ${body#"$first"} "
-
-  # TOKENIZE FIRST, then classify. Matching the classes directly against the
-  # prose with `(^| )…( |$)` boundaries silently misses the second of two
-  # adjacent literals: `grep -oE` consumes the separating space with the first
-  # match, so the second no longer has a leading boundary to match against, and
-  # a label reading "SWEPT and ABSORBED" reported only SWEPT. Splitting on
-  # everything that cannot be part of a token removes the boundary problem
-  # rather than working around it.
-  printf '%s' "$body" | tr -c 'A-Za-z0-9_<>:-' '\n' | grep -vE '^$' | while IFS= read -r tok; do
-    case "$tok" in
-      --[A-Za-z]*)                                      printf '%s\n' "$tok" ;;   # --flag
-      '<'[A-Za-z]*'>')                                  printf '%s\n' "$tok" ;;   # <placeholder>
-      *)
-        # ALL-CAPS report keys and states: MERGED, SWEPT, CONVERGENCE, HEAD.
-        # Three characters, not two: "PR" is ordinary prose throughout these
-        # documents ("an already-open PR", "widening a PR"), and requiring every
-        # regex near it to spell it produced only noise.
-        if printf '%s' "$tok" | grep -qE '^[A-Z][A-Z0-9_]{2,}([-][A-Z0-9_]+)*:?$'; then
-          printf '%s\n' "$tok"
-        # Proper mechanism names: Finding, Overview, Phase.
-        elif printf '%s' "$tok" | grep -qE '^[A-Z][a-z]+:?$'; then
-          printf '%s\n' "$tok"
-        fi
-        ;;
-    esac
-  done
+  BODY="$1" awk 'BEGIN {
+    body = ENVIRON["BODY"]
+    # Strip the "<file>: " scaffolding prefix. Harness labels are built as
+    # "$f: ..." and "$label ...", so the expanded string begins with a path;
+    # left in, every path segment would read as a literal the regex must cover.
+    sub(/^[^ \t]*[\/.][^ \t]*:[ \t]+/, "", body)
+    rest = body
+    while (match(rest, /`[^`]+`/)) {
+      print "B\t" substr(rest, RSTART + 1, RLENGTH - 2)
+      rest = substr(rest, RSTART + RLENGTH)
+    }
+    stripped = body
+    gsub(/`[^`]*`/, " ", stripped)
+    sub(/^[ \t]*[^ \t]+/, "", stripped)
+    n = split(stripped, toks, /[^A-Za-z0-9_<>:-]+/)
+    for (i = 1; i <= n; i++) {
+      t = toks[i]
+      if (t == "") continue
+      if (t ~ /^--[A-Za-z][A-Za-z0-9-]*$/ ||
+          t ~ /^<[A-Za-z][A-Za-z0-9_-]*>$/ ||
+          t ~ /^[A-Z][A-Z0-9_][A-Z0-9_]+(-[A-Z0-9_]+)*:?$/ ||
+          t ~ /^[A-Z][a-z]+:?$/) print "C\t" t
+    }
+  }'
 }
 
 # assert_covers <label> <regex> <matched line text>
@@ -170,21 +172,16 @@ label_literals() {
 # only then is it something both the label and the document actually assert.
 assert_covers() {
   local label=$1 re=$2 line=$3
-  local re_skel line_skel lit lit_skel backticked
+  local re_skel line_skel cls lit lit_skel
   re_skel=$(skeleton "$re")
   line_skel=$(skeleton "$line")
-  backticked=$(printf '%s' "$(label_body "$label")" | grep -oE '`[^`]+`' | sed 's/`//g')
 
-  while IFS= read -r lit; do
+  while IFS=$'\t' read -r cls lit; do
     [ -n "$lit" ] || continue
     lit_skel=$(skeleton "$lit")
     [ -n "$lit_skel" ] || continue
     case "$re_skel" in *"$lit_skel"*) continue ;; esac
-    # Unconditional for a backticked literal; otherwise only when the guarded
-    # line says it too.
-    if printf '%s\n' "$backticked" | grep -qxF "$lit"; then
-      printf '%s' "$lit"; return 1
-    fi
+    if [ "$cls" = B ]; then printf '%s' "$lit"; return 1; fi
     case "$line_skel" in *"$lit_skel"*) printf '%s' "$lit"; return 1 ;; esac
   done <<EOF
 $(label_literals "$label")
@@ -201,7 +198,10 @@ _assert_n() {
   local label=$1 file=$2 start=$3 end=$4 re=$5 want=$6
   local got line missing
   if [ ! -f "$file" ]; then bad "$label (missing file: $file)"; return; fi
-  got=$(count_lines "$file" "$start" "$end" "$re")
+  local scan
+  scan=$(scan_region "$file" "$start" "$end" "$re")
+  got=${scan%%$'\n'*}
+  line=${scan#*$'\n'}
   if [ "$got" -ne "$want" ]; then
     if [ "$got" -eq 0 ]; then
       bad "$label"
@@ -213,7 +213,6 @@ _assert_n() {
     fi
     return
   fi
-  line=$(matched_text "$file" "$start" "$end" "$re")
   if ! missing=$(assert_covers "$label" "$re" "$line"); then
     bad "$label (label names '$missing' but /$re/ does not check it)"
     return

@@ -59,7 +59,7 @@ for h in scripts/verify-*.sh; do
   # A local definition would shadow the library's, silently restoring the loose
   # behaviour. Match the definition form, not a mention: these files discuss
   # `assert_present` in their comments.
-  if locals=$(grep -nE '^[[:space:]]*(assert_[a-z_]+|find_line|count_lines|matched_text|skeleton|label_[a-z_]+)\(\)' "$h"); then
+  if locals=$(grep -nE '^[[:space:]]*(assert_[a-z_]+|find_line|count_lines|scan_region|skeleton|label_[a-z_]+)\(\)' "$h"); then
     bad "$h defines its own assertion helper(s): $(printf '%s' "$locals" | tr '\n' ' ')"
   else
     ok "$h defines no assertion helper of its own"
@@ -261,11 +261,11 @@ if [ "$pipe_ln" = 2 ]; then
 else
   bad "find_line: a trailing \\| first matched line $pipe_ln, expected 2 — the awk -v escape-processing trap is back"
 fi
-pipe_tx=$( . "./$LIB"; matched_text "$FIX/pipe.md" 1 2 'pipe \|' )
-if [ "$pipe_tx" = 'a line ending in a pipe |' ]; then
-  ok "matched_text: a trailing \\| still means a literal pipe (ENVIRON pass-through intact)"
+pipe_sc=$( . "./$LIB"; scan_region "$FIX/pipe.md" 1 2 'pipe \|' )
+if [ "$pipe_sc" = "$(printf '1\na line ending in a pipe |')" ]; then
+  ok "scan_region: a trailing \\| still means a literal pipe (ENVIRON pass-through intact)"
 else
-  bad "matched_text: a trailing \\| returned '$pipe_tx' — the awk -v escape-processing trap is back"
+  bad "scan_region: a trailing \\| returned '$pipe_sc' — the awk -v escape-processing trap is back"
 fi
 
 echo
