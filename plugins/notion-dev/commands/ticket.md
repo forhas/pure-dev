@@ -312,8 +312,8 @@ itself, so its `--pre-merge-check` is the last moment a fix can still enter this
 Always pass the **completion pass** of `notion-dev:session-closeout` there — on every repo,
 plugin or not — appending the stale-bump clause below when the target repo is a plugin:
 `--pre-merge-check "the completion pass of notion-dev:session-closeout must come back with no
-unresolved tail: no uncommitted or unpushed work in any worktree, every FILED item tracked with
-its ticket URL, the project's verification re-run and passing on this HEAD, and no unsupported
+unresolved tail: no uncommitted or unpushed work in any worktree, every FILED item carried in REVIEW_REPORT's FILED list with its criterion number, ready for the
+record phase's epic-update to file — not its ticket URL, which cannot exist yet, the project's verification re-run and passing on this HEAD, and no unsupported
 claim or unstated caveat left in the PR body — resolve anything it finds on this branch and push
 before merging"`.
 

@@ -42,8 +42,9 @@ distinct moments to use them:
   `--pre-merge-check` requirement, which is precisely the hook for a condition that must hold
   immediately before the merge command runs.
 - **Workspace pass — after cleanup.** Sources 3 and 4: leftover worktrees and branches, and open
-  pull requests. These are only *answerable* once the merge and cleanup have happened, and none
-  of them is fixed by changing code.
+  pull requests — plus the *second half* of source 5, the `FILED` items' ticket URLs, which do not
+  exist until the filing step has run. These are only *answerable* once the merge and cleanup have
+  happened, and none of them is fixed by changing code.
 
 **Running only the workspace pass is the failure this split exists to prevent.** The completion
 sources would then be read after the branch was deleted, so a defect the fresh test run turned up
@@ -117,8 +118,17 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
 4. *(workspace)* **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
    for human review was the session's stated deliverable**, in which case it is `resolved` and
    the report says so. An open PR nobody asked to be left open is unfinished work.
-5. *(completion)* **Open issues this session filed**, plus every item in a review report's `FILED` list —
-   `gh issue list --state open`. Each needs `tracked:` with its URL at minimum.
+5. *(completion, then workspace)* **Open issues this session filed**, plus every item in a review
+   report's `FILED` list — `gh issue list --state open`. Each needs `tracked:` with its URL.
+
+   **This one source spans both passes, because filing often happens after the merge.**
+   `notion-dev`'s `epic-update` creates follow-up tickets in the record phase, and `quick-dev`'s
+   `Deferred:` trailers are written by the squash commit itself — so at completion time the URL
+   does not exist yet. The **completion pass** therefore requires only that every `FILED` item is
+   carried forward with its criterion number into the list the filing step consumes; the
+   **workspace pass** requires the URL, once the filing has actually happened. Demanding the URL
+   before the filing step runs would either deadlock the pre-merge gate or force ad-hoc ticket
+   creation outside the filing skill, bypassing its epic association and idempotency bookkeeping.
 6. *(completion)* **Work already recorded as deferred** — `git log --grep '^Deferred:' --grep '^Unmet:'` across
    this session's commits.
 7. *(completion)* **Verification** — run the project's full test / build / lint suite *now*. A failing check is
