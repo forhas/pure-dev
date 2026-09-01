@@ -48,24 +48,26 @@ MERGE_DOCS=(
   .claude/skills/review-and-merge/references/github-api.md
 )
 
-# quick-dev resolves the head repository and percent-encodes the ref (#23).
-# notion-dev still deletes from `origin` unconditionally — a known gap, tracked
-# in issue #25. Listing the files that must have the fix, rather than asserting
-# it repo-wide, is what keeps this harness honest about which copies actually do.
-# Widen this list when #25 lands.
+# Head-repository resolution and ref encoding, from PR #23 (quick-dev) and #25
+# (notion-dev). Every copy of the merge sequence now carries both, so this list
+# is the same six documents as MERGE_DOCS — kept separate anyway, because the two
+# lists answer different questions and a future plugin could land the ordering
+# rules before these.
 HEADREPO_DOCS=(
+  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/skills/review-and-merge/references/github-api.md
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   plugins/quick-dev/skills/review-and-merge/references/github-api.md
   .claude/skills/review-and-merge/SKILL.md
   .claude/skills/review-and-merge/references/github-api.md
 )
 
-# Only the SKILL.md copies carry the encoding TABLE with the `% → %25` mapping;
-# the reference copies state the rule in prose and never give the %25 literal.
-# That asymmetry is in PR #23's text, not this PR's, so it is filed as issue #26
-# rather than papered over by asserting %25 where it does not exist. Widen this
-# list when #26 lands.
+# The `% → %25` mapping table. quick-dev's reference copies state the rule in
+# prose without the literal — issue #26 — so they stay out until that lands; the
+# notion-dev reference copy was written with the table and is included.
 PCT25_DOCS=(
+  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/skills/review-and-merge/references/github-api.md
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   .claude/skills/review-and-merge/SKILL.md
 )
@@ -337,10 +339,10 @@ for f in "${MERGE_DOCS[@]}"; do
   check_merged_gate "$f" "$(total_lines "$f")"
 done
 
-# --------------------- 7. quick-dev deletes from the head repo, ref encoded
+# ------------------------- 7. deletion targets the head repo, ref encoded
 
 echo
-echo "== head-repository resolution and ref encoding (quick-dev) =="
+echo "== head-repository resolution and ref encoding =="
 for f in "${HEADREPO_DOCS[@]}"; do
   if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
   total=$(total_lines "$f")

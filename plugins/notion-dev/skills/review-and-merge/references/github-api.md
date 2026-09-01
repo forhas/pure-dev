@@ -134,8 +134,17 @@ Merge and confirm:
 ```bash
 gh pr merge <pr> --<strategy>            # <strategy> = git.mergeStrategy from .claude/notion-dev.config.json, default squash
 gh pr view <pr> --json state             # must report MERGED before deleting anything
-git push origin --delete <head-branch>   # remote deletion, gated on that MERGED
+gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName
+gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
+
+**Percent-encode the ref.** `gh api` takes a URL path, so a `#` — legal in a git ref, special in a URL — is parsed as a fragment and silently dropped: `…/heads/feature/foo#bar` is sent as `…/heads/feature/foo`, deleting an unrelated branch. Encode `%` first (it is the escape character, `%25`), then `#` (`%23`); leave `/` as-is. `?` needs no handling — `git check-ref-format` rejects it, so it cannot appear in a branch name.
+
+```
+%  →  %25        #  →  %23
+```
+
+**Delete from the head repository, not `origin`.** On a fork-based PR the head branch lives in the fork while `origin` is the base repo, so `git push origin --delete <head-branch>` either fails or deletes a same-named base branch instead. Resolve the head repo from the PR and target it. A `403` on a fork you cannot write to is expected — report it and continue.
 
 **Order matters — never delete before `state` reads `MERGED`.** With a merge queue on the base branch, `gh pr merge` exits 0 having only *enqueued* the PR (`gh pr merge --help`: "If required checks have passed, the pull request will be added to the merge queue"), and `state` still reads `OPEN`. Deleting the head branch then destroys the ref the queue is building from. Poll at 30s intervals to a ~15-minute bound, then stop and report rather than deleting.
 
