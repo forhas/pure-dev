@@ -290,8 +290,13 @@ check_caller() {
   if [ -z "$rep" ]; then bad "$label: no report section matching $heading"; return; fi
   inv=$(find_line "$file" "$rep" "$n" "$skillref")
   if [ -z "$inv" ]; then bad "$label: never invokes $skillref in its report phase"; return; fi
+  # Anchor on the invocation sentence's own leading "Before", not on the word
+  # appearing anywhere nearby. A bare 'before' within five lines was satisfied by
+  # "its completion pass already ran *before* the merge" later in the same
+  # sentence, so inverting all three callers to "After …" left this green — an
+  # assertion that cannot fail on the thing its label names.
   assert_present "$label invokes the closeout before writing the report" \
-    "$file" "$inv" $((inv + 4)) 'before'
+    "$file" "$rep" "$n" '^[*][*]Closeout — zero tails[.][*][*] Before '
   ok "$label references $skillref in its report phase"
 }
 
