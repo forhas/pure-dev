@@ -130,15 +130,36 @@ label_literals() {
   # Strip backticked spans before scanning for the conditional classes, so a
   # token that is already backticked is not also reported unquoted.
   body=$(printf '%s' "$body" | sed -E 's/`[^`]*`/ /g')
-  printf '%s' "$body" | grep -oE '(^| )--[A-Za-z][A-Za-z0-9-]*' | tr -d ' '
-  printf '%s' "$body" | grep -oE '<[A-Za-z][A-Za-z0-9_-]*>'
-  # Three characters, not two: "PR" is ordinary prose throughout these documents
-  # ("an already-open PR", "widening a PR"), and requiring every regex near it to
-  # spell it produced only noise. MERGED, SWEPT, HEAD and CONVERGENCE all survive.
-  printf '%s' "$body" | grep -oE '(^| )[A-Z][A-Z0-9_]{2,}([-][A-Z0-9_]+)*( |$|[.,;:])' \
-    | tr -d ' .,;:'
+  # Drop the label's first word before tokenizing: a label opens with a
+  # sentence-initial capital that names nothing.
   first=${body%% *}
-  printf '%s' "${body#"$first"}" | grep -oE '(^| )[A-Z][a-z]+' | tr -d ' '
+  body=" ${body#"$first"} "
+
+  # TOKENIZE FIRST, then classify. Matching the classes directly against the
+  # prose with `(^| )…( |$)` boundaries silently misses the second of two
+  # adjacent literals: `grep -oE` consumes the separating space with the first
+  # match, so the second no longer has a leading boundary to match against, and
+  # a label reading "SWEPT and ABSORBED" reported only SWEPT. Splitting on
+  # everything that cannot be part of a token removes the boundary problem
+  # rather than working around it.
+  printf '%s' "$body" | tr -c 'A-Za-z0-9_<>:-' '\n' | grep -vE '^$' | while IFS= read -r tok; do
+    case "$tok" in
+      --[A-Za-z]*)                                      printf '%s\n' "$tok" ;;   # --flag
+      '<'[A-Za-z]*'>')                                  printf '%s\n' "$tok" ;;   # <placeholder>
+      *)
+        # ALL-CAPS report keys and states: MERGED, SWEPT, CONVERGENCE, HEAD.
+        # Three characters, not two: "PR" is ordinary prose throughout these
+        # documents ("an already-open PR", "widening a PR"), and requiring every
+        # regex near it to spell it produced only noise.
+        if printf '%s' "$tok" | grep -qE '^[A-Z][A-Z0-9_]{2,}([-][A-Z0-9_]+)*:?$'; then
+          printf '%s\n' "$tok"
+        # Proper mechanism names: Finding, Overview, Phase.
+        elif printf '%s' "$tok" | grep -qE '^[A-Z][a-z]+:?$'; then
+          printf '%s\n' "$tok"
+        fi
+        ;;
+    esac
+  done
 }
 
 # assert_covers <label> <regex> <matched line text>

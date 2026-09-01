@@ -99,6 +99,14 @@ cat > "$FIX/partial.md" <<'FIXTURE'
 The sweep keeps **one item per commit** with its `Finding:` trailer.
 FIXTURE
 
+# Fixture 3b: two literals side by side. Matching the label classes directly
+# against the prose missed the second one — `grep -oE` consumes the separating
+# space with the first match, so the second has no leading boundary left. The
+# library tokenizes before classifying; this is what proves it still does.
+cat > "$FIX/adjacent.md" <<'FIXTURE'
+The block keys are `SWEPT` `ABSORBED` in that order.
+FIXTURE
+
 # Fixture 3 is the benign case the issue insists must not be a failure: the same
 # mechanism cited twice on purpose.
 cat > "$FIX/twice.md" <<'FIXTURE'
@@ -178,6 +186,19 @@ expect FAIL "a declared count that is now too low" \
 expect FAIL "a declared count that is now too high" \
   assert_count "twice.md: the unpushed check spans every worktree" \
   "$FIX/twice.md" 1 2 'git worktree list --porcelain' 3
+
+# --- two literals side by side: the second must not be lost ---
+# The two literals must be genuinely adjacent — one space, no word between them
+# — or the fixture does not exercise the bug: with "SWEPT and ABSORBED" the
+# separating word gives the second literal its own leading boundary, and with
+# "SWEPT is a subset of ABSORBED" the first literal is dropped as the label's
+# sentence-initial word before the classes ever run.
+expect FAIL "the second of two adjacent literals is still required" \
+  assert_present "adjacent.md: the block keys are SWEPT ABSORBED in that order" \
+  "$FIX/adjacent.md" 1 1 'The block keys are .SWEPT.'
+expect PASS "...and satisfied once the regex reaches it" \
+  assert_present "adjacent.md: the block keys are SWEPT ABSORBED in that order" \
+  "$FIX/adjacent.md" 1 1 'The block keys are .SWEPT. .ABSORBED.'
 
 # --- the ordinary failures must still be failures ---
 expect FAIL "a mechanism that is simply absent" \
