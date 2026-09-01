@@ -83,9 +83,18 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
      [ "$b" = "<base>" ] && continue
      s=$(gh pr list --head "$b" --state all --limit 1 --json state --jq '.[0].state')
-     case "$s" in MERGED|CLOSED) echo "$b: PR $s — stale branch" ;; esac
+     case "$s" in
+       MERGED) echo "$b: PR merged — stale branch" ;;
+       CLOSED) echo "$b: PR CLOSED WITHOUT MERGING — unfinished work, do not delete" ;;
+     esac
    done
    ```
+
+   **Only `MERGED` is evidence the work landed.** A `CLOSED` pull request usually means abandoned,
+   not merged, and this pass's resolution for a stale branch is deletion — so treating the two
+   alike would delete the only copy of unfinished work. A closed-unmerged branch is a tail of its
+   own kind: it takes `tracked:` or `blocked:` and its resolution is a **decision**, never a
+   deletion. When this pass is unsure, it keeps the branch; nothing here is worth losing work over.
 
    **With no pull-request backend there is no reliable ancestry test for a squashed branch** —
    say that rather than substituting one that looks like an answer. `git cherry` does not rescue

@@ -213,6 +213,10 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" '^[^#]*git branch --merged <base>'
     assert_present "$f: detects a stale branch by its PR state, not by ancestry" \
       "$f" "$enum" "$phrase" 'gh pr list --head'
+    assert_present "$f: only MERGED means the work landed" \
+      "$f" "$enum" "$phrase" 'Only .MERGED. is evidence the work landed'
+    assert_present "$f: a closed-unmerged branch is never deleted" \
+      "$f" "$enum" "$phrase" 'CLOSED WITHOUT MERGING'
     assert_order "$f: enumerates uncommitted, unpushed, worktrees, PRs, issues, deferred, verification, and the draft" \
       "$f" "$enum" "$phrase" \
       "git status"      'git status --porcelain' \
