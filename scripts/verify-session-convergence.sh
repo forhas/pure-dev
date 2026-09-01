@@ -171,9 +171,9 @@ for f in $CLOSEOUT_DOCS; do
 
   assert_order "$f: the three states are defined in order, and there is no fourth" \
     "$f" 1 "$n" \
-    "resolved"        '\| .resolved. \|' \
-    "tracked: <url>"  '\| .tracked: <url>. \|' \
-    "blocked: <cause>" '\| .blocked: <cause>. \|'
+    "resolved"        '[|] .resolved. [|]' \
+    "tracked: <url>"  '[|] .tracked: <url>. [|]' \
+    "blocked: <cause>" '[|] .blocked: <cause>. [|]'
   assert_present "$f: states there is no fourth state" "$f" 1 "$n" 'There is no fourth'
   assert_present "$f: tracked requires a ticket that exists now" \
     "$f" 1 "$n" 'ticket that exists right now'
@@ -191,7 +191,7 @@ for f in $CLOSEOUT_DOCS; do
     assert_order "$f: enumerates uncommitted, unpushed, worktrees, PRs, issues, deferred, verification, and the draft" \
       "$f" "$enum" "$phrase" \
       "git status"      'git status --porcelain' \
-      "unpushed"        'rev-list --count @\{upstream\}[.][.]HEAD' \
+      "unpushed"        'rev-list --count @[{]upstream[}][.][.]HEAD' \
       "worktrees"       'git worktree list' \
       "open PRs"        'gh pr list --state open' \
       "open issues"     'gh issue list --state open' \
