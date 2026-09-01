@@ -126,8 +126,12 @@ skeleton() { local s=${1//[!A-Za-z0-9]/}; printf '%s' "$s"; }
 #   --flag         command-line switches: --pre-merge-check
 #   <placeholder>  template slots: <baseRefName>
 #   Capitalized    proper mechanism names: Finding, Overview
-# The first label word is skipped: a label opens with a sentence-initial capital
-# that names nothing.
+# The first label word is exempt from the **Capitalized** class only: a label opens
+# with a sentence-initial capital that names nothing. It is NOT exempt from the
+# other three. Dropping the first token outright defeated A2 for every label whose
+# subject leads — `x.md: SWEPT is a subset of ABSORBED`, `x.md: FILED items …`,
+# `x.md: --pre-merge-check is passed …` — precisely the labels whose first word is
+# the mechanism.
 #
 # TOKENIZE FIRST, then classify. Matching the classes against the prose with
 # `(^| )…( |$)` boundaries silently misses the second of two ADJACENT literals:
@@ -140,10 +144,14 @@ skeleton() { local s=${1//[!A-Za-z0-9]/}; printf '%s' "$s"; }
 label_literals() {
   BODY="$1" awk 'BEGIN {
     body = ENVIRON["BODY"]
-    # Strip the "<file>: " scaffolding prefix. Harness labels are built as
+    # Strip the "<file>" scaffolding prefix. Harness labels are built as
     # "$f: ..." and "$label ...", so the expanded string begins with a path;
     # left in, every path segment would read as a literal the regex must cover.
-    sub(/^[^ \t]*[\/.][^ \t]*:[ \t]+/, "", body)
+    # The colon is OPTIONAL: labels are written both ways ("…/SKILL.md: emits …"
+    # and "…/SKILL.md emits …"), and requiring it left the second form with
+    # "SKILL" as its leading token — an ALL-CAPS class member, so every such
+    # label demanded its regex spell "SKILL".
+    sub(/^[^ \t]*[\/.][^ \t]*:?[ \t]+/, "", body)
     rest = body
     while (match(rest, /`[^`]+`/)) {
       print "B\t" substr(rest, RSTART + 1, RLENGTH - 2)
@@ -151,15 +159,17 @@ label_literals() {
     }
     stripped = body
     gsub(/`[^`]*`/, " ", stripped)
-    sub(/^[ \t]*[^ \t]+/, "", stripped)
     n = split(stripped, toks, /[^A-Za-z0-9_<>:-]+/)
+    first = 1
     for (i = 1; i <= n; i++) {
       t = toks[i]
       if (t == "") continue
       if (t ~ /^--[A-Za-z][A-Za-z0-9-]*$/ ||
           t ~ /^<[A-Za-z][A-Za-z0-9_-]*>$/ ||
-          t ~ /^[A-Z][A-Z0-9_][A-Z0-9_]+(-[A-Z0-9_]+)*:?$/ ||
-          t ~ /^[A-Z][a-z]+:?$/) print "C\t" t
+          t ~ /^[A-Z][A-Z0-9_][A-Z0-9_]+(-[A-Z0-9_]+)*:?$/) { print "C\t" t; first = 0; continue }
+      # Capitalized class only: exempt at the leading word, required after it.
+      if (t ~ /^[A-Z][a-z]+:?$/ && !first) print "C\t" t
+      first = 0
     }
   }'
 }

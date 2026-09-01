@@ -107,6 +107,14 @@ cat > "$FIX/adjacent.md" <<'FIXTURE'
 The block keys are `SWEPT` `ABSORBED` in that order.
 FIXTURE
 
+# Fixture 3c: the label's SUBJECT leads, and it is the only literal it names.
+# This is what isolates the leading-token rule — in a label naming two literals,
+# dropping the first still leaves the second to fail on, so such a fixture passes
+# either way and proves nothing.
+cat > "$FIX/leading.md" <<'FIXTURE'
+The final report line reports `SWEPT` for items the sweep fixed.
+FIXTURE
+
 # Fixture 3 is the benign case the issue insists must not be a failure: the same
 # mechanism cited twice on purpose.
 cat > "$FIX/twice.md" <<'FIXTURE'
@@ -199,6 +207,22 @@ expect FAIL "the second of two adjacent literals is still required" \
 expect PASS "...and satisfied once the regex reaches it" \
   assert_present "adjacent.md: the block keys are SWEPT ABSORBED in that order" \
   "$FIX/adjacent.md" 1 1 'The block keys are .SWEPT. .ABSORBED.'
+
+# --- a label whose SUBJECT leads: the first word is exempt from the Capitalized
+#     class only, never from the ALL-CAPS / --flag / <placeholder> classes ---
+# Dropping the leading token outright defeated A2 for every label of the form
+# "SWEPT is …", "FILED items …", "--pre-merge-check is …" — precisely the labels
+# whose first word IS the mechanism.
+expect FAIL "a leading ALL-CAPS key is still required" \
+  assert_present "leading.md: SWEPT is reported for items the sweep fixed" \
+  "$FIX/leading.md" 1 1 'The final report line reports'
+expect PASS "...and satisfied once the regex reaches it" \
+  assert_present "leading.md: SWEPT is reported for items the sweep fixed" \
+  "$FIX/leading.md" 1 1 'The final report line reports .SWEPT.'
+# The exemption that does survive: an ordinary sentence-initial capital.
+expect PASS "an ordinary sentence-initial capital names nothing and is exempt" \
+  assert_present "partial.md: Keeps one commit per item with its \`Finding:\` trailer" \
+  "$FIX/partial.md" 1 1 'one item per commit[*][*] with its .Finding:. trailer'
 
 # --- the ordinary failures must still be failures ---
 expect FAIL "a mechanism that is simply absent" \
