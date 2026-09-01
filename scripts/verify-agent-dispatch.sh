@@ -143,6 +143,14 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: the final report names the unfilled seat and the prohibition" \
     "$S" 1 "$L" 'name the unfilled seat and the prohibition in the final report'
 
+  # The sweep's own reviewer-unavailable branch says an unreviewable batch merges anyway.
+  # Read as covering a *prohibited* reviewer it would override the stop above, which is the
+  # one outcome the rule exists to prevent — so the branch has to disclaim that reading.
+  assert_present "$n: a prohibited reviewer is not the sweep-s unavailable reviewer" \
+    "$S" 1 "$L" 'A local reviewer the user prohibited is not "unavailable" in that sense'
+  assert_present "$n: the sweep branch does not override the stop before the merge" \
+    "$S" 1 "$L" 'stops before the merge and this branch does not override it'
+
   # The subsection governs the two loops below it, so it has to come first, and
   # the reviewer's stop has to precede the verifier's degradation — the two paths
   # are deliberately different and a reader who meets them out of order will take

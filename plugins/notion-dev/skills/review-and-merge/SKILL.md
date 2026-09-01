@@ -943,7 +943,10 @@ round terminal:
 **If the bound reviewer is unavailable** for the sweep round, run one local review round instead
 (`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
 available, say so plainly: the sweep batch merged unreviewed, and `SWEEP-ROUND: unreviewed`
-records it.
+records it. **A local reviewer the user prohibited is not "unavailable" in that sense.** The
+dispatch rule above stops before the merge and this branch does not override it: leave the pull
+request unmerged and report the prohibition. `SWEEP-ROUND: unreviewed` records a reviewer that
+could not be reached, never one that was forbidden.
 
 **Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
 batch can form, and no gate in `## 5` re-enters it.
