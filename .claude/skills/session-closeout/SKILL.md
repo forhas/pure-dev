@@ -35,9 +35,11 @@ common way this rule is defeated.
 The sources in step 1 are ordered by kind, not by timing, and a caller that merges has two
 distinct moments to use them:
 
-- **Completion pass — before the merge.** Sources 1, 2, 5, 6, 7 and 8: uncommitted and unpushed
-  work, untracked `FILED` items, deferred trailers, a fresh verification run, and the draft
-  report's own claims. Every one of these has a fix that belongs *in the pull request*. Run it
+- **Completion pass — before the merge.** Sources 1, 2, 5, 6 and 7: uncommitted and unpushed
+  work, `FILED` items carried forward, deferred trailers, and a fresh verification run. Every one
+  of these has a fix that belongs *in the pull request*. **Source 8 is deliberately not here** —
+  the finished report does not exist before the merge, so listing it would make this pass an
+  impossible gate. Run it
   while the branch is still open — a caller driving `review-and-merge` passes it as a
   `--pre-merge-check` requirement, which is precisely the hook for a condition that must hold
   immediately before the merge command runs.

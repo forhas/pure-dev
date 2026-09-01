@@ -247,6 +247,8 @@ for f in $CLOSEOUT_DOCS; do
              'the only remaining item' 'for a follow-up' 'should probably'; do
       assert_present "$f: the phrase check lists \"$p\"" "$f" "$phrase" "$n" "$p"
     done
+    assert_present "$f: the completion list excludes the draft report" \
+      "$f" 1 "$n" 'Source 8 is deliberately not here'
     assert_present "$f: the draft is inspected only once it is finished" \
       "$f" 1 "$n" 'compose the full draft, then run this source'
     assert_present "$f: rewording instead of resolving is named as the failure" \
