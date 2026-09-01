@@ -293,6 +293,28 @@ expect PASS "the same ordering, with unique anchors" \
   "closeout"  '^[*][*]Closeout — zero tails' \
   "criterion" 'was not already changing is not a criterion'
 
+# --- assert_order honours A2, per anchor and per label ---
+# It did neither until the sweep round of the pull request that added this file:
+# it checked uniqueness and ordering and never called `assert_covers`, so every
+# anchor name and every ordered label was an unchecked claim. The hole was live —
+# an eight-item label carrying seven anchors let a whole guarded section be
+# deleted with the suite green.
+expect FAIL "an anchor whose NAME names what its regex omits" \
+  assert_order "partial.md: the sweep rule" "$FIX/partial.md" 1 1 \
+  "keeps one item per commit with its \`Finding:\` trailer" 'one item per commit'
+expect PASS "...and satisfied once that anchor reaches it" \
+  assert_order "partial.md: the sweep rule" "$FIX/partial.md" 1 1 \
+  "keeps one item per commit with its \`Finding:\` trailer" \
+  'one item per commit[*][*] with its .Finding:. trailer'
+expect FAIL "an ordered LABEL naming a literal no anchor pins" \
+  assert_order "adjacent.md: the block keys are SWEPT ABSORBED in that order" \
+  "$FIX/adjacent.md" 1 1 \
+  "block keys" 'The block keys are .SWEPT.'
+expect PASS "...and satisfied once an anchor pins it" \
+  assert_order "adjacent.md: the block keys are SWEPT ABSORBED in that order" \
+  "$FIX/adjacent.md" 1 1 \
+  "block keys" 'The block keys are .SWEPT. .ABSORBED.'
+
 # --- whole-file literals: A2 applies, A1 deliberately does not ---
 expect PASS "assert_has does not require uniqueness — vocabulary, not a place" \
   assert_has "twice.md: documents the worktree listing" \

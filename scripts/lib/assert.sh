@@ -251,21 +251,58 @@ assert_absent() {
 # assert_order <label> <file> <start> <end> <name> <ere> [<name> <ere>]...
 # Each anchor must be unique within the region and appear after the one before it.
 # Fails on the first anchor that is missing, duplicated, or out of sequence.
+#
+# A2 applies here TWICE, and it did not apply at all until the sweep round of the
+# pull request that introduced it — `assert_order` checked uniqueness and ordering
+# and never called `assert_covers`, so every anchor name and every ordered label
+# was an unchecked claim. The hole was live: this file's own "enumerates ... and
+# the draft" assertion listed eight sources and carried seven anchors, and the
+# whole Verification source could be deleted with the suite still green.
+#
+#   per anchor  — the anchor's NAME is its label, checked against its own regex
+#                 and matched line, exactly as `assert_present` does.
+#   per label   — the ORDER label is checked against the union of every anchor
+#                 regex, so a literal the label names but no anchor pins fails.
 assert_order() {
   local label=$1 file=$2 start=$3 end=$4; shift 4
-  local prev=$((start - 1)) name re ln n
+  local prev=$((start - 1)) name re ln n scan line missing union="" union_lines=""
   if [ ! -f "$file" ]; then bad "$label (missing file: $file)"; return; fi
   while [ "$#" -gt 0 ]; do
     name=$1; re=$2; shift 2
-    n=$(count_lines "$file" "$start" "$end" "$re")
+    union="$union $re"
+    scan=$(scan_region "$file" "$start" "$end" "$re")
+    n=${scan%%$'\n'*}
+    line=${scan#*$'\n'}
     if [ "$n" -gt 1 ]; then
       bad "$label (weak anchor '$name': /$re/ matches $n lines in ${file}:${start}-${end})"
       return
     fi
     ln=$(find_line "$file" $((prev + 1)) "$end" "$re")
     if [ -z "$ln" ]; then bad "$label (no '$name' after line $prev)"; return; fi
+    if ! missing=$(assert_covers "$name" "$re" "$line"); then
+      bad "$label (anchor '$name' names '$missing' but /$re/ does not check it)"
+      return
+    fi
+    union_lines="$union_lines $line"
     prev=$ln
   done
+  # The label is a claim over the whole ordered set; the anchors together are what
+  # checks it. A literal the label names and no anchor spells is unanchored.
+  #
+  # The material to condition on is the union of the anchors' MATCHED LINES, not
+  # an empty string: A2 requires a non-backticked literal only when the guarded
+  # text says it too, so passing nothing there makes the whole check vacuous —
+  # which is what the first version of it did.
+  # Only the part of the label AFTER its last ": " describes the anchors. The part
+  # before it is the caller's scope ("develop Phase 5 cleanup order:"), and that
+  # scope routinely carries capitalised words — "Phase" — which the anchors have
+  # no business pinning.
+  local claim=$label
+  case "$label" in *": "*) claim=${label##*": "} ;; esac
+  if ! missing=$(assert_covers "x.md: $claim" "$union" "$union_lines"); then
+    bad "$label (the label names '$missing' but no anchor checks it)"
+    return
+  fi
   ok "$label"
 }
 

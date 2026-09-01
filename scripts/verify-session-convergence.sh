@@ -244,6 +244,7 @@ for f in $CLOSEOUT_DOCS; do
       "open PRs"        'gh pr list --state open --json' \
       "filed issues"    'Query the set this run recorded' \
       "deferred"        "git log --grep '\\^Deferred:'" \
+      "verification"    '^7[.] [*][(]completion[)][*] [*][*]Verification[*][*]' \
       "own draft"       'own draft report'
 
     # The user's own signal phrases are the check's payload — each must be listed.
