@@ -174,8 +174,12 @@ DEV=plugins/quick-dev/skills/develop/SKILL.md
 L=$(total_lines "$DEV")
 assert_present "develop: local mode points at the dispatch rule instead of restating it" \
   "$DEV" 1 "$L" '\*\*### Dispatching this skill.s agents\*\* governs'
-assert_present "develop: a disallowed dispatch stops the phase rather than self-reviewing" \
-  "$DEV" 1 "$L" 'stops this phase rather than turning it into a self-review'
+# The two seats take DIFFERENT no-agent paths, and a pointer that flattens them into one
+# contradicts the subsection it cites. Pin both halves, not the sentence.
+assert_present "develop: the reviewer seat stops the phase rather than self-reviewing" \
+  "$DEV" 1 "$L" 'the reviewer seat stops this phase rather than turning it into a self-review'
+assert_present "develop: the completeness checker takes the degraded path instead of stopping" \
+  "$DEV" 1 "$L" 'the completeness checker takes the degraded path step 4 already mirrors'
 assert_present "develop: the execution delegation is the one substitutable dispatch" \
   "$DEV" 1 "$L" 'is the one place in this flow that may substitute'
 assert_present "develop: execution subagents buy throughput, not independence" \
