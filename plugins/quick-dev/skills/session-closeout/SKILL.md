@@ -50,8 +50,28 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
      fi
    done
    ```
-3. **Leftover worktrees and branches** — a worktree or local branch whose work has merged is a
-   tail. `git worktree list`, then `git branch --merged <base>`.
+3. **Leftover worktrees and branches** — a worktree, or a local branch whose work has landed, is
+   a tail. **Do not reach for `git branch --merged`.** Where the project squash-merges, a
+   squashed branch's commits are not ancestors of the squash commit, so `--merged` lists nothing
+   and the check silently passes on exactly the branch it exists to catch. (`develop`'s own
+   cleanup uses `git branch -D`, not `-d`, for this reason.) Ask whether the branch's pull
+   request landed instead:
+
+   ```bash
+   git worktree list
+   git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+     [ "$b" = "<base>" ] && continue
+     s=$(gh pr list --head "$b" --state all --limit 1 --json state --jq '.[0].state')
+     case "$s" in MERGED|CLOSED) echo "$b: PR $s — stale branch" ;; esac
+   done
+   ```
+
+   **With no pull-request backend there is no reliable ancestry test for a squashed branch** —
+   say that rather than substituting one that looks like an answer. `git cherry` does not rescue
+   it either: a squash of N commits has one patch-id, which matches none of the N. What a *flow*
+   has instead is better than any inference: it knows the branch it created, so it checks that
+   branch by name. Only a session cleaning up after someone else is left guessing, and that case
+   needs a human, not a command.
 4. **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
    for human review was the session's stated deliverable**, in which case it is `resolved` and
    the report says so. An open PR nobody asked to be left open is unfinished work.

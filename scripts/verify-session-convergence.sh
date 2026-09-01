@@ -192,6 +192,10 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" 'git worktree list --porcelain'
     assert_present "$f: the unpushed check handles a branch with no upstream" \
       "$f" "$enum" "$phrase" 'no upstream — never pushed'
+    assert_absent "$f: does not use git branch --merged (blind to squash merges)" \
+      "$f" "$enum" "$phrase" '^[^#]*git branch --merged <base>'
+    assert_present "$f: detects a stale branch by its PR state, not by ancestry" \
+      "$f" "$enum" "$phrase" 'gh pr list --head'
     assert_order "$f: enumerates uncommitted, unpushed, worktrees, PRs, issues, deferred, verification, and the draft" \
       "$f" "$enum" "$phrase" \
       "git status"      'git status --porcelain' \
