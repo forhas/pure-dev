@@ -54,8 +54,20 @@ whole design exists to avoid, or it would be left sitting on the base branch.
 
 Do not recall what is outstanding; **query it**. Recall is what produces "one thing left".
 
-1. *(completion)* **Uncommitted work** — `git status --porcelain` in the primary checkout and in every worktree
-   (`git worktree list --porcelain`). Non-empty is a tail.
+1. *(completion)* **Uncommitted work** — `git status --porcelain` in the primary checkout and in
+   every worktree (`git worktree list --porcelain`). Non-empty is a tail, with **two exclusions
+   that are not exceptions to the rule but a correction of what "this session's tail" means**:
+
+   - **Changes the run recorded as pre-existing** — a flow that was permitted to start against a
+     dirty checkout (`develop`'s `PREEXISTING_DIRTY`) holds that exact status output. Those lines
+     predate the session, are not the session's to resolve, and cannot safely be committed onto a
+     feature branch. Subtract them and judge only what remains. Without this, every such run stops
+     dead at the completion pass over changes it was explicitly allowed to proceed past.
+   - **Worktrees this session does not own.** Another checkout's uncommitted work belongs to
+     whoever is editing it.
+
+   Both exclusions are *reported*, never silently dropped: say which lines were set aside and why,
+   so a genuine tail cannot hide behind the word "pre-existing".
 2. *(completion)* **Unpushed work** — in **every** worktree, not just the current one, and a branch with *no*
    upstream is a tail too. `@{upstream}` **fails** rather than reporting that case, so an
    unguarded `rev-list` reads as an error, not as zero — handle it explicitly:

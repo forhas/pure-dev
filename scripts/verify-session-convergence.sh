@@ -205,6 +205,8 @@ for f in $CLOSEOUT_DOCS; do
     bad "$f: missing the enumerate or phrase-check section"
   else
     assert_present "$f: enumerates by query, not by recall" "$f" "$enum" "$phrase" 'never from memory'
+    assert_present "$f: pre-existing dirty state is excluded, and reported" \
+      "$f" "$enum" "$phrase" 'PREEXISTING_DIRTY'
     assert_present "$f: the unpushed check spans every worktree" \
       "$f" "$enum" "$phrase" 'git worktree list --porcelain'
     assert_present "$f: the unpushed check handles a branch with no upstream" \
