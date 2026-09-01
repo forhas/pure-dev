@@ -918,9 +918,16 @@ available, say so plainly: the sweep batch merged unreviewed, and `SWEEP-ROUND: 
 records it.
 
 **Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
-batch can form, and no gate in `## 5` re-enters it. The round cap is untouched — the sweep round
-is counted in `ROUNDS` like any other, but the cap does not gate it: a run that ended *because*
-it hit the cap still sweeps, since the whole point is to finish the work the cap interrupted.
+batch can form, and no gate in `## 5` re-enters it.
+
+**The sweep round is a single allowance *on top of* `reviewsCap`, not a round drawn from it** —
+and the Safety rules say so too, because stating it in only one place is what made a
+cap-terminated run undecidable: the sweep was mandatory, the cap forbade another round, and
+nothing said which won. The cap bounds the **loop**; the sweep is not part of the loop. It runs
+after every terminator, the cap included, precisely to finish the work the cap interrupted. The
+allowance is exactly one round and cannot recur, because the sweep itself runs at most once per
+run. `ROUNDS` counts it like any other round — that key reports what happened, so
+`reviewsCap + 1` is a correct value there, not a violation.
 
 ### Why this skill takes one pull request, not several
 
@@ -1112,7 +1119,7 @@ The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keye
 
 - **Never** merge while any required check is failing or pending.
 - **Never** merge while unresolved review threads remain.
-- **Never** run more than `reviewsCap` reviewer rounds or `reviewsCap` local review rounds (default 15 each, counted independently).
+- **Never** run more than `reviewsCap` reviewer rounds or `reviewsCap` local review rounds (default 15 each, counted independently) — **plus at most one final-sweep round**, an explicit allowance on top of the cap that can occur only once per run (see "The final sweep"). The cap bounds the loop; the sweep runs after it.
 - **Never** re-trigger the reviewer (codex comment or copilot reviewer-request) again after unavailability was detected — the switch to the local loop is permanent for the run.
 - Red CI takes priority over review handling at the start of every round.
 - Always merge into the PR's base branch; never retarget.

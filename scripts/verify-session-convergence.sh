@@ -144,8 +144,11 @@ for f in $RAM_DOCS; do
     "$f" "$sweep" "$merge" 'reverted, not fixed'
   assert_present "$f: a blocking finding the sweep did not induce is fixed, not filed" \
     "$f" "$sweep" "$merge" 'fixed, not filed'
-  assert_present "$f: the sweep still runs when the round cap ended the loop" \
-    "$f" "$sweep" "$merge" 'the cap does not gate it'
+  assert_present "$f: the sweep round is an allowance on top of the cap" \
+    "$f" "$sweep" "$merge" 'allowance [*]on top of[*] .reviewsCap'
+  # The contradiction was that only one of the two places said so.
+  assert_present "$f: the Safety rules grant the same sweep allowance" \
+    "$f" "$merge" "$n" 'at most one final-sweep round'
 
   # The gate list must actually require the sweep, or it is advisory.
   assert_present "$f: entry to the merge gates requires the sweep to have run" \
