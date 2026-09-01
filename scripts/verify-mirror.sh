@@ -49,6 +49,19 @@ for mdir in "$MIRROR_ROOT"/*/; do
   assert_identical "$skill: SKILL.md matches the quick-dev plugin" \
     "$src/SKILL.md" "$mdir/SKILL.md"
 
+  # Present on disk is not the invariant — *versioned* is. A mirror file that
+  # .gitignore excludes passes every content check locally and then vanishes on a
+  # fresh checkout, which is how a mirrored skill first shipped untracked: `git
+  # add -A` skipped it silently and only CI noticed. Ask git, not the filesystem.
+  for f in "$mdir"SKILL.md "$mdir"references/*; do
+    [ -e "$f" ] || continue
+    if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+      ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
+    else
+      bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
+    fi
+  done
+
   # Every reference the plugin ships must be mirrored, byte for byte. Looping
   # rather than naming them keeps a newly added reference from being silently
   # unmirrored — the failure mode a fixed list would miss.
