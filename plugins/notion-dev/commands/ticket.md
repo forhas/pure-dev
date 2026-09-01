@@ -264,6 +264,8 @@ git push -u origin ticket/<project.key>-<id>-<slug>
 
 ### 6.4 Open PR
 
+**One pull request per ticket, and prefer one per session.** Every additional PR pays a whole `review-and-merge` cycle — its own reviewer trigger, its own multi-minute latency, its own merge and its own cleanup — and that cycle, not the coding, is the dominant cost of finishing. Before opening this one, check whether the session already has an open PR covering related work (`gh pr list --state open`); if it does and the work belongs together, push these commits to that branch and skip the create. A second PR is justified by a **technical** reason — a dependency that must merge first, a release boundary, or work the user asked to keep separate — never by a preference for small diffs, and never to carry an item this run itself filed. `review-and-merge`'s final sweep has already taken back everything cheap enough to keep, so a filed item that now looks worth doing is a signal the sweep mis-triaged it; say that in the report rather than opening a second PR for it. A direct user instruction overrides this, as user instructions always do.
+
 Target: `git.prTargetBranch` (falls back to `git.baseBranch`).
 
 Prefer the GitHub MCP tool `mcp__github__create_pull_request` when available; fall back to `gh pr create`.
@@ -304,6 +306,16 @@ Also call `postComment(id, <one-line PR URL + "ready for review">)` so watchers 
 ---
 
 ## Phase 7 — Review and merge
+
+**Closeout — completion pass, before the merge.** The review-and-merge skill performs the merge
+itself, so its `--pre-merge-check` is the last moment a fix can still enter this pull request.
+Always pass the **completion pass** of `notion-dev:session-closeout` there — on every repo,
+plugin or not — appending the stale-bump clause below when the target repo is a plugin:
+`--pre-merge-check "the completion pass of notion-dev:session-closeout must come back with no
+unresolved tail: no uncommitted or unpushed work in any worktree this run owns, every FILED item carried in REVIEW_REPORT's FILED list with its criterion number, ready for the
+record phase's epic-update to file — not its ticket URL, which cannot exist yet, the project's verification re-run and passing on this HEAD, and no unsupported
+claim or unstated caveat left in the PR body — resolve anything it finds on this branch and push
+before merging"`.
 
 Invoke the `notion-dev:review-and-merge` skill via the Skill tool with args:
 `<pr-number>`, plus `--non-interactive` when set, plus — when `CRITERIA_FILE` is set —
@@ -423,6 +435,8 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 ---
 
 ## Phase 10 — Report
+
+**Closeout — zero tails.** Before printing anything below, invoke the **workspace pass** of the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly — its completion pass already ran before the merge, as that skill's "When to run" section requires. It enumerates loose ends from git, `gh`, Notion, and the draft report itself, and forces every one into `resolved`, `tracked: <url>`, or `blocked: <external cause>`. **Compose the full draft first, then run the pass over it, then send** — source 8 and the phrase check read the finished report, which does not exist any earlier, and nothing re-reads it afterwards. A tail found this way gets fixed rather than written down. Every `FILED` follow-up must come out of it as `tracked:` with its Notion ticket URL — a filed item named only in this summary is a tail, not a record. End the report with its `CLOSEOUT:` block verbatim, followed by any `tracked:` and `blocked:` lines; a report ending `TRACKED: 0` / `BLOCKED: 0` says the run is finished, with no trailing caveat.
 
 Print a summary covering:
 - Flow chosen (score/confidence/override, or the bug hard rule) and why.

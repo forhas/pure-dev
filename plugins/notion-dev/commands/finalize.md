@@ -59,9 +59,30 @@ Work PR-first — the PR number is the entry point, and the ticket id is derived
 ## Phase 2 — Review and merge
 
 Reached only when Phase 1 did **not** take the `MERGED` recovery path (that path skips this
-phase entirely). Probe `jq --version` here — abort with install instructions if missing:
+phase entirely).
+
+**The `MERGED` recovery path must still run the completion pass — Phase 5 asserts it did.** That
+path skips this phase, which is the only place the pre-merge hook below is wired, so without this
+a manually merged PR or a recovery from an interrupted flow would reach the report having had no
+fresh verification, no unpushed-work check, no deferred-item check and no report-claim inspection
+— while the report said the pass had run. On that path, run the completion pass of
+`notion-dev:session-closeout` at the start of Phase 3 instead, over the sources that still apply
+once the merge has landed. It cannot put a fix into the pull request there — the merge is already
+done — so anything it turns up takes `tracked:` or `blocked:` rather than being resolved onto the
+branch, and the report says which. Running it late and saying so beats asserting a pass that
+never happened. Probe `jq --version` here — abort with install instructions if missing:
 `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`) on Windows, where it is
 commonly absent; `brew install jq` / `apt install jq` otherwise.
+
+**Closeout — completion pass, before the merge.** The review-and-merge skill performs the merge
+itself, so its `--pre-merge-check` is the last moment a fix can still enter this pull request.
+Always pass the **completion pass** of `notion-dev:session-closeout` there — on every repo,
+plugin or not — appending the stale-bump clause below when the target repo is a plugin:
+`--pre-merge-check "the completion pass of notion-dev:session-closeout must come back with no
+unresolved tail: no uncommitted or unpushed work in any worktree this run owns, every FILED item carried in REVIEW_REPORT's FILED list with its criterion number, ready for the
+record phase's epic-update to file — not its ticket URL, which cannot exist yet, the project's verification re-run and passing on this HEAD, and no unsupported
+claim or unstated caveat left in the PR body — resolve anything it finds on this branch and push
+before merging"`.
 
 Invoke the `notion-dev:review-and-merge` skill via the Skill tool with args:
 `<pr-number>`, plus `--non-interactive` when set, plus — when `CRITERIA_FILE` is set —
@@ -181,6 +202,8 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 ---
 
 ## Phase 5 — Report
+
+**Closeout — zero tails.** Before printing anything below, invoke the **workspace pass** of the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly — its completion pass already ran before the merge, as that skill's "When to run" section requires. It enumerates loose ends from git, `gh`, Notion, and the draft report itself, and forces every one into `resolved`, `tracked: <url>`, or `blocked: <external cause>`. **Compose the full draft first, then run the pass over it, then send** — source 8 and the phrase check read the finished report, which does not exist any earlier, and nothing re-reads it afterwards. A tail found this way gets fixed rather than written down. Every `FILED` follow-up must come out of it as `tracked:` with its Notion ticket URL — a filed item named only in this summary is a tail, not a record. End the report with its `CLOSEOUT:` block verbatim, followed by any `tracked:` and `blocked:` lines; a report ending `TRACKED: 0` / `BLOCKED: 0` says the run is finished, with no trailing caveat.
 
 Print a summary covering:
 - Flow: `n/a — finalize entry point`, unless the ledger has a recorded `flow_chosen` for this `run_id`, in which case report that value instead.

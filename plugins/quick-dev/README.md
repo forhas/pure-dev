@@ -87,6 +87,7 @@ Repos without a GitHub remote (or without `gh` auth) use a **local mode**: same 
 | `flow-triage` | `/quick-dev:flow-triage [--advise-only] <description>` | Recommend feature-dev vs superpowers for a task: scout probe → scorecard → ledger tie-break; standalone or invoked by `develop` |
 | `review-and-merge` | `/quick-dev:review-and-merge <pr> [--non-interactive]` | Drive an open PR to merged: resolve threads, configured-reviewer (Codex or Copilot) / local review loop (`reviewsCap` rounds, default 15; green-CI gates), squash-merge, delete remote branch |
 | `plan-review` | (invoked by `develop` on the superpowers path) | Independent pre-implementation review of a written plan: fresh agent verifies it against the actual codebase, findings triaged and applied with a self-verification pass, machine-parseable verdict |
+| `session-closeout` | (invoked by `develop` before its final report; also usable directly) | Zero-tails gate: enumerates loose ends from git/`gh`/the draft report rather than from memory, and forces each into `resolved` / `tracked: <url>` / `blocked: <external cause>` |
 | `receiving-code-review` | (invoked by the flows above) | Technical-rigor rules for evaluating review feedback — verify before implementing, reasoned pushback, no performative agreement |
 
 ## Safety guarantees

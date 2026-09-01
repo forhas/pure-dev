@@ -57,9 +57,13 @@ RUBRIC=$ND/skills/plan-review/references/reviewer-rubric.md
 assert_has    "rubric declares 'absorb'"            "$RUBRIC" '`absorb`'
 assert_has    "rubric declares 'file'"              "$RUBRIC" '`file`'
 assert_has    "rubric declares 'drop'"              "$RUBRIC" '`drop`'
-assert_has    "rubric has blast-radius criterion 1" "$RUBRIC" 'reaches code the ticket was not already changing'
-assert_has    "rubric has blast-radius criterion 2" "$RUBRIC" 'new public interface, dependency, config key, or data migration'
-assert_has    "rubric has blast-radius criterion 3" "$RUBRIC" 'acceptance criteria do not already settle'
+assert_has    "rubric has blast-radius criterion 1" "$RUBRIC" 'new public interface, dependency, config key, or data migration'
+assert_has    "rubric has blast-radius criterion 2" "$RUBRIC" 'acceptance criteria do not already settle'
+assert_has    "rubric has blast-radius criterion 3" "$RUBRIC" "obscure the plan's own"
+# The criterion that used to be number 1 was removed deliberately: deferring a
+# small fix because it lands in a new file cost a whole extra review-and-merge
+# cycle. Assert its absence so it cannot creep back in as a fourth criterion.
+assert_lacks  "rubric no longer defers on file location" "$RUBRIC" 'reaches code the ticket was not already changing'
 assert_has    "rubric emits TRIAGE-COMPLETE"        "$RUBRIC" 'TRIAGE-COMPLETE:'
 assert_lacks  "rubric drops NOT-IN-SCOPE-PRESENT"   "$RUBRIC" 'NOT-IN-SCOPE-PRESENT'
 assert_identical "rubric copies are byte-identical" \

@@ -104,14 +104,27 @@ agreed with (fully or partly) that is not already fixed in this round:
   rationale; build nothing. A **disagreed** finding is already resolved and is not triaged —
   it is a decline, not a `drop`.
 - **`absorb`** — do it in this PR, before merge. **This is the default.**
-- **`file`** — becomes its own ticket, and only when **any** of these is true:
-  1. It **reaches code this PR was not already changing** — files outside
-     `git diff --name-only origin/<PR_BASE>...HEAD`. New files this PR creates count as
-     *inside*.
-  2. It requires a **new public interface, dependency, config key, or data migration**.
-  3. It needs a design decision the ticket's **acceptance criteria do not already settle**.
+- **`file`** — becomes its own ticket. **Filing is the expensive disposition, not the safe
+  one.** A filed item costs a whole additional review-and-merge cycle — its own PR, its own
+  reviewer trigger, its own multi-minute latency, its own merge and its own cleanup — where
+  absorbing the same fix costs at most one more round. So `file` only when **any** of these is
+  true:
+  1. It requires a **new public interface, dependency, config key, or data migration**.
+  2. It needs a design decision the ticket's **acceptance criteria do not already settle**.
+  3. Its fix is **large enough that reviewing it inside this PR would obscure the PR's own
+     change**. This is a judgment and its default answer is *no*. A fix merely longer than its
+     finding is Rule 3's problem, not this criterion's.
 
   Every `file` item must cite the criterion number that made it one.
+
+  **"It reaches a file this PR was not already changing" is not a criterion.** It was one, and
+  it was this skill's single largest source of pull-request fragmentation: it spent a whole
+  extra cycle to keep one diff narrow. Measured on this plugin's own history, PR #24's loop
+  filed three items — one of them inside a file that same PR had created — and two of the three
+  were worked as PR #28 within the same session, buying nothing but a second review loop.
+  Widening the diff is the cheaper trade: take the fix, and say in the PR body that the scope
+  widened and why. What bounds the widening is **The final sweep** (end of `## 4`) — one batch,
+  one terminal round — not a refusal to open new files.
 
 Absorbing does not skip review: the absorbed change is pushed like any other fix and the next
 round reviews it. That re-entry is also what makes absorption expensive — the absorbed change is
@@ -293,6 +306,11 @@ about the finding's merit, and conflating them would launder a real defect into 
 Trading a late marginal finding for termination is what this rule is *for* — the trade only
 stays honest while the report says which trade was made.
 
+**The trade is over the loop, not over the defect.** A finding dropped on this ground is
+collected by **The final sweep** at the end of `## 4` and, if none of the `file` criteria is true
+of it, fixed there — after the loop has ended, in one batch, at the cost of one terminal round
+rather than another full one. The ratchet buys termination; it does not buy abandonment.
+
 **This ground is Rule 1's alone**, and it carries the round-3 precondition with it wherever it is
 cited; Rule 2's chain cuts use their own ground, stated with that rule. The two must not be
 merged into one: Rule 1 is indexed by round and Rule 2 by depth, so a ground shared across them
@@ -347,8 +365,8 @@ hand:
   finding, and the chain that forced the revert.
 - **Root was `blocking`** → **keep the fixes**; the underlying defect was real and reverting
   would reintroduce it. `file` the depth-2 finding, citing whichever blast-radius criterion is
-  true — **not criterion 3 by default**. A depth-2 finding is often a straightforward defect
-  that settles no open design question, and citing criterion 3 anyway would violate Rule 3's
+  true — **not criterion 2 by default**. A depth-2 finding is often a straightforward defect
+  that settles no open design question, and citing criterion 2 anyway would violate Rule 3's
   "never cite a criterion that is not true just to have one to cite". When none of the three is
   true, the disposition depends on the depth-2 finding's **own** severity:
   - **non-blocking** → `drop` it citing **the induced cap**, with the chain as its rationale,
@@ -416,10 +434,11 @@ Two tests, both checkable against the diff the fix produces:
    for.
 
 A fix that fails either test is **not applied**. Re-triage the finding to `file` under
-blast-radius criterion 1 (it reaches code this PR was not already changing) or 2 (it needs a new
-public interface, dependency, config key, or data migration), and say so in the reply. When neither criterion is true — the over-large fix would have stayed inside this PR's own
-files and added no new interface — `drop` it instead, with the rationale that the finding's
-remedy exceeded its value. Never cite a criterion that is not true just to have one to cite.
+blast-radius criterion 1 (it needs a new public interface, dependency, config key, or data
+migration) or 3 (its fix is large enough to obscure this PR's own change), and say so in the
+reply. When neither criterion is true — the over-large fix would have added no new interface and
+would not have obscured the PR — `drop` it instead, with the rationale that the finding's remedy
+exceeded its value. Never cite a criterion that is not true just to have one to cite.
 
 This is the one rule that lowers the *rate* at which fixes create findings rather than bounding
 the consequences afterwards. The measured rate was **0.62 new findings per applied fix**; a fix
@@ -834,9 +853,114 @@ A citation that does not resolve demotes its criterion to `unverified`, a third 
 
 Both branches end in the same place, and that is the point: the escape exists in either mode and costs exactly what every other escape in this design costs — a recorded rationale. Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. `unverified` is neither.
 
+### The final sweep
+
+**Every convergence rule above ends the *loop*. None of them ends the *work*.** Rule 1 pushes a
+late non-blocking finding to `file` or `drop`; Rule 2 cuts an induced chain the same way. Both
+are right about the loop — another round costs more than the finding is worth — and both leave
+behind real defects that a human then reads in the report and asks for immediately. That request
+is a second pull request, a second reviewer trigger, and a second full loop, which is strictly
+more expensive than the round the rules just saved. The sweep is where that work gets done
+instead: **once, in one batch, with exactly one terminal review round.**
+
+**When.** After the review loop has ended by any terminator — no meaningful issues, the round
+cap, the oscillation guard, or reviewer unavailability with the local loop also finished — and
+**before** `## 5`'s gates. The sweep runs **at most once per run**. A run that has swept never
+sweeps again, whatever the sweep round raises.
+
+**What it collects.** Every ledger entry whose disposition is:
+
+- `file`, raised by this run; **or**
+- `drop` on a *termination* ground — Rule 1's ratchet ground ("the ratchet judged it not worth
+  another round") or Rule 2's induced-cap ground.
+
+**What it does not collect.** A `drop` on the *merit* ground — theoretical, insignificant, or
+unverifiable under the judgment bar — is never swept. It was judged not worth doing at all, and
+that judgment does not expire because the loop ended. Declines are not swept either: a declined
+finding is wrong, not deferred. Keeping these two out is what stops the sweep from becoming a
+second chance to relitigate findings the run already settled on their merits.
+
+**Eligibility.** A collected item is swept **iff none of the three `file` criteria in `## 2` is
+true of it**. An item that genuinely needs a new public interface, settles an open design
+question, or is large enough to obscure this PR stays `file`; that is a real follow-up, and the
+sweep is not a licence to fold one in. Record its criterion number exactly as any `file` item
+must.
+
+**How.** Fix every eligible item under Rule 3 (minimal patch) and Rule 4 (verify before push),
+committing **one item per commit** with its `Finding:` trailer — the per-finding-commit rule is
+what keeps "the ledger entry that sha fixed" a function, and the sweep does not suspend it. Push
+once, at the end. Rewrite each swept entry's disposition to `applied` or `partial` and record
+`swept = yes` on it.
+
+**The one terminal round.** Trigger the bound reviewer once on the sweep batch and process its
+response through `## 2`'s judgment bar as usual, with three differences that are what make the
+round terminal:
+
+1. **The sweep round buys no further review *round*; it does not forbid a further *fix*.** Those
+   are different things, and conflating them was a defect this design shipped with — one it hit
+   on its own pull request within the hour. The terminal round surfaced three small, real,
+   non-blocking defects inside files the PR already changed, and a flat "file or drop" would have
+   deferred six lines of markdown into a follow-up pull request: precisely the cost the sweep
+   exists to remove, reintroduced by the sweep's own rule.
+
+   So a non-blocking finding from the sweep round **may be fixed**, under Rule 3 (minimal patch)
+   and Rule 4 (verify before push), when the fix is small and inside files this pull request
+   already touches. What it must never do is trigger **another review round**. Such a fix
+   therefore reaches the merge with CI and the gate stack as its only checks — the same
+   limitation the Completeness gate discloses — and the report must name which findings took it.
+
+   **`file` or `drop` remains the answer for anything larger.** A finding needing a new public
+   interface, settling an open design question, or large enough to obscure this pull request is a
+   real follow-up; taking it here would be new unreviewed scope rather than a correction. That
+   boundary — not a blanket ban on fixing — is what keeps the sweep terminal, since no second
+   batch can form out of edits required to stay small and reviewless.
+2. **A `blocking` finding the sweep induced is reverted, not fixed.** Compute `induced` exactly
+   as Rule 2 does — the sweep commits sit inside `$R1_SHA..$REVIEW_SHA` like any other fix.
+   Revert the sweep commit blame names, re-triage that item back to `file` with the sweep revert
+   as its rationale, and post the PR-level note Rule 2's revert branch already mandates. Fixing
+   it instead would need a round to review the fix, and there is no round left to give it.
+3. **A `blocking` finding the sweep did *not* induce** is a defect the earlier rounds missed in
+   pre-sweep code. It is fixed, not filed — the Absorb gate would demand that anyway — and it is
+   the one thing in this round that gets a patch. That patch reaches the merge with CI and the
+   gate stack as its only independent check. This is the same limitation the Completeness gate
+   discloses, for the same reason, and it is bounded to a defect the loop had already agreed was
+   blocking rather than to any new scope.
+
+**If the bound reviewer is unavailable** for the sweep round, run one local review round instead
+(`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
+available, say so plainly: the sweep batch merged unreviewed, and `SWEEP-ROUND: unreviewed`
+records it.
+
+**Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
+batch can form, and no gate in `## 5` re-enters it.
+
+**The sweep round is a single allowance *on top of* `reviewsCap`, not a round drawn from it** —
+and the Safety rules say so too, because stating it in only one place is what made a
+cap-terminated run undecidable: the sweep was mandatory, the cap forbade another round, and
+nothing said which won. The cap bounds the **loop**; the sweep is not part of the loop. It runs
+after every terminator, the cap included, precisely to finish the work the cap interrupted. The
+allowance is exactly one round and cannot recur, because the sweep itself runs at most once per
+run. `ROUNDS` counts it like any other round — that key reports what happened, so
+`reviewsCap + 1` is a correct value there, not a violation.
+
+### Why this skill takes one pull request, not several
+
+Handling several pull requests in one invocation was considered and rejected; this note exists so
+it is not re-proposed as a convergence measure. It saves no review rounds — each PR still needs
+its own trigger, its own diff, its own reviewer latency, and its own merge — while what it adds
+is real. The base moves under every PR still queued once the first one merges, so every
+stale-bump and rebase hazard `--pre-merge-check` exists for fires once per PR instead of once;
+and a findings ledger shared across pull requests breaks induced-chain attribution outright,
+because `$R1_SHA` and `$REVIEW_SHA` are per-branch and blame across branches maps a sha to no
+ledger entry at all. The cost that can actually be removed is the **second pull request itself**,
+and the `file` criteria in `## 2` plus the sweep above are how this skill removes it.
+
 ## 5. Merge
 
-Enter only when the loop has ended. Hard gates — all of these hold even under the round cap:
+Enter only when the loop has ended **and the final sweep has run** (`## 4`, "The final sweep").
+The sweep is not one of the gates below; it is the step before them, and skipping it is how a
+filed item turns into a second pull request. Hard gates — all of these hold even under the round
+cap:
 
 1. **Checks gate**: every **required** check must pass — `gh pr checks <pr> --required`. Beware: this command exits non-zero **both** on failing required checks **and** when no required checks exist at all (cli/cli#9682) — if it fails with "no checks reported", the repo defines no required checks and the required gate is satisfied; do not treat that as a failure. Additionally, no check of any kind may be **failing** (`gh pr checks <pr>`, same "no checks reported" caveat) — a red optional check still blocks until fixed. Pending **optional** checks do not block the merge; pending **required** checks do — wait for them (`gh pr checks <pr> --required --watch`, or a 30-second sleep loop) with a bounded timeout of ~15 minutes; on timeout, stop and report.
 2. **All threads resolved**: re-run the GraphQL thread query, paging through every page, and verify every thread has `isResolved: true`.
@@ -933,12 +1057,19 @@ Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success
 
 The report's triage outcome is **three named lists**, never one undifferentiated set:
 
-- `ABSORBED` — items done in this PR, each with what was changed.
+- `ABSORBED` — items done in this PR, each with what was changed. Items the final sweep fixed
+  are listed here too, each marked `swept`.
 - `FILED` — items that must become their own ticket, each with its criterion number and
   rationale. Reclassified items appear here, marked as reclassified from `absorb` — or from `applied`, when Rule 2 reverted the fix.
 - `DROPPED` — items decided against, each with its rationale.
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
+
+**A `FILED` item that survived the sweep is work this run has decided not to do, and it is the
+caller's to track before the run reports done** — as a real ticket with a real URL, or as a
+`Deferred:` trailer on the squash commit where there is no ticket backend. Naming it only in a
+report that scrolls away is what turns a filed item into a forgotten one, and a forgotten filed
+item is exactly the tail the caller's own closeout is required to refuse.
 
 The report also carries a **`CONVERGENCE`** block, computed from the findings ledger:
 
@@ -951,6 +1082,8 @@ ABSORB-RATE: <pct>
 INDUCED: <n> (<pct> of findings after round 1, excluding <n> unlocatable)
 INDUCED-CHAINS-CUT: <n>
 RATCHET-ENGAGED-AT-ROUND: <n | never>
+SWEPT: <n>
+SWEEP-ROUND: <reviewer | local | none | unreviewed>
 ```
 
 The four disposition counts are exhaustive, and they are the same buckets as the three named
@@ -960,7 +1093,18 @@ makes the partition exhaustive is the Absorb gate: no `absorb` item may still be
 merge, so by the time the report is written every `absorb` has already become `applied` (the
 gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
 and never a reported one. `ABSORB-RATE` is
-`ABSORBED / FINDINGS-TOTAL`. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
+`ABSORBED / FINDINGS-TOTAL`.
+
+**`SWEPT` counts the entries carrying `swept = yes`** — items that stood at `file`, or at a
+termination-ground `drop`, when the loop ended and were fixed by the final sweep. Because the
+sweep rewrites those entries to `applied` or `partial` before the report is written, they are
+counted inside `ABSORBED`: `SWEPT` is a **subset** of `ABSORBED`, not a fifth bucket, and the
+four-way partition stays exhaustive. `SWEEP-ROUND` names which review the sweep batch actually
+received — `reviewer`, `local`, `none` (nothing was eligible, so no batch was ever pushed), or
+`unreviewed` (a batch was pushed and neither review was available, which the report must also
+state in prose). `SWEPT: 0` with `SWEEP-ROUND: none` is the ordinary shape of a run that had
+nothing to sweep, and a high `SWEPT` against a low `FILED` is the calibration this design wants:
+the loop terminated early and the work still happened here. `ROUNDS` is the run-global count — reviewer rounds plus local-fallback rounds — the same number Rule 1 tests.
 
 `INDUCED`'s parenthetical is scoped to the same population as the percentage — findings that
 arrived **after round 1** — and names how many of those were `locatable = no` and are therefore
@@ -989,7 +1133,7 @@ The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keye
 
 - **Never** merge while any required check is failing or pending.
 - **Never** merge while unresolved review threads remain.
-- **Never** run more than `reviewsCap` reviewer rounds or `reviewsCap` local review rounds (default 15 each, counted independently).
+- **Never** run more than `reviewsCap` reviewer rounds or `reviewsCap` local review rounds (default 15 each, counted independently) — **plus at most one final-sweep round**, an explicit allowance on top of the cap that can occur only once per run (see "The final sweep"). The cap bounds the loop; the sweep runs after it.
 - **Never** re-trigger the reviewer (codex comment or copilot reviewer-request) again after unavailability was detected — the switch to the local loop is permanent for the run.
 - Red CI takes priority over review handling at the start of every round.
 - Always merge into the PR's base branch; never retarget.

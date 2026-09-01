@@ -249,6 +249,7 @@ No v1 refactor required to adopt phase 2.
 │   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
 │   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
 │   ├── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
+│   ├── session-closeout/     # zero-tails gate before any final report (used by ticket, finalize)
 │   └── issue-log/            # durable, redacted runtime deviation log (used by all four commands, ticket-system)
 ├── schema/
 │   └── notion-dev.config.schema.json
@@ -258,7 +259,7 @@ No v1 refactor required to adopt phase 2.
 
 ## Credits
 
-`skills/flow-triage/`, `skills/review-and-merge/`, `skills/local-code-review/`, and `skills/plan-review/` are vendored and adapted from the `quick-dev` plugin. `local-code-review` was itself originally adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills/blob/main/skills/code-review-and-quality/SKILL.md) `code-review-and-quality` (MIT License, © 2025 Addy Osmani).
+`skills/flow-triage/`, `skills/review-and-merge/`, `skills/local-code-review/`, `skills/plan-review/`, and `skills/session-closeout/` are vendored and adapted from the `quick-dev` plugin. `local-code-review` was itself originally adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills/blob/main/skills/code-review-and-quality/SKILL.md) `code-review-and-quality` (MIT License, © 2025 Addy Osmani).
 
 ## License
 

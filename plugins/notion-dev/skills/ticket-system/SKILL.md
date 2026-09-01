@@ -226,7 +226,8 @@ After the callout (if any), render section body:
   • Tightened the token TTL check the reviewer flagged (same file as the fix).
 
   **Deferred follow-ups**
-  • STO-42 — refactor session token storage (criterion 1: touches storage layer)
+  • STO-42 — refactor session token storage (criterion 3: a storage refactor would
+    obscure this one-line fix)
 
   **Dropped**
   • Rename `sess` to `session` throughout — cosmetic churn, declined under the judgment bar.
