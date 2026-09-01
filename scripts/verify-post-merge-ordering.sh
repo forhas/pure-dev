@@ -91,9 +91,9 @@ assert_present() {
 # waiting for them to surface one per round. One stays unbound deliberately:
 # `gh pr merge <pr> --` leaves the strategy free, because the strategy is
 # configurable and is not the invariant. `rmdir` was the other, until issue #27
-# had the three guarded documents name the directory they remove — a bare
-# `rmdir` token let `rmdir $REPO_ROOT` pass, because only an `rm -rf` regression
-# removes the token the order check looks for.
+# had the three guarded documents derive the directory they remove from the
+# worktree path — a bare `rmdir` token let `rmdir $REPO_ROOT` pass, because only
+# an `rm -rf` regression removes the token the order check looks for.
 #
 # assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
 # Fails on the first anchor that is missing or out of sequence, and says which.
