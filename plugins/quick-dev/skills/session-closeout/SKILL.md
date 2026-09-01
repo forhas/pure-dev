@@ -69,9 +69,10 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
 
    Both exclusions are *reported*, never silently dropped: say which lines were set aside and why,
    so a genuine tail cannot hide behind the word "pre-existing".
-2. *(completion)* **Unpushed work** — in **every** worktree, not just the current one, and a branch with *no*
-   upstream is a tail too. `@{upstream}` **fails** rather than reporting that case, so an
-   unguarded `rev-list` reads as an error, not as zero — handle it explicitly:
+2. *(completion)* **Unpushed work** — in every worktree **this run owns**, not just the current
+   one, and a branch with *no* upstream is a tail too. `@{upstream}` **fails** rather than
+   reporting that case, so an unguarded `rev-list` reads as an error, not as zero — handle it
+   explicitly:
 
    ```bash
    git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r w; do
@@ -84,6 +85,14 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
      fi
    done
    ```
+
+   **Ownership scopes this exactly as it scopes source 1, and for a sharper reason.** Another
+   session's ahead-or-never-pushed branch is not this run's tail, and treating it as one is worse
+   than noise: the callers' pre-merge gate blocks the merge until every tail is resolved, and the
+   only way to "resolve" someone else's unpushed branch is to push it — this pass reaching into
+   another session's work to unblock its own merge. Enumerate every worktree, but **judge** only
+   the ones this run owns; report the rest as observed-and-not-judged, so they are visible without
+   being actionable.
 3. *(workspace)* **Leftover worktrees and branches** — a worktree, or a local branch whose work has landed, is
    a tail. **Do not reach for `git branch --merged`.** Where the project squash-merges, a
    squashed branch's commits are not ancestors of the squash commit, so `--merged` lists nothing

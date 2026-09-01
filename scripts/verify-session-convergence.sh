@@ -211,6 +211,8 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" 'PREEXISTING_DIRTY'
     assert_present "$f: the unpushed check spans every worktree" \
       "$f" "$enum" "$phrase" 'git worktree list --porcelain'
+    assert_present "$f: unpushed work is judged only for worktrees this run owns" \
+      "$f" "$enum" "$phrase" '[*][*]judge[*][*] only'
     assert_present "$f: the unpushed check handles a branch with no upstream" \
       "$f" "$enum" "$phrase" 'no upstream — never pushed'
     assert_absent "$f: does not use git branch --merged (blind to squash merges)" \

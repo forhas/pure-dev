@@ -18,7 +18,13 @@ Two harness rules, learned the hard way:
 - **Assert the invariant, not the prose.** Grep for the mechanism — command strings, the relative
   order of step lines, the presence of each assertion — never a whole sentence. A harness keyed on
   wording breaks on the next edit and trains people to fix the harness instead of the defect.
-  Where prose must be matched, match the shortest distinctive fragment.
+  Where prose must be matched, match the shortest distinctive fragment — and remember these
+  files are hard-wrapped, so a phrase spanning a line break can never match a line-based grep.
+- **Two silent traps in these harnesses**, both of which produce an assertion that *passes*
+  rather than one that errors: `awk -v` performs escape processing, so a written `\|` reaches the
+  matcher as bare alternation matching every line (pass the regex through `ENVIRON` instead); and
+  a hard-wrapped phrase never matches. Neither is visible by reading — only mutation testing and
+  a run against emptied files will find them.
 - **Prove every check can fail.** Break the file it guards, confirm `FAIL`, restore. Commit your
   own work *before* mutation-testing: a `git checkout -- .` to undo mutations will otherwise
   silently revert it. A harness that passes against a broken file is worse than none.
