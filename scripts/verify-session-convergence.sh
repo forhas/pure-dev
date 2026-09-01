@@ -188,10 +188,14 @@ for f in $CLOSEOUT_DOCS; do
     bad "$f: missing the enumerate or phrase-check section"
   else
     assert_present "$f: enumerates by query, not by recall" "$f" "$enum" "$phrase" 'never from memory'
+    assert_present "$f: the unpushed check spans every worktree" \
+      "$f" "$enum" "$phrase" 'git worktree list --porcelain'
+    assert_present "$f: the unpushed check handles a branch with no upstream" \
+      "$f" "$enum" "$phrase" 'no upstream — never pushed'
     assert_order "$f: enumerates uncommitted, unpushed, worktrees, PRs, issues, deferred, verification, and the draft" \
       "$f" "$enum" "$phrase" \
       "git status"      'git status --porcelain' \
-      "unpushed"        'rev-list --count @[{]upstream[}][.][.]HEAD' \
+      "unpushed"        'rev-list --count .@[{]upstream[}][.][.]HEAD.' \
       "worktrees"       'git worktree list' \
       "open PRs"        'gh pr list --state open' \
       "open issues"     'gh issue list --state open' \

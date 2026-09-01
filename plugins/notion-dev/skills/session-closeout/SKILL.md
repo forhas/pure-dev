@@ -35,7 +35,21 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
 
 1. **Uncommitted work** — `git status --porcelain` in the primary checkout and in every worktree
    (`git worktree list --porcelain`). Non-empty is a tail.
-2. **Unpushed work** — `git rev-list --count @{upstream}..HEAD` non-zero is a tail.
+2. **Unpushed work** — in **every** worktree, not just the current one, and a branch with *no*
+   upstream is a tail too. `@{upstream}` **fails** rather than reporting that case, so an
+   unguarded `rev-list` reads as an error, not as zero — handle it explicitly:
+
+   ```bash
+   git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r w; do
+     b=$(git -C "$w" symbolic-ref --quiet --short HEAD) || continue   # detached HEAD: skip
+     if git -C "$w" rev-parse --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+       n=$(git -C "$w" rev-list --count '@{upstream}..HEAD')
+       [ "$n" -gt 0 ] && echo "$w ($b): $n unpushed commit(s)"
+     else
+       echo "$w ($b): no upstream — never pushed"
+     fi
+   done
+   ```
 3. **Leftover worktrees and branches** — a worktree or local branch whose work has merged is a
    tail. `git worktree list`, then `git branch --merged <base>`.
 4. **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
