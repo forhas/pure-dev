@@ -74,7 +74,10 @@ for mdir in "$MIRROR_ROOT"/*/; do
   # counterpart.
   while IFS= read -r f; do
     rel=${f#"$mdir"}
-    if [ "$rel" = "README.md" ]; then
+    # The exception is ONE documented path, not the basename in every mirror.
+    # Exempting `README.md` anywhere let a staged README under a newly mirrored
+    # skill satisfy both the counterpart check and the tracked check.
+    if [ "$mdir$rel" = "$MIRROR_ROOT/review-and-merge/README.md" ]; then
       ok "$skill: README.md is the documented mirror-only exception"
       continue
     fi
