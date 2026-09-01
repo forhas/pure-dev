@@ -214,15 +214,37 @@ expect PASS "assert_has passes once the literal reaches the named part" \
   "$FIX/partial.md" 'one item per commit** with its `Finding:` trailer'
 
 # --- the awk escape-processing trap, which reading cannot find ---
-# A regex containing `\|` must match a literal pipe, not act as alternation with
-# two empty branches (which matches every line). `awk -v` performs escape
-# processing and would silently do the latter; the library passes through
-# ENVIRON, so this is the check that the pass-through is still in place.
-printf 'a plain line\na line with a | pipe\n' > "$FIX/pipe.md"
-if [ "$( . "./$LIB"; count_lines "$FIX/pipe.md" 1 2 'a line with a \| pipe' )" = 1 ]; then
-  ok "a \\| in a regex still means a literal pipe (ENVIRON pass-through intact)"
+# A regex containing `\|` must match a literal pipe. `awk -v` performs escape
+# processing and delivers a bare `|` instead; the library passes the regex
+# through ENVIRON, and this is the check that the pass-through is still in place.
+#
+# The pipe has to sit at the END of the regex. A `\|` in the middle degrades to
+# ordinary alternation, which still matches selectively — the first version of
+# this probe used `a line with a \| pipe`, and both the correct and the trapped
+# library returned 1 for it, so the probe passed against a library with the trap
+# deliberately restored. At the end, the trapped form becomes `pipe |`:
+# alternation with an EMPTY right branch, which matches every line. That is the
+# shape the trap actually takes, and the only shape that discriminates.
+printf 'a plain line\na line ending in a pipe |\n' > "$FIX/pipe.md"
+# All three primitives run their own awk, so all three are probed. Checking only
+# one would leave the trap free to come back in the other two.
+pipe_n=$( . "./$LIB"; count_lines "$FIX/pipe.md" 1 2 'pipe \|' )
+if [ "$pipe_n" = 1 ]; then
+  ok "count_lines: a trailing \\| still means a literal pipe (ENVIRON pass-through intact)"
 else
-  bad "a \\| in a regex matched every line — the awk -v escape-processing trap is back"
+  bad "count_lines: a trailing \\| matched $pipe_n of 2 lines — the awk -v escape-processing trap is back"
+fi
+pipe_ln=$( . "./$LIB"; find_line "$FIX/pipe.md" 1 2 'pipe \|' )
+if [ "$pipe_ln" = 2 ]; then
+  ok "find_line: a trailing \\| still means a literal pipe (ENVIRON pass-through intact)"
+else
+  bad "find_line: a trailing \\| first matched line $pipe_ln, expected 2 — the awk -v escape-processing trap is back"
+fi
+pipe_tx=$( . "./$LIB"; matched_text "$FIX/pipe.md" 1 2 'pipe \|' )
+if [ "$pipe_tx" = 'a line ending in a pipe |' ]; then
+  ok "matched_text: a trailing \\| still means a literal pipe (ENVIRON pass-through intact)"
+else
+  bad "matched_text: a trailing \\| returned '$pipe_tx' — the awk -v escape-processing trap is back"
 fi
 
 echo
