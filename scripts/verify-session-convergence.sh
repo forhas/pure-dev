@@ -23,8 +23,16 @@ ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # find_line <file> <start> <end> <ere> -> first matching line number, or empty
+#
+# The regex goes through ENVIRON, never `awk -v`. `-v` performs escape processing
+# on the value, so a written `\|` reaches the matcher as a bare `|` — alternation
+# with two empty branches, which matches every line — and gawk only *warns*. That
+# turned three assertions here vacuous once and nearly did it a second time; both
+# were caught by mutation testing rather than by reading. ENVIRON passes the
+# string through untouched, so an escape means what it says.
 find_line() {
-  awk -v s="$2" -v e="$3" -v re="$4" 'NR >= s && NR <= e && $0 ~ re { print NR; exit }' "$1"
+  RE="$4" awk -v s="$2" -v e="$3" \
+    'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { print NR; exit }' "$1"
 }
 
 total_lines() { wc -l < "$1" | tr -d ' '; }
