@@ -83,6 +83,38 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
      if git -C "$w" rev-parse --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
        n=$(git -C "$w" rev-list --count '@{upstream}..HEAD')
        [ "$n" -gt 0 ] && echo "$w ($b): $n unpushed commit(s)"
+       continue
+     fi
+     # No remote-tracking ref is not the same as never pushed. `gh pr checkout` on a
+     # FORK pull request sets branch.<b>.remote to the fork's URL and branch.<b>.merge
+     # to the ref, and creates no tracking ref at all — so `@{upstream}` fails on a
+     # branch that is pushed and in sync. Verified live: this branch reported "never
+     # pushed" while `git ls-remote` showed the fork's ref at exactly local HEAD.
+     # Ask the configured push target directly before concluding anything.
+     r=$(git -C "$w" config --get "branch.$b.remote") || r=""
+     m=$(git -C "$w" config --get "branch.$b.merge") || m=""
+     if [ -n "$r" ] && [ -n "$m" ]; then
+       # A sha INEQUALITY is not evidence of unpushed work — it is equally true of
+       # a local branch that is merely BEHIND, which happens whenever anyone else
+       # pushes to the fork. Reporting that as a tail on a pre-merge gate would
+       # demand a push that would clobber their commit. Fetch the ref and ask for
+       # direction, not difference.
+       if git -C "$w" fetch -q "$r" "$m" 2>/dev/null; then
+         local_sha=$(git -C "$w" rev-parse HEAD)
+         remote_sha=$(git -C "$w" rev-parse FETCH_HEAD)
+         if [ "$local_sha" = "$remote_sha" ]; then
+           :                                            # in sync — not a tail
+         elif git -C "$w" merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+           n=$(git -C "$w" rev-list --count "$remote_sha..$local_sha")
+           echo "$w ($b): $n unpushed commit(s) ahead of $r $m"
+         elif git -C "$w" merge-base --is-ancestor "$local_sha" "$remote_sha"; then
+           echo "$w ($b): behind $r $m — observed, NOT a tail; nothing of this run is unpushed"
+         else
+           echo "$w ($b): diverged from $r $m — a tail, and one a plain push must not resolve"
+         fi
+       else
+         echo "$w ($b): pushes to $r but the ref could not be fetched — unpushed"
+       fi
      else
        echo "$w ($b): no upstream — never pushed"
      fi
@@ -96,6 +128,18 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    another session's work to unblock its own merge. Enumerate every worktree, but **judge** only
    the ones this run owns; report the rest as observed-and-not-judged, so they are visible without
    being actionable.
+
+   **A branch with no upstream is a tail only where pushing is part of the flow.** In a repository
+   with no `origin` remote — or on any run whose flow deliberately does not push, which is what
+   `quick-dev:develop`'s **local mode** is — every branch reports `no upstream — never pushed`,
+   including the primary checkout's own base branch, and none of them is resolvable: pushing is
+   precisely the thing that mode does not do. Left unqualified this source hands local mode's
+   pre-squash gate (`develop` Phase 4 step 5) two tails it cannot clear on every run, and a gate
+   that can never be satisfied is one every caller learns to skip. Verified against a live
+   local-mode run, where it fired on both worktrees. So: probe the remote first
+   (`git remote get-url origin`); when there is none, report every branch as
+   observed-and-not-judged with `no remote — nothing to push to`, and judge nothing under this
+   source. When a remote does exist, a no-upstream branch this run owns is a tail as stated.
 3. *(workspace)* **Leftover worktrees and branches** — a worktree, or a local branch whose work has landed, is
    a tail. **Do not reach for `git branch --merged`.** Where the project squash-merges, a
    squashed branch's commits are not ancestors of the squash commit, so `--merged` lists nothing

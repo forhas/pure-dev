@@ -64,25 +64,13 @@ HEADREPO_DOCS=(
 
 # ---------------------------------------------------------------- primitives
 
-# first line number matching <regex> in <file> within [<start>,<end>]; empty if none
-find_line() {
-  awk -v s="$2" -v e="$3" -v re="$4" \
-    'NR >= s && NR <= e && $0 ~ re { print NR; exit }' "$1"
-}
-
-# how many lines match <regex> in <file> within [<start>,<end>]
-count_lines() {
-  awk -v s="$2" -v e="$3" -v re="$4" \
-    'NR >= s && NR <= e && $0 ~ re { n++ } END { print n + 0 }' "$1"
-}
-
-total_lines() { wc -l < "$1" | tr -d ' '; }
-
-# assert_present <label> <file> <start> <end> <regex>
-assert_present() {
-  if [ -n "$(find_line "$2" "$3" "$4" "$5")" ]; then ok "$1"; else bad "$1"; fi
-}
-
+# Assertions come from the shared library. Two things it fixes here beyond the
+# sensitivity rules it exists for: the local `find_line` passed its regex through
+# `awk -v`, which performs escape processing and is the documented trap that
+# turned assertions vacuous once already; and every anchor is now required to be
+# unique in its region, which is what the operand-carrying discipline described
+# below was approximating by hand.
+#
 # Every anchor below carries its OPERAND, not just its command name. Five review
 # rounds each found another anchor that pinned the shape of a command while
 # saying nothing about what it acted on — a cleanup retargeted to <headRefName>,
@@ -95,24 +83,8 @@ assert_present() {
 # worktree path — a bare `rmdir` token let `rmdir $REPO_ROOT` pass, because only
 # an `rm -rf` regression removes the token the order check looks for.
 #
-# assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
-# Fails on the first anchor that is missing or out of sequence, and says which.
-assert_order() {
-  local label=$1 file=$2 start=$3 end=$4; shift 4
-  local prev=0 prev_name="" name re ln
-  while [ $# -gt 1 ]; do
-    name=$1; re=$2; shift 2
-    ln=$(find_line "$file" "$start" "$end" "$re")
-    if [ -z "$ln" ]; then
-      bad "$label — nothing matches '$name'"; return
-    fi
-    if [ "$ln" -le "$prev" ]; then
-      bad "$label — '$name' (line $ln) does not follow '$prev_name' (line $prev)"; return
-    fi
-    prev=$ln; prev_name=$name
-  done
-  ok "$label"
-}
+# (cd to the repo root already happened above, so this path is stable.)
+. ./scripts/lib/assert.sh
 
 # ------------------------------------------------- 1-2. cleanup step ordering
 
@@ -310,7 +282,10 @@ check_merged_gate() {
   [ -n "$merge_ln" ] || return 0
   del_ln=$(find_line "$f" "$merge_ln" "$total" '^(git push origin --delete|gh api --method DELETE)')
   [ -n "$del_ln" ] || return 0
-  gate_ln=$(find_line "$f" "$merge_ln" "$del_ln" '^gh pr view <pr> --json state')
+  # The anchor carries the line's trailing comment because the same command
+  # appears again as the merge-failure recovery probe ("MERGED → merge
+  # succeeded"), and an anchor that matches both is an anchor that pins neither.
+  gate_ln=$(find_line "$f" "$merge_ln" "$del_ln" '^gh pr view <pr> --json state[[:space:]]+# must report MERGED before')
   [ -n "$gate_ln" ] || return 0
   assert_present "$f: the gate line itself requires MERGED" \
     "$f" "$gate_ln" "$gate_ln" 'MERGED'
@@ -323,12 +298,35 @@ for f in "${MERGE_DOCS[@]}"; do
   assert_order "$f: merge, then MERGED, then delete" \
     "$f" 1 "$(total_lines "$f")" \
     "gh pr merge"                  '^gh pr merge <pr> --' \
-    "gh pr view --json state"      '^gh pr view <pr> --json state' \
+    "gh pr view --json state"      '^gh pr view <pr> --json state[[:space:]]+# must report MERGED before' \
     "remote branch deletion"       '^(git push origin --delete <head-branch>|gh api --method DELETE)'
   check_merged_gate "$f" "$(total_lines "$f")"
 done
 
 # ------------------------- 7. deletion targets the head repo, ref encoded
+
+echo
+echo "== finalize recreates a fork PR's worktree from the head repo, not origin =="
+
+# `origin/<headRefName>` does not exist for a fork PR — the head branch lives in the
+# fork — so the old recreation command died with "Not a valid object name" on exactly
+# the case step 3's deletion path exists for. Verified against a live fork PR.
+# Use, not mention: the paragraph below the fix names the broken command in order to
+# forbid it, so a bare string search matches the prohibition itself. Anchor on the
+# COMMAND form — a line that is only the command, indented or not — the same
+# use-vs-mention distinction the `--delete-branch` check had to be rewritten for.
+assert_absent "finalize does not recreate a worktree from origin/<headRefName>" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  '^ *git worktree add <worktree-path> -b <headRefName> origin/'
+assert_order "finalize creates the worktree detached, then lets gh resolve the head" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  "detached worktree" '^   git worktree add --detach <worktree-path>$' \
+  "gh pr checkout"    '^   gh pr checkout <pr>$'
+# The reason the fetch is delegated to gh rather than hand-rolled: it is what points
+# fix commits at the fork.
+assert_present "finalize states that gh pr checkout points pushes at the head repository" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  'sets .branch[.]<headRefName>[.]remote. to the [*][*]head repository'
 
 echo
 echo "== head-repository resolution and ref encoding =="
@@ -339,7 +337,7 @@ for f in "${HEADREPO_DOCS[@]}"; do
   # that runs before the head repo is known is the fork bug #23 fixed.
   assert_order "$f: resolve head repo before deleting" \
     "$f" 1 "$total" \
-    "gh pr view --json state"          '^gh pr view <pr> --json state' \
+    "gh pr view --json state"          '^gh pr view <pr> --json state[[:space:]]+# must report MERGED before' \
     "head repo + repo + ref fields"    '^gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName' \
     "DELETE targets the encoded ref"   '^gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"'
   # The DELETE anchor above is the load-bearing one; these two keep the rule that

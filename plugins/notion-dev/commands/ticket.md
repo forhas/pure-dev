@@ -73,7 +73,19 @@ When the body has no `## Acceptance Criteria` section, or it is empty, write no 
 
 ### 1.2 Check for existing worktree (resumability)
 
-Compute worktree path from config template `worktree.prefix` (tokens: `{name}`, `{key}`, `{id}` — `{id}` is the numeric `idProperty value` from the fetched ticket), resolved relative to the parent directory of `REPO_ROOT` (the primary checkout recorded in 1.1 — not the current directory, which on the no-arg resume path is the worktree itself).
+Compute the worktree path as `$(dirname "$REPO_ROOT")/<repo-name>-worktrees/<prefix>`, where
+`<repo-name>` is `basename "$REPO_ROOT"` and `<prefix>` comes from the config template
+`worktree.prefix` (tokens: `{name}`, `{key}`, `{id}` — `{id}` is the numeric `idProperty value`
+from the fetched ticket). `REPO_ROOT` is the primary checkout recorded in 1.1 — not the current
+directory, which on the no-arg resume path is the worktree itself.
+
+**The `<repo-name>-worktrees` container is load-bearing, not decoration**, and it is what
+`quick-dev:develop` has always used. Phase 9 step 5 removes "the worktrees parent directory" with
+`rmdir "$(dirname <worktree-path>)"`. Without the container that `dirname` is the directory
+holding the primary checkout itself — a path this flow neither created nor owns, and one that
+can never be empty while `REPO_ROOT` sits in it, so the step is a guaranteed no-op that names the
+wrong directory. `rmdir`'s refusal on a non-empty directory is the only thing that made that
+safe. With the container, the step removes exactly what this flow created.
 
 Before any resume decision that involves triage: read `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` for the most recent decision line with `run_id == <KEY>-<id>` that lacks a terminal outcome. If found, reuse its `flow_chosen` as `FLOW` and skip Phase 3 entirely when resuming into the build phase. If no unresolved decision line yields a `FLOW` (e.g. an interleaved run's orphan sweep already closed it), do not guess — run Phase 3 normally on resume.
 

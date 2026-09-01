@@ -25,12 +25,10 @@ fails=0
 ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
-# assert_identical <label> <fileA> <fileB>
-assert_identical() {
-  if [ ! -f "$2" ]; then bad "$1 (missing: $2)"; return; fi
-  if [ ! -f "$3" ]; then bad "$1 (missing: $3)"; return; fi
-  if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
-}
+# Assertions come from the shared library, like every other harness here, so
+# that verify-assertions.sh's no-opt-out check has nothing to except.
+# (cd to the repo root already happened above, so this path is stable.)
+. ./scripts/lib/assert.sh
 
 # Tracked-ness is only a meaningful question inside a git work tree. Outside one
 # — an extracted tarball, a vendored copy — `git ls-files` fails for every file
