@@ -197,8 +197,26 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" 'A bare$'
     assert_present "$f: unpushed work is judged only for worktrees this run owns" \
       "$f" "$enum" "$phrase" '[*][*]judge[*][*] only'
+    # Anchored on the emitting line, not the phrase: the no-remote qualification
+    # below quotes the same string in prose, and an anchor matching both pins neither.
     assert_present "$f: the unpushed check handles a branch with no upstream" \
-      "$f" "$enum" "$phrase" 'no upstream — never pushed'
+      "$f" "$enum" "$phrase" '^ *echo "[$]w [(][$]b[)]: no upstream — never pushed"'
+    # ...and that a no-upstream branch is judged only where pushing is part of the
+    # flow. Without this, local mode's pre-squash gate gets a tail it cannot clear.
+    assert_present "$f: a no-upstream branch is a tail only where pushing is part of the flow" \
+      "$f" "$enum" "$phrase" '^   [*][*]A branch with no upstream is a tail only where pushing'
+    assert_present "$f: with no remote, nothing is judged under the unpushed source" \
+      "$f" "$enum" "$phrase" 'no remote — nothing to push to'
+    # A gh-checked-out fork PR has no remote-tracking ref, so @{upstream} fails on a
+    # branch that IS pushed. The probe must ask the configured push target before
+    # concluding anything.
+    assert_present "$f: a failed @{upstream} is not taken as evidence of never pushed" \
+      "$f" "$enum" "$phrase" 'No remote-tracking ref is not the same as never pushed'
+    assert_order "$f: the unpushed check consults the configured push target" \
+      "$f" "$enum" "$phrase" \
+      "branch.<b>.remote" 'config --get "branch[.][$]b[.]remote"' \
+      "branch.<b>.merge"  'config --get "branch[.][$]b[.]merge"' \
+      "ls-remote compare" 'ls-remote "[$]r" "[$]m"'
     assert_absent "$f: does not use git branch --merged (blind to squash merges)" \
       "$f" "$enum" "$phrase" '^[^#]*git branch --merged <base>'
     assert_present "$f: detects a stale branch by its PR state, not by ancestry" \

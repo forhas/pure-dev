@@ -43,17 +43,42 @@ The caller names the operation and passes the arguments; the sections below desc
 
 Callers may pass an `id` as a **logical key** — `STO-285`, `STO285`, or `285`. Normalize by stripping the configured `project.key` prefix and any separator, then parsing the remainder as an integer, then resolving it through the `idProperty` lookup. A **Notion page id or page URL** is also accepted, resolving the page directly.
 
+**The value read back off the page needs the same normalization**, and this is not symmetry for
+its own sake. A `unique_id` column carries its own prefix, and the two MCP access paths disagree
+about whether they apply it: `notion-fetch` returns the property as the *prefixed string*
+(`"userDefined:ID": "PDS-1"`), while `notion-query-data-sources` returns the bare integer (`1`) —
+verified against a live database. So `fetchTicket` normalizes whatever it read — strip a leading
+`<live unique_id prefix>` or `<KEY>` and any separator, then parse the remainder as an integer —
+before putting it in `metadata` as the `idProperty` value. Every caller that says "the numeric
+`<id>`" (`/notion-dev:ticket` Phase 1.1 derives branch, worktree and file names from it) depends
+on that value already being numeric; taken unnormalized it yields `ticket/PDS-PDS-1-<slug>`.
+
+A `number` ID column is unaffected — it has no prefix to strip — and the normalization is a
+no-op there.
+
 ## Title prefix
 
 Every ticket title carries its ticket ID as a leading tag: `[STO-67] Large-Wallet Stale-Index Incident`. The adapter owns this entirely — **callers pass and receive bare titles and never construct, parse, or strip the prefix themselves**. Applies to epics identically.
 
 Format: `[<KEY>-<n>] ` — literal `[`, `project.key`, `-`, the numeric ID, `]`, one space.
 
-Detection (case-insensitive on the key, tolerant of stray inner whitespace):
+Detection (case-insensitive on the key, tolerant of stray inner whitespace, **and of the
+backslash-escaped bracket form**):
 
 ```
-^\[\s*<KEY>-(\d+)\s*\]\s*
+^\\?\[\s*<KEY>-(\d+)\s*\\?\]\s*
 ```
+
+**The optional backslashes are not defensive padding.** Notion-flavored markdown escapes `[` and
+`]`, so the title-typed property of a page read back through `notion-fetch` arrives as
+`\[PDS-1\] Add a farewell helper` — verified against a live database. Against the unescaped
+regex the strip silently fails, and every consequence this rule exists to prevent follows: the
+branch slug carries the id twice (`ticket/PDS-1-pds-1-add-a-farewell-…`, the exact shape the
+Reading paragraph below promises not to produce), and `updateTicket`'s "never double-prefixes"
+idempotence breaks, accumulating `[PDS-1] [PDS-1] …` one prefix per touch.
+
+Strip the escapes from the captured title as well, not only from the prefix: a title whose body
+contains brackets arrives escaped throughout.
 
 Only a prefix matching **this project's** `project.key` counts. On a DB shared between projects, a leading `[FOO-12] ` is part of the title, not a prefix — leave it alone.
 

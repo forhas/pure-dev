@@ -306,6 +306,29 @@ done
 # ------------------------- 7. deletion targets the head repo, ref encoded
 
 echo
+echo "== finalize recreates a fork PR's worktree from the head repo, not origin =="
+
+# `origin/<headRefName>` does not exist for a fork PR — the head branch lives in the
+# fork — so the old recreation command died with "Not a valid object name" on exactly
+# the case step 3's deletion path exists for. Verified against a live fork PR.
+# Use, not mention: the paragraph below the fix names the broken command in order to
+# forbid it, so a bare string search matches the prohibition itself. Anchor on the
+# COMMAND form — a line that is only the command, indented or not — the same
+# use-vs-mention distinction the `--delete-branch` check had to be rewritten for.
+assert_absent "finalize does not recreate a worktree from origin/<headRefName>" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  '^ *git worktree add <worktree-path> -b <headRefName> origin/'
+assert_order "finalize creates the worktree detached, then lets gh resolve the head" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  "detached worktree" '^   git worktree add --detach <worktree-path>$' \
+  "gh pr checkout"    '^   gh pr checkout <pr>$'
+# The reason the fetch is delegated to gh rather than hand-rolled: it is what points
+# fix commits at the fork.
+assert_present "finalize states that gh pr checkout points pushes at the head repository" \
+  "$FINALIZE" 1 "$(total_lines "$FINALIZE")" \
+  'sets .branch[.]<headRefName>[.]remote. to the [*][*]head repository'
+
+echo
 echo "== head-repository resolution and ref encoding =="
 for f in "${HEADREPO_DOCS[@]}"; do
   if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
