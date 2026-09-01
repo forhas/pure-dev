@@ -264,6 +264,8 @@ git push -u origin ticket/<project.key>-<id>-<slug>
 
 ### 6.4 Open PR
 
+**One pull request per ticket, and prefer one per session.** Every additional PR pays a whole `review-and-merge` cycle — its own reviewer trigger, its own multi-minute latency, its own merge and its own cleanup — and that cycle, not the coding, is the dominant cost of finishing. Before opening this one, check whether the session already has an open PR covering related work (`gh pr list --state open`); if it does and the work belongs together, push these commits to that branch and skip the create. A second PR is justified by a **technical** reason — a dependency that must merge first, a release boundary, or work the user asked to keep separate — never by a preference for small diffs, and never to carry an item this run itself filed. `review-and-merge`'s final sweep has already taken back everything cheap enough to keep, so a filed item that now looks worth doing is a signal the sweep mis-triaged it; say that in the report rather than opening a second PR for it. A direct user instruction overrides this, as user instructions always do.
+
 Target: `git.prTargetBranch` (falls back to `git.baseBranch`).
 
 Prefer the GitHub MCP tool `mcp__github__create_pull_request` when available; fall back to `gh pr create`.
@@ -423,6 +425,8 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 ---
 
 ## Phase 10 — Report
+
+**Closeout — zero tails.** Before printing anything below, invoke the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly. It enumerates loose ends from git, `gh`, Notion, and the draft report itself, and forces every one into `resolved`, `tracked: <url>`, or `blocked: <external cause>`. It runs **before** the report rather than inside it, because a tail found while writing a report gets written down instead of fixed. Every `FILED` follow-up must come out of it as `tracked:` with its Notion ticket URL — a filed item named only in this summary is a tail, not a record. End the report with its `CLOSEOUT:` block verbatim, followed by any `tracked:` and `blocked:` lines; a report ending `TRACKED: 0` / `BLOCKED: 0` says the run is finished, with no trailing caveat.
 
 Print a summary covering:
 - Flow chosen (score/confidence/override, or the bug hard rule) and why.

@@ -127,13 +127,20 @@ that is speculative, cosmetic-only, or unverifiable is a `drop`. Do not manufact
 Everything surviving `drop` is **`absorb`** unless **any** of these is true, in which case
 it is `file`:
 
-1. It **reaches code the ticket was not already changing** — files outside the plan's
-   declared file set. New files the plan itself creates count as *inside*.
-2. It requires a **new public interface, dependency, config key, or data migration**.
-3. It needs a design decision the plan's **acceptance criteria do not already settle**.
+1. It requires a **new public interface, dependency, config key, or data migration**.
+2. It needs a design decision the plan's **acceptance criteria do not already settle**.
+3. Its work is **large enough that carrying it in this plan would obscure the plan's own
+   change**. A judgment, and its default answer is *no*.
 
 None true → `absorb`. Every `file` item **must cite the criterion number** that made it one.
 A `file` item with no criterion number is not triaged.
+
+**"It reaches a file the plan was not already changing" is not a criterion.** It was one, and
+it was the largest single source of deferred tickets that the same session then worked anyway
+— each one paying a full extra review-and-merge cycle to keep one plan narrow. Widening the
+plan's declared file set is the cheaper trade: add the task, and say in the plan why the scope
+widened. A plan is a statement of what will be built, not a promise about which files stay
+shut.
 
 Then emit the `TRIAGE-COMPLETE:` line per these three cases:
 

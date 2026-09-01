@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Parity check for this repo's own copy of the review-and-merge skill.
+# Parity check for this repo's own copies of the skills it ships.
 #
-# `.claude/skills/review-and-merge/` is a verbatim mirror of
-# `plugins/quick-dev/skills/review-and-merge/`, so this repo can drive its own
-# PRs with the loop it ships. It has drifted twice — first silently, then again
-# after a README told contributors to re-sync in the same commit. A written
-# reminder is not a mechanism; this is.
+# Every directory under `.claude/skills/` is a verbatim mirror of the
+# same-named directory under `plugins/quick-dev/skills/`, so this repo can
+# drive its own work with the skills it ships. The review-and-merge mirror
+# drifted twice — first silently, then again after a README told contributors
+# to re-sync in the same commit. A written reminder is not a mechanism; this is.
+#
+# The mirror set is discovered, never listed: a skill mirrored tomorrow is
+# checked tomorrow with no edit here. A fixed list would silently exempt it,
+# which is the failure mode this file exists to remove.
 #
 # Unlike the change-scoped harnesses beside it, this asserts a standing
 # invariant, so it has no baseline to go stale against.
@@ -14,8 +18,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-SRC=plugins/quick-dev/skills/review-and-merge
-MIRROR=.claude/skills/review-and-merge
+PLUGIN_SKILLS=plugins/quick-dev/skills
+MIRROR_ROOT=.claude/skills
 fails=0
 
 ok()  { printf '  PASS  %s\n' "$1"; }
@@ -28,36 +32,58 @@ assert_identical() {
   if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
 }
 
-echo "== review-and-merge mirror parity =="
+mirrored=0
+for mdir in "$MIRROR_ROOT"/*/; do
+  [ -d "$mdir" ] || continue
+  skill=$(basename "$mdir")
+  src="$PLUGIN_SKILLS/$skill"
+  mirrored=$((mirrored + 1))
 
-assert_identical "SKILL.md matches the quick-dev plugin" \
-  "$SRC/SKILL.md" "$MIRROR/SKILL.md"
+  echo "== $skill mirror parity =="
 
-# Every reference the plugin ships must be mirrored, byte for byte. Looping
-# rather than naming them keeps a newly added reference from being silently
-# unmirrored — the failure mode a fixed list would miss.
-for f in "$SRC"/references/*; do
-  [ -e "$f" ] || continue
-  base=$(basename "$f")
-  assert_identical "references/$base matches the quick-dev plugin" \
-    "$f" "$MIRROR/references/$base"
-done
-
-# The reverse direction: a file in the mirror with no counterpart in the plugin
-# is a project-local fork, which is invisible to everyone who installs the
-# plugin. README.md is the one legitimate exception — it documents the mirroring
-# rule itself and has no plugin counterpart.
-for f in "$MIRROR"/references/*; do
-  [ -e "$f" ] || continue
-  base=$(basename "$f")
-  if [ -f "$SRC/references/$base" ]; then
-    ok "references/$base has a plugin counterpart"
-  else
-    bad "references/$base exists only in the mirror (project-local fork)"
+  if [ ! -d "$src" ]; then
+    bad "$skill exists only in the mirror (project-local fork)"
+    continue
   fi
+
+  assert_identical "$skill: SKILL.md matches the quick-dev plugin" \
+    "$src/SKILL.md" "$mdir/SKILL.md"
+
+  # Every reference the plugin ships must be mirrored, byte for byte. Looping
+  # rather than naming them keeps a newly added reference from being silently
+  # unmirrored — the failure mode a fixed list would miss.
+  for f in "$src"/references/*; do
+    [ -e "$f" ] || continue
+    base=$(basename "$f")
+    assert_identical "$skill: references/$base matches the quick-dev plugin" \
+      "$f" "$mdir/references/$base"
+  done
+
+  # The reverse direction: a file in the mirror with no counterpart in the
+  # plugin is a project-local fork, invisible to everyone who installs the
+  # plugin. README.md is the one legitimate exception — it documents the
+  # mirroring rule itself and has no plugin counterpart.
+  for f in "$mdir"/references/*; do
+    [ -e "$f" ] || continue
+    base=$(basename "$f")
+    if [ -f "$src/references/$base" ]; then
+      ok "$skill: references/$base has a plugin counterpart"
+    else
+      bad "$skill: references/$base exists only in the mirror (project-local fork)"
+    fi
+  done
 done
 
-if [ -f "$MIRROR/README.md" ]; then
+echo "== mirror set =="
+
+if [ "$mirrored" -gt 0 ]; then
+  ok "$mirrored skill(s) mirrored under $MIRROR_ROOT"
+else
+  bad "no skills mirrored under $MIRROR_ROOT (the mirror set cannot be empty)"
+fi
+
+# One README documents the rule this script enforces, for the whole mirror set.
+if [ -f "$MIRROR_ROOT/review-and-merge/README.md" ]; then
   ok "mirror README present (documents the rule this script enforces)"
 else
   bad "mirror README missing"
@@ -68,8 +94,8 @@ if [ "$fails" -eq 0 ]; then
 else
   echo "$fails CHECK(S) FAILED"
   echo
-  echo "Re-sync with:"
-  echo "  cp -r $SRC/. $MIRROR/"
-  echo "Then confirm: diff -r --exclude=README.md $SRC/ $MIRROR/"
+  echo "Re-sync a drifted skill with:"
+  echo "  cp -r $PLUGIN_SKILLS/<skill>/. $MIRROR_ROOT/<skill>/"
+  echo "Then confirm: diff -r --exclude=README.md $PLUGIN_SKILLS/<skill>/ $MIRROR_ROOT/<skill>/"
 fi
 exit $(( fails > 0 ? 1 : 0 ))
