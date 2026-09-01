@@ -305,6 +305,12 @@ assert_present "develop local mode runs the completion pass before its own squas
   'Local mode never enters .quick-dev:review-and-merge'
 check_premerge "ticket"   "$ND/commands/ticket.md"
 check_premerge "finalize" "$ND/commands/finalize.md"
+# Phase 2 is the only place the pre-merge hook is wired, and the MERGED recovery
+# path skips Phase 2 — so that path needs its own wire-in or Phase 5 asserts a
+# pass that never ran.
+assert_present "finalize's MERGED recovery path still runs the completion pass" \
+  "$ND/commands/finalize.md" 1 "$(total_lines "$ND/commands/finalize.md")" \
+  'recovery path must still run the completion pass'
 
 check_caller "develop Phase 6" \
   "$QD/skills/develop/SKILL.md" '^## Phase 6 ' 'quick-dev:session-closeout'

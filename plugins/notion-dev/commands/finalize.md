@@ -59,7 +59,18 @@ Work PR-first — the PR number is the entry point, and the ticket id is derived
 ## Phase 2 — Review and merge
 
 Reached only when Phase 1 did **not** take the `MERGED` recovery path (that path skips this
-phase entirely). Probe `jq --version` here — abort with install instructions if missing:
+phase entirely).
+
+**The `MERGED` recovery path must still run the completion pass — Phase 5 asserts it did.** That
+path skips this phase, which is the only place the pre-merge hook below is wired, so without this
+a manually merged PR or a recovery from an interrupted flow would reach the report having had no
+fresh verification, no unpushed-work check, no deferred-item check and no report-claim inspection
+— while the report said the pass had run. On that path, run the completion pass of
+`notion-dev:session-closeout` at the start of Phase 3 instead, over the sources that still apply
+once the merge has landed. It cannot put a fix into the pull request there — the merge is already
+done — so anything it turns up takes `tracked:` or `blocked:` rather than being resolved onto the
+branch, and the report says which. Running it late and saying so beats asserting a pass that
+never happened. Probe `jq --version` here — abort with install instructions if missing:
 `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`) on Windows, where it is
 commonly absent; `brew install jq` / `apt install jq` otherwise.
 
