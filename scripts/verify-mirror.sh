@@ -32,6 +32,16 @@ assert_identical() {
   if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
 }
 
+# Tracked-ness is only a meaningful question inside a git work tree. Outside one
+# — an extracted tarball, a vendored copy — `git ls-files` fails for every file
+# and would report four spurious failures, which is how a harness teaches people
+# to ignore it. Resolve once and say plainly which mode this run is in.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  IN_GIT=yes
+else
+  IN_GIT=no
+fi
+
 mirrored=0
 for mdir in "$MIRROR_ROOT"/*/; do
   [ -d "$mdir" ] || continue
@@ -53,14 +63,16 @@ for mdir in "$MIRROR_ROOT"/*/; do
   # .gitignore excludes passes every content check locally and then vanishes on a
   # fresh checkout, which is how a mirrored skill first shipped untracked: `git
   # add -A` skipped it silently and only CI noticed. Ask git, not the filesystem.
-  for f in "$mdir"SKILL.md "$mdir"references/*; do
-    [ -e "$f" ] || continue
-    if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-      ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
-    else
-      bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
-    fi
-  done
+  if [ "$IN_GIT" = yes ]; then
+    for f in "$mdir"SKILL.md "$mdir"references/*; do
+      [ -e "$f" ] || continue
+      if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+        ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
+      else
+        bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
+      fi
+    done
+  fi
 
   # Every reference the plugin ships must be mirrored, byte for byte. Looping
   # rather than naming them keeps a newly added reference from being silently
@@ -93,6 +105,12 @@ if [ "$mirrored" -gt 0 ]; then
   ok "$mirrored skill(s) mirrored under $MIRROR_ROOT"
 else
   bad "no skills mirrored under $MIRROR_ROOT (the mirror set cannot be empty)"
+fi
+
+if [ "$IN_GIT" = yes ]; then
+  ok "run inside a git work tree — tracked-ness of every mirrored file was checked"
+else
+  echo "  SKIP  not a git work tree — tracked-ness not checked (content parity still was)"
 fi
 
 # One README documents the rule this script enforces, for the whole mirror set.
