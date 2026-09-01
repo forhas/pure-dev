@@ -283,6 +283,12 @@ check_premerge() {
     "$file" 1 "$n" '(last moment|before the merge)'
 }
 check_premerge "develop"  "$QD/skills/develop/SKILL.md"
+# Local mode squash-merges itself and never enters review-and-merge, so the
+# --pre-merge-check hook cannot reach it. It needs its own wire-in or the split
+# is GitHub-only.
+assert_present "develop local mode runs the completion pass before its own squash" \
+  "$QD/skills/develop/SKILL.md" 1 "$(total_lines "$QD/skills/develop/SKILL.md")" \
+  'Local mode never enters .quick-dev:review-and-merge'
 check_premerge "ticket"   "$ND/commands/ticket.md"
 check_premerge "finalize" "$ND/commands/finalize.md"
 
