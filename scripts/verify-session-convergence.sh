@@ -218,6 +218,8 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" 'PREEXISTING_DIRTY'
     assert_present "$f: the unpushed check spans every worktree" \
       "$f" "$enum" "$phrase" 'git worktree list --porcelain'
+    assert_present "$f: a Deferred: trailer counts as durable tracking where there is no backend" \
+      "$f" "$enum" "$phrase" 'durable record its flow actually uses'
     assert_present "$f: open PRs are correlated to this run, not listed wholesale" \
       "$f" "$enum" "$phrase" 'A bare$'
     assert_present "$f: unpushed work is judged only for worktrees this run owns" \
@@ -238,7 +240,7 @@ for f in $CLOSEOUT_DOCS; do
       "unpushed"        'rev-list --count .@[{]upstream[}][.][.]HEAD.' \
       "worktrees"       'git worktree list' \
       "open PRs"        'gh pr list --state open --json' \
-      "open issues"     'gh issue list --state open' \
+      "filed issues"    'Query the set this run recorded' \
       "deferred"        'git log --grep' \
       "own draft"       'own draft report'
 

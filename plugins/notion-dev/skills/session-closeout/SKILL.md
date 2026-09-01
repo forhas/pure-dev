@@ -144,8 +144,25 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    An owned PR is a tail **unless leaving it open for human review was the session's stated
    deliverable**, in which case it is `resolved` and the report says so. One nobody asked to be
    left open is unfinished work.
-5. *(completion, then workspace)* **Open issues this session filed**, plus every item in a review
-   report's `FILED` list — `gh issue list --state open`. Each needs `tracked:` with its URL.
+5. *(completion, then workspace)* **Issues this session filed**, plus every item in a review
+   report's `FILED` list. **Query the set this run recorded, not the repository's open issues** —
+   `gh issue list` filters only by explicit flags and nothing in a bare invocation identifies what
+   this run created, so listing everything would make every pre-existing issue in the repository
+   this session's tail:
+
+   ```bash
+   # $FILED_IDS: issue numbers this run created; empty is normal and means nothing was filed.
+   for n in $FILED_IDS; do
+     gh issue view "$n" --json number,state,url --jq '"\(.number) \(.state) \(.url)"'
+   done
+   ```
+
+   Each needs `tracked:` with its URL — **or the durable record its flow actually uses.**
+   `quick-dev` has no ticket backend by design: it persists `FILED` work as `Deferred:` trailers
+   on the squash commit, and in GitHub mode as the PR's own comment record. Demanding a ticket URL
+   there would force an ad-hoc issue that the flow neither creates nor reads, or leave the closeout
+   permanently unsatisfiable. A trailer or PR record that a later `git log --grep` can find **is**
+   durable tracking; what is never acceptable is the item existing only in a report.
 
    **This one source spans both passes, because filing often happens after the merge.**
    `notion-dev`'s `epic-update` creates follow-up tickets in the record phase, and `quick-dev`'s
