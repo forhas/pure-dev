@@ -48,26 +48,18 @@ MERGE_DOCS=(
   .claude/skills/review-and-merge/references/github-api.md
 )
 
-# quick-dev resolves the head repository and percent-encodes the ref (#23).
-# notion-dev still deletes from `origin` unconditionally — a known gap, tracked
-# in issue #25. Listing the files that must have the fix, rather than asserting
-# it repo-wide, is what keeps this harness honest about which copies actually do.
-# Widen this list when #25 lands.
+# Head-repository resolution and ref encoding, from PR #23 (quick-dev), #25
+# (notion-dev) and #26 (the %25 literal the reference copies were missing).
+# Every copy of the merge sequence now carries the resolution, the prose rule and
+# the mapping table, so this is one list rather than the two it needed while they
+# diverged.
 HEADREPO_DOCS=(
+  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/skills/review-and-merge/references/github-api.md
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   plugins/quick-dev/skills/review-and-merge/references/github-api.md
   .claude/skills/review-and-merge/SKILL.md
   .claude/skills/review-and-merge/references/github-api.md
-)
-
-# Only the SKILL.md copies carry the encoding TABLE with the `% → %25` mapping;
-# the reference copies state the rule in prose and never give the %25 literal.
-# That asymmetry is in PR #23's text, not this PR's, so it is filed as issue #26
-# rather than papered over by asserting %25 where it does not exist. Widen this
-# list when #26 lands.
-PCT25_DOCS=(
-  plugins/quick-dev/skills/review-and-merge/SKILL.md
-  .claude/skills/review-and-merge/SKILL.md
 )
 
 # ---------------------------------------------------------------- primitives
@@ -96,13 +88,12 @@ assert_present() {
 # saying nothing about what it acted on — a cleanup retargeted to <headRefName>,
 # an ancestor test with reversed arguments, a truncated --json field list. The
 # remaining anchors were swept for the same defect in one pass rather than
-# waiting for them to surface one per round. Two are still unbound:
-# `gh pr merge <pr> --` leaves the strategy free deliberately, because the
-# strategy is configurable and is not the invariant; `rmdir` is unbound because
-# the guarded documents name its target only in prose, so binding it needs a doc
-# change first — issue #27. A regression to `rm -rf` is caught either way, since
-# it removes the `rmdir` token the order check looks for, but a wrong target is
-# NOT caught today.
+# waiting for them to surface one per round. One stays unbound deliberately:
+# `gh pr merge <pr> --` leaves the strategy free, because the strategy is
+# configurable and is not the invariant. `rmdir` was the other, until issue #27
+# had the three guarded documents derive the directory they remove from the
+# worktree path — a bare `rmdir` token let `rmdir $REPO_ROOT` pass, because only
+# an `rm -rf` regression removes the token the order check looks for.
 #
 # assert_order <label> <file> <start> <end> <name> <regex> [<name> <regex>]...
 # Fails on the first anchor that is missing or out of sequence, and says which.
@@ -130,7 +121,7 @@ assert_order() {
 # the pull is --ff-only. Returns the section bounds via CLEAN_START/CLEAN_END so
 # the hook checks below can reuse them.
 check_cleanup() {
-  local label=$1 file=$2 start_re=$3 end_re=$4 base=$5 wt=$6 branch=$7
+  local label=$1 file=$2 start_re=$3 end_re=$4 base=$5 wt=$6 branch=$7 rmdir_re=$8
   CLEAN_START=""; CLEAN_END=""
 
   if [ ! -f "$file" ]; then bad "$label cleanup section (missing: $file)"; return; fi
@@ -147,7 +138,7 @@ check_cleanup() {
     "git worktree remove <wt>"      "git worktree remove $wt" \
     "git branch -D <branch>"        "git branch -D $branch" \
     "git checkout <base> && git pull" "git checkout $base && git pull" \
-    "rmdir"                         'rmdir'
+    "rmdir <parent of the worktree>" "$rmdir_re"
 
   # Separate from the ordering check on purpose: dropping --ff-only is its own
   # regression (a diverged primary would manufacture a merge commit, which is
@@ -162,11 +153,11 @@ check_cleanup() {
 }
 
 echo "== cleanup step ordering =="
-check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>'
+check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>' 'rmdir .*dirname <worktree-path>'
 TICKET_CLEAN_END=$CLEAN_END
-check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>'
+check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>' 'rmdir .*dirname <worktree-path>'
 FINALIZE_CLEAN_END=$CLEAN_END
-check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"'
+check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"' 'rmdir .*dirname "[$]WORKTREE"'
 
 # ------------------------------------------- 3-4. hooks run after the cleanup
 
@@ -337,10 +328,10 @@ for f in "${MERGE_DOCS[@]}"; do
   check_merged_gate "$f" "$(total_lines "$f")"
 done
 
-# --------------------- 7. quick-dev deletes from the head repo, ref encoded
+# ------------------------- 7. deletion targets the head repo, ref encoded
 
 echo
-echo "== head-repository resolution and ref encoding (quick-dev) =="
+echo "== head-repository resolution and ref encoding =="
 for f in "${HEADREPO_DOCS[@]}"; do
   if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
   total=$(total_lines "$f")
@@ -351,30 +342,19 @@ for f in "${HEADREPO_DOCS[@]}"; do
     "gh pr view --json state"          '^gh pr view <pr> --json state' \
     "head repo + repo + ref fields"    '^gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName' \
     "DELETE targets the encoded ref"   '^gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"'
-  # Two separate things, and the DELETE anchor above is the load-bearing one.
-  # Matching %23 anywhere in the file only proves the encoding is *explained*:
-  # the command could regress from <head-branch-encoded> to <head-branch> with
-  # the paragraph left intact, which is why the anchor pins the placeholder the
-  # command actually substitutes. These checks keep the rule documented.
-  assert_present "$f: documents the %23 encoding" "$f" 1 "$total" '%23'
-  # BOTH characters, and the order between them. `%` is the escape character, so
-  # encoding it second mangles the escapes just written — dropping that half left
-  # %23 present and the harness green. The bracket class matches the literal `%`;
-  # `[*]*` absorbs the bold markers one copy uses and the other does not.
+  # The DELETE anchor above is the load-bearing one; these two keep the rule that
+  # tells a reader how to build its argument.
+  #
+  # The mapping is asserted on the TABLE ROW, both sides, both characters. A bare
+  # `%23` search anywhere in the file passed while the row itself was wrong,
+  # because the prose example below it also contains `%23` — the same use-vs-
+  # mention confusion the --delete-branch check had to be rewritten for.
+  assert_present "$f: the encoding row maps % to %25 and # to %23" \
+    "$f" 1 "$total" '^%[[:space:]].*%25.*#.*%23'
+  # And the ORDER between them, which the row cannot express. `%` is the escape
+  # character, so encoding it second mangles the escapes just written. `[*]*`
+  # absorbs the bold markers one copy uses and the other does not.
   assert_present "$f: encodes % before #" "$f" 1 "$total" 'Encode .%. [*]*first'
-done
-
-# The mapping itself, wherever it is stated. Ordering alone is not enough: with
-# every %25 rewritten to %24 the harness stayed green, and a branch containing a
-# literal `%` would then encode to a ref that does not exist.
-for f in "${PCT25_DOCS[@]}"; do
-  if [ ! -f "$f" ]; then bad "$f (missing)"; continue; fi
-  # Both sides of the row. '^%.*%25' accepted `%24  →  %25`, which no longer
-  # says that a literal `%` is the thing being encoded. Requiring whitespace
-  # immediately after the leading `%` pins the source token to the bare
-  # character without hard-coding the arrow glyph or the column spacing.
-  assert_present "$f: the % row maps % itself to %25" \
-    "$f" 1 "$(total_lines "$f")" '^%[[:space:]].*%25'
 done
 
 echo

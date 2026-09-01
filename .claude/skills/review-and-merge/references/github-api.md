@@ -138,7 +138,11 @@ gh pr view <pr> --json headRepositoryOwner,headRepository,headRefName
 gh api --method DELETE "repos/<headOwner>/<headRepo>/git/refs/heads/<head-branch-encoded>"
 ```
 
-**Percent-encode the ref.** `gh api` takes a URL path, so a `#` — legal in a git ref, special in a URL — is parsed as a fragment and silently dropped: `…/heads/feature/foo#bar` is sent as `…/heads/feature/foo`, deleting an unrelated branch. Encode `%` first (it is the escape character), then `#` (`%23`); leave `/` as-is. `?` needs no handling — `git check-ref-format` rejects it, so it cannot appear in a branch name.
+**Percent-encode the ref.** `gh api` takes a URL path, so a `#` — legal in a git ref, special in a URL — is parsed as a fragment and silently dropped: `…/heads/feature/foo#bar` is sent as `…/heads/feature/foo`, deleting an unrelated branch. Encode `%` first (it is the escape character), then `#`; leave `/` as-is. `?` needs no handling — `git check-ref-format` rejects it, so it cannot appear in a branch name.
+
+```
+%  →  %25        #  →  %23
+```
 
 **Delete from the head repository, not `origin`.** On a fork-based PR the head branch lives in the fork while `origin` is the base repo, so `git push origin --delete <head-branch>` either fails or deletes a same-named base branch instead. Resolve the head repo from the PR and target it. A `403` on a fork you cannot write to is expected — report it and continue.
 
