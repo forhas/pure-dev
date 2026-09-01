@@ -300,6 +300,11 @@ check_premerge "develop"  "$QD/skills/develop/SKILL.md"
 # Local mode squash-merges itself and never enters review-and-merge, so the
 # --pre-merge-check hook cannot reach it. It needs its own wire-in or the split
 # is GitHub-only.
+# The sweep only ever sees review-and-merge's own ledger, in GitHub mode. Claiming
+# it covered plan-review items or local-mode items is an unsupported claim.
+assert_present "develop does not claim the sweep covered plan-review or local-mode items" \
+  "$QD/skills/develop/SKILL.md" 1 "$(total_lines "$QD/skills/develop/SKILL.md")" \
+  'only one of the two sources of .file. items is ever swept'
 assert_present "develop local mode runs the completion pass before its own squash" \
   "$QD/skills/develop/SKILL.md" 1 "$(total_lines "$QD/skills/develop/SKILL.md")" \
   'Local mode never enters .quick-dev:review-and-merge'
