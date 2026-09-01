@@ -124,9 +124,23 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    has instead is better than any inference: it knows the branch it created, so it checks that
    branch by name. Only a session cleaning up after someone else is left guessing, and that case
    needs a human, not a command.
-4. *(workspace)* **Open pull requests** — `gh pr list --state open`. Each is a tail **unless leaving it open
-   for human review was the session's stated deliverable**, in which case it is `resolved` and
-   the report says so. An open PR nobody asked to be left open is unfinished work.
+4. *(workspace)* **Open pull requests this run opened or pushed to** — correlate by head branch,
+   not by listing everything:
+
+   ```bash
+   gh pr list --state open --json number,headRefName,url \
+     --jq '.[] | select(.headRefName as $h | $OWNED | index($h)) | "\(.number) \(.url)"'
+   ```
+
+   where `$OWNED` is the set of branches this run created or pushed to. **A bare
+   `gh pr list --state open` is wrong here**, and wrong in the same way source 2 was before it
+   was scoped: in any repository with other contributors it returns their pull requests, and the
+   sentence below would make each one this session's tail — so the pass could demand that work it
+   neither created nor touched be tracked, closed, or otherwise resolved.
+
+   An owned PR is a tail **unless leaving it open for human review was the session's stated
+   deliverable**, in which case it is `resolved` and the report says so. One nobody asked to be
+   left open is unfinished work.
 5. *(completion, then workspace)* **Open issues this session filed**, plus every item in a review
    report's `FILED` list — `gh issue list --state open`. Each needs `tracked:` with its URL.
 

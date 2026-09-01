@@ -214,6 +214,8 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" 'PREEXISTING_DIRTY'
     assert_present "$f: the unpushed check spans every worktree" \
       "$f" "$enum" "$phrase" 'git worktree list --porcelain'
+    assert_present "$f: open PRs are correlated to this run, not listed wholesale" \
+      "$f" "$enum" "$phrase" 'A bare$'
     assert_present "$f: unpushed work is judged only for worktrees this run owns" \
       "$f" "$enum" "$phrase" '[*][*]judge[*][*] only'
     assert_present "$f: the unpushed check handles a branch with no upstream" \
@@ -231,7 +233,7 @@ for f in $CLOSEOUT_DOCS; do
       "git status"      'git status --porcelain' \
       "unpushed"        'rev-list --count .@[{]upstream[}][.][.]HEAD.' \
       "worktrees"       'git worktree list' \
-      "open PRs"        'gh pr list --state open' \
+      "open PRs"        'gh pr list --state open --json' \
       "open issues"     'gh issue list --state open' \
       "deferred"        'git log --grep' \
       "own draft"       'own draft report'
