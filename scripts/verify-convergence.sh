@@ -12,45 +12,12 @@ fails=0
 ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
-# assert_has <label> <file> <literal string>
-assert_has() {
-  if grep -qF -- "$3" "$2"; then ok "$1"; else bad "$1"; fi
-}
-
-# assert_lacks <label> <file> <literal string>
-assert_lacks() {
-  if grep -qF -- "$3" "$2"; then bad "$1"; else ok "$1"; fi
-}
-
-# assert_identical <label> <fileA> <fileB>
-assert_identical() {
-  if diff -q "$2" "$3" >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi
-}
-
-# assert_version_above <label> <plugin.json> <pre-change baseline version>
-# Pinning the exact version turns this suite red on the next unrelated bump.
-# Assert instead that a version key exists and is strictly greater than the
-# version this change started from.
-assert_version_above() {
-  local v
-  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$2" | head -1)
-  if [ -z "$v" ]; then bad "$1 (no version key)"; return; fi
-  if [ "$v" = "$3" ]; then bad "$1 (still at the pre-change $3)"; return; fi
-  # Portable dotted-numeric compare. `sort -V` would be shorter, but it is a GNU
-  # extension with uneven BSD/macOS support, and this harness is meant to run
-  # wherever the repo does. awk is POSIX and numeric, so 0.10.0 > 0.9.0 holds —
-  # which a plain lexical compare gets wrong.
-  if awk -v a="$v" -v b="$3" 'BEGIN{
-        na=split(a,A,"."); nb=split(b,B,".");
-        n=(na>nb?na:nb);
-        for(i=1;i<=n;i++){ x=(i<=na?A[i]+0:0); y=(i<=nb?B[i]+0:0);
-          if(x>y) exit 0; if(x<y) exit 1 }
-        exit 1 }'; then
-    ok "$1 ($v > $3)"
-  else
-    bad "$1 ($v is not above $3)"
-  fi
-}
+# Assertions come from the shared library: `assert_has` there requires the
+# literal to occur on EXACTLY ONE line, so a fragment that also appears somewhere
+# unrelated fails instead of passing on the wrong line. A literal a document
+# repeats on purpose declares its count with `assert_has_n`.
+# (cd to the repo root already happened above, so this path is stable.)
+. ./scripts/lib/assert.sh
 
 echo "== Task 1: rubric =="
 RUBRIC=$ND/skills/plan-review/references/reviewer-rubric.md
@@ -186,17 +153,17 @@ for P in "$ND" "$QD"; do
   assert_has "$n r&m pins locatable = no"            "$S" '`locatable = no`'
   assert_has "$n r&m states the root/descendant asymmetry" "$S" 'may be a chain root, and can never be a chain descendant'
   assert_has "$n r&m covers a locationless Rule 2 root"    "$S" 'A root may be locationless'
-  assert_has "$n r&m discloses unlocatable in INDUCED"     "$S" 'excluding <n> unlocatable'
+  assert_has "$n r&m discloses unlocatable in INDUCED"     "$S" 'INDUCED: <n> (<pct> of findings after round 1, excluding <n> unlocatable)'
   assert_has   "$n r&m has the severity ratchet"     "$S" 'From round 3 onward, only a `blocking` finding may be triaged'
   assert_has   "$n r&m keeps the decline path"       "$S" 'a decline is not a `drop`'
   assert_lacks "$n r&m drops the stale runaway claim" "$S" 'That is why this cannot run away'
   assert_has "$n r&m has the induced cap"        "$S" 'A finding at `depth ≥ 2` is never absorbed'
   assert_has "$n r&m reverts non-blocking roots" "$S" 'revert the chain'
   assert_has "$n r&m keeps blocking-root fixes"  "$S" 'keep the fixes'
-  assert_has   "$n r&m gives Rule 2 its own drop ground" "$S" 'ground is the cap, not the ratchet'
+  assert_has   "$n r&m gives Rule 2 its own drop ground" "$S" "Rule 2's \`drop\` ground is the cap, not the ratchet"
   assert_has   "$n r&m detaches that ground from the round" "$S" 'carries no round precondition'
   assert_has   "$n r&m drops depth-2 non-blocking on the cap" "$S" '`drop` it citing **the induced cap**'
-  assert_has   "$n r&m keeps Rule 1's ground round-scoped"  "$S" 'use their own ground'
+  assert_has   "$n r&m keeps Rule 1's ground round-scoped"  "$S" "**This ground is Rule 1's alone**, and it carries the round-3 precondition"
   assert_lacks "$n r&m drops the stale blocking-root cite"  "$S" '`drop` it on Rule 1'
   assert_lacks "$n r&m drops the stale revert-branch cite"  "$S" '`drop` on Rule 1'
   assert_has "$n r&m has the minimal-patch rule" "$S" 'smallest edit that resolves that finding'

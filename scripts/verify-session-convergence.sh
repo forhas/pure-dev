@@ -22,44 +22,12 @@ fails=0
 ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
-# find_line <file> <start> <end> <ere> -> first matching line number, or empty
-#
-# The regex goes through ENVIRON, never `awk -v`. `-v` performs escape processing
-# on the value, so a written `\|` reaches the matcher as a bare `|` — alternation
-# with two empty branches, which matches every line — and gawk only *warns*. That
-# turned three assertions here vacuous once and nearly did it a second time; both
-# were caught by mutation testing rather than by reading. ENVIRON passes the
-# string through untouched, so an escape means what it says.
-find_line() {
-  RE="$4" awk -v s="$2" -v e="$3" \
-    'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { print NR; exit }' "$1"
-}
-
-total_lines() { wc -l < "$1" | tr -d ' '; }
-
-# assert_present <label> <file> <start> <end> <ere>
-assert_present() {
-  if [ -n "$(find_line "$2" "$3" "$4" "$5")" ]; then ok "$1"; else bad "$1"; fi
-}
-
-# assert_absent <label> <file> <start> <end> <ere>
-assert_absent() {
-  if [ -z "$(find_line "$2" "$3" "$4" "$5")" ]; then ok "$1"; else bad "$1"; fi
-}
-
-# assert_order <label> <file> <start> <end> <name> <ere> [<name> <ere>]...
-# Fails on the first anchor that is missing or out of sequence, naming it.
-assert_order() {
-  local label=$1 file=$2 start=$3 end=$4; shift 4
-  local prev=$((start - 1)) name re ln
-  while [ "$#" -gt 0 ]; do
-    name=$1; re=$2; shift 2
-    ln=$(find_line "$file" $((prev + 1)) "$end" "$re")
-    if [ -z "$ln" ]; then bad "$label (no '$name' after line $prev)"; return; fi
-    prev=$ln
-  done
-  ok "$label"
-}
+# Assertions come from the shared library: it is what makes every anchor here
+# unique-or-declared and every label covered by its own regex. See scripts/lib/
+# assert.sh for why, and scripts/verify-assertions.sh for the proof that its
+# checks can fail.
+# (cd to the repo root already happened above, so this path is stable.)
+. ./scripts/lib/assert.sh
 
 QD=plugins/quick-dev
 ND=plugins/notion-dev
@@ -175,7 +143,7 @@ for f in $RAM_DOCS; do
       "SWEPT"       '^SWEPT: ' \
       "SWEEP-ROUND" '^SWEEP-ROUND: '
     assert_present "$f: SWEPT is a subset of ABSORBED, not a fifth bucket" \
-      "$f" "$conv" "$n" 'subset[*][*] of .ABSORBED'
+      "$f" "$conv" "$n" '.SWEPT. is a [*][*]subset[*][*] of .ABSORBED'
   fi
 done
 
@@ -219,8 +187,10 @@ for f in $CLOSEOUT_DOCS; do
       "$f" 1 "$n" 'spans both passes, because filing often happens after the merge'
     assert_present "$f: pre-existing dirty state is excluded, and reported" \
       "$f" "$enum" "$phrase" 'PREEXISTING_DIRTY'
-    assert_present "$f: the unpushed check spans every worktree" \
-      "$f" "$enum" "$phrase" 'git worktree list --porcelain'
+    # Cited twice on purpose — the prose states the scope, the snippet runs it.
+    # Declared rather than loosened: if either citation goes, this goes red.
+    assert_count "$f: the unpushed check spans every worktree" \
+      "$f" "$enum" "$phrase" 'git worktree list --porcelain' 2
     assert_present "$f: a Deferred: trailer counts as durable tracking where there is no backend" \
       "$f" "$enum" "$phrase" 'durable record its flow actually uses'
     assert_present "$f: open PRs are correlated to this run, not listed wholesale" \
@@ -241,10 +211,10 @@ for f in $CLOSEOUT_DOCS; do
       "$f" "$enum" "$phrase" \
       "git status"      'git status --porcelain' \
       "unpushed"        'rev-list --count .@[{]upstream[}][.][.]HEAD.' \
-      "worktrees"       'git worktree list' \
+      "worktrees"       '^   git worktree list$' \
       "open PRs"        'gh pr list --state open --json' \
       "filed issues"    'Query the set this run recorded' \
-      "deferred"        'git log --grep' \
+      "deferred"        "git log --grep '\\^Deferred:'" \
       "own draft"       'own draft report'
 
     # The user's own signal phrases are the check's payload — each must be listed.
@@ -335,7 +305,7 @@ check_premerge "finalize" "$ND/commands/finalize.md"
 # pass that never ran.
 assert_present "finalize's MERGED recovery path still runs the completion pass" \
   "$ND/commands/finalize.md" 1 "$(total_lines "$ND/commands/finalize.md")" \
-  'recovery path must still run the completion pass'
+  'The .MERGED. recovery path must still run the completion pass'
 
 check_caller "develop Phase 6" \
   "$QD/skills/develop/SKILL.md" '^## Phase 6 ' 'quick-dev:session-closeout'
@@ -379,8 +349,18 @@ else
     CLAUDE.md 1 "$n" 'one thing left'
   assert_present "CLAUDE.md states that widening a PR beats splitting it" \
     CLAUDE.md 1 "$n" '[*]not[*] a reason to defer'
-  assert_present "CLAUDE.md points at the harness suite" \
-    CLAUDE.md 1 "$n" 'scripts/verify-[*][.]sh'
+  assert_count "CLAUDE.md points at the harness suite" \
+    CLAUDE.md 1 "$n" 'scripts/verify-[*][.]sh' 2
+  # The assertion-sensitivity rules from issue #30. Without these three lines the
+  # mechanism exists but nothing tells the next session it is the rule.
+  assert_present "CLAUDE.md routes every assertion through scripts/lib/assert.sh" \
+    CLAUDE.md 1 "$n" '^Every assertion comes from .scripts/lib/assert[.]sh'
+  assert_present "CLAUDE.md states the exactly-one-line anchor rule" \
+    CLAUDE.md 1 "$n" 'requires its regex to match [*][*]exactly one[*][*] line'
+  assert_present "CLAUDE.md states that a declared count is not an allowlist" \
+    CLAUDE.md 1 "$n" 'that is not an allowlist, because it is'
+  assert_present "CLAUDE.md states that the label is a claim the regex must honour" \
+    CLAUDE.md 1 "$n" '^- [*][*]The label is a claim the regex has to honour'
 fi
 
 if [ "$fails" -eq 0 ]; then

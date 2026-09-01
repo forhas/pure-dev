@@ -12,40 +12,12 @@ fails=0
 ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
-# assert_has <label> <file> <literal string>
-assert_has() {
-  if grep -qF -- "$3" "$2"; then ok "$1"; else bad "$1"; fi
-}
-
-# assert_lacks <label> <file> <literal string>
-assert_lacks() {
-  if grep -qF -- "$3" "$2"; then bad "$1"; else ok "$1"; fi
-}
-
-# assert_version_above <label> <plugin.json> <pre-change baseline version>
-# Pinning the exact version turns this suite red on the next unrelated bump.
-# Assert instead that a version key exists and is strictly greater than the
-# version this change started from.
-assert_version_above() {
-  local v
-  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$2" | head -1)
-  if [ -z "$v" ]; then bad "$1 (no version key)"; return; fi
-  if [ "$v" = "$3" ]; then bad "$1 (still at the pre-change $3)"; return; fi
-  # Portable dotted-numeric compare. `sort -V` would be shorter, but it is a GNU
-  # extension with uneven BSD/macOS support, and this harness is meant to run
-  # wherever the repo does. awk is POSIX and numeric, so 0.10.0 > 0.9.0 holds —
-  # which a plain lexical compare gets wrong.
-  if awk -v a="$v" -v b="$3" 'BEGIN{
-        na=split(a,A,"."); nb=split(b,B,".");
-        n=(na>nb?na:nb);
-        for(i=1;i<=n;i++){ x=(i<=na?A[i]+0:0); y=(i<=nb?B[i]+0:0);
-          if(x>y) exit 0; if(x<y) exit 1 }
-        exit 1 }'; then
-    ok "$1 ($v > $3)"
-  else
-    bad "$1 ($v is not above $3)"
-  fi
-}
+# Assertions come from the shared library: `assert_has` there requires the
+# literal to occur on EXACTLY ONE line, so a fragment that also appears somewhere
+# unrelated fails instead of passing on the wrong line. A literal a document
+# repeats on purpose declares its count with `assert_has_n`.
+# (cd to the repo root already happened above, so this path is stable.)
+. ./scripts/lib/assert.sh
 
 echo "== spec status =="
 SPEC=docs/superpowers/specs/2026-08-28-completeness-design.md
@@ -67,14 +39,16 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n documents --criteria-file"          "$RM" '--criteria-file'
   assert_has "$n dispatches the verifier"            "$RM" 'the gate needs the verdict before it can decide'
   assert_has "$n states the anti-circularity rule"   "$RM" 'never cite the deliverable'
-  assert_has "$n names the Completeness gate"        "$RM" 'Nothing incomplete may be unlabeled at merge'
+  assert_has "$n names the Completeness gate"        "$RM" '**Completeness gate**: **Nothing incomplete may be unlabeled at merge.**'
   assert_has "$n resolves citations gate-side"       "$RM" 'the gate resolves every citation'
   assert_has "$n matches code citations by content"  "$RM" 'by content, never by line number'
   assert_has "$n defines the unverified state"       "$RM" 'a third state that is not `met` and not `not-met`'
   assert_has "$n files unverified when degraded"     "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
   assert_has "$n uses NONE for empty blocks"         "$RM" 'the literal `NONE`'
-  assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'the counts a caller consumes'
+  assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'a **`COMPLETENESS-REPORT`** section'
+  assert_has "$n takes the report counts from the gate, not the verifier" \
+    "$RM" "the counts a caller consumes are always the gate's, never the verifier's raw ones"
   assert_has "$n requires one verdict per criterion"  "$RM" 'one per criterion, in criteria-file order'
 
   # The keyed output block itself — the interface all four callers parse. Deleting the
@@ -102,7 +76,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n states that completeness-absorb work is not code-reviewed" "$RM" '`absorb` work is not code-reviewed'
   assert_has "$n keeps the triage rule that mitigates it"                   "$RM" 'prefer `file` over `absorb` for any'
   # `blocked` has a defined producer rather than being an undefined enum member.
-  assert_has "$n defines when COMPLETENESS reads blocked" "$RM" 'the check ran and produced at least one item'
+  assert_has "$n defines when the block reads blocked" "$RM" '- **`blocked`** — the check ran and produced at least one item'
 done
 
 echo "== Task 3: quick-dev criteria derivation =="
@@ -132,7 +106,7 @@ assert_has "local mode states absorb as the triage default" "$D" '`absorb` is th
 assert_has "local mode restates the completeness counts" "$D" "never the agent's raw counts, since it cannot know which of its own citations resolved"
 assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" 'pass `VERIFY_OUTPUT` (2c'"'"'s retained output) instead'
 assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 'never `Deferred:`, even when the merge gate'
-assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" '`-> not covered` lines verbatim'
+assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" 'from `COVERAGE_MAP`: report any `-> not covered` lines verbatim'
 assert_has "2c retains its verification output for the completeness check" "$D" 'Record the output as `VERIFY_OUTPUT`'
 assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
 assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'the user decides, every unverified criterion still becomes an item'
@@ -140,7 +114,8 @@ assert_has "local mode fixes its absorb items and caps itself at two passes" "$D
 assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file` or `drop` with a rationale'
 assert_has "local mode states that completeness-absorb work is not code-reviewed" "$D" '`absorb` work is not code-reviewed'
 assert_has "local mode states the editable-criteria weakness honestly" "$D" 'byte-identical to a genuinely complete run'
-assert_has "a reclassified criterion item takes Unmet, not Deferred" "$D" "when it is a completeness criterion's own item"
+assert_has "a reclassified criterion item takes an Unmet: trailer, not a Deferred: one" \
+  "$D" "as a \`Deferred:\` trailer **when it is a review finding**, or as an \`Unmet:\` trailer when it is a completeness criterion's own item"
 assert_lacks "develop drops the resume case the flow does not have" "$D" 'a resumed run that skipped 2a'
 
 echo "== Task 5: notion-dev caller wiring =="
@@ -149,7 +124,8 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
   assert_has "$n writes a criteria file"          "$C" 'criteria-<KEY>-<id>.md'
   assert_has "$n passes --criteria-file"          "$C" '--criteria-file'
   assert_has "$n ticks the acceptance criteria"   "$C" 'refreshAcceptanceCriteria(id, verdicts)'
-  assert_has "$n appends (never upserts) the Completeness block" "$C" 'appendToSection(id, "Implementation"'
+  assert_has "$n appends (never upserts) the Completeness block" \
+    "$C" '`appendToSection(id, "Implementation", …)` with a **Completeness** block — never `upsertSection`'
   assert_has "$n reports unmet criteria"          "$C" 'acceptance criteria were not met'
   # C1: `refreshAcceptanceCriteria` renders `- [x]`, so a re-run sees ticked boxes.
   # Stripping only `- [ ]` would embed the old marker and accumulate one per run.
@@ -157,7 +133,10 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
 done
 assert_lacks "quick-dev's review-and-merge drops the resume case the flow does not have" \
   "$QD/skills/review-and-merge/SKILL.md" 'resumed after its criteria file went missing'
-assert_has "finalize splits the persisted report at ## Completeness on recovery" "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
+assert_has "finalize splits the persisted report at ## Completeness on recovery" \
+  "$ND/commands/finalize.md" 'Split its contents at the `## Completeness` heading Phase 2 appends'
+assert_has "finalize degrades to today's behaviour when there is no such heading" \
+  "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
 
 echo "== Task 6: completeness metrics =="
 for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/references/ledger.md; do
@@ -182,13 +161,14 @@ assert_has "finalize.md's ledger site distinguishes a real completeness 0 from t
 echo "== Task 6b: the spec documents what the implementation does =="
 SPEC=docs/superpowers/specs/2026-08-28-completeness-design.md
 assert_has "spec names local mode's own gate"           "$SPEC" 'a local-mode Completeness gate, not a duplicate verifier'
-assert_has "spec names the Unmet: trailers' producer"   "$SPEC" "**The producer is local mode's own Completeness gate**"
+assert_has "spec names the Completeness gate as the trailers' producer" \
+  "$SPEC" "**The producer is local mode's own Completeness gate**"
 assert_has "spec gives the verification output a producer" "$SPEC" 'must be *retained* by whatever ran it'
 assert_has "spec scopes pass 2 to the new commits plus the original diff" "$SPEC" 'the new commits plus the original diff'
 assert_has "spec raises items on the interactive degraded branch" "$SPEC" 'Whatever the user decides, every unverified criterion still becomes an item'
 assert_has "spec disclaims review of completeness-absorb work" "$SPEC" 'That work absorbed at this gate is code-reviewed.'
 assert_has "spec states the local-mode freeze weakness honestly" "$SPEC" 'byte-identical to a genuinely complete run'
-assert_has "spec defines when COMPLETENESS reads blocked" "$SPEC" 'the check ran and produced at least one item'
+assert_has "spec defines when the block reads blocked" "$SPEC" '`blocked` means the check ran and produced at least one item'
 assert_lacks "spec drops the resume case quick-dev does not have" "$SPEC" 'resumed after its criteria file went missing'
 
 echo "== Task 7: docs, versions, and shared-wording parity =="
