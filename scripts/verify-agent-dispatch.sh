@@ -189,8 +189,25 @@ assert_present "develop: the review seats never substitute the same way" \
 
 TK=plugins/notion-dev/commands/ticket.md
 L=$(total_lines "$TK")
+# The call site, not just the skill. `plan-review/SKILL.md` Step 2 already states that
+# invoking it *is* the request for its agent — and only a run that invokes the skill can
+# read that. A run that decides at this step not to invoke never sees it, so the mandate
+# has to be pinned here too, or deleting it leaves every harness green.
+assert_present "ticket: reaching the plan-review step is itself the request for that agent" \
+  "$TK" 1 "$L" 'Reaching this step is itself the request for that agent'
+assert_present "ticket: a standing no-subagents rule is already satisfied by reaching the step" \
+  "$TK" 1 "$L" 'already satisfied by reaching here'
+assert_present "ticket: reviewing the plan yourself is never the substitute" \
+  "$TK" 1 "$L" '\*\*Never review the plan yourself instead\.\*\*'
+assert_present "ticket: a self-review is the absence of the check, reported as the check" \
+  "$TK" 1 "$L" 'the absence of the check, reported as the check'
+assert_present "ticket: a forbidden dispatch emits \`PLAN-REVIEW: degraded\` and reports the plan unreviewed" \
+  "$TK" 1 "$L" 'emits `PLAN-REVIEW: degraded`, and the final report must say plainly that the plan went unreviewed'
+
 assert_present "ticket: the execution delegation is the one substitutable dispatch" \
   "$TK" 1 "$L" 'is the one place in this command that may substitute'
+assert_present "ticket: the substitution carve-out reaches only a prohibition aimed at this dispatch" \
+  "$TK" 1 "$L" 'means an instruction aimed at this dispatch'
 assert_present "ticket: execution subagents buy throughput, not independence" \
   "$TK" 1 "$L" 'buy context hygiene and throughput, not independence'
 assert_present "ticket: the review seats never substitute the same way" \
