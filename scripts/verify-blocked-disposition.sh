@@ -96,7 +96,10 @@ done
 echo "== notion-dev call sites =="
 for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   n=${CMD#plugins/}
-  assert_has "$n never passes BLOCKED to epic-update"  "$CMD" '`BLOCKED` items'
+  # `BLOCKED` items appears twice in ticket.md, so it is vocabulary, not a place —
+  # mutating one occurrence left the other and the check stayed green. Pin the
+  # never-file rule itself, which each command states exactly once.
+  assert_has_n "$n never files a BLOCKED item" "$CMD" 'A `BLOCKED` item filed as a ticket is strictly worse than a forgotten one' 1
   assert_has "$n reports each as a blocked: line"      "$CMD" 'blocked: <item> — <external cause>; unblocked by <what>'
   assert_has "$n records triage_blocked in the ledger" "$CMD" '"triage_blocked":N'
   # Both artifact writes are best-effort, so a skipped one and a completed one
