@@ -96,6 +96,12 @@ echo "== the sweep does not collect blocked =="
 for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n keeps blocked out of the final sweep" "$RM" '**A `blocked` item is not swept either'
+  # Not swept as INPUT, but reachable as an OUTCOME: a sweep-round finding
+  # awaiting a named external cause is blocked like any other. The terminal round
+  # removes another REVIEW, never the ability to name an item's state — and
+  # forcing it to `file` mints the unactionable backlog entry this all prevents.
+  assert_has "$n lets the sweep round reach a blocked outcome" "$RM" 'sweep-round finding that cannot be acted on until a named external cause changes is `blocked`'
+  assert_has "$n keeps the sweep bounded across all three outcomes" "$RM" 'The sweep round can only file, drop, or block'
 done
 
 echo "== reporting keeps BLOCKED separate from FILED =="

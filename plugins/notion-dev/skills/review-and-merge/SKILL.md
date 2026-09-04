@@ -973,9 +973,15 @@ round terminal:
    therefore reaches the merge with CI and the gate stack as its only checks — the same
    limitation the Completeness gate discloses — and the report must name which findings took it.
 
-   **`file` or `drop` remains the answer for anything larger.** A finding needing a new public
+   **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
+   public
    interface, settling an open design question, or large enough to obscure this pull request is a
-   real follow-up; taking it here would be new unreviewed scope rather than a correction. That
+   real follow-up; taking it here would be new unreviewed scope rather than a correction. **A
+   sweep-round finding that cannot be acted on until a named external cause changes is `blocked`,
+   exactly as it would be in any other round** — the terminal round removes the option of another
+   *review*, never the ability to name an item's state correctly, and forcing such a finding to
+   `file` here would mint precisely the permanent, unactionable backlog entry this disposition was
+   added to prevent. Its external-cause requirement is unchanged: this is not a softer `drop`. That
    boundary — not a blanket ban on fixing — is what keeps the sweep terminal, since no second
    batch can form out of edits required to stay small and reviewless.
 2. **A `blocking` finding the sweep induced is reverted, not fixed.** Compute `induced` exactly
@@ -998,8 +1004,9 @@ dispatch rule above stops before the merge and this branch does not override it:
 request unmerged and report the prohibition. `SWEEP-ROUND: unreviewed` records a reviewer that
 could not be reached, never one that was forbidden.
 
-**Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
-batch can form, and no gate in `## 5` re-enters it.
+**Bound.** One sweep, one batch, one round. The sweep round can only file, drop, or block — none
+of which produces work for this run — so no second batch can form, and no gate in `## 5`
+re-enters it.
 
 **The sweep round is a single allowance *on top of* `reviewsCap`, not a round drawn from it** —
 and the Safety rules say so too, because stating it in only one place is what made a
