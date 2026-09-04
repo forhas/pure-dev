@@ -121,9 +121,12 @@ done < <(find "$MIRROR_ROOT" -maxdepth 1 -type f | sort)
 [ "$loose_seen" -gt 0 ] || ok "no loose files under $MIRROR_ROOT to check"
 
 mirrored=0
-for mdir in "$MIRROR_ROOT"/*/; do
-  [ -d "$mdir" ] || continue
-  skill=$(basename "$mdir")
+# A bare glob `*/` does not match dot-prefixed directories — the same gap the
+# loose-file check above closes with `find` — so a hidden skill directory
+# (e.g. a project-local scratch skill) was invisible to every check below.
+while IFS= read -r dir; do
+  mdir="$dir/"
+  skill=$(basename "$dir")
   src="$PLUGIN_SKILLS/$skill"
 
   echo "== $skill mirror parity =="
@@ -195,7 +198,7 @@ for mdir in "$MIRROR_ROOT"/*/; do
       fi
     done < <(find "$mdir" -type f | sort)
   fi
-done
+done < <(find "$MIRROR_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
 
 echo "== mirror set =="
 
