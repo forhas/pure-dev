@@ -76,6 +76,11 @@ subsection appended below them, and the client's repo name.
 carries more than the original: one entry's third recurrence reports a *second consumer* of the
 same defect and a wider exposure window than when it was filed.
 
+**Also record a digest of the section's complete text**, from its `##` heading to the next
+heading at depth two or end of file. Phase 8 compares this digest, not just two fields, before
+deciding a section unchanged — a free-form recurrence or correction can be appended without
+touching either `Occurrences` or `Last seen`.
+
 Group across clients by signature, then **confirm or split** by reading both `Observed` fields.
 `issue-log` dedups per repo, so the same signature in two logs may be one condition or two.
 `mcp-unavailable:notion` is the live example: in one client the server registered and its tool
@@ -260,15 +265,17 @@ are, at this point, sitting as uncommitted or unpushed changes on the local bran
 The reset runs **only after the merge has landed**. Before it, the client log is the only copy
 of this feedback, and a pull request that does not land would take it with it.
 
-Removal is surgical, matched on signature **and** occurrence count as harvested:
+Removal is surgical, matched on the section's **complete text** as harvested:
 
-1. Locate `## <signature>` in the client log. Confirm its `**Occurrences**` integer and its
-   `**Last seen**` line still match what Phase 2 recorded.
+1. Locate `## <signature>` in the client log. Recompute the digest of its complete section —
+   from the `##` heading to the next heading at depth two or end of file — and compare it to
+   the digest Phase 2 recorded. `Occurrences` and `Last seen` alone are not enough: a free-form
+   recurrence or correction can be appended without changing either field.
 2. Match → delete the section, from its `##` heading to the line before the next heading at
    exactly depth two (`## `), or end of file. A recurrence subsection is appended below the
    fixed fields at depth three or deeper, so it is inside the range being deleted, not a
    boundary that stops it.
-3. Mismatch → leave the section in place and report it. The client appended to or
+3. Mismatch → leave the section in place and report it. The client appended to, corrected, or
    incremented that signature after the harvest read it, and the new evidence is untriaged.
 4. **All five dispositions are removed**, `decline` and `track` included. Their durable home is
    the archive and the ticket; leaving them means re-triaging them next harvest, which is the

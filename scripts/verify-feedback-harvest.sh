@@ -103,6 +103,13 @@ assert_present "still-open blocked items from prior archives are re-enumerated" 
 assert_present "cross-client grouping is a candidate, confirmed by reading both entries" \
   "$SK" 1 "$L" 'then \*\*confirm or split\*\* by reading both `Observed` fields'
 
+# Finding 3937770051: a free-form recurrence or correction can be appended
+# without changing `Occurrences` or `Last seen`, so a guard keyed on those two
+# fields alone reports a false match and Phase 8 deletes untriaged text. Phase
+# 2 has to record enough of the section to catch that.
+assert_present "phase 2 records a digest of each section's complete text for phase 8 to compare" \
+  "$SK" 1 "$L" '\*\*Also record a digest of the section'\''s complete text\*\*'
+
 # ---------------------------------------------------------------------------
 # Not an automatic fixer
 # ---------------------------------------------------------------------------
@@ -291,8 +298,12 @@ assert_present "the body names every disposition, including the ones with no dif
 # feedback for a pull request that then does not land.
 assert_present "the reset runs only after the merge has landed" \
   "$SK" 1 "$L" '\*\*only after the merge has landed\*\*'
-assert_present "removal matches on signature and occurrence count as harvested" \
-  "$SK" 1 "$L" 'signature \*\*and\*\* occurrence count as harvested'
+assert_present "removal matches on the section's complete text, not just two fields" \
+  "$SK" 1 "$L" 'matched on the section'\''s \*\*complete text\*\* as harvested'
+# Occurrences and Last seen can both stay put while a correction subsection is
+# appended below them — this is the specific claim the digest guard rests on.
+assert_present "occurrences and last seen alone cannot prove a section is unchanged" \
+  "$SK" 1 "$L" '`Occurrences` and `Last seen` alone are not enough'
 # A `^##` prefix match stops at the first `###` recurrence subsection and
 # leaves it orphaned — recurrences live at depth three or deeper, undocumented
 # by `issue-log` at any fixed depth (final review, Important 3).
