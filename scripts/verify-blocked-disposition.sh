@@ -122,6 +122,11 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # three tickets, wrote zero packets and no persisted report, and said nothing.
   assert_has "$n asserts the review report persisted"  "$CMD" '`unexpected:review-report-not-persisted`'
   assert_has "$n asserts packets written vs filed"     "$CMD" '`unexpected:followup-packet-missing`'
+  # `<KEY>` is the PROJECT key, shared by every ticket in the repo, so a
+  # `followup-<KEY>-*.md` glob counts the whole project's packets and fires a
+  # false mismatch on nearly every run. The producer's path carries `<id>`.
+  assert_has "$n scopes the packet glob to this ticket's id" "$CMD" 'Scope it to `followup-<KEY>-<id>-*.md`'
+  assert_has "$n states the producer's real packet path" "$CMD" 'writes one `followup-<KEY>-<id>-<n>.md` context packet'
 done
 assert_has "notion-dev/skills/issue-log registers review-report-not-persisted" \
   "$ND/skills/issue-log/references/signatures.md" '| `unexpected:review-report-not-persisted` |'
