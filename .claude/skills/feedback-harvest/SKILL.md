@@ -241,3 +241,25 @@ Removal is surgical, matched on signature **and** occurrence count as harvested:
 
 `.claude/notion-dev/` is self-gitignored in the client repo, so the issue log is untracked
 there: the reset is a plain file edit, with no commit and no push into a client repo.
+
+## Closeout
+
+Invoke `session-closeout` before reporting the harvest finished. Its workspace pass has one
+addition here: confirm the reset ran for **every** client this harvest read. A harvest that
+merged its pull request and left a client log untouched has silently guaranteed that the next
+harvest re-triages everything it just decided — the exact waste this skill exists to end,
+reintroduced at the last step.
+
+## Accepted limitations
+
+- **A concurrent increment can be lost.** If a client run increments a harvested signature's
+  `Occurrences` between Phase 2 and Phase 8, the mismatch branch fires and the section
+  survives. If the counts happen to match anyway, the increment is dropped. This mirrors
+  `issue-log`'s own accepted read-modify-write race: the log is **diagnostics, not accounting**.
+- **The harvest cannot see runs that died.** `issue-log` records what an agent was still
+  running to record; a killed run leaves nothing behind.
+  A short log is not evidence of a healthy client, and the archive inherits that limit —
+  never read it as a complete account.
+- **Cumulative occurrence history is lost for a re-declined item.** Phase 1 carries the previous
+  count and rationale forward, but a signature that reappears starts counting from 1 in the
+  client log.

@@ -192,6 +192,18 @@ assert_order "the merge precedes the reset" \
   "reset heading" '^### Phase 8 — Reset' \
   "after rule"    '\*\*only after the merge has landed\*\*'
 
+# ---------------------------------------------------------------------------
+# Closeout and honesty about limits
+# ---------------------------------------------------------------------------
+echo "== closeout and honesty about limits =="
+
+assert_present "closeout confirms the reset ran for every client that was read" \
+  "$SK" 1 "$L" 'confirm the reset ran for \*\*every\*\* client this harvest read'
+assert_present "a short client log is not evidence of a healthy client" \
+  "$SK" 1 "$L" 'A short log is not evidence of a healthy client'
+assert_present "a concurrent increment can be lost, and that is accepted" \
+  "$SK" 1 "$L" 'diagnostics, not accounting'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
