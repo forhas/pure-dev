@@ -138,9 +138,16 @@ echo "== redaction gate, then archive =="
 assert_present "redaction is a gate before publication, not a cleanup after it" \
   "$SK" 1 "$L" 'Nothing is written to `docs/feedback/` until this gate has passed'
 assert_present "the gate applies the issue-log forbidden list verbatim" \
-  "$SK" 1 "$L" 'applies `notion-dev:issue-log`.s \*\*Forbidden, without exception\*\* list'
+  "$SK" 1 "$L" 'applies `notion-dev:issue-log`'\''s \*\*Forbidden, without exception\*\* list'
 assert_present "the client logs are known to violate that list today" \
   "$SK" 1 "$L" 'This is measured, not hypothetical'
+# Without a rule per category, an executing agent has to invent the
+# omit/placeholder/generalize convention on the spot for four of the five
+# forbidden kinds — this pins that the rule exists and names the default.
+assert_present "each forbidden category carries a stated redaction rule" \
+  "$SK" 1 "$L" 'A rule per forbidden category — what an executing agent writes in its place'
+assert_present "generalize-to-the-kind is stated as the default redaction rule" \
+  "$SK" 1 "$L" 'Generalize to the kind is the default'
 assert_present "an unredactable finding is paraphrased, never reproduced" \
   "$SK" 1 "$L" 'paraphrase the finding and do not reproduce the original'
 assert_present "the archive is the durable record once a client log is reset" \

@@ -176,8 +176,21 @@ full page ids, absolute filesystem paths, and URLs of any kind.
 **The forbidden list is the gate, not the per-field whitelist.** So these are kept: the
 signature, `Kind`, occurrence counts, timestamps and plugin versions, ticket keys, truncated
 database ids in the `db=…a41f9c` form, client repo names, bare pull request numbers, and commit
-shas. Truncate a full database id to its last six characters rather than removing it, so it
-still groups.
+shas.
+
+**A rule per forbidden category — what an executing agent writes in its place:**
+
+| Forbidden category | Write instead |
+|---|---|
+| Full database or page id | Truncate to its last six characters, `db=…a41f9c` form — the one exception, kept because grouping is what the identifier is for |
+| Email address | Generalize to the kind: "an email address," never the address |
+| Personal name | Generalize to the kind: "a personal name," never the name |
+| Absolute filesystem path | Generalize to the kind: "an absolute path," never the path |
+| URL of any kind | Generalize to the kind: "a URL," never the URL |
+
+**Generalize to the kind is the default** for four of the five categories; truncating so the
+identifier still groups is the exception, and it is an exception only for database and page
+ids.
 
 If an entry cannot be redacted without destroying what it found,
 **paraphrase the finding and do not reproduce the original**.
