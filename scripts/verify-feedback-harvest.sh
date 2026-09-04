@@ -337,6 +337,15 @@ assert_present "the body names every disposition, including the ones with no dif
 # not left implicit in a sibling skill's doc.
 assert_present "the pre-merge-check folds in a clause per plugin manifest phase 4 bumped" \
   "$SK" 1 "$L" 'every plugin manifest bumped in Phase 4'
+# Finding 3937903377: this repo is a marketplace with no manifest at the
+# repository root — only plugins/quick-dev/.claude-plugin/plugin.json and
+# plugins/notion-dev/.claude-plugin/plugin.json exist — so a guard comparing
+# bare `.claude-plugin/plugin.json` names a path nothing on disk has. The
+# clause has to carry each touched plugin's full repository-relative path.
+assert_present "the stale-bump clause uses each plugin's full repository-relative manifest path" \
+  "$SK" 1 "$L" "using that plugin's full repository-relative"
+assert_count "the full manifest path is compared on both the branch and the base side" \
+  "$SK" 1 "$L" 'plugins/<plugin>/\.claude-plugin/plugin\.json' 2
 assert_present "the stale-bump clause requires the branch's version strictly greater than the base's, as semver" \
   "$SK" 1 "$L" 'branch must be strictly greater, as semver, than in'
 assert_present "an equal-or-lower version means the base moved: update from it, then recompute the bump" \

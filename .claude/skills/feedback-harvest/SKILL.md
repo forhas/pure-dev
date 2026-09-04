@@ -283,8 +283,10 @@ are, at this point, sitting as uncommitted or unpushed changes on the local bran
    unresolved tail: no uncommitted or unpushed work on this branch, the docs/feedback/
    archive committed and matching every triaged signature, scripts/verify-feedback-harvest.sh
    passing on this HEAD, no unsupported claim or unstated caveat left in the PR body, and for
-   every plugin manifest bumped in Phase 4 — its version in .claude-plugin/plugin.json on this
-   branch must be strictly greater, as semver, than in git show origin/<MAIN>:.claude-plugin/plugin.json
+   every plugin manifest bumped in Phase 4 — using that plugin's full repository-relative
+   manifest path, plugins/<plugin>/.claude-plugin/plugin.json — its version on this
+   branch must be strictly greater, as semver, than in git show
+   origin/<MAIN>:plugins/<plugin>/.claude-plugin/plugin.json
    (if equal or lower, the base moved: first update the branch with the current base — merge
    origin/<MAIN> into the branch; editing the version line without updating first would conflict
    with the base's change to the same line — then recompute the semver bump against the current
