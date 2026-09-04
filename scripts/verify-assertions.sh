@@ -168,6 +168,14 @@ Enumerate every worktree (`git worktree list --porcelain`).
     git worktree list --porcelain | awk '/^worktree /{print $2}'
 FIXTURE
 
+# Fixture 4: a hard-wrapped sentence, the shape every document here has. A
+# literal lifted across the wrap becomes two grep -F patterns, so it matches on
+# either line alone — the assertion then cannot fail on the half it names.
+cat > "$FIX/wrapped.md" <<'FIXTURE'
+The blast-radius citation requirement does not
+relax because the passes are spent.
+FIXTURE
+
 # expect <outcome: FAIL|PASS> <case name> <assert invocation...>
 #
 # Runs one assertion in a subshell with its own counters, so this harness's own
@@ -359,6 +367,56 @@ if [ "$pipe_sc" = "$(printf '1\na line ending in a pipe |')" ]; then
 else
   bad "scan_region: a trailing \\| returned '$pipe_sc' — the awk -v escape-processing trap is back"
 fi
+
+# --- the third silent trap: a literal that spans a line break ---
+# grep -F reads the newline as a pattern separator, so this literal matched the
+# SECOND line while its own first line was mutated away, and reported PASS. It
+# must be an authoring failure, not a match.
+expect FAIL "multi-line literal is rejected rather than silently alternating" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not
+relax because the passes are spent'
+# The half-match that proves the trap was real: the mutated first line is gone,
+# yet the second still matches, so an unguarded assert_has would report PASS.
+expect FAIL "...and the same literal cannot pass on its second line alone" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement is waived and does
+relax because the passes are spent'
+expect PASS "a single-line fragment of the same sentence is the correct form" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not'
+# Same discrimination requirement as the assert_has_n case above, mirrored: the
+# literal's lines must be ABSENT from the fixture. With a line that is present,
+# an unguarded `grep -qF` matches through the alternation and assert_lacks says
+# `bad` for the ordinary "the string is here" reason — so `expect FAIL` passes
+# with or without the guard, and the guard could be deleted from assert_lacks
+# with this whole harness still green. Verified: it could.
+expect FAIL "assert_lacks rejects a multi-line literal rather than matching its alternation" \
+  assert_lacks "wrapped.md: says nothing about ratchets" \
+  "$FIX/wrapped.md" 'the ratchet judged it
+and found nothing'
+expect PASS "assert_lacks still passes on a single-line literal it does not find" \
+  assert_lacks "wrapped.md: says nothing about ratchets" \
+  "$FIX/wrapped.md" 'the ratchet judged it'
+# assert_has_n was exercised in NEITHER direction, so the guard could have been
+# dropped from it without this file noticing — the one failure mode A4 exists to
+# prevent. Both directions now.
+# The count must be the one the ALTERNATION would satisfy, or this case cannot
+# discriminate. Each of the two lines matches exactly one line of the fixture, so
+# an unguarded `grep -cF` returns 2: with want=1 the assertion would fail on the
+# COUNT and `expect FAIL` would pass whether or not the guard exists. With want=2
+# an unguarded assert_has_n PASSES, so only the guard can make this FAIL —
+# verified by deleting the guard and watching this case go green.
+expect FAIL "assert_has_n rejects a multi-line literal rather than counting its alternation" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not
+relax because the passes are spent' 2
+expect PASS "assert_has_n counts a single-line literal correctly" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not' 1
+expect FAIL "assert_has_n still fails on the wrong count" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not' 2
 
 echo
 if [ "$fails" -eq 0 ]; then

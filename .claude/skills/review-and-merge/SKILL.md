@@ -111,6 +111,31 @@ agreed with (fully or partly) that is not already fixed in this round:
   Widening the diff is the cheaper trade: take the fix, and say in the PR body that the scope
   widened and why. What bounds the widening is **The final sweep** (end of `## 4`) — one batch,
   one terminal round — not a refusal to open new files.
+- **`blocked`** — cannot be done from **anywhere**, by this run or a later one, until a named
+  **external** cause changes: a system this run cannot reach, a credential nobody here holds, a
+  third-party limit, an instrument that does not expose the measurement. Record two things — the
+  cause, and what would unblock it — which are exactly the two `quick-dev:session-closeout`
+  demands of its own `blocked:` state. The word is deliberately the same, so an item keeps one
+  name from triage through closeout instead of being relabelled at every hand-off.
+
+  **A `blocked` item is never filed as a ticket**, and the report's `BLOCKED` list is its record
+  instead. Filing it would create a queue entry that nobody can action and that no later run can
+  close, which is how a permanent external limit turns into permanent backlog.
+
+  **The cause must be external, and this is the whole load-bearing part.** "Long", "tedious",
+  "unreviewed", "out of budget", "the round cap" are internal causes, and an item with an
+  internal cause is `absorb`, `file`, or `drop` on its merits — never this. `session-closeout`
+  states the same bound for the same reason: *a `blocked` item with an internal cause is a tail
+  wearing a label*.
+
+  This disposition exists because without it an externally impossible item has **no honest
+  disposition at all**. `drop` asserts it is not worth doing, which is false; `absorb` asserts it
+  can be done here, which is false; so the item gets a stretched blast-radius criterion and
+  becomes a ticket. Measured on `notion-dev` 0.20.2: BTC-Gateway's STO-77 filed three items and
+  two were this — one citing criterion 2 (*a design decision*) for a production deployment
+  history the run could not read, one citing criterion 1 (*a new interface, dependency, config
+  key, or data migration*) for a memory figure electrs 0.11.1 does not emit. Neither citation was
+  true, and neither ticket can ever be worked as written.
 
 Absorbing does not skip review: the absorbed change is pushed like any other fix and the next
 round reviews it. That re-entry is also what makes absorption expensive — the absorbed change is
@@ -149,7 +174,8 @@ produce the `CONVERGENCE` block in the final report.
 | `path`, `line` | its location, as the review reported it |
 | `locatable` | `yes` / `no` — `no` when the finding carries no `(path, line)`, or no reviewed commit sha to read that line against |
 | `severity` | **normalized** to `blocking` or `non-blocking` — see below |
-| `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` |
+| `disposition` | `applied` / `partial` / `declined` / `absorb` / `file` / `drop` / `blocked` |
+| `blocked_cause` | for a `blocked` finding, its **external** cause and what would unblock it; unset for every other disposition |
 | `depth` | induced-chain depth — see below |
 | `fix_sha` | for an applied finding, the commit that fixed it |
 
@@ -715,7 +741,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    - The prose overview, for any actionable request not tied to a line.
 
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
-2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
+2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, `drop`, or `blocked` — `file` items cite their criterion number, `blocked` items name their external cause and what would unblock it.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled.
 4. **Run Rule 4's verification and retain its output as `VERIFY_OUTPUT`**, then commit applied changes **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push. A fix that fails verification is corrected or reverted here, never pushed for the next round to find.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
@@ -769,11 +795,11 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification and **retain that output as `VERIFY_OUTPUT`**, overwriting any earlier value — the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check — then commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, `drop`, or `blocked` — `file` items cite their criterion number, `blocked` items name their external cause and what would unblock it. Apply justified fixes, re-run tests/verification and **retain that output as `VERIFY_OUTPUT`**, overwriting any earlier value — the Completeness gate resolves test citations against it, and an output nothing kept is an output nothing can check — then commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - **No code changed this round** — whatever the reason. Every finding was declined with
-     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file` or `drop`; or some
+     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file`, `drop`, or `blocked`; or some
      mixture. → loop ended; a fresh agent on identical code returns identical findings, so another
      round buys nothing; go to merge. **Read this as "nothing changed", never as "everything was
      declined"** — a round whose findings were all filed changed no code either, and requiring
@@ -800,9 +826,15 @@ Its three charges:
 
 1. **Per-criterion verdict.** `met` or `not-met` for each line of the criteria file, each with a **citation**: a command and its output, a named test and its result, or a quoted span with `file:line`. A `met` verdict carrying no citation is malformed output, not a passing criterion. Restating the criterion, "the implementation handles this", and pointing at a plan that said it would are all non-citations.
 
+   **The criterion's own words set its standard, and the verifier may not raise that bar.** Grade what the criterion actually asks for, not the stronger thing it gestures at. A criterion whose deliverable is *reasoning* — it opens "explicit consideration of…", "an assessment of…", "a recommendation…", "an evaluation of…" — is **met by that reasoning existing and being citable**, and its citation is a quoted span with `file:line`, not a command or a test. **A documented negative result satisfies such a criterion.** "We attempted this measurement, the instrument does not expose it, here is what we ruled out and why the earlier figure was noise" *is* explicit consideration of the cost; grading it `not-met` or `unverified` because no number appeared demands something the criterion never asked for.
+
+   This is not a licence to pass hand-waving: the span must contain the actual reasoning, and charge 2 still audits every claim inside it. What it forbids is a stricter reading than the text supports. Measured on `notion-dev` 0.20.2: BTC-Gateway STO-77's criterion 3 read "Explicit consideration of the cost of subscribing to hundreds of scripthashes per request"; the run delivered exactly that, including three repeats establishing that the only available figure was noise; the verifier read it as requiring a measured number, returned `unverified`, and the gate's terminal rule then converted a satisfied criterion into a follow-up ticket for work that cannot be done.
+
+   Where a criterion is genuinely ambiguous between a reasoning deliverable and a measurement, grade it against the weaker reading and say so in the citation. The caller can tighten the criterion next time; a wrongly-`unverified` criterion, by contrast, mints permanent backlog.
+
 2. **Unsupported completeness claims**, over text **this pull request changed** — not the whole repository. The finding is the **missing referent, not the claim**: report only "this text says X exists, is handled, is mitigated, or is durable; I looked for X and it is absent or materially different." A true claim produces no finding, so honest prose costs nothing.
 
-3. **Untriaged caveats.** Any stated gap, caveat, or known limitation — in the PR body or in docs this PR changed — carrying no `absorb` / `file` / `drop` label. A labeled caveat is fine and produces no finding. A limitation may exist; it may not exist unlabeled.
+3. **Untriaged caveats.** Any stated gap, caveat, or known limitation — in the PR body or in docs this PR changed — carrying no `absorb` / `file` / `drop` / `blocked` label. A labeled caveat is fine and produces no finding. A limitation may exist; it may not exist unlabeled.
 
 **The anti-circularity rule: the verifier may never cite the deliverable's own claims as evidence.** The PR body, the spec, and the changed docs are what charge 2 is auditing. Admitting them as proof under charge 1 would let a false claim validate itself, and charges 1 and 2 would confirm each other instead of checking anything.
 
@@ -821,15 +853,17 @@ CLAIMS:
 CAVEATS:
 - <where found> — <the caveat verbatim>
 TRIAGE:
-- [<absorb|file|drop>] <item> — <rationale; `file` cites its blast-radius criterion number>
+- [<absorb|file|drop|blocked>] <item> — <rationale; `file` cites its blast-radius criterion number, `blocked` names its external cause and what would unblock it>
 ```
 
 `VERDICTS` / `CLAIMS` / `CAVEATS` / `TRIAGE` each take the literal `NONE` when empty, so an absent block is distinguishable from one that found nothing. Every key appears even on the degraded path.
 
+**`blocked` appears twice in this block and means two different things.** On the `COMPLETENESS:` key it is a **gate status** — the gate holds at least one item and the merge waits. Inside `TRIAGE:` it is a **disposition** — this item cannot be done from anywhere until a named external cause changes (`## 2`). They are independent: a gate can read `COMPLETENESS: blocked` with no `blocked` item in `TRIAGE`, and it reads `COMPLETENESS: blocked` at merge whenever any item was reclassified, `blocked` ones included. Never infer one from the other, and never collapse them when reading this block back.
+
 **`COMPLETENESS` takes exactly one of three values, and the gate decides which — never the verifier**, for the same reason the gate owns the counts: the verifier cannot know which of its own citations resolved.
 
 - **`clean`** — citation resolution left every criterion `met`, and charges 2 and 3 found nothing. The gate holds no item.
-- **`blocked`** — the check ran and produced at least one item: any `not-met` criterion, any `unverified` criterion, any unsupported claim, any untriaged caveat. The merge waits until each is absorbed or reclassified. A block re-emitted after that resolution reads `clean` when nothing is left; one that still reads `blocked` at merge means every remaining item was reclassified to `file` or `drop`, each with its rationale in `TRIAGE` — which is what a labeled incompleteness looks like, and is exactly what this gate exists to produce rather than prevent.
+- **`blocked`** — the check ran and produced at least one item: any `not-met` criterion, any `unverified` criterion, any unsupported claim, any untriaged caveat. The merge waits until each is absorbed or reclassified. A block re-emitted after that resolution reads `clean` when nothing is left; one that still reads `blocked` at merge means every remaining item was reclassified to `file`, `drop`, or `blocked`, each with its rationale in `TRIAGE` — which is what a labeled incompleteness looks like, and is exactly what this gate exists to produce rather than prevent.
 - **`degraded`** — the verifier failed or failed the contract check twice, so nothing it returned can be trusted; every criterion is `unverified` (see "Degradation" below).
 
 The verifier writes its own best guess at this value; the gate's re-emitted block overwrites it, exactly as it overwrites the four counts.
@@ -846,13 +880,22 @@ The verifier writes its own best guess at this value; the gate's re-emitted bloc
 
 A citation that does not resolve demotes its criterion to `unverified`, a third state that is not `met` and not `not-met`. The verifier may have been right and merely sloppy in citing; the honest statement is that the gate could not confirm it.
 
-**Degradation.** If the agent fails, or its output fails the contract check, retry **once** with the same prompt. If it fails again, emit `COMPLETENESS: degraded` with every key present and every criterion counted in `CRITERIA-UNVERIFIED`. Then:
+**Degradation.** If the agent fails, or its output fails the contract check, retry **once** with the same prompt. If it fails again, emit `COMPLETENESS: degraded` with every key present and every criterion counted in `CRITERIA-UNVERIFIED`.
 
-- **Interactive** — stop and ask. The run has genuinely failed to establish whether the work is done, and that deserves a human rather than a default. **Whatever the user decides, every unverified criterion still becomes an item** — `file` by default — carrying the user's own words as its rationale. "Merge anyway" is a rationale, not an exemption: it is recorded on the item, and the criterion is still labeled. The user may reclassify an individual criterion to `drop` (superseded, wrong, irrelevant) or hold it as `absorb`; what is not available is a merge that raises no items at all.
-- **Non-interactive** — record each unverified criterion as a `file` item with the reason `unverified — completeness check degraded`. It becomes tracked follow-up work rather than an absence.
+**Two different failures reach this paragraph, and they do not take the same default.** Separating them is the fix for a defect this skill carried for three releases, recorded twice in `notion-dev`'s own issue log before it fired:
 
-Both branches end in the same place, and that is the point: the escape exists in either mode and costs exactly what every other escape in this design costs — a recorded rationale. Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. `unverified` is neither.
+- **The verifier could not be dispatched, or returned nothing at all** — zero bytes, a dispatch error, a harness that refused the call. Nothing was checked and nothing *could* be, for a cause outside this run: no instruction here makes a harness deliver an agent's result. Recorded live as `unexpected:subagent-report-never-delivered`, three occurrences across four days. The default for every criterion is **`blocked`**, cause `completeness verifier could not be dispatched — no independent check ran`, unblocked by a dispatch that actually delivers. It is **not** `file`: filing here asserts a scope reduction against work the evidence may fully support, and does it once per criterion. Measured: on STO-113 and again on STO-88 the literal `file` default "would have recorded six scope reductions for work the evidence demonstrably supports", and both runs' orchestrators refused to apply it — a rule that correct operators keep declining to follow is a defect in the rule.
+- **The verifier ran and returned contract-invalid output twice** — it produced something, so the defect is in *this gate*: its prompt, its contract, or the parse. **That is an internal cause, and `blocked` excludes internal causes** — labelling these criteria `blocked` would claim an external wall that does not exist, and a non-interactive run would then merge internally actionable completeness failures that appear in no backlog at all. Do not label them `blocked`. Do not mint one scope reduction per criterion either — that is the failure the branch above exists to avoid, and it is no more honest here. Record **exactly one** `file` item for the ticket — *re-establish completeness; the verifier returned contract-invalid output twice* — and state the gate defect prominently in the final report — and, in GitHub mode, as a PR comment, the same audit-trail-on-a-merged-PR pattern the local review loop already uses. **`quick-dev` ships no issue-log skill**, so there is no registry to cite here; `notion-dev`'s copy of this branch records `unexpected:completeness-verifier-contract-invalid` instead. Either way a gate that cannot parse its own verifier is a plugin defect and must be visible as one rather than as a verdict about the work.
+- **The verifier ran and its citations did not resolve** — the gate did the resolving and came up short. This is genuine `unverified`: something *was* checked and could not be confirmed. The stated remedy is a citation that actually resolves, so it goes to pass 2 like any other unresolved criterion, and only the terminal rule below decides its final disposition.
 
+Only the second is a completeness finding about the work. The first is a finding about the **check**, and it must never be silently converted into one about the work.
+
+Then, in both cases:
+
+- **Interactive** — stop and ask. The run has genuinely failed to establish whether the work is done, and that deserves a human rather than a default. **Whatever the user decides, the failure still becomes an item — at the default for its kind above, and at that kind's own cardinality** — carrying the user's own words as its rationale. For an undispatchable verifier and for unresolved citations that is one item **per criterion**; for **contract-invalid output it is exactly one item for the ticket**, as that branch requires, and a human being present does not turn one plugin defect into N scope reductions. Getting this wrong is how a ticket with six criteria acquires six filed reductions from a single unparseable response — the outcome the single-item rule exists to prevent. "Merge anyway" is a rationale, not an exemption: it is recorded on the item, and the criterion is still labeled. The user may reclassify an individual criterion to `drop` (superseded, wrong, irrelevant), to `file`, or hold it as `absorb`; what is not available is a merge that raises no items at all.
+- **Non-interactive** — record at the default for the failure kind, with that kind as its reason: `blocked — completeness verifier could not be dispatched` per criterion, the single `file — verifier output contract-invalid twice` item, or `unverified — citation did not resolve` per criterion.
+
+Both branches end in the same place, and that is the point: the escape exists in either mode and costs exactly what every other escape in this design costs — a recorded rationale. Passing the gate on degradation would be a silent bypass, and a silent bypass of a completeness gate is the exact failure this gate exists to remove. Blocking on it would deadlock merges behind a flaky agent. Neither `unverified` nor `blocked` is either of those.
 ### The final sweep
 
 **Every convergence rule above ends the *loop*. None of them ends the *work*.** Rule 1 pushes a
@@ -879,6 +922,12 @@ unverifiable under the judgment bar — is never swept. It was judged not worth 
 that judgment does not expire because the loop ended. Declines are not swept either: a declined
 finding is wrong, not deferred. Keeping these two out is what stops the sweep from becoming a
 second chance to relitigate findings the run already settled on their merits.
+
+**A `blocked` item is not swept either, and for a different reason than either of those.** It was
+not judged — it is externally impossible, and the sweep is a batch of *fixes*, so there is nothing
+for it to do with one. Sweeping it could only re-derive the same external cause at the cost of a
+round. If the cause has in fact cleared by the time the sweep runs, the item was never `blocked`:
+re-triage it on its merits first, then let the sweep collect whatever it becomes.
 
 **Eligibility.** A collected item is swept **iff none of the three `file` criteria in `## 2` is
 true of it**. An item that genuinely needs a new public interface, settles an open design
@@ -909,9 +958,15 @@ round terminal:
    therefore reaches the merge with CI and the gate stack as its only checks — the same
    limitation the Completeness gate discloses — and the report must name which findings took it.
 
-   **`file` or `drop` remains the answer for anything larger.** A finding needing a new public
+   **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
+   public
    interface, settling an open design question, or large enough to obscure this pull request is a
-   real follow-up; taking it here would be new unreviewed scope rather than a correction. That
+   real follow-up; taking it here would be new unreviewed scope rather than a correction. **A
+   sweep-round finding that cannot be acted on until a named external cause changes is `blocked`,
+   exactly as it would be in any other round** — the terminal round removes the option of another
+   *review*, never the ability to name an item's state correctly, and forcing such a finding to
+   `file` here would mint precisely the permanent, unactionable backlog entry this disposition was
+   added to prevent. Its external-cause requirement is unchanged: this is not a softer `drop`. That
    boundary — not a blanket ban on fixing — is what keeps the sweep terminal, since no second
    batch can form out of edits required to stay small and reviewless.
 2. **A `blocking` finding the sweep induced is reverted, not fixed.** Compute `induced` exactly
@@ -934,8 +989,9 @@ dispatch rule above stops before the merge and this branch does not override it:
 request unmerged and report the prohibition. `SWEEP-ROUND: unreviewed` records a reviewer that
 could not be reached, never one that was forbidden.
 
-**Bound.** One sweep, one batch, one round. The sweep round can only file or drop, so no second
-batch can form, and no gate in `## 5` re-enters it.
+**Bound.** One sweep, one batch, one round. The sweep round can only file, drop, or block — none
+of which produces work for this run — so no second batch can form, and no gate in `## 5`
+re-enters it.
 
 **The sweep round is a single allowance *on top of* `reviewsCap`, not a round drawn from it** —
 and the Safety rules say so too, because stating it in only one place is what made a
@@ -990,11 +1046,15 @@ cap:
    finding: `absorb` — the default; for `not-met` because the ticket said it would do
    this, for `unverified` because the usual remedy is a citation that actually resolves
    (re-run the command, quote the right span) — `file` citing a blast-radius criterion
-   number, or `drop` with a rationale. `absorb` items are then held by the Absorb gate
+   number, `drop` with a rationale, or `blocked` naming its external cause and what would
+   unblock it. `absorb` items are then held by the Absorb gate
    above; this gate adds no second enforcement mechanism.
 
    For an acceptance criterion, `file` and `drop` are **scope reductions**, not deferrals
    of extra work. The caller records them where the work is tracked, not only in the PR.
+   **`blocked` is not a scope reduction** — the criterion still stands and nobody has
+   decided against it; what changed is only that no one can settle it from here. Record it
+   as such, with its cause, and do not tick its box.
 
    `absorb` items are fixed and pushed. **The gate stack then re-runs on the new HEAD,
    unconditionally** — not only when `--pre-merge-check` was supplied and fired; that
@@ -1008,8 +1068,49 @@ cap:
    recorded scope reduction for work that was already done. Pass 2 still re-reads only
    those criteria, which is what bounds cost and wall-clock. Anything still `not-met` or
    `unverified` after pass 2 — whichever state it started in — must be reclassified to
-   `file` or `drop` with a rationale. As with the Absorb gate, the escape always exists,
-   so this gate cannot deadlock a non-interactive run.
+   `file`, `drop`, or `blocked` with a rationale. As with the Absorb gate, the escape
+   always exists, so this gate cannot deadlock a non-interactive run.
+
+   **Which of the three is not a free choice, and leaving it free is what made this line
+   the single largest source of follow-up tickets in the design.** Decide in this order,
+   and record which test decided it:
+
+   1. **`blocked`** — the criterion cannot be settled from anywhere until a named
+      **external** cause changes: an instrument that does not expose the measurement, a
+      system this run cannot reach, a credential nobody here holds. No ticket is filed.
+   2. **`drop`** — the criterion is superseded, wrong, or genuinely not worth doing. This
+      is the only one of the three that asserts a judgment *against* the criterion, so it
+      needs one; "we ran out of passes" is not it.
+   3. **`file`** — the criterion's work is real, unfinished, and still wanted. This is the
+      **residual**: an item that is neither externally blocked nor judged against is work
+      someone can still do, and a ticket is what tracks it.
+
+      **An unmet acceptance criterion is filed on its own ground — that the criterion
+      stands unmet — never on a blast-radius number.** The three blast-radius criteria in
+      `## 2` size a *review finding*, which is extra work this pull request discovered; an
+      acceptance criterion is work the ticket already promised. Requiring one of them here
+      is a category error, and it strands the common case outright: a small, internally
+      actionable, unmet criterion has no true blast-radius test, so demanding one would
+      leave it with no legal disposition at all. A **claim or caveat** item from charges 2
+      and 3 *is* review-finding-shaped, and it does cite its blast-radius criterion number
+      exactly as the first-pass triage demands — that requirement does not relax because
+      the passes are spent, and a citation that is not genuinely true is how an item
+      acquires a ticket it should never have had.
+
+   **The residual is `file`, and it must never be `blocked`.** An item reaching the end of
+   this list without a named external cause is internally actionable *by definition*, and
+   `blocked` asserts the exact opposite — so defaulting there would launder unfinished work
+   into a state that yields no ticket, no owner, and nothing any later run can ever close.
+   That is this ordering's own failure mode running backwards, and it is worse than the one
+   it was written to stop: a wrongly-`filed` item is at least visible. **`blocked` is
+   reachable only through test 1, and only on a named external cause.**
+
+   Measured on `notion-dev` 0.20.2: this line, with the choice left free and `file` named
+   first, produced all three of BTC-Gateway STO-77's follow-up tickets. Two cited
+   blast-radius criteria that were not true of them — a deployment history the run could
+   not read, and a memory figure `electrs` 0.11.1 does not emit — and both were `blocked`
+   in fact. The third was a genuine `file`. Under the order above that run files one
+   ticket, not three.
 
    **Completeness `absorb` work is not code-reviewed, and that is a stated limitation of
    this gate.** These items arise *after* the review loop has ended, and the re-run above
@@ -1023,6 +1124,19 @@ cap:
    item whose fix is substantial new implementation** rather than a citation, a
    documentation correction, or a small completion — a filed item is reviewed as its own
    ticket, which is the review this path cannot give it.
+
+   **Reconcile the pull request body against the gate's final counts before merging.**
+   Charge 2 audits the body's claims, but it runs *before* pass 2 can change a verdict, so
+   a body that stated the pass-1 result is left asserting a number the gate has since
+   contradicted — and nothing re-reads it. So once the verdicts settle: read the body's own
+   completeness statement and rewrite it to the gate's final `CRITERIA-MET` /
+   `CRITERIA-NOT-MET` / `CRITERIA-UNVERIFIED`, naming each criterion that is not `met` and
+   its disposition. **A body asserting a completeness count that contradicts the gate is an
+   unsupported claim by charge 2's own definition** — the gate must not merge past one it
+   produced itself. Edit only that statement; the rest of the body is not this step's
+   business. Measured on `notion-dev` 0.20.2: BTC-Gateway PR #83 merged saying "**4/4
+   met**" while the gate, the ledger, and the run's own final report all recorded 3 met and
+   1 unverified — the claim the gate exists to catch, published by the gate's own run.
 
 5. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
 
@@ -1053,15 +1167,21 @@ If `gh pr merge` itself exits non-zero, do **not** re-run it — read `gh pr vie
 
 Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success. The final report states: which loop ran (the configured reviewer — Codex or Copilot — or the local fallback), rounds run, findings applied vs. declined (with reasons), and any judgment calls resolved autonomously in non-interactive mode. If the round cap was hit, note it and list the findings that were disagreed with or could not be fully addressed. **When the local fallback ran, state prominently that no cross-model reviewer validated this PR**, and why (`quota` / `not-configured` / `error` / `silent`).
 
-The report's triage outcome is **three named lists**, never one undifferentiated set:
+The report's triage outcome is **four named lists**, never one undifferentiated set:
 
 - `ABSORBED` — items done in this PR, each with what was changed. Items the final sweep fixed
   are listed here too, each marked `swept`.
 - `FILED` — items that must become their own ticket, each with its criterion number and
   rationale. Reclassified items appear here, marked as reclassified from `absorb` — or from `applied`, when Rule 2 reverted the fix.
 - `DROPPED` — items decided against, each with its rationale.
+- `BLOCKED` — items nobody can do until a named **external** cause changes, each with that cause
+  and what would unblock it. Never a ticket; see `## 2`.
 
 Callers depend on this split: the whole point is that only `FILED` can generate new tickets.
+**`BLOCKED` in particular must never be filed.** It reaches the caller so the caller can report
+it — as `blocked:` in its own closeout, where the same word already means the same thing — and a
+caller that files it instead produces exactly the un-closeable backlog entry the disposition
+exists to prevent.
 
 **A `FILED` item that survived the sweep is work this run has decided not to do, and it is the
 caller's to track before the run reports done** — as a real ticket with a real URL, or as a
@@ -1075,7 +1195,7 @@ The report also carries a **`CONVERGENCE`** block, computed from the findings le
 CONVERGENCE:
 ROUNDS: <n>
 FINDINGS-TOTAL: <n>
-ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>
+ABSORBED: <n>  DECLINED: <n>  FILED: <n>  DROPPED: <n>  BLOCKED: <n>
 ABSORB-RATE: <pct>
 INDUCED: <n> (<pct> of findings after round 1, excluding <n> unlocatable)
 INDUCED-CHAINS-CUT: <n>
@@ -1084,15 +1204,25 @@ SWEPT: <n>
 SWEEP-ROUND: <reviewer | local | none | unreviewed>
 ```
 
-The four disposition counts are exhaustive, and they are the same buckets as the three named
+The five disposition counts are exhaustive, and they are the same buckets as the four named
 lists above plus declines. `ABSORBED` counts ledger disposition `applied` or `partial` — and
-only those. `DECLINED` counts disposition `declined`. `FILED` and `DROPPED` count theirs. What
+only those. `DECLINED` counts disposition `declined`. `FILED`, `DROPPED` and `BLOCKED` count
+theirs. What
 makes the partition exhaustive is the Absorb gate: no `absorb` item may still be outstanding at
 merge, so by the time the report is written every `absorb` has already become `applied` (the
-gate forced the fix) or been reclassified to `file` or `drop`. `absorb` is a transient state
-and never a reported one. `ABSORB-RATE` is
+gate forced the fix) or been reclassified to `file`, `drop`, or `blocked`. `absorb` is a
+transient state and never a reported one. `ABSORB-RATE` is
 `ABSORBED / FINDINGS-TOTAL`.
 
+**`BLOCKED` is a fifth bucket, not a slice of `FILED`**, and separating the two is the point of
+the count: an item nobody can action must not inflate the number that measures how much work
+this run pushed onto a later one. Read the two together — a run with a high `BLOCKED` is
+depending on something it cannot reach, which is worth knowing and is not a convergence failure;
+a run with a high `FILED` is deferring work it could have done, which is. Measured on
+`notion-dev` 0.20.2: BTC-Gateway STO-77 reported `FILED: 3` at an `ABSORB-RATE` of 64% against
+the 88% baseline below. Two of the three were `blocked` in fact, so the honest line was
+`FILED: 1  BLOCKED: 2` — and the calibration signal that fired was reading a reachability limit
+as a filing habit.
 **`SWEPT` counts the entries carrying `swept = yes`** — items that stood at `file`, or at a
 termination-ground `drop`, when the loop ended and were fixed by the final sweep. Because the
 sweep rewrites those entries to `applied` or `partial` before the report is written, they are

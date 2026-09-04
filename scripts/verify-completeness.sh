@@ -43,7 +43,26 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n resolves citations gate-side"       "$RM" 'the gate resolves every citation'
   assert_has "$n matches code citations by content"  "$RM" 'by content, never by line number'
   assert_has "$n defines the unverified state"       "$RM" 'a third state that is not `met` and not `not-met`'
-  assert_has "$n files unverified when degraded"     "$RM" 'unverified — completeness check degraded'
+  # The degraded path splits by WHICH failure occurred. A verifier that never ran
+  # says nothing about the work, so its default is `blocked` (external: no check
+  # ran), not `file` — filing there records a scope reduction per criterion against
+  # work the evidence may fully support. Only a citation that failed to resolve is
+  # genuine `unverified`. Collapsing the two is the defect this pair pins.
+  assert_has "$n defaults an undispatchable verifier to blocked" "$RM" 'blocked — completeness verifier could not be dispatched'
+  # A verifier that RETURNED contract-invalid output twice did run, so the defect
+  # is in this gate's prompt/contract/parse — an INTERNAL cause, which `blocked`
+  # excludes. Labelling it blocked would merge internally actionable completeness
+  # failures into no backlog at all; minting one scope reduction per criterion is
+  # the other failure. One item, plus an issue-log entry naming the gate defect.
+  assert_has "$n keeps contract-invalid output out of blocked" "$RM" '**That is an internal cause, and `blocked` excludes internal causes**'
+  assert_has "$n records contract-invalid output as one file item" "$RM" 'file — verifier output contract-invalid twice'
+  # The interactive branch said every unverified criterion becomes an item at the
+  # failure kind's default -- which for contract-invalid output reproduced one
+  # filed scope reduction per criterion, the exact outcome the single-item rule
+  # was written to prevent. Cardinality travels with the kind, both branches.
+  assert_has "$n keeps contract-invalid to one item even interactively" "$RM" 'contract-invalid output it is exactly one item for the ticket'
+  assert_has "$n keeps unresolved citations unverified"    "$RM" 'unverified — citation did not resolve'
+  assert_lacks "$n no longer files on a degraded verifier" "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
   assert_has "$n uses NONE for empty blocks"         "$RM" 'the literal `NONE`'
   assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'a **`COMPLETENESS-REPORT`** section'
@@ -64,7 +83,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n dispatches artifacts as file paths"     "$RM" 'as **file paths, not inline text**'
   assert_has "$n excludes the implementer's material"    "$RM" 'Pass **nothing** from the implementer'
   # C2: the interactive degraded branch still raises items.
-  assert_has "$n raises items even when the user merges past a degraded check" "$RM" 'the user decides, every unverified criterion still becomes an item'
+  assert_has "$n raises items even when the user merges past a degraded check" "$RM" 'Whatever the user decides, the failure still becomes an item'
   # I1: the verification output the gate resolves test citations against has a producer.
   assert_has "$n runs verification itself when the loop retained none" "$RM" 'before dispatching, and retains that as `VERIFY_OUTPUT`'
   # I2: pass 2 can still resolve a re-citation into pass 1's own commits.
@@ -92,7 +111,7 @@ D=$QD/skills/develop/SKILL.md
 assert_has "develop writes a criteria file"          "$D" 'one criterion per line, verbatim, no bullet markers'
 assert_has "develop freezes criteria in the PR"      "$D" 'Compose the PR body to include the frozen acceptance criteria verbatim'
 assert_has "develop passes --criteria-file"          "$D" 'if set), plus `--criteria-file'
-assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as `met`:'
+assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as `met`'
 assert_has "develop reports unmet criteria"          "$D" 'acceptance criteria were not met'
 assert_has "local mode runs its own completeness check" "$D" '**Completeness check** (local mode)'
 assert_has "local mode mirrors the verifier contract"   "$D" 'The completeness verifier'
@@ -101,17 +120,18 @@ assert_has "local mode folds findings into the merge gate" "$D" 'completeness fi
 assert_has "local mode distinguishes zero criteria from a check that never ran" "$D" 'this step running at all is what makes `0` the correct value here, never `null`'
 assert_has "develop posts the completeness report as a PR comment" "$D" 'gh pr comment <pr-number> --body-file <path>'
 assert_has "develop states review-and-merge does not post the report" "$D" 'produces the `COMPLETENESS-REPORT` section but does not post it'
-assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — completeness check degraded'
-assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default, `file` must cite its blast-radius criterion number, and `drop` must carry a rationale'
+assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — citation did not resolve'
+assert_has "local mode splits an undispatchable verifier from an unparseable one" "$D" 'cause `completeness verifier could not be dispatched`'
+assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default; `drop` must carry a rationale'
 assert_has "local mode restates the completeness counts" "$D" "never the agent's raw counts, since it cannot know which of its own citations resolved"
 assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" 'pass `VERIFY_OUTPUT` (2c'"'"'s retained output) instead'
 assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 'never `Deferred:`, even when the merge gate'
 assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" 'from `COVERAGE_MAP`: report any `-> not covered` lines verbatim'
 assert_has "2c retains its verification output for the completeness check" "$D" 'Record the output as `VERIFY_OUTPUT`'
 assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
-assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'the user decides, every unverified criterion still becomes an item'
+assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'whatever the user decides, the failure still becomes an item'
 assert_has "local mode fixes its absorb items and caps itself at two passes" "$D" 'This check runs at most twice.'
-assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file` or `drop` with a rationale'
+assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file`, `drop`, or `blocked` with a rationale'
 assert_has "local mode states that completeness-absorb work is not code-reviewed" "$D" '`absorb` work is not code-reviewed'
 assert_has "local mode states the editable-criteria weakness honestly" "$D" 'byte-identical to a genuinely complete run'
 assert_has "a reclassified criterion item takes an Unmet: trailer, not a Deferred: one" \

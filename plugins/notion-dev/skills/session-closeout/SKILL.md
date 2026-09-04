@@ -201,7 +201,15 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    done
    ```
 
-   Each needs `tracked:` with its URL — **or the durable record its flow actually uses.**
+   **A review report's `BLOCKED` list is not part of this source.** Those items are already in
+   one of the three states — `blocked`, with the external cause and the unblocker that state
+   requires — decided by the triage that produced them (`notion-dev:review-and-merge` `## 2`).
+   They pass straight through to the report's `blocked:` lines. Do **not** demand a ticket URL
+   for one: that would convert an externally impossible item into a queue entry nobody can
+   close, which is precisely what giving it its own disposition was for. Re-judge one only if
+   its cause has since cleared, in which case it was never `blocked` and goes back to triage.
+
+   Each `FILED` item needs `tracked:` with its URL — **or the durable record its flow actually uses.**
    `quick-dev` has no ticket backend by design: it persists `FILED` work as `Deferred:` trailers
    on the squash commit, and in GitHub mode as the PR's own comment record. Demanding a ticket URL
    there would force an ad-hoc issue that the flow neither creates nor reads, or leave the closeout
