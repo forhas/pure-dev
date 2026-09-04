@@ -121,6 +121,10 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # are indistinguishable afterwards unless the caller checks. STO-77 filed
   # three tickets, wrote zero packets and no persisted report, and said nothing.
   assert_has "$n asserts the review report persisted"  "$CMD" '`unexpected:review-report-not-persisted`'
+  # Existence alone is not evidence: the path is deterministic per ticket and
+  # both entry points are re-runnable, so a stale report from an earlier run of
+  # the SAME ticket satisfies it while this run's write failed.
+  assert_has "$n checks this run's write, not mere presence" "$CMD" "confirm **this run's** write landed"
   assert_has "$n asserts packets written vs filed"     "$CMD" '`unexpected:followup-packet-missing`'
   # `<KEY>` is the PROJECT key, shared by every ticket in the repo, so a
   # `followup-<KEY>-*.md` glob counts the whole project's packets and fires a
