@@ -40,6 +40,13 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # are explicitly NOT this state, so the exclusion cannot quietly lapse.
   assert_has "$n excludes the round cap as an internal cause"    "$RM" 'the round cap" are internal causes'
   assert_has "$n never files a blocked item as a ticket"         "$RM" '**A `blocked` item is never filed as a ticket**'
+  # The disposition is unreachable unless the loops that actually triage findings
+  # offer it. Both operational enumerations — the reviewer round and the local
+  # fallback — and the local loop's own termination clause listed only
+  # absorb/file/drop, so an externally impossible REVIEW finding could never
+  # reach the BLOCKED list from either loop.
+  assert_has_n "$n offers blocked in both operational triage enumerations" "$RM" 'every agreed-but-unfixed finding gets `absorb`, `file`, `drop`, or `blocked`' 2
+  assert_has "$n lets the local loop terminate on a blocked routing" "$RM" 'routed every one of them to `file`, `drop`, or `blocked`'
 done
 
 echo "== the two meanings of the word =="

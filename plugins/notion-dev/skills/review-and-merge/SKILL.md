@@ -755,7 +755,7 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
    - The prose overview, for any actionable request not tied to a line.
 
    Skip only the two boilerplate regions named in the reviewer profile (the "Reviewed changes" per-file summary table and the "Add Copilot custom instructions" footer).
-2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number.
+2. Evaluate and handle each per the step-2 rules and judgment bar (agree/partially/disagree, reply once, never twice). Reviewer findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, `drop`, or `blocked` — `file` items cite their criterion number, `blocked` items name their external cause and what would unblock it.
 3. **Re-run the GraphQL thread query** (REST polling does not return thread node ids; new comments create new threads) and resolve every thread handled — this applies only to threads that actually exist (codex always creates inline threads for line-level findings; Copilot only when it has line-level findings).
 4. Re-run the step-2 verification (config `verify.steps`, when present), **retaining its output as `VERIFY_OUTPUT`** exactly as step 2 does, then commit applied changes **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push.
 5. **Before treating the round as complete — in *either* branch below — confirm it has
@@ -809,11 +809,11 @@ Each round:
    - Material: the PR diff (`gh pr diff <pr>` or `git diff <base>...HEAD`), the PR title and body (the intent to judge correctness against), and the current HEAD sha to echo as `Reviewed commit: <sha>`.
    - The reviewer is review-only: it must not edit files, commit, or push.
 3. **Post the round's findings as a PR comment** (audit trail on the merged PR): header `Local review — round <N> (reviewed commit <sha>)`, then the reviewer's findings and its `VERDICT` line.
-4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, or `drop`, and `file` items cite their criterion number. Apply justified fixes, re-run tests/verification (**retaining its output as `VERIFY_OUTPUT`**, as step 2 does), commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
+4. **Triage** every finding per the step-2 rules and judgment bar (agree / partially agree / disagree). Local findings have no review threads — record each decline's rationale in a follow-up PR comment (or the round comment itself). Local findings are triaged on the same two axes as step 2 — every agreed-but-unfixed finding gets `absorb`, `file`, `drop`, or `blocked` — `file` items cite their criterion number, `blocked` items name their external cause and what would unblock it. Apply justified fixes, re-run tests/verification (**retaining its output as `VERIFY_OUTPUT`**, as step 2 does), commit **one finding per commit with its `Finding:` trailer** (per the per-finding-commit rule in `## 2`) and push; the new HEAD is what the next round reviews.
 5. **Terminate or continue:**
    - Verdict is `VERDICT: CLEAN` (zero Critical/Required — only Optional/Nit/FYI findings, or none) **and no code changed this round** → converged; go to merge (step 5). If fixes were applied (e.g. an Optional finding worth taking), the new HEAD has not been reviewed — continue to another round.
    - **No code changed this round** — whatever the reason. Every finding was declined with
-     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file` or `drop`; or some
+     rationale; or Rule 1, Rule 2, or Rule 3 routed every one of them to `file`, `drop`, or `blocked`; or some
      mixture. → loop ended; a fresh agent on identical code returns identical findings, so another
      round buys nothing; go to merge. **Read this as "nothing changed", never as "everything was
      declined"** — a round whose findings were all filed changed no code either, and requiring
