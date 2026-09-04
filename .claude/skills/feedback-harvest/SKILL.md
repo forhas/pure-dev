@@ -149,3 +149,48 @@ Every `apply` item becomes a change under `plugins/`.
 - **Mutation-test every new assertion**: break the file it guards, confirm `FAIL`, restore.
   Commit **first** — a `git checkout -- .` to undo the mutation otherwise reverts the work
   silently, and a harness that passes against a broken file is worse than none.
+
+### Phase 5 — Redact
+
+**Nothing is written to `docs/feedback/` until this gate has passed.** Redaction is a gate
+before publication, never a cleanup after it — once the bytes are committed to a public repo,
+a later pass is not a fix.
+
+`notion-dev:issue-log`'s redaction contract binds the *write* side, and the client logs do not
+honour it. **This is measured, not hypothetical** — every row below is in a live client log
+today:
+
+| Forbidden by `issue-log` | Present in a client log |
+|---|---|
+| Full database and page ids | a full 32-hex database id, and a `collection://` reference |
+| Email addresses | the maintainer's own address |
+| Personal names | a Notion workspace named after a person |
+| Absolute filesystem paths | a Windows checkout path |
+| URLs of any kind | the `collection://` reference above |
+
+The gate applies `notion-dev:issue-log`'s **Forbidden, without exception** list verbatim:
+ticket titles, ticket bodies, any part of a ticket's content, pull request titles, descriptions
+or contents, diffs, code, Notion user ids, email addresses, personal names, full database ids,
+full page ids, absolute filesystem paths, and URLs of any kind.
+
+**The forbidden list is the gate, not the per-field whitelist.** So these are kept: the
+signature, `Kind`, occurrence counts, timestamps and plugin versions, ticket keys, truncated
+database ids in the `db=…a41f9c` form, client repo names, bare pull request numbers, and commit
+shas. Truncate a full database id to its last six characters rather than removing it, so it
+still groups.
+
+If an entry cannot be redacted without destroying what it found,
+**paraphrase the finding and do not reproduce the original**.
+
+### Phase 6 — Archive
+
+Write `docs/feedback/YYYY-MM-DD-harvest.md`, committed with the pull request. On a same-day
+collision, suffix `-2`, `-3`.
+
+One `##` section per triaged signature, carrying: the signature; every client that observed it,
+with that client's occurrence count and version range; the redacted entry text; the
+disposition; the rationale; and the resulting change — `file:line`, a commit sha, or a ticket
+URL.
+
+Once a client log is reset this archive is **the only place the occurrence counts**, first-seen
+versions, and rejection rationales still exist. It is also what Phase 1 reads next time.

@@ -130,6 +130,30 @@ assert_present "a shared-behaviour fix lands in both plugins" \
 assert_present "a fix is widened into this pull request rather than deferred" \
   "$SK" 1 "$L" 'is explicitly \*not\* a reason to defer'
 
+# ---------------------------------------------------------------------------
+# Phase 5 and 6 — redact, then archive
+# ---------------------------------------------------------------------------
+echo "== redaction gate, then archive =="
+
+assert_present "redaction is a gate before publication, not a cleanup after it" \
+  "$SK" 1 "$L" 'Nothing is written to `docs/feedback/` until this gate has passed'
+assert_present "the gate applies the issue-log forbidden list verbatim" \
+  "$SK" 1 "$L" 'applies `notion-dev:issue-log`.s \*\*Forbidden, without exception\*\* list'
+assert_present "the client logs are known to violate that list today" \
+  "$SK" 1 "$L" 'This is measured, not hypothetical'
+assert_present "an unredactable finding is paraphrased, never reproduced" \
+  "$SK" 1 "$L" 'paraphrase the finding and do not reproduce the original'
+assert_present "the archive is the durable record once a client log is reset" \
+  "$SK" 1 "$L" 'the only place the occurrence counts'
+
+# THE ordering this task exists for. A cleanup pass after publication is not a
+# gate: the bytes have already been committed to a public repo by then.
+assert_order "the redaction gate precedes the archive write" \
+  "$SK" 1 "$L" \
+  "redact heading"  '^### Phase 5 — Redact' \
+  "gate rule"       'Nothing is written to `docs/feedback/` until this gate has passed' \
+  "archive heading" '^### Phase 6 — Archive'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
