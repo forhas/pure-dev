@@ -223,7 +223,7 @@ versions, and rejection rationales still exist. It is also what Phase 1 reads ne
 Nothing upstream of this phase has opened a pull request: Phase 4's fixes and Phase 6's archive
 are, at this point, sitting as uncommitted or unpushed changes on the local branch.
 
-1. Branch if the working tree is not already on one, then commit the applied fixes together
+1. Branch if the current branch is the default branch, then commit the applied fixes together
    with the archive.
 2. Push the branch, then open the pull request. `gh pr create` does **not** support `@-` for
    `--body`. Passed literally, `@-` becomes the entire body — two characters, exit code 0, no
@@ -239,6 +239,16 @@ are, at this point, sitting as uncommitted or unpushed changes on the local bran
    it is a caller-supplied argument, not a hook that fires on its own, and passing nothing means
    `session-closeout`'s completion pass never runs. Its **final sweep** is where anything the
    harvest was tempted to file as `track` gets taken back into this pull request instead.
+   Copy the form `plugins/quick-dev/skills/develop/SKILL.md`'s own `--pre-merge-check` call
+   uses, rather than reinventing the wording at the call site:
+
+   ```
+   --pre-merge-check "the completion pass of session-closeout must come back with no
+   unresolved tail: no uncommitted or unpushed work on this branch, the docs/feedback/
+   archive committed and matching every triaged signature, scripts/verify-feedback-harvest.sh
+   passing on this HEAD, and no unsupported claim or unstated caveat left in the PR body —
+   resolve anything it finds on this branch and push before merging"
+   ```
 
 ### Phase 8 — Reset
 

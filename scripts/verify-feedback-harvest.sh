@@ -87,9 +87,12 @@ assert_present "prior harvests are read before any client log" \
 assert_present "a reappearing signature is re-evaluated, not re-declined by rote" \
   "$SK" 1 "$L" 're-evaluated against the \*\*new\*\* evidence'
 # `docs/feedback/` does not exist on the first harvest, and an empty glob is not
-# an error to stall on — Minor 4 from the final review.
+# an error to stall on — Minor 4 from the final review. Round 3: the old regex
+# stopped short of the label's own "not an error" half, so inverting the
+# instruction to "stop and report it" stayed green — extend the regex to cover
+# what the label actually claims, the same defect class as Minor 6.
 assert_present "an empty archive glob means the first harvest, not an error" \
-  "$SK" 1 "$L" 'An empty glob just means this is the first harvest'
+  "$SK" 1 "$L" 'first harvest, not an error to stop on'
 # `blocked` sections are removed from the client log at Phase 8 same as every
 # other disposition, so the archive is their only durable record. Without this,
 # an item whose external cause clears is never revisited — Minor 5.
@@ -270,6 +273,11 @@ assert_present "--pre-merge-check is supplied explicitly, not assumed automatic"
   "$SK" 1 "$L" 'with `--pre-merge-check` supplied explicitly'
 assert_present "an unsupplied --pre-merge-check is a hook that never fires" \
   "$SK" 1 "$L" 'not a hook that fires on its own'
+# Mandating the flag without the text just moves the reinvention to the call
+# site — copy develop's own --pre-merge-check wording instead (final review,
+# item 3 of the addendum).
+assert_present "the pre-merge-check text is copied from develop's own call, not reinvented" \
+  "$SK" 1 "$L" 'Copy the form `plugins/quick-dev/skills/develop/SKILL.md`'\''s own `--pre-merge-check` call'
 assert_present "the body names every disposition, including the ones with no diff" \
   "$SK" 1 "$L" 'invisible in a diff-shaped review'
 
