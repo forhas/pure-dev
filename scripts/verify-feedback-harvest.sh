@@ -294,6 +294,18 @@ assert_present "the pre-merge-check text is copied from develop's own call, not 
 assert_present "the body names every disposition, including the ones with no diff" \
   "$SK" 1 "$L" 'invisible in a diff-shaped review'
 
+# Finding 3937770056: a harvest bumps plugin versions in Phase 4 by definition,
+# so the same stale-bump race develop.md guards against — git merges identical
+# version-line bumps without conflict — can land a harvest whose version equals
+# the base's. The guard has to be folded into this skill's own --pre-merge-check,
+# not left implicit in a sibling skill's doc.
+assert_present "the pre-merge-check folds in a clause per plugin manifest phase 4 bumped" \
+  "$SK" 1 "$L" 'every plugin manifest bumped in Phase 4'
+assert_present "the stale-bump clause requires the branch's version strictly greater than the base's, as semver" \
+  "$SK" 1 "$L" 'branch must be strictly greater, as semver, than in'
+assert_present "an equal-or-lower version means the base moved: update from it, then recompute the bump" \
+  "$SK" 1 "$L" '\(if equal or lower, the base moved: first update the branch with the current base'
+
 # The reset destroys the client's only copy. Doing it before the merge loses the
 # feedback for a pull request that then does not land.
 assert_present "the reset runs only after the merge has landed" \

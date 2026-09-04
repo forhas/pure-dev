@@ -252,12 +252,24 @@ are, at this point, sitting as uncommitted or unpushed changes on the local bran
    Copy the form `plugins/quick-dev/skills/develop/SKILL.md`'s own `--pre-merge-check` call
    uses, rather than reinventing the wording at the call site:
 
+   A harvest changes plugins by definition and bumps versions in Phase 4, so the base can move
+   under it the same way `plugins/quick-dev/skills/develop/SKILL.md`'s own **stale-bump guard**
+   describes: git merges identical version-line bumps without conflict, so a plugin PR can land
+   a release whose version equals the base's. Fold that guard into this same check, one clause
+   per plugin manifest Phase 4 bumped:
+
    ```
    --pre-merge-check "the completion pass of session-closeout must come back with no
    unresolved tail: no uncommitted or unpushed work on this branch, the docs/feedback/
    archive committed and matching every triaged signature, scripts/verify-feedback-harvest.sh
-   passing on this HEAD, and no unsupported claim or unstated caveat left in the PR body —
-   resolve anything it finds on this branch and push before merging"
+   passing on this HEAD, no unsupported claim or unstated caveat left in the PR body, and for
+   every plugin manifest bumped in Phase 4 — its version in .claude-plugin/plugin.json on this
+   branch must be strictly greater, as semver, than in git show origin/<MAIN>:.claude-plugin/plugin.json
+   (if equal or lower, the base moved: first update the branch with the current base — merge
+   origin/<MAIN> into the branch; editing the version line without updating first would conflict
+   with the base's change to the same line — then recompute the semver bump against the current
+   base version, commit, and push) — resolve anything it finds on this branch and push before
+   merging"
    ```
 
 ### Phase 8 — Reset
