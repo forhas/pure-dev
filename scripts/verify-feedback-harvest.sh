@@ -249,6 +249,15 @@ assert_present "generalize-to-the-kind is stated as the default redaction rule" 
 # contradicts the richer example the same section sets.
 assert_present "the generalization may carry the kind's own non-identifying attribute" \
   "$SK" 1 "$L" 'may\*\* carry the kind'\''s own non-identifying attribute'
+# Finding 3937770059: `track` requires a ticket that exists right now, with its
+# URL (Phase 3), and Phase 6 archives that URL — but the forbidden list bans
+# "URLs of any kind" outright. A tracker URL this run creates in this public
+# repo is not client data, so it needs its own narrow exemption, distinct from
+# a client-derived URL found in the evidence.
+assert_present "a \`track\` item's ticket url is not client data" \
+  "$SK" 1 "$L" '\*\*A `track` item'\''s ticket URL is not client data\.\*\*'
+assert_present "the track url exemption is narrow: this run's own url, never a client-derived one" \
+  "$SK" 1 "$L" 'The exemption is narrow'
 assert_present "an unredactable finding is paraphrased, never reproduced" \
   "$SK" 1 "$L" 'paraphrase the finding and do not reproduce the original'
 assert_present "the archive is the durable record once a client log is reset" \

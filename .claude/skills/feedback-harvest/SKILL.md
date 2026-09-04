@@ -212,6 +212,14 @@ path, "workspace label" versus "personal name" for a name — but never the cont
 is an option, not a requirement: each row's "never the address/name/path/URL" clause already
 bounds what the attribute may not be.
 
+**A `track` item's ticket URL is not client data.** The forbidden list exists to keep
+client-derived identifiers out of this public repo; a tracker URL this run creates in the
+maintainer's own public repo is not a client-derived identifier, so it is exempt from the
+"URL of any kind" row above. The exemption is narrow — it covers only a URL this run itself
+creates here, never a URL that appears anywhere in the client's evidence, which is redacted
+like any other. Keep the ticket URL Phase 3's `track` disposition requires, and archive it
+under Phase 6.
+
 If an entry cannot be redacted without destroying what it found,
 **paraphrase the finding and do not reproduce the original**.
 
