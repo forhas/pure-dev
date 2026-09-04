@@ -389,6 +389,22 @@ expect FAIL "assert_lacks rejects a multi-line literal too" \
   assert_lacks "wrapped.md: says nothing about relaxing" \
   "$FIX/wrapped.md" 'requirement does not
 relax because the passes are spent'
+expect PASS "assert_lacks still passes on a single-line literal it does not find" \
+  assert_lacks "wrapped.md: says nothing about ratchets" \
+  "$FIX/wrapped.md" 'the ratchet judged it'
+# assert_has_n was exercised in NEITHER direction, so the guard could have been
+# dropped from it without this file noticing — the one failure mode A4 exists to
+# prevent. Both directions now.
+expect FAIL "assert_has_n rejects a multi-line literal too" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not
+relax because the passes are spent' 1
+expect PASS "assert_has_n counts a single-line literal correctly" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not' 1
+expect FAIL "assert_has_n still fails on the wrong count" \
+  assert_has_n "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not' 2
 
 echo
 if [ "$fails" -eq 0 ]; then

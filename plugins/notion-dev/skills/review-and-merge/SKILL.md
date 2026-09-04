@@ -1187,7 +1187,7 @@ If `gh pr merge` itself exits non-zero, do **not** re-run it — read `gh pr vie
 
 Confirm `gh pr view <pr> --json state` reports `MERGED` before declaring success. The final report states: which reviewer/loop ran (Codex, Copilot, or the local fallback), rounds run, findings applied vs. declined (with reasons), the merge commit SHA (`gh pr view <pr> --json mergeCommit` after the merge), the number of fix commits pushed during the loop, and any judgment calls resolved autonomously in non-interactive mode — callers consume the merge SHA and counts for their ticket records and ledger metrics. If the round cap was hit, note it and list the findings that were disagreed with or could not be fully addressed. **When the local fallback ran, state prominently that no cross-model review validated this PR**, and why (`quota` / `not-configured` / `error` / `silent`).
 
-The report's triage outcome is **three named lists**, never one undifferentiated set:
+The report's triage outcome is **four named lists**, never one undifferentiated set:
 
 - `ABSORBED` — items done in this PR, each with what was changed. Items the final sweep fixed
   are listed here too, each marked `swept`.

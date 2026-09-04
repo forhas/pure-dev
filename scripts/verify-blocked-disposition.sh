@@ -111,6 +111,15 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n counts five exhaustive dispositions"    "$RM" 'The five disposition counts are exhaustive'
   assert_has "$n keeps BLOCKED a bucket, not a slice of FILED" "$RM" '**`BLOCKED` is a fifth bucket, not a slice of `FILED`**'
   assert_has "$n emits BLOCKED as a named report list"   "$RM" '- `BLOCKED` — items nobody can do until'
+  # The prose count and the bullets drifted apart once already: notion-dev said
+  # "three named lists" over four bullets while its own later sentence said
+  # "four", 37 lines apart. Pin the count so it cannot drift again.
+  assert_has "$n counts four named report lists"         "$RM" 'The report'"'"'s triage outcome is **four named lists**'
+  # Charge 1's own-words rule is the fix for the criterion that became a ticket
+  # for work it never asked for. It was the one change with no standing
+  # invariant behind it.
+  assert_has "$n forbids grading a criterion above its own words" "$RM" '**The criterion'"'"'s own words set its standard, and the verifier may not raise that bar.**'
+  assert_has "$n lets a documented negative result satisfy a reasoning criterion" "$RM" '**A documented negative result satisfies such a criterion.**'
   assert_has "$n forbids callers filing BLOCKED"         "$RM" '**`BLOCKED` in particular must never be filed.**'
 done
 
