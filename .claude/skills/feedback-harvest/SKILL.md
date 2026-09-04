@@ -146,6 +146,11 @@ entry produces the wrong disposition.
 
 Every `apply` item becomes a change under `plugins/`.
 
+- **Branch before the first commit.** If the current branch is the default branch, create the
+  feature branch now — every commit this phase makes, including the mutation-testing commit
+  below, must land on it, never on the default branch. A harvest that commits before branching
+  leaves those commits stranded on the local default branch once Phase 7's pull request
+  squash-merges, with nothing downstream to repair the divergence.
 - **Redact before you commit, not at Phase 5.** Once a commit lands on this branch it is
   already history: Phase 5's gate binds the archive, and it cannot reach back into an earlier
   commit to strip a client-derived identifier already inside it. Apply Phase 5's categories to
@@ -248,8 +253,8 @@ versions, and rejection rationales still exist. It is also what Phase 1 reads ne
 Nothing upstream of this phase has opened a pull request: Phase 4's fixes and Phase 6's archive
 are, at this point, sitting as uncommitted or unpushed changes on the local branch.
 
-1. Branch if the current branch is the default branch, then commit the applied fixes together
-   with the archive.
+1. Commit the applied fixes together with the archive. The feature branch already exists —
+   Phase 4 created it before its first commit — so this phase never branches itself.
 2. Push the branch, then open the pull request. `gh pr create` does **not** support `@-` for
    `--body`. Passed literally, `@-` becomes the entire body — two characters, exit code 0, no
    warning. Write the body to a file first and create the pull request with `--body-file`.

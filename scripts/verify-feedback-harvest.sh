@@ -169,6 +169,21 @@ assert_order "triage: the closed set precedes the table precedes the rules that 
 # ---------------------------------------------------------------------------
 echo "== applying the fixes =="
 
+# Finding 3937903375: a harvest that starts on the default branch has no branch
+# to commit onto until Phase 7, so Phase 4's mutation-testing commit (below)
+# lands directly on the local default branch — and Phase 7's squash-merge
+# leaves it stranded there, diverged from the remote base, with nothing
+# downstream to repair it.
+assert_present "the feature branch exists before phase 4's first commit, not deferred to phase 7" \
+  "$SK" 1 "$L" '\*\*Branch before the first commit\.\*\*'
+assert_present "phase 7 relies on the branch phase 4 already created, and never branches itself" \
+  "$SK" 1 "$L" 'so this phase never branches itself'
+assert_order "the branch is created before phase 4's first commit, before phase 7 opens the pull request" \
+  "$SK" 1 "$L" \
+  "phase 4 heading" '^### Phase 4 — Apply' \
+  "branch rule"     '\*\*Branch before the first commit\.\*\*' \
+  "phase 7 heading" '^### Phase 7 — Pull request and merge'
+
 # Finding 3937770045: a Phase 4 commit whose diff or message carries a
 # client-derived identifier is already in branch history by the time Phase
 # 5's gate runs — redacting the working tree afterward cannot reach back into
