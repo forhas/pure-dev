@@ -395,10 +395,16 @@ expect PASS "assert_lacks still passes on a single-line literal it does not find
 # assert_has_n was exercised in NEITHER direction, so the guard could have been
 # dropped from it without this file noticing — the one failure mode A4 exists to
 # prevent. Both directions now.
-expect FAIL "assert_has_n rejects a multi-line literal too" \
+# The count must be the one the ALTERNATION would satisfy, or this case cannot
+# discriminate. Each of the two lines matches exactly one line of the fixture, so
+# an unguarded `grep -cF` returns 2: with want=1 the assertion would fail on the
+# COUNT and `expect FAIL` would pass whether or not the guard exists. With want=2
+# an unguarded assert_has_n PASSES, so only the guard can make this FAIL —
+# verified by deleting the guard and watching this case go green.
+expect FAIL "assert_has_n rejects a multi-line literal rather than counting its alternation" \
   assert_has_n "wrapped.md: the requirement does not relax" \
   "$FIX/wrapped.md" 'requirement does not
-relax because the passes are spent' 1
+relax because the passes are spent' 2
 expect PASS "assert_has_n counts a single-line literal correctly" \
   assert_has_n "wrapped.md: the requirement does not relax" \
   "$FIX/wrapped.md" 'requirement does not' 1
