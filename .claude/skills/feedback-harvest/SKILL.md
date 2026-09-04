@@ -245,8 +245,10 @@ Removal is surgical, matched on signature **and** occurrence count as harvested:
 
 1. Locate `## <signature>` in the client log. Confirm its `**Occurrences**` integer and its
    `**Last seen**` line still match what Phase 2 recorded.
-2. Match → delete the section, from its `##` heading to the line before the next `##` heading
-   or end of file.
+2. Match → delete the section, from its `##` heading to the line before the next heading at
+   exactly depth two (`## `), or end of file. A recurrence subsection is appended below the
+   fixed fields at depth three or deeper, so it is inside the range being deleted, not a
+   boundary that stops it.
 3. Mismatch → leave the section in place and report it. The client appended to or
    incremented that signature after the harvest read it, and the new evidence is untriaged.
 4. **All five dispositions are removed**, `decline` and `track` included. Their durable home is

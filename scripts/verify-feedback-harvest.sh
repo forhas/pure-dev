@@ -205,6 +205,11 @@ assert_present "the reset runs only after the merge has landed" \
   "$SK" 1 "$L" '\*\*only after the merge has landed\*\*'
 assert_present "removal matches on signature and occurrence count as harvested" \
   "$SK" 1 "$L" 'signature \*\*and\*\* occurrence count as harvested'
+# A `^##` prefix match stops at the first `###` recurrence subsection and
+# leaves it orphaned — recurrences live at depth three or deeper, undocumented
+# by `issue-log` at any fixed depth (final review, Important 3).
+assert_present "the delete boundary is the next depth-two heading, not any subheading" \
+  "$SK" 1 "$L" 'exactly depth two \(`## `\), or end of file'
 assert_present "a mismatched section is left in place and reported" \
   "$SK" 1 "$L" 'leave the section in place and report it'
 assert_present "the file is never truncated and never deleted" \
