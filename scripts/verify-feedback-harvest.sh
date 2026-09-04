@@ -191,10 +191,35 @@ assert_present "the client logs are known to violate that list today" \
 # of all — could be deleted with the suite green (Minor 8.4).
 assert_present "the forbidden list is the gate, never a per-field whitelist" \
   "$SK" 1 "$L" 'The forbidden list is the gate, not the per-field whitelist'
+# Re-review, Minor 8(d) round 2: the old assertion pinned only the keep-list's
+# sentence OPENER ("So these are kept: the"), so truncating the list itself —
+# dropping `Kind`, occurrence counts, timestamps, versions, ticket keys, the
+# truncated-id form, repo names, PR numbers, commit shas — changed no
+# assertion. Pin the content, not the opener.
 assert_present "the keep list names what redaction leaves untouched" \
-  "$SK" 1 "$L" 'So these are kept: the'
+  "$SK" 1 "$L" 'Kept: the signature, `Kind`, occurrence counts, timestamps, plugin versions, and ticket keys'
+assert_present "the keep list also covers truncated ids, repo names, pr numbers, and shas" \
+  "$SK" 1 "$L" 'Also kept: the `db=…a41f9c` truncated form, client repo names, PR numbers, and commit shas'
 assert_present "a database or page id keeps six characters as the one exception" \
   "$SK" 1 "$L" 'Truncate to its last six characters, `db=…a41f9c` form — the one exception'
+# Same round 2 gap for the other four rows: only the table headline and the
+# "Generalize to the kind is the default" summary were pinned, so all four
+# remaining rows — the ones that actually tell an executing agent what to
+# write instead — could be deleted in one edit with the suite green.
+assert_present "an email address is generalized to the kind, never reproduced" \
+  "$SK" 1 "$L" '\| Email address \| Generalize to the kind: "an email address," never the address \|'
+assert_present "a personal name is generalized to the kind, never reproduced" \
+  "$SK" 1 "$L" '\| Personal name \| Generalize to the kind: "a personal name," never the name \|'
+assert_present "an absolute path is generalized to the kind, never reproduced" \
+  "$SK" 1 "$L" '\| Absolute filesystem path \| Generalize to the kind: "an absolute path," never the path \|'
+assert_present "a url is generalized to the kind, never reproduced" \
+  "$SK" 1 "$L" '\| URL of any kind \| Generalize to the kind: "a URL," never the URL \|'
+# Belt and suspenders: "Generalize to the kind:" is a mechanism deliberately
+# cited once per generalized category (email, name, path, URL) — declaring the
+# count means collapsing or duplicating a row goes red in both directions,
+# not just when a row vanishes outright.
+assert_count "generalize-to-the-kind is cited exactly once per generalized category" \
+  "$SK" 1 "$L" 'Generalize to the kind:' 4
 # Without a rule per category, an executing agent has to invent the
 # omit/placeholder/generalize convention on the spot for four of the five
 # forbidden kinds — this pins that the rule exists and names the default.

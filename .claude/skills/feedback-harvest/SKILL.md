@@ -179,10 +179,9 @@ ticket titles, ticket bodies, any part of a ticket's content, pull request title
 or contents, diffs, code, Notion user ids, email addresses, personal names, full database ids,
 full page ids, absolute filesystem paths, and URLs of any kind.
 
-**The forbidden list is the gate, not the per-field whitelist.** So these are kept: the
-signature, `Kind`, occurrence counts, timestamps and plugin versions, ticket keys, truncated
-database ids in the `db=…a41f9c` form, client repo names, bare pull request numbers, and commit
-shas.
+**The forbidden list is the gate, not the per-field whitelist.**
+Kept: the signature, `Kind`, occurrence counts, timestamps, plugin versions, and ticket keys.
+Also kept: the `db=…a41f9c` truncated form, client repo names, PR numbers, and commit shas.
 
 **A rule per forbidden category — what an executing agent writes in its place:**
 
