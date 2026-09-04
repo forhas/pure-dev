@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Parity check for this repo's own copies of the skills it ships.
 #
-# Every directory under `.claude/skills/` is a verbatim mirror of the
-# same-named directory under `plugins/quick-dev/skills/`, so this repo can
-# drive its own work with the skills it ships. The review-and-merge mirror
+# Every directory under `.claude/skills/` is one of two kinds: a verbatim
+# mirror of the same-named directory under `plugins/quick-dev/skills/`, or a
+# declared repo-local skill listed in `.claude/skills/REPO-LOCAL` — so this
+# repo can drive its own work with the skills it ships, plus the maintainer
+# workflows that belong to neither shipped plugin. The review-and-merge mirror
 # drifted twice — first silently, then again after a README told contributors
 # to re-sync in the same commit. A written reminder is not a mechanism; this is.
 #
