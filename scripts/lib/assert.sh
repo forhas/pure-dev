@@ -73,6 +73,8 @@
 # turned three assertions vacuous once and nearly did it a second time; both were
 # caught by mutation testing rather than by reading. ENVIRON passes the string
 # through untouched, so an escape means what it says.
+NL=$'\n'
+
 find_line() {
   RE="$4" awk -v s="$2" -v e="$3" \
     'NR >= s && NR <= e && $0 ~ ENVIRON["RE"] { print NR; exit }' "$1"
@@ -322,9 +324,28 @@ assert_order() {
 #
 # A2 still applies: whatever the label names, the literal must contain.
 
+# A LITERAL SPANNING A LINE BREAK IS THE THIRD SILENT TRAP.
+# `grep -F` treats a newline inside its pattern as a pattern SEPARATOR, not as a
+# character to match — so a multi-line literal degrades to "match any one of
+# these lines" and passes on the weakest of them. Like the other two traps in
+# this library it produces an assertion that PASSES rather than one that errors,
+# and it is invisible by reading. These files are hard-wrapped, so reaching for a
+# phrase that spans a wrap is the natural mistake: caught live while
+# mutation-testing verify-blocked-disposition.sh, where a two-line literal stayed
+# green against a mutation of its own first line.
+# There is no correct multi-line literal here, so this is an authoring error, not
+# a match failure: match the shortest distinctive fragment on ONE line instead.
+_reject_multiline() {
+  case "$2" in
+    *"$NL"*) bad "$1 (literal spans a line break; grep -F reads that as alternation, so it cannot fail on either line — match one line's shortest distinctive fragment)"; return 0 ;;
+  esac
+  return 1
+}
+
 # assert_has <label> <file> <literal string>
 assert_has() {
   local label=$1 file=$2 lit=$3 line missing
+  if _reject_multiline "$label" "$lit"; then return; fi
   if [ ! -f "$file" ]; then bad "$label (missing file: $file)"; return; fi
   line=$(grep -m1 -F -- "$lit" "$file") || { bad "$label"; return; }
   if ! missing=$(assert_covers "$label" "$lit" "$line"); then
@@ -339,6 +360,7 @@ assert_has() {
 # defined once, a table with a fixed number of rows. Checked in both directions.
 assert_has_n() {
   local label=$1 file=$2 lit=$3 want=$4 got
+  if _reject_multiline "$label" "$lit"; then return; fi
   if [ ! -f "$file" ]; then bad "$label (missing file: $file)"; return; fi
   got=$(grep -cF -- "$lit" "$file" || true)
   if [ "$got" -ne "$want" ]; then
@@ -350,6 +372,7 @@ assert_has_n() {
 
 # assert_lacks <label> <file> <literal string>
 assert_lacks() {
+  if _reject_multiline "$1" "$3"; then return; fi
   if [ ! -f "$2" ]; then bad "$1 (missing file: $2)"; return; fi
   if grep -qF -- "$3" "$2"; then bad "$1"; else ok "$1"; fi
 }

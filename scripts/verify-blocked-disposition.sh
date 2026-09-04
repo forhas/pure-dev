@@ -61,8 +61,9 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # fallback, is the mechanism that bounds it.
   assert_has "$n falls back to \`blocked\`, never to \`file\`" "$RM" '`blocked` — not `file`'
   assert_has "$n makes filing the narrowest option, not the fallback" "$RM" 'narrowest of the three, not the fallback'
-  assert_has "$n keeps the blast-radius citation required at pass 2" "$RM" 'That requirement does not
-      relax because the passes are spent'
+  # Single-line fragment on purpose: these files are hard-wrapped and a literal
+  # lifted across a wrap degrades to alternation (see assert.sh's third trap).
+  assert_has "$n keeps the blast-radius citation required at pass 2" "$RM" 'exactly as the first-pass triage above already demands'
   assert_has "$n denies that blocked is a scope reduction" "$RM" '**`blocked` is not a scope reduction**'
 done
 

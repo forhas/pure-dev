@@ -168,6 +168,14 @@ Enumerate every worktree (`git worktree list --porcelain`).
     git worktree list --porcelain | awk '/^worktree /{print $2}'
 FIXTURE
 
+# Fixture 4: a hard-wrapped sentence, the shape every document here has. A
+# literal lifted across the wrap becomes two grep -F patterns, so it matches on
+# either line alone — the assertion then cannot fail on the half it names.
+cat > "$FIX/wrapped.md" <<'FIXTURE'
+The blast-radius citation requirement does not
+relax because the passes are spent.
+FIXTURE
+
 # expect <outcome: FAIL|PASS> <case name> <assert invocation...>
 #
 # Runs one assertion in a subshell with its own counters, so this harness's own
@@ -359,6 +367,28 @@ if [ "$pipe_sc" = "$(printf '1\na line ending in a pipe |')" ]; then
 else
   bad "scan_region: a trailing \\| returned '$pipe_sc' — the awk -v escape-processing trap is back"
 fi
+
+# --- the third silent trap: a literal that spans a line break ---
+# grep -F reads the newline as a pattern separator, so this literal matched the
+# SECOND line while its own first line was mutated away, and reported PASS. It
+# must be an authoring failure, not a match.
+expect FAIL "multi-line literal is rejected rather than silently alternating" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not
+relax because the passes are spent'
+# The half-match that proves the trap was real: the mutated first line is gone,
+# yet the second still matches, so an unguarded assert_has would report PASS.
+expect FAIL "...and the same literal cannot pass on its second line alone" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement is waived and does
+relax because the passes are spent'
+expect PASS "a single-line fragment of the same sentence is the correct form" \
+  assert_has "wrapped.md: the requirement does not relax" \
+  "$FIX/wrapped.md" 'requirement does not'
+expect FAIL "assert_lacks rejects a multi-line literal too" \
+  assert_lacks "wrapped.md: says nothing about relaxing" \
+  "$FIX/wrapped.md" 'requirement does not
+relax because the passes are spent'
 
 echo
 if [ "$fails" -eq 0 ]; then
