@@ -95,6 +95,28 @@ while IFS= read -r name; do
   fi
 done < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST" 2>/dev/null | grep -v '^$')
 
+# ---------------------------------------------------------------------------
+# Loose files at the mirror root — REPO-LOCAL is the one documented exception
+# ---------------------------------------------------------------------------
+#
+# The directory loop below only ever walks "$MIRROR_ROOT"/*/, so a second loose
+# FILE dropped next to REPO-LOCAL is invisible to every check above and below
+# it, while CLAUDE.md already asserts the un-ignored mirror root is safe. This
+# closes that gap by name, not by directory-ness (final review, Minor 7).
+echo "== loose files under the mirror root =="
+
+loose_seen=0
+for f in "$MIRROR_ROOT"/*; do
+  [ -f "$f" ] || continue
+  loose_seen=$((loose_seen + 1))
+  if [ "$f" = "$LOCAL_MANIFEST" ]; then
+    ok "$(basename "$f") is the documented loose file at the mirror root"
+  else
+    bad "$(basename "$f") is an undeclared loose file directly under $MIRROR_ROOT"
+  fi
+done
+[ "$loose_seen" -gt 0 ] || ok "no loose files under $MIRROR_ROOT to check"
+
 mirrored=0
 for mdir in "$MIRROR_ROOT"/*/; do
   [ -d "$mdir" ] || continue
