@@ -165,6 +165,14 @@ assert_has "notion-dev/skills/flow-triage ledger carries triage_blocked" \
   "$ND/skills/flow-triage/references/ledger.md" '"triage_blocked":0'
 
 echo "== quick-dev call sites =="
+# The contract-invalid branch demands an issue-log entry, but quick-dev ships no
+# issue-log skill and no signature registry — the instruction was inert there, so
+# a standalone install could not surface the gate defect at all. Each plugin's
+# copy must name a destination that plugin actually has.
+assert_has "quick-dev/skills/review-and-merge names a destination quick-dev has" \
+  "$QD/skills/review-and-merge/SKILL.md" '**`quick-dev` ships no issue-log skill**'
+assert_has "notion-dev/skills/review-and-merge cites its registered signature" \
+  "$ND/skills/review-and-merge/SKILL.md" '`unexpected:completeness-verifier-contract-invalid`'
 assert_has "quick-dev/skills/develop gives a BLOCKED item no trailer" \
   "$QD/skills/develop/SKILL.md" '**A `BLOCKED` item never takes a trailer of either kind.**'
 # The Unmet: template enumerates absorb|file|drop and the rule above it demanded
