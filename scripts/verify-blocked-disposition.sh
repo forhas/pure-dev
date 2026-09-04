@@ -116,6 +116,10 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # never-file rule itself, which each command states exactly once.
   assert_has_n "$n never files a BLOCKED item" "$CMD" 'A `BLOCKED` item filed as a ticket is strictly worse than a forgotten one' 1
   assert_has "$n reports each as a blocked: line"      "$CMD" 'blocked: <item> — <external cause>; unblocked by <what>'
+  # The terminal summary scrolls away. The ticket's `## Merged` record is the
+  # shared durable one, and the Completeness record covers acceptance criteria
+  # only — so an ordinary review finding's block has no other home.
+  assert_has "$n writes a Blocked field into the Merged record" "$CMD" '- **Blocked** — items from `REVIEW_REPORT`'"'"'s `BLOCKED` list'
   assert_has "$n records triage_blocked in the ledger" "$CMD" '"triage_blocked":N'
   # Both artifact writes are best-effort, so a skipped one and a completed one
   # are indistinguishable afterwards unless the caller checks. STO-77 filed
