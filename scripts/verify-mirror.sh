@@ -106,15 +106,18 @@ done < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST" 2>/dev/null |
 echo "== loose files under the mirror root =="
 
 loose_seen=0
-for f in "$MIRROR_ROOT"/*; do
-  [ -f "$f" ] || continue
+# `"$MIRROR_ROOT"/*` is a bare glob, and a bare glob does not match dotfiles —
+# `find -maxdepth 1` does, closing exactly the gap a project-local scratch
+# file dropped as `.something` would otherwise pass through silently
+# (re-review, dotfile gap).
+while IFS= read -r f; do
   loose_seen=$((loose_seen + 1))
   if [ "$f" = "$LOCAL_MANIFEST" ]; then
     ok "$(basename "$f") is the documented loose file at the mirror root"
   else
     bad "$(basename "$f") is an undeclared loose file directly under $MIRROR_ROOT"
   fi
-done
+done < <(find "$MIRROR_ROOT" -maxdepth 1 -type f | sort)
 [ "$loose_seen" -gt 0 ] || ok "no loose files under $MIRROR_ROOT to check"
 
 mirrored=0
