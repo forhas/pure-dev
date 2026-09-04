@@ -141,6 +141,16 @@ assert_has "notion-dev/skills/issue-log registers review-report-not-persisted" \
   "$ND/skills/issue-log/references/signatures.md" '| `unexpected:review-report-not-persisted` |'
 assert_has "notion-dev/skills/issue-log registers followup-packet-missing" \
   "$ND/skills/issue-log/references/signatures.md" '| `unexpected:followup-packet-missing` |'
+# signatures.md is the MANDATORY authority for each logging site, so a row that
+# still describes the superseded trigger lets an agent follow the registry and
+# suppress (or falsely emit) the entry regardless of the corrected caller text.
+# Both rows must carry the same trigger the callers now state.
+assert_has "the registry judges the report write, not mere existence" \
+  "$ND/skills/issue-log/references/signatures.md" '**Never by the file merely existing**'
+assert_has "the registry names the id-scoped report path" \
+  "$ND/skills/issue-log/references/signatures.md" "**this invocation's** \`review-report-<KEY>-<id>.md\` write did not land"
+assert_has "the registry forbids the project-wide packet glob" \
+  "$ND/skills/issue-log/references/signatures.md" '**Never glob `followup-<KEY>-*.md`**'
 assert_has "notion-dev/skills/flow-triage ledger carries triage_blocked" \
   "$ND/skills/flow-triage/references/ledger.md" '"triage_blocked":0'
 
