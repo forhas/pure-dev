@@ -129,7 +129,7 @@ assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 
 assert_has "develop reports coverage gaps from COVERAGE_MAP" "$D" 'from `COVERAGE_MAP`: report any `-> not covered` lines verbatim'
 assert_has "2c retains its verification output for the completeness check" "$D" 'Record the output as `VERIFY_OUTPUT`'
 assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
-assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'the user decides, every unverified criterion still becomes an item'
+assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'whatever the user decides, the failure still becomes an item'
 assert_has "local mode fixes its absorb items and caps itself at two passes" "$D" 'This check runs at most twice.'
 assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file`, `drop`, or `blocked` with a rationale'
 assert_has "local mode states that completeness-absorb work is not code-reviewed" "$D" '`absorb` work is not code-reviewed'

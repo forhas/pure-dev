@@ -179,6 +179,13 @@ assert_has "quick-dev/skills/develop gives a BLOCKED item no trailer" \
 # a line for EVERY criterion not settled `met`. A blocked criterion is not met,
 # so the two rules contradicted each other and a runner had to violate one --
 # and encoding externally blocked work as a scope reduction is the worse choice.
+# Cardinality and failure kind must bind develop's interactive branch and its own
+# preamble too — fixing only review-and-merge left local mode, the one path that
+# never enters it, still minting one scope reduction per criterion.
+assert_has "quick-dev/skills/develop keeps contract-invalid to one item" \
+  "$QD/skills/develop/SKILL.md" '**exactly one item for the ticket** on contract-invalid output'
+assert_has "quick-dev/skills/develop's preamble defaults by failure kind" \
+  "$QD/skills/develop/SKILL.md" '**at the failure kind'"'"'s own default and cardinality** rather than filed wholesale'
 assert_has "quick-dev/skills/develop exempts a blocked criterion from the trailer" \
   "$QD/skills/develop/SKILL.md" '**except one it settled as `blocked`**, which gets no trailer of either kind'
 # Local mode never enters review-and-merge, so develop's OWN completeness gate is
@@ -196,7 +203,7 @@ assert_has "quick-dev/skills/develop keeps filing as the residual" \
 # scope reduction that never happened — bypassing the blocked default the
 # non-interactive branch had just gained. The failure kinds bind both branches.
 assert_has "quick-dev/skills/develop binds both branches to the failure kind" \
-  "$QD/skills/develop/SKILL.md" '**at the default for its failure kind above, never `file` by default**'
+  "$QD/skills/develop/SKILL.md" '**at the default for its failure kind above, never `file` by default, and at that kind'"'"'s own cardinality**'
 assert_has "quick-dev/skills/develop records triage_blocked in the ledger" \
   "$QD/skills/develop/SKILL.md" '"triage_blocked":<n>'
 assert_has "quick-dev/skills/flow-triage ledger carries triage_blocked" \
