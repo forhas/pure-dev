@@ -40,19 +40,88 @@ else
   IN_GIT=no
 fi
 
+# ---------------------------------------------------------------------------
+# Repo-local skills — the one documented exception to mirror parity
+# ---------------------------------------------------------------------------
+#
+# `feedback-harvest` is a maintainer workflow for this marketplace. It belongs to
+# neither shipped plugin: putting it in quick-dev would ship a notion-dev-specific
+# harvester to everyone installing a generic feature-development plugin, and
+# notion-dev's skills are not mirrored, so it would not be invocable here at all.
+#
+# The exemption is a TRACKED MANIFEST, never a naming convention. A directory
+# under the mirror root that is in neither set still FAILs, which is the property
+# .gitignore's comment depends on — the whole mirror directory is un-ignored, and
+# this loop is what makes that exposure safe.
+LOCAL_MANIFEST=$MIRROR_ROOT/REPO-LOCAL
+
+is_repo_local() {
+  [ -f "$LOCAL_MANIFEST" ] || return 1
+  grep -qxF -- "$1" <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST")
+}
+
+echo "== repo-local skill manifest =="
+
+if [ -f "$LOCAL_MANIFEST" ]; then
+  ok "REPO-LOCAL manifest present"
+else
+  bad "REPO-LOCAL manifest missing at $LOCAL_MANIFEST"
+fi
+
+if [ "$IN_GIT" = yes ]; then
+  if git ls-files --error-unmatch "$LOCAL_MANIFEST" >/dev/null 2>&1; then
+    ok "REPO-LOCAL manifest is tracked by git"
+  else
+    bad "REPO-LOCAL manifest is NOT tracked by git (check .gitignore)"
+  fi
+fi
+
+# Every declared name must exist, and must NOT have a plugin counterpart. The
+# second half is the guard that matters: without it a drifted mirror could be
+# relabelled repo-local and skip parity entirely.
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  if [ -d "$MIRROR_ROOT/$name" ]; then
+    ok "repo-local '$name' exists on disk"
+  else
+    bad "repo-local '$name' is declared in REPO-LOCAL but absent from $MIRROR_ROOT"
+  fi
+  if [ -d "$PLUGIN_SKILLS/$name" ]; then
+    bad "repo-local '$name' also exists in $PLUGIN_SKILLS — a mirror cannot declare itself repo-local"
+  else
+    ok "repo-local '$name' has no plugin counterpart"
+  fi
+done < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST" 2>/dev/null | grep -v '^$')
+
 mirrored=0
 for mdir in "$MIRROR_ROOT"/*/; do
   [ -d "$mdir" ] || continue
   skill=$(basename "$mdir")
   src="$PLUGIN_SKILLS/$skill"
-  mirrored=$((mirrored + 1))
 
   echo "== $skill mirror parity =="
 
   if [ ! -d "$src" ]; then
-    bad "$skill exists only in the mirror (project-local fork)"
+    if is_repo_local "$skill"; then
+      ok "$skill is a declared repo-local skill (no mirror parity expected)"
+      # Content parity is meaningless without a counterpart, but *tracked-ness*
+      # is not — that is the failure a fresh checkout caught once already.
+      if [ "$IN_GIT" = yes ]; then
+        while IFS= read -r f; do
+          if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+            ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
+          else
+            bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
+          fi
+        done < <(find "$mdir" -type f | sort)
+      fi
+    else
+      bad "$skill exists only in the mirror and is not declared in REPO-LOCAL (project-local fork)"
+    fi
     continue
   fi
+
+  mirrored=$((mirrored + 1))
 
   # Forward: every file the plugin ships must be mirrored, byte for byte. Walking
   # the tree rather than naming paths keeps a newly added file from being silently

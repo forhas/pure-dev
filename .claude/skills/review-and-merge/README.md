@@ -17,6 +17,13 @@ Any intentional divergence belongs in the plugin, not here — a project-local f
 to everyone who installs the plugin. `verify-mirror.sh` checks that direction too: a file
 present here but absent from the plugin fails.
 
+## Not every directory here is a mirror
+
+`.claude/skills/REPO-LOCAL` declares the directories that are **not** mirrors — maintainer
+workflows belonging to neither shipped plugin. They are exempt from parity and from nothing
+else; `verify-mirror.sh` still requires them to be tracked, to exist, and to have no plugin
+counterpart. A directory in neither set fails.
+
 ## Why this is a script and not a rule
 
 This file used to say the mirror was tracked "so it cannot drift unnoticed", and asked

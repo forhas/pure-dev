@@ -1,0 +1,11 @@
+# Skills under .claude/skills/ that are NOT mirrors of plugins/quick-dev/skills/.
+#
+# A directory here is exempt from mirror parity and from nothing else — it is
+# still checked for git-trackedness, it still must exist on disk, and it still
+# must NOT have a plugin counterpart (a mirror cannot relabel itself local to
+# dodge parity). A directory in neither set fails, which is what keeps the
+# un-ignored mirror root safe to `git add -A` into.
+#
+# One name per line. Anything after `#` is a comment.
+
+feedback-harvest
