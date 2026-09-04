@@ -110,6 +110,18 @@ assert_present "cross-client grouping is a candidate, confirmed by reading both 
 assert_present "phase 2 records a digest of each section's complete text for phase 8 to compare" \
   "$SK" 1 "$L" '\*\*Also record a digest of the section'\''s complete text\*\*'
 
+# Finding 3937770064: a split condition (the live `mcp-unavailable:notion`
+# case) gets no identity distinct from the signature it was split from, so
+# later phases — one disposition and one archive section per signature,
+# Phase 1's matching by signature — collide the two conditions or let one
+# inherit the other's rationale.
+assert_present "a split condition needs a distinct identity, not just a distinct paragraph" \
+  "$SK" 1 "$L" 'needs a \*\*distinct identity\*\*, not just a distinct paragraph'
+assert_present "the discriminator is a bracketed suffix carried through triage and the archive heading" \
+  "$SK" 1 "$L" 'discriminator in brackets to the signature everywhere this harvest records it'
+assert_present "phase 1 matches a split condition next time by observed, not the bare signature" \
+  "$SK" 1 "$L" 'Phase 1 matches it next time by re-reading `Observed`, not the bare signature alone\.'
+
 # ---------------------------------------------------------------------------
 # Not an automatic fixer
 # ---------------------------------------------------------------------------
