@@ -150,6 +150,12 @@ assert_order "triage: the closed set precedes the table precedes the rules that 
 # ---------------------------------------------------------------------------
 echo "== applying the fixes =="
 
+# Finding 3937770045: a Phase 4 commit whose diff or message carries a
+# client-derived identifier is already in branch history by the time Phase
+# 5's gate runs — redacting the working tree afterward cannot reach back into
+# an earlier commit. The obligation has to bind at the moment of writing.
+assert_present "plugin edits and commit messages are redacted before the commit, not at phase 5" \
+  "$SK" 1 "$L" '\*\*Redact before you commit, not at Phase 5\.\*\*'
 assert_present "every applied fix is covered by an assertion in a verify harness" \
   "$SK" 1 "$L" 'covered by an assertion in some `scripts/verify-\*\.sh`'
 assert_present "a standing invariant is preferred over a change-scoped harness" \

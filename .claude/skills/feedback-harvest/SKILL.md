@@ -134,6 +134,11 @@ entry produces the wrong disposition.
 
 Every `apply` item becomes a change under `plugins/`.
 
+- **Redact before you commit, not at Phase 5.** Once a commit lands on this branch it is
+  already history: Phase 5's gate binds the archive, and it cannot reach back into an earlier
+  commit to strip a client-derived identifier already inside it. Apply Phase 5's categories to
+  every plugin edit and every commit message at the moment you write them, before you commit —
+  the commit-first rule below still governs mutation testing, unchanged.
 - **One pull request.** Widening it is cheaper than splitting it, and "it touches a file this
   pull request was not already changing" is explicitly *not* a reason to defer a small fix. Say
   in the body that the scope widened, and why.
