@@ -124,3 +124,28 @@ entry produces the wrong disposition.
 4. A recurrence subsection **outranks** the original. Recurrences are appended below the
    five fixed fields and routinely carry the sharper finding — a second consumer of the same
    defect, a wider window, or a prediction the later occurrence confirmed.
+
+### Phase 4 — Apply
+
+Every `apply` item becomes a change under `plugins/`.
+
+- **One pull request.** Widening it is cheaper than splitting it, and "it touches a file this
+  pull request was not already changing" is explicitly *not* a reason to defer a small fix. Say
+  in the body that the scope widened, and why.
+- **Do not file what you are about to fix.** `track` is for what genuinely cannot land here,
+  never for what would be tidier in its own pull request. A filed item that the same session
+  then works costs a whole extra review-and-merge cycle.
+- **Shared behaviour changes in both plugins.** `plugins/notion-dev` vendors adapted forks of
+  several `quick-dev` skills.
+  When a fix touches shared behaviour, change both copies and check the wording that differs —
+  plugin names, config paths, reviewer defaults.
+- **Re-sync any mirrored skill you edit**, then run `scripts/verify-mirror.sh`.
+- **Bump each touched plugin's manifest version exactly once**, per the policy in
+  `plugins/quick-dev/skills/develop/SKILL.md`: breaking → major, new capability → minor,
+  fix/docs/refactor/internal-only → patch. A harvest that changes no plugin file bumps nothing.
+- **Every applied fix is covered by an assertion in some `scripts/verify-*.sh`** — extend an
+  existing standing-invariant harness where one fits,
+  rather than minting a change-scoped one with a version floor. Floors rot; invariants do not.
+- **Mutation-test every new assertion**: break the file it guards, confirm `FAIL`, restore.
+  Commit **first** — a `git checkout -- .` to undo the mutation otherwise reverts the work
+  silently, and a harness that passes against a broken file is worse than none.

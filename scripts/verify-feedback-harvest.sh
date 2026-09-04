@@ -110,6 +110,26 @@ assert_order "triage: the closed set precedes the table precedes the rules that 
   "table row"   '^\| `blocked` \|' \
   "first rule"  'is not the same as \*\*no plugin change\*\*'
 
+# ---------------------------------------------------------------------------
+# Phase 4 — Apply
+# ---------------------------------------------------------------------------
+echo "== applying the fixes =="
+
+assert_present "every applied fix is covered by an assertion in a verify harness" \
+  "$SK" 1 "$L" 'covered by an assertion in some `scripts/verify-\*\.sh`'
+assert_present "a standing invariant is preferred over a change-scoped harness" \
+  "$SK" 1 "$L" 'rather than minting a change-scoped one with a version floor'
+assert_present "each new assertion is mutation-tested against the file it guards" \
+  "$SK" 1 "$L" 'break the file it guards, confirm `FAIL`, restore'
+assert_present "the work is committed before any mutation" \
+  "$SK" 1 "$L" 'Commit \*\*first\*\*'
+# notion-dev vendors adapted forks of several quick-dev skills; a fix to shared
+# behaviour that lands in one copy silently diverges the other.
+assert_present "a shared-behaviour fix lands in both plugins" \
+  "$SK" 1 "$L" 'change both copies and check the wording that differs'
+assert_present "a fix is widened into this pull request rather than deferred" \
+  "$SK" 1 "$L" 'is explicitly \*not\* a reason to defer'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
