@@ -50,14 +50,14 @@ done
 # every item a harvest finds inconvenient becomes blocked, which is how the
 # three-state rule is defeated everywhere else in this repo.
 #
-# Unbackticked on purpose: the sentence this pins never spells the word
-# "blocked" (it is the paragraph below the table, not the row itself), so a
-# backticked label here would claim a literal the regex cannot honour — see
-# assert_covers in scripts/lib/assert.sh.
-assert_present "blocked requires an external cause" \
-  "$SK" 1 "$L" '\*\*The cause must be external\.\*\*'
-assert_present "blocked excludes a plugin-internal cause" \
-  "$SK" 1 "$L" 'A plugin-internal cause is a tail wearing a label'
+# The disposition name is bound into both sentences (not just the table row),
+# so a future rename of `blocked` to anything else fails these two, not just
+# the table check — un-backticking the labels instead would have satisfied
+# assert_covers without requiring the regex to be about `blocked` at all.
+assert_present "\`blocked\` requires an external cause" \
+  "$SK" 1 "$L" '\*\*A `blocked` disposition requires an external cause\.\*\*'
+assert_present "\`blocked\` excludes a plugin-internal cause" \
+  "$SK" 1 "$L" 'A plugin-internal cause on a `blocked` item is a tail wearing a label'
 
 # A non-state phrased to read like a decision is the failure mode this names.
 # R1: the prose bolds the phrase (`are **not dispositions**`) — the regex has to

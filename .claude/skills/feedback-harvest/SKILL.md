@@ -58,7 +58,9 @@ These are `session-closeout`'s three states plus the two that are decisions rath
 ends. "Revisit later", "worth a look" and "next time" are **not dispositions** — they are the
 absence of one, phrased so it reads like a decision.
 
-**The cause must be external.** A credential this session does not have, a third-party outage,
-a decision only the user can make. A plugin-internal cause is a tail wearing a label, and it is
-the single most common way the three-state rule is defeated. Time is not a cause: if there was
-time to describe the work, there was time to start it.
+**A `blocked` disposition requires an external cause.** A credential this session does not
+have, a third-party outage, a decision only the user can make.
+
+A plugin-internal cause on a `blocked` item is a tail wearing a label, and it is the single
+most common way the three-state rule is defeated. Time is not a cause: if there was time to
+describe the work, there was time to start it.
