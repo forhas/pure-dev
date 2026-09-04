@@ -115,8 +115,9 @@ assert_has "local mode folds findings into the merge gate" "$D" 'completeness fi
 assert_has "local mode distinguishes zero criteria from a check that never ran" "$D" 'this step running at all is what makes `0` the correct value here, never `null`'
 assert_has "develop posts the completeness report as a PR comment" "$D" 'gh pr comment <pr-number> --body-file <path>'
 assert_has "develop states review-and-merge does not post the report" "$D" 'produces the `COMPLETENESS-REPORT` section but does not post it'
-assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — completeness check degraded'
-assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default, `file` must cite its blast-radius criterion number, and `drop` must carry a rationale'
+assert_has "local mode degrades without deadlocking non-interactive runs" "$D" 'unverified — citation did not resolve'
+assert_has "local mode splits an undispatchable verifier from an unparseable one" "$D" 'cause `completeness verifier could not be dispatched`'
+assert_has "local mode states absorb as the triage default" "$D" '`absorb` is the default; `drop` must carry a rationale'
 assert_has "local mode restates the completeness counts" "$D" "never the agent's raw counts, since it cannot know which of its own citations resolved"
 assert_has "local mode falls back to Phase 2c's output on a clean pass" "$D" 'pass `VERIFY_OUTPUT` (2c'"'"'s retained output) instead'
 assert_has "develop keeps Unmet separate from Deferred for criteria items" "$D" 'never `Deferred:`, even when the merge gate'
@@ -125,7 +126,7 @@ assert_has "2c retains its verification output for the completeness check" "$D" 
 assert_has "local mode resolves test citations without enumerating step numbers" "$D" 'the named test must appear, passing, in the verification output the gate already holds'
 assert_has "local mode raises items even when the user merges past a degraded check" "$D" 'the user decides, every unverified criterion still becomes an item'
 assert_has "local mode fixes its absorb items and caps itself at two passes" "$D" 'This check runs at most twice.'
-assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file` or `drop` with a rationale'
+assert_has "local mode reclassifies rather than halting a non-interactive run" "$D" 'must be reclassified to `file`, `drop`, or `blocked` with a rationale'
 assert_has "local mode states that completeness-absorb work is not code-reviewed" "$D" '`absorb` work is not code-reviewed'
 assert_has "local mode states the editable-criteria weakness honestly" "$D" 'byte-identical to a genuinely complete run'
 assert_has "a reclassified criterion item takes an Unmet: trailer, not a Deferred: one" \

@@ -142,6 +142,16 @@ assert_has "notion-dev/skills/flow-triage ledger carries triage_blocked" \
 echo "== quick-dev call sites =="
 assert_has "quick-dev/skills/develop gives a BLOCKED item no trailer" \
   "$QD/skills/develop/SKILL.md" '**A `BLOCKED` item never takes a trailer of either kind.**'
+# Local mode never enters review-and-merge, so develop's OWN completeness gate is
+# the sole producer of a blocked outcome there. Fixing only the trailer and
+# reporting consumers left the producer enumerating absorb/file/drop, so an
+# externally impossible local-mode item still had no route but the backlog.
+assert_has "quick-dev/skills/develop produces a blocked outcome in local mode" \
+  "$QD/skills/develop/SKILL.md" 'this enumeration is the sole producer of a `blocked` outcome here'
+assert_has "quick-dev/skills/develop offers all three at its terminal rule" \
+  "$QD/skills/develop/SKILL.md" '**must be reclassified to `file`, `drop`, or `blocked` with a rationale**'
+assert_has "quick-dev/skills/develop keeps filing as the residual" \
+  "$QD/skills/develop/SKILL.md" 'so it must never fall through to `blocked`'
 assert_has "quick-dev/skills/develop records triage_blocked in the ledger" \
   "$QD/skills/develop/SKILL.md" '"triage_blocked":<n>'
 assert_has "quick-dev/skills/flow-triage ledger carries triage_blocked" \
