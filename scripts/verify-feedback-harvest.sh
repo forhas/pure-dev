@@ -137,6 +137,11 @@ echo "== redaction gate, then archive =="
 
 assert_present "redaction is a gate before publication, not a cleanup after it" \
   "$SK" 1 "$L" 'Nothing is written to `docs/feedback/` until this gate has passed'
+# The gate bound only the archive file; Phase 4's plugin edits, their commit
+# messages, and Phase 7's PR body land in the same public repo and were
+# unbound (final review, Important 2).
+assert_present "the gate also binds plugin commits, commit messages, and the pr body" \
+  "$SK" 1 "$L" 'Nor committed under `plugins/`, nor placed in a commit message or pull request body'
 assert_present "the gate applies the issue-log forbidden list verbatim" \
   "$SK" 1 "$L" 'applies `notion-dev:issue-log`'\''s \*\*Forbidden, without exception\*\* list'
 assert_present "the client logs are known to violate that list today" \

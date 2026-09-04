@@ -152,9 +152,10 @@ Every `apply` item becomes a change under `plugins/`.
 
 ### Phase 5 — Redact
 
-**Nothing is written to `docs/feedback/` until this gate has passed.** Redaction is a gate
-before publication, never a cleanup after it — once the bytes are committed to a public repo,
-a later pass is not a fix.
+**Nothing is written to `docs/feedback/` until this gate has passed**.
+Nor committed under `plugins/`, nor placed in a commit message or pull request body — all three
+land in this same public repo. Redaction is a gate before publication, never a cleanup after
+it — once the bytes are committed to a public repo, a later pass is not a fix.
 
 `notion-dev:issue-log`'s redaction contract binds the *write* side, and the client logs do not
 honour it. **This is measured, not hypothetical** — every row below is in a live client log
