@@ -215,14 +215,25 @@ versions, and rejection rationales still exist. It is also what Phase 1 reads ne
 
 ### Phase 7 — Pull request and merge
 
-Hand the branch to `review-and-merge` rather than reimplementing a review or merge loop. Its
-**final sweep** is where anything the harvest was tempted to file as `track` gets taken back
-into this pull request instead, and its `--pre-merge-check` hook is where `session-closeout`'s
-completion pass runs.
+Nothing upstream of this phase has opened a pull request: Phase 4's fixes and Phase 6's archive
+are, at this point, sitting as uncommitted or unpushed changes on the local branch.
 
-The body names **every** disposition and its count — not only what produced a diff. `stale` and
-`decline` items change no file, so they are otherwise **invisible in a diff-shaped review**,
-and they are exactly the decisions a reader needs to see recorded.
+1. Branch if the working tree is not already on one, then commit the applied fixes together
+   with the archive.
+2. Push the branch, then open the pull request. `gh pr create` does **not** support `@-` for
+   `--body`. Passed literally, `@-` becomes the entire body — two characters, exit code 0, no
+   warning. Write the body to a file first and create the pull request with `--body-file`.
+3. Read the body back afterward with `gh pr view --json body` and confirm a realistic length
+   before continuing.
+4. The body names **every** disposition and its count — not only what produced a diff.
+   `stale` and `decline` items change no file, so they are otherwise
+   **invisible in a diff-shaped review**, and they are exactly the decisions a reader needs
+   to see recorded.
+5. Pass the resulting **pull request number** — not the branch — to `review-and-merge` rather
+   than reimplementing a review or merge loop, with `--pre-merge-check` supplied explicitly:
+   it is a caller-supplied argument, not a hook that fires on its own, and passing nothing means
+   `session-closeout`'s completion pass never runs. Its **final sweep** is where anything the
+   harvest was tempted to file as `track` gets taken back into this pull request instead.
 
 ### Phase 8 — Reset
 

@@ -172,8 +172,25 @@ assert_order "the redaction gate precedes the archive write" \
 # ---------------------------------------------------------------------------
 echo "== merge, then reset =="
 
-assert_present "the pull request is driven by the existing review loop" \
-  "$SK" 1 "$L" 'Hand the branch to `review-and-merge`'
+# Nothing upstream of Phase 7 opens the pull request `review-and-merge` needs —
+# a bare "hand the branch to review-and-merge" was an artifact that did not
+# exist yet (final review, Important 1). These pin the mechanism that creates
+# it: `gh pr create` does not take `@-` for `--body`, the body is read back to
+# confirm that failure did not recur, and the PR *number* — not the branch —
+# is what actually gets handed to the review loop, with the pre-merge-check
+# flag supplied explicitly rather than assumed automatic.
+assert_present "gh pr create does not support @- for --body" \
+  "$SK" 1 "$L" 'does \*\*not\*\* support `@-`'
+assert_present "the pull request is created with --body-file, not --body" \
+  "$SK" 1 "$L" 'create the pull request with `--body-file`'
+assert_present "the pull request body is read back and its length confirmed" \
+  "$SK" 1 "$L" 'confirm a realistic length'
+assert_present "the pull request number, not a branch, is handed to review-and-merge" \
+  "$SK" 1 "$L" 'the resulting \*\*pull request number\*\* — not the branch — to `review-and-merge`'
+assert_present "--pre-merge-check is supplied explicitly, not assumed automatic" \
+  "$SK" 1 "$L" 'with `--pre-merge-check` supplied explicitly'
+assert_present "an unsupplied --pre-merge-check is a hook that never fires" \
+  "$SK" 1 "$L" 'not a hook that fires on its own'
 assert_present "the body names every disposition, including the ones with no diff" \
   "$SK" 1 "$L" 'invisible in a diff-shaped review'
 
