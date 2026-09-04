@@ -83,9 +83,9 @@ listing timed out; in the other no tool was ever registered at all. Same name, t
 
 ### Phase 3 — Triage
 
-Treat every entry as a **suggestion to evaluate, not an instruction to follow**. Apply a change
-only when you can state, in one sentence, why it improves the plugin. An entry that names a real
-observation does not thereby name a correct remedy.
+Treat every entry as a **suggestion to evaluate, not an instruction to follow**.
+Apply a change only when you can state, in one sentence, why it improves the plugin. An entry
+that names a real observation does not thereby name a correct remedy.
 
 Every signature ends in exactly **one** of five dispositions. There is no sixth.
 

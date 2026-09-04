@@ -101,6 +101,25 @@ assert_present "cross-client grouping is a candidate, confirmed by reading both 
   "$SK" 1 "$L" 'then \*\*confirm or split\*\* by reading both `Observed` fields'
 
 # ---------------------------------------------------------------------------
+# Not an automatic fixer
+# ---------------------------------------------------------------------------
+echo "== triage is not an automatic fixer =="
+
+# The spec's "Not an automatic fixer" non-goal. Delete this paragraph and the
+# suite stays green while the skill becomes an auto-applier — this is the
+# highest-value assertion in this wave (final review, Minor 8.1).
+assert_present "an entry is a suggestion to evaluate, never an instruction to follow" \
+  "$SK" 1 "$L" 'suggestion to evaluate, not an instruction to follow'
+assert_present "a change is applied only when statable in one sentence why it helps" \
+  "$SK" 1 "$L" 'Apply a change only when you can state, in one sentence, why it improves the plugin'
+
+# `track`'s Requires cell is otherwise proven present but not proven to say
+# anything: the five-row loop above only checks `^\| \`track\` \|`, which a
+# weakened Requires column would still satisfy (final review, Minor 8.5).
+assert_present "\`track\` requires a ticket that exists right now, with its url" \
+  "$SK" 1 "$L" '^\| `track` \|.*A ticket that exists right now, with its URL \|'
+
+# ---------------------------------------------------------------------------
 # The triage rules
 # ---------------------------------------------------------------------------
 echo "== the triage rules =="
@@ -142,6 +161,14 @@ assert_present "a shared-behaviour fix lands in both plugins" \
   "$SK" 1 "$L" 'change both copies and check the wording that differs'
 assert_present "a fix is widened into this pull request rather than deferred" \
   "$SK" 1 "$L" 'is explicitly \*not\* a reason to defer'
+# The widening rule above was already pinned; its sibling ("don't file what
+# you're about to fix") was not — half the pair was unguarded (Minor 8.2).
+assert_present "the harvest never files what it is about to fix" \
+  "$SK" 1 "$L" '\*\*Do not file what you are about to fix\.\*\*'
+assert_present "each touched plugin's manifest version is bumped exactly once" \
+  "$SK" 1 "$L" 'Bump each touched plugin'\''s manifest version exactly once'
+assert_present "a harvest touching no plugin file bumps no version" \
+  "$SK" 1 "$L" 'A harvest that changes no plugin file bumps nothing'
 
 # ---------------------------------------------------------------------------
 # Phase 5 and 6 — redact, then archive
@@ -159,6 +186,15 @@ assert_present "the gate applies the issue-log forbidden list verbatim" \
   "$SK" 1 "$L" 'applies `notion-dev:issue-log`'\''s \*\*Forbidden, without exception\*\* list'
 assert_present "the client logs are known to violate that list today" \
   "$SK" 1 "$L" 'This is measured, not hypothetical'
+# Only the per-category table's headline was pinned; every row beneath — the
+# keep list and the rows themselves, the db=…a41f9c truncation exception most
+# of all — could be deleted with the suite green (Minor 8.4).
+assert_present "the forbidden list is the gate, never a per-field whitelist" \
+  "$SK" 1 "$L" 'The forbidden list is the gate, not the per-field whitelist'
+assert_present "the keep list names what redaction leaves untouched" \
+  "$SK" 1 "$L" 'So these are kept: the'
+assert_present "a database or page id keeps six characters as the one exception" \
+  "$SK" 1 "$L" 'Truncate to its last six characters, `db=…a41f9c` form — the one exception'
 # Without a rule per category, an executing agent has to invent the
 # omit/placeholder/generalize convention on the spot for four of the five
 # forbidden kinds — this pins that the rule exists and names the default.
