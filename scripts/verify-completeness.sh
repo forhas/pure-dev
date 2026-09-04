@@ -106,7 +106,7 @@ D=$QD/skills/develop/SKILL.md
 assert_has "develop writes a criteria file"          "$D" 'one criterion per line, verbatim, no bullet markers'
 assert_has "develop freezes criteria in the PR"      "$D" 'Compose the PR body to include the frozen acceptance criteria verbatim'
 assert_has "develop passes --criteria-file"          "$D" 'if set), plus `--criteria-file'
-assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as `met`:'
+assert_has "develop writes Unmet: trailers"          "$D" 'Append one `Unmet:` line for every criterion the completeness gate did not settle as `met`'
 assert_has "develop reports unmet criteria"          "$D" 'acceptance criteria were not met'
 assert_has "local mode runs its own completeness check" "$D" '**Completeness check** (local mode)'
 assert_has "local mode mirrors the verifier contract"   "$D" 'The completeness verifier'

@@ -167,6 +167,12 @@ assert_has "notion-dev/skills/flow-triage ledger carries triage_blocked" \
 echo "== quick-dev call sites =="
 assert_has "quick-dev/skills/develop gives a BLOCKED item no trailer" \
   "$QD/skills/develop/SKILL.md" '**A `BLOCKED` item never takes a trailer of either kind.**'
+# The Unmet: template enumerates absorb|file|drop and the rule above it demanded
+# a line for EVERY criterion not settled `met`. A blocked criterion is not met,
+# so the two rules contradicted each other and a runner had to violate one --
+# and encoding externally blocked work as a scope reduction is the worse choice.
+assert_has "quick-dev/skills/develop exempts a blocked criterion from the trailer" \
+  "$QD/skills/develop/SKILL.md" '**except one it settled as `blocked`**, which gets no trailer of either kind'
 # Local mode never enters review-and-merge, so develop's OWN completeness gate is
 # the sole producer of a blocked outcome there. Fixing only the trailer and
 # reporting consumers left the producer enumerating absorb/file/drop, so an
