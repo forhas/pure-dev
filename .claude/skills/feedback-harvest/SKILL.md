@@ -207,3 +207,37 @@ URL.
 
 Once a client log is reset this archive is **the only place the occurrence counts**, first-seen
 versions, and rejection rationales still exist. It is also what Phase 1 reads next time.
+
+### Phase 7 — Pull request and merge
+
+Hand the branch to `review-and-merge` rather than reimplementing a review or merge loop. Its
+**final sweep** is where anything the harvest was tempted to file as `track` gets taken back
+into this pull request instead, and its `--pre-merge-check` hook is where `session-closeout`'s
+completion pass runs.
+
+The body names **every** disposition and its count — not only what produced a diff. `stale` and
+`decline` items change no file, so they are otherwise **invisible in a diff-shaped review**,
+and they are exactly the decisions a reader needs to see recorded.
+
+### Phase 8 — Reset
+
+The reset runs **only after the merge has landed**. Before it, the client log is the only copy
+of this feedback, and a pull request that does not land would take it with it.
+
+Removal is surgical, matched on signature **and** occurrence count as harvested:
+
+1. Locate `## <signature>` in the client log. Confirm its `**Occurrences**` integer and its
+   `**Last seen**` line still match what Phase 2 recorded.
+2. Match → delete the section, from its `##` heading to the line before the next `##` heading
+   or end of file.
+3. Mismatch → leave the section in place and report it. The client appended to or
+   incremented that signature after the harvest read it, and the new evidence is untriaged.
+4. **All five dispositions are removed**, `decline` and `track` included. Their durable home is
+   the archive and the ticket; leaving them means re-triaging them next harvest, which is the
+   waste Phase 1 and this step exist to end together.
+5. Keep the file header. Never truncate the file and never delete it — truncation discards
+   whatever the client wrote between the harvest and now, which is precisely the material step 3
+   protects.
+
+`.claude/notion-dev/` is self-gitignored in the client repo, so the issue log is untracked
+there: the reset is a plain file edit, with no commit and no push into a client repo.

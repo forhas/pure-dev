@@ -161,6 +161,37 @@ assert_order "the redaction gate precedes the archive write" \
   "gate rule"       'Nothing is written to `docs/feedback/` until this gate has passed' \
   "archive heading" '^### Phase 6 — Archive'
 
+# ---------------------------------------------------------------------------
+# Phase 7 and 8 — merge, then reset
+# ---------------------------------------------------------------------------
+echo "== merge, then reset =="
+
+assert_present "the pull request is driven by the existing review loop" \
+  "$SK" 1 "$L" 'Hand the branch to `review-and-merge`'
+assert_present "the body names every disposition, including the ones with no diff" \
+  "$SK" 1 "$L" 'invisible in a diff-shaped review'
+
+# The reset destroys the client's only copy. Doing it before the merge loses the
+# feedback for a pull request that then does not land.
+assert_present "the reset runs only after the merge has landed" \
+  "$SK" 1 "$L" '\*\*only after the merge has landed\*\*'
+assert_present "removal matches on signature and occurrence count as harvested" \
+  "$SK" 1 "$L" 'signature \*\*and\*\* occurrence count as harvested'
+assert_present "a mismatched section is left in place and reported" \
+  "$SK" 1 "$L" 'leave the section in place and report it'
+assert_present "the file is never truncated and never deleted" \
+  "$SK" 1 "$L" 'Never truncate the file and never delete it'
+assert_present "all five dispositions are removed, not only the applied ones" \
+  "$SK" 1 "$L" 'All five dispositions are removed'
+assert_present "the reset is an untracked file edit with no commit in the client repo" \
+  "$SK" 1 "$L" 'no commit and no push into a client repo'
+
+assert_order "the merge precedes the reset" \
+  "$SK" 1 "$L" \
+  "merge heading" '^### Phase 7 — Pull request and merge' \
+  "reset heading" '^### Phase 8 — Reset' \
+  "after rule"    '\*\*only after the merge has landed\*\*'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
