@@ -87,6 +87,26 @@ assert_present "a reappearing signature is re-evaluated, not re-declined by rote
 assert_present "cross-client grouping is a candidate, confirmed by reading both entries" \
   "$SK" 1 "$L" 'then \*\*confirm or split\*\* by reading both `Observed` fields'
 
+echo "== the triage rules =="
+
+# Each rule exists because a specific live entry defeats the obvious reading.
+assert_present "a host-caused entry is still evaluated for a documentation fix" \
+  "$SK" 1 "$L" 'is not the same as \*\*no plugin change\*\*'
+assert_present "an entry-s stated cause is evidence, never an inherited finding" \
+  "$SK" 1 "$L" 'Triage re-derives the cause; it never inherits'
+assert_present "an old first-seen version is a candidate, not a verdict" \
+  "$SK" 1 "$L" 'is a `stale` \*\*candidate\*\*, never a `stale` verdict'
+assert_present "a recurrence outranks the original entry" \
+  "$SK" 1 "$L" 'A recurrence subsection \*\*outranks\*\* the original'
+
+# Order: the rules qualify the table, so they must follow it. A rule hoisted
+# above the disposition set reads as the primary instruction, which inverts it.
+assert_order "triage: the closed set precedes the table precedes the rules that qualify it" \
+  "$SK" 1 "$L" \
+  "closed set"  'There is no sixth' \
+  "table row"   '^\| `blocked` \|' \
+  "first rule"  'is not the same as \*\*no plugin change\*\*'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

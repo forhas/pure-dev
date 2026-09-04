@@ -102,3 +102,25 @@ have, a third-party outage, a decision only the user can make.
 A plugin-internal cause on a `blocked` item is a tail wearing a label, and it is the single
 most common way the three-state rule is defeated. Time is not a cause: if there was time to
 describe the work, there was time to start it.
+
+**Four rules the live client data forces.** Each is here because the obvious reading of a real
+entry produces the wrong disposition.
+
+1. "Not the plugin's bug" is not the same as **no plugin change**. One entry says outright
+   that the worktree is created correctly and that gitignored files are gitignored by design —
+   *and* that a one-line note in `ticket.md` Phase 2.1 would remove the ambiguity cheaply,
+   because the failure looks like a deploy regression right before a merge gate. Evaluate every
+   host-caused or client-setup-caused entry for a documentation fix before dismissing it.
+
+2. **An entry's stated cause is evidence, not a finding.** One entry recorded a mechanism
+   ("self-relations are inherently symmetric") that was later disproved, and its own
+   correction notes the drop-and-recreate it rested on never took effect.
+   Triage re-derives the cause; it never inherits the entry's conclusion.
+
+3. An old `First seen` version is a `stale` **candidate**, never a `stale` verdict. Confirm
+   by reading the current plugin text and citing it as `file:line`. Entries recorded against
+   `0.12.2` against a plugin now past `0.21.0` include defects that are still present.
+
+4. A recurrence subsection **outranks** the original. Recurrences are appended below the
+   five fixed fields and routinely carry the sharper finding — a second consumer of the same
+   defect, a wider window, or a prediction the later occurrence confirmed.
