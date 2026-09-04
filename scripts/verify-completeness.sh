@@ -43,7 +43,14 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n resolves citations gate-side"       "$RM" 'the gate resolves every citation'
   assert_has "$n matches code citations by content"  "$RM" 'by content, never by line number'
   assert_has "$n defines the unverified state"       "$RM" 'a third state that is not `met` and not `not-met`'
-  assert_has "$n files unverified when degraded"     "$RM" 'unverified — completeness check degraded'
+  # The degraded path splits by WHICH failure occurred. A verifier that never ran
+  # says nothing about the work, so its default is `blocked` (external: no check
+  # ran), not `file` — filing there records a scope reduction per criterion against
+  # work the evidence may fully support. Only a citation that failed to resolve is
+  # genuine `unverified`. Collapsing the two is the defect this pair pins.
+  assert_has "$n defaults a never-run verifier to blocked" "$RM" 'blocked — completeness verifier unavailable'
+  assert_has "$n keeps unresolved citations unverified"    "$RM" 'unverified — citation did not resolve'
+  assert_lacks "$n no longer files on a degraded verifier" "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
   assert_has "$n uses NONE for empty blocks"         "$RM" 'the literal `NONE`'
   assert_has "$n emits the COMPLETENESS-REPORT block" "$RM" 'a **`COMPLETENESS-REPORT`** section'
