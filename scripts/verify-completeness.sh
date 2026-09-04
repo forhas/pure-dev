@@ -48,7 +48,14 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # ran), not `file` — filing there records a scope reduction per criterion against
   # work the evidence may fully support. Only a citation that failed to resolve is
   # genuine `unverified`. Collapsing the two is the defect this pair pins.
-  assert_has "$n defaults a never-run verifier to blocked" "$RM" 'blocked — completeness verifier unavailable'
+  assert_has "$n defaults an undispatchable verifier to blocked" "$RM" 'blocked — completeness verifier could not be dispatched'
+  # A verifier that RETURNED contract-invalid output twice did run, so the defect
+  # is in this gate's prompt/contract/parse — an INTERNAL cause, which `blocked`
+  # excludes. Labelling it blocked would merge internally actionable completeness
+  # failures into no backlog at all; minting one scope reduction per criterion is
+  # the other failure. One item, plus an issue-log entry naming the gate defect.
+  assert_has "$n keeps contract-invalid output out of blocked" "$RM" '**That is an internal cause, and `blocked` excludes internal causes**'
+  assert_has "$n records contract-invalid output as one file item" "$RM" 'file — verifier output contract-invalid twice'
   assert_has "$n keeps unresolved citations unverified"    "$RM" 'unverified — citation did not resolve'
   assert_lacks "$n no longer files on a degraded verifier" "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
