@@ -192,6 +192,11 @@ shas.
 identifier still groups is the exception, and it is an exception only for database and page
 ids.
 
+The generalization **may** carry the kind's own non-identifying attribute — OS family for a
+path, "workspace label" versus "personal name" for a name — but never the content itself. This
+is an option, not a requirement: each row's "never the address/name/path/URL" clause already
+bounds what the attribute may not be.
+
 If an entry cannot be redacted without destroying what it found,
 **paraphrase the finding and do not reproduce the original**.
 

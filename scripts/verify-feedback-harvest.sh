@@ -148,6 +148,12 @@ assert_present "each forbidden category carries a stated redaction rule" \
   "$SK" 1 "$L" 'A rule per forbidden category — what an executing agent writes in its place'
 assert_present "generalize-to-the-kind is stated as the default redaction rule" \
   "$SK" 1 "$L" 'Generalize to the kind is the default'
+# The violation table above already writes richer, non-identifying descriptors
+# ("a Windows checkout path," "a Notion workspace named after a person") than
+# the flat per-category rule allows. Without this line the flat form
+# contradicts the richer example the same section sets.
+assert_present "the generalization may carry the kind's own non-identifying attribute" \
+  "$SK" 1 "$L" 'may\*\* carry the kind'\''s own non-identifying attribute'
 assert_present "an unredactable finding is paraphrased, never reproduced" \
   "$SK" 1 "$L" 'paraphrase the finding and do not reproduce the original'
 assert_present "the archive is the durable record once a client log is reset" \
