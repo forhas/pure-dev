@@ -56,6 +56,11 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # the other failure. One item, plus an issue-log entry naming the gate defect.
   assert_has "$n keeps contract-invalid output out of blocked" "$RM" '**That is an internal cause, and `blocked` excludes internal causes**'
   assert_has "$n records contract-invalid output as one file item" "$RM" 'file — verifier output contract-invalid twice'
+  # The interactive branch said every unverified criterion becomes an item at the
+  # failure kind's default -- which for contract-invalid output reproduced one
+  # filed scope reduction per criterion, the exact outcome the single-item rule
+  # was written to prevent. Cardinality travels with the kind, both branches.
+  assert_has "$n keeps contract-invalid to one item even interactively" "$RM" 'contract-invalid output it is exactly one item for the ticket'
   assert_has "$n keeps unresolved citations unverified"    "$RM" 'unverified — citation did not resolve'
   assert_lacks "$n no longer files on a degraded verifier" "$RM" 'unverified — completeness check degraded'
   assert_has "$n emits the COMPLETENESS key"         "$RM" 'COMPLETENESS:'
@@ -78,7 +83,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n dispatches artifacts as file paths"     "$RM" 'as **file paths, not inline text**'
   assert_has "$n excludes the implementer's material"    "$RM" 'Pass **nothing** from the implementer'
   # C2: the interactive degraded branch still raises items.
-  assert_has "$n raises items even when the user merges past a degraded check" "$RM" 'the user decides, every unverified criterion still becomes an item'
+  assert_has "$n raises items even when the user merges past a degraded check" "$RM" 'Whatever the user decides, the failure still becomes an item'
   # I1: the verification output the gate resolves test citations against has a producer.
   assert_has "$n runs verification itself when the loop retained none" "$RM" 'before dispatching, and retains that as `VERIFY_OUTPUT`'
   # I2: pass 2 can still resolve a re-citation into pass 1's own commits.
