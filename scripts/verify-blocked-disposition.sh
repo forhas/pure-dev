@@ -167,6 +167,12 @@ assert_has "quick-dev/skills/develop offers all three at its terminal rule" \
   "$QD/skills/develop/SKILL.md" '**must be reclassified to `file`, `drop`, or `blocked` with a rationale**'
 assert_has "quick-dev/skills/develop keeps filing as the residual" \
   "$QD/skills/develop/SKILL.md" 'so it must never fall through to `blocked`'
+# The interactive branch had kept the old `file`-by-default, so an external
+# dispatch failure minted deferred backlog plus an `Unmet:` trailer claiming a
+# scope reduction that never happened — bypassing the blocked default the
+# non-interactive branch had just gained. The failure kinds bind both branches.
+assert_has "quick-dev/skills/develop binds both branches to the failure kind" \
+  "$QD/skills/develop/SKILL.md" '**at the default for its failure kind above, never `file` by default**'
 assert_has "quick-dev/skills/develop records triage_blocked in the ledger" \
   "$QD/skills/develop/SKILL.md" '"triage_blocked":<n>'
 assert_has "quick-dev/skills/flow-triage ledger carries triage_blocked" \
