@@ -87,6 +87,9 @@ assert_present "a reappearing signature is re-evaluated, not re-declined by rote
 assert_present "cross-client grouping is a candidate, confirmed by reading both entries" \
   "$SK" 1 "$L" 'then \*\*confirm or split\*\* by reading both `Observed` fields'
 
+# ---------------------------------------------------------------------------
+# The triage rules
+# ---------------------------------------------------------------------------
 echo "== the triage rules =="
 
 # Each rule exists because a specific live entry defeats the obvious reading.

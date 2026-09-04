@@ -112,7 +112,7 @@ entry produces the wrong disposition.
    because the failure looks like a deploy regression right before a merge gate. Evaluate every
    host-caused or client-setup-caused entry for a documentation fix before dismissing it.
 
-2. **An entry's stated cause is evidence, not a finding.** One entry recorded a mechanism
+2. An entry's stated cause is evidence, **not a finding**. One entry recorded a mechanism
    ("self-relations are inherently symmetric") that was later disproved, and its own
    correction notes the drop-and-recreate it rested on never took effect.
    Triage re-derives the cause; it never inherits the entry's conclusion.
