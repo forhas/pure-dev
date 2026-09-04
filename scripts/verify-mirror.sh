@@ -117,7 +117,7 @@ while IFS= read -r f; do
   else
     bad "$(basename "$f") is an undeclared loose file directly under $MIRROR_ROOT"
   fi
-done < <(find "$MIRROR_ROOT" -maxdepth 1 -type f | sort)
+done < <(find "$MIRROR_ROOT" -maxdepth 1 ! -type d | sort)
 [ "$loose_seen" -gt 0 ] || ok "no loose files under $MIRROR_ROOT to check"
 
 mirrored=0
@@ -143,7 +143,7 @@ while IFS= read -r dir; do
           else
             bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
           fi
-        done < <(find "$mdir" -type f | sort)
+        done < <(find "$mdir" ! -type d | sort)
       fi
     else
       bad "$skill exists only in the mirror and is not declared in REPO-LOCAL (project-local fork)"
@@ -183,7 +183,7 @@ while IFS= read -r dir; do
     else
       bad "$skill: $rel exists only in the mirror (project-local file)"
     fi
-  done < <(find "$mdir" -type f | sort)
+  done < <(find "$mdir" ! -type d | sort)
 
   # Present on disk is not the invariant — *versioned* is. A mirror file that
   # .gitignore excludes passes every content check locally and then vanishes on a
@@ -196,7 +196,7 @@ while IFS= read -r dir; do
       else
         bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
       fi
-    done < <(find "$mdir" -type f | sort)
+    done < <(find "$mdir" ! -type d | sort)
   fi
 done < <(find "$MIRROR_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
 
