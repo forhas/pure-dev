@@ -385,10 +385,16 @@ relax because the passes are spent'
 expect PASS "a single-line fragment of the same sentence is the correct form" \
   assert_has "wrapped.md: the requirement does not relax" \
   "$FIX/wrapped.md" 'requirement does not'
-expect FAIL "assert_lacks rejects a multi-line literal too" \
-  assert_lacks "wrapped.md: says nothing about relaxing" \
-  "$FIX/wrapped.md" 'requirement does not
-relax because the passes are spent'
+# Same discrimination requirement as the assert_has_n case above, mirrored: the
+# literal's lines must be ABSENT from the fixture. With a line that is present,
+# an unguarded `grep -qF` matches through the alternation and assert_lacks says
+# `bad` for the ordinary "the string is here" reason — so `expect FAIL` passes
+# with or without the guard, and the guard could be deleted from assert_lacks
+# with this whole harness still green. Verified: it could.
+expect FAIL "assert_lacks rejects a multi-line literal rather than matching its alternation" \
+  assert_lacks "wrapped.md: says nothing about ratchets" \
+  "$FIX/wrapped.md" 'the ratchet judged it
+and found nothing'
 expect PASS "assert_lacks still passes on a single-line literal it does not find" \
   assert_lacks "wrapped.md: says nothing about ratchets" \
   "$FIX/wrapped.md" 'the ratchet judged it'
