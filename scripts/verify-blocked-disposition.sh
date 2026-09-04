@@ -56,14 +56,22 @@ echo "== the completeness gate's terminal rule =="
 for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n offers three terminal dispositions" "$RM" '`file`, `drop`, or `blocked` with a rationale'
-  # A free choice among the three is what produced every one of STO-77's
-  # tickets. The decision ORDER, and `file` being narrowest rather than the
-  # fallback, is the mechanism that bounds it.
-  assert_has "$n falls back to \`blocked\`, never to \`file\`" "$RM" '`blocked` — not `file`'
-  assert_has "$n makes filing the narrowest option, not the fallback" "$RM" 'narrowest of the three, not the fallback'
+  # A free choice among the three is what produced every one of STO-77's tickets.
+  # The decision ORDER bounds it — but the RESIDUAL is what decides which way the
+  # ordering leaks. An earlier revision of this PR defaulted the residual to
+  # `blocked`, which laundered internally-actionable unfinished work into a state
+  # that yields no ticket and no owner: the same failure running backwards, and
+  # worse, since a wrongly-filed item is at least visible. Pin both halves.
+  assert_has "$n makes the residual filing, never blocking" "$RM" '**The residual is `file`, and it must never be `blocked`.**'
+  assert_has "$n reaches the blocked state only through test 1" "$RM" 'reachable only through test 1, and only on a named external cause'
+  # An acceptance criterion is work the ticket already promised; the blast-radius
+  # criteria size a review FINDING. Requiring one for a criterion strands the
+  # common case with no true test at all — so the two populations cite different
+  # grounds, and both halves of that split need pinning.
+  assert_has "$n files an unmet criterion on its own ground" "$RM" '**An unmet acceptance criterion is filed on its own ground — that the criterion'
   # Single-line fragment on purpose: these files are hard-wrapped and a literal
   # lifted across a wrap degrades to alternation (see assert.sh's third trap).
-  assert_has "$n keeps the blast-radius citation required at pass 2" "$RM" 'exactly as the first-pass triage above already demands'
+  assert_has "$n still cites blast radius for a claim or caveat item" "$RM" 'and 3 *is* review-finding-shaped, and it does cite its blast-radius criterion number'
   assert_has "$n denies that blocked is a scope reduction" "$RM" '**`blocked` is not a scope reduction**'
 done
 

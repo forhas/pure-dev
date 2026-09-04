@@ -1073,14 +1073,29 @@ cap:
    2. **`drop`** — the criterion is superseded, wrong, or genuinely not worth doing. This
       is the only one of the three that asserts a judgment *against* the criterion, so it
       needs one; "we ran out of passes" is not it.
-   3. **`file`** — a blast-radius criterion from `## 2` is **true of it**, cited by number,
-      exactly as the first-pass triage above already demands. That requirement does not
-      relax because the passes are spent. A `file` here whose criterion number is not
-      genuinely true is a stretched citation, and a stretched citation is how an
-      externally impossible item becomes permanent backlog.
+   3. **`file`** — the criterion's work is real, unfinished, and still wanted. This is the
+      **residual**: an item that is neither externally blocked nor judged against is work
+      someone can still do, and a ticket is what tracks it.
 
-   If none of the three tests is true, the item is `blocked` — not `file`. `file` is the
-   narrowest of the three, not the fallback.
+      **An unmet acceptance criterion is filed on its own ground — that the criterion
+      stands unmet — never on a blast-radius number.** The three blast-radius criteria in
+      `## 2` size a *review finding*, which is extra work this pull request discovered; an
+      acceptance criterion is work the ticket already promised. Requiring one of them here
+      is a category error, and it strands the common case outright: a small, internally
+      actionable, unmet criterion has no true blast-radius test, so demanding one would
+      leave it with no legal disposition at all. A **claim or caveat** item from charges 2
+      and 3 *is* review-finding-shaped, and it does cite its blast-radius criterion number
+      exactly as the first-pass triage demands — that requirement does not relax because
+      the passes are spent, and a citation that is not genuinely true is how an item
+      acquires a ticket it should never have had.
+
+   **The residual is `file`, and it must never be `blocked`.** An item reaching the end of
+   this list without a named external cause is internally actionable *by definition*, and
+   `blocked` asserts the exact opposite — so defaulting there would launder unfinished work
+   into a state that yields no ticket, no owner, and nothing any later run can ever close.
+   That is this ordering's own failure mode running backwards, and it is worse than the one
+   it was written to stop: a wrongly-`filed` item is at least visible. **`blocked` is
+   reachable only through test 1, and only on a named external cause.**
 
    Measured on `notion-dev` 0.20.2: this line, with the choice left free and `file` named
    first, produced all three of BTC-Gateway STO-77's follow-up tickets. Two cited
