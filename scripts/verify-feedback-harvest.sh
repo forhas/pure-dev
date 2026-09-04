@@ -70,8 +70,12 @@ assert_present "a deferral is not a disposition" \
 # ---------------------------------------------------------------------------
 echo "== sources and collection =="
 
+# The label claimed "untracked" but the regex only ever checked the path
+# token, which A2 cannot catch on its own — "untracked" is a plain word, not a
+# backtick/ALLCAPS/flag/placeholder/Capitalized literal (Minor 6). Pin both on
+# the same line instead of dropping the claim.
 assert_present "the client list is an untracked local file" \
-  "$SK" 1 "$L" '`\.claude/notion-dev/clients\.txt`'
+  "$SK" 1 "$L" 'untracked `\.claude/notion-dev/clients\.txt`'
 assert_present "an unreadable client is reported, never silently skipped" \
   "$SK" 1 "$L" 'reported and skipped.*never silently dropped'
 

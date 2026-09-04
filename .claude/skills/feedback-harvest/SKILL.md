@@ -40,10 +40,10 @@ Two orderings are load-bearing: **5 before 6**, and **8 after 7**.
 
 ## Sources
 
-Client repo paths come from this repo's `.claude/notion-dev/clients.txt` — one absolute path
-per line, `#` for comments. The file is untracked: `.gitignore` ignores `.claude/*` and
-re-includes only `!.claude/skills/`, and the paths are machine-specific while this repo is
-public.
+Client repo paths come from this repo's untracked `.claude/notion-dev/clients.txt` — one
+absolute path per line, `#` for comments. `.gitignore` ignores `.claude/*` and re-includes only
+`!.claude/skills/`, so the file stays out of git while the paths inside it are machine-specific
+and this repo is public.
 
 - Explicit paths passed as arguments override the file entirely.
 - No file and no arguments → ask for the paths, and offer to write the file.
