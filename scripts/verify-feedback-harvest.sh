@@ -65,6 +65,28 @@ assert_present "\`blocked\` excludes a plugin-internal cause" \
 assert_present "a deferral is not a disposition" \
   "$SK" 1 "$L" 'are \*\*not dispositions\*\*'
 
+# ---------------------------------------------------------------------------
+# Sources and collection
+# ---------------------------------------------------------------------------
+echo "== sources and collection =="
+
+assert_present "the client list is an untracked local file" \
+  "$SK" 1 "$L" '`\.claude/notion-dev/clients\.txt`'
+assert_present "an unreadable client is reported, never silently skipped" \
+  "$SK" 1 "$L" 'reported and skipped.*never silently dropped'
+
+# Phase 1 is what makes `decline` durable rather than a per-run coin flip. Drop
+# it and every rejection is re-argued from scratch on the next harvest, with the
+# reasoning written last time never read.
+assert_present "prior harvests are read before any client log" \
+  "$SK" 1 "$L" 'Read every `docs/feedback/\*\.md` archive \*\*before\*\* reading any client log'
+assert_present "a reappearing signature is re-evaluated, not re-declined by rote" \
+  "$SK" 1 "$L" 're-evaluated against the \*\*new\*\* evidence'
+
+# issue-log dedups per repo, so one signature in two logs may be two conditions.
+assert_present "cross-client grouping is a candidate, confirmed by reading both entries" \
+  "$SK" 1 "$L" 'then \*\*confirm or split\*\* by reading both `Observed` fields'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
