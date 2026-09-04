@@ -54,11 +54,16 @@ public.
 ### Phase 1 — Read prior harvests
 
 Read every `docs/feedback/*.md` archive **before** reading any client log.
+An empty glob just means this is the first harvest, not an error to stop on.
 
 This is what makes `decline` a durable decision. A signature that reappears is matched
 against its prior disposition and rationale and re-evaluated against the **new** evidence —
 a higher occurrence count, a newer version range, a different `Observed`. Skip this and a
 rejection is re-argued from scratch every harvest, with last time's reasoning never read.
+
+Also enumerate every still-open `blocked` item from those archives. Phase 8 removes `blocked`
+sections from the client log along with the rest, so the archive is their only durable record —
+without this, nothing brings one back once its named external cause clears.
 
 ### Phase 2 — Collect
 

@@ -82,6 +82,15 @@ assert_present "prior harvests are read before any client log" \
   "$SK" 1 "$L" 'Read every `docs/feedback/\*\.md` archive \*\*before\*\* reading any client log'
 assert_present "a reappearing signature is re-evaluated, not re-declined by rote" \
   "$SK" 1 "$L" 're-evaluated against the \*\*new\*\* evidence'
+# `docs/feedback/` does not exist on the first harvest, and an empty glob is not
+# an error to stall on — Minor 4 from the final review.
+assert_present "an empty archive glob means the first harvest, not an error" \
+  "$SK" 1 "$L" 'An empty glob just means this is the first harvest'
+# `blocked` sections are removed from the client log at Phase 8 same as every
+# other disposition, so the archive is their only durable record. Without this,
+# an item whose external cause clears is never revisited — Minor 5.
+assert_present "still-open blocked items from prior archives are re-enumerated" \
+  "$SK" 1 "$L" 'enumerate every still-open `blocked` item from those archives'
 
 # issue-log dedups per repo, so one signature in two logs may be two conditions.
 assert_present "cross-client grouping is a candidate, confirmed by reading both entries" \
