@@ -131,6 +131,11 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # false mismatch on nearly every run. The producer's path carries `<id>`.
   assert_has "$n scopes the packet glob to this ticket's id" "$CMD" 'Scope it to `followup-<KEY>-<id>-*.md`'
   assert_has "$n states the producer's real packet path" "$CMD" 'writes one `followup-<KEY>-<id>-<n>.md` context packet'
+  # epic-update step 1a retries a historical FAILED item by REUSING the packet the
+  # original attempt wrote, and reports it in this invocation's FILED. Asserting
+  # the packet was created by this run would flag that successful retry as a
+  # missing packet. Assert existence at the recorded identity, not authorship.
+  assert_has "$n accepts a packet reused by a successful retry" "$CMD" 'that is the producer'"'"'s contract working, not a missing packet'
 done
 assert_has "notion-dev/skills/issue-log registers review-report-not-persisted" \
   "$ND/skills/issue-log/references/signatures.md" '| `unexpected:review-report-not-persisted` |'
