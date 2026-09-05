@@ -302,11 +302,17 @@ for G in plugins/*/skills/review-and-merge/references/github-api.md; do
   assert_present "$n github-api: a definite \`NOT_PENDING\` is not evidence the request failed" \
     "$G" 1 "$L" '`NOT_PENDING` is therefore \*\*not\*\* evidence the request failed'
 
-  assert_present "$n github-api: the timeline confirms the request landed" \
-    "$G" 1 "$L" 'select\(\.event == "review_requested"\) \| \.requested_reviewer\.login'
+  assert_count "$n github-api: the timeline confirms the request landed (the before and after reads)" \
+    "$G" 1 "$L" 'select\(\.event == .{0,2}review_requested' 2
+
+  assert_present "$n github-api: the timeline read filters on the \`Copilot\` reviewer login" \
+    "$G" 1 "$L" 'select\(\.requested_reviewer\.login == "Copilot"\) \| \.id\]'
+
+  assert_present "$n github-api: presence alone is not evidence the request landed" \
+    "$G" 1 "$L" 'presence alone is not$'
 
   assert_present "$n github-api: the timeline login is \`Copilot\`, not the bot form" \
-    "$G" 1 "$L" 'The login there is `Copilot`, \*\*not\*\* `copilot-pull-request-reviewer'
+    "$G" 1 "$L" 'The login to match is `Copilot`, \*\*not\*\* `copilot-pull-request-reviewer'
 done
 
 # ---------------------------------------------------------------------------

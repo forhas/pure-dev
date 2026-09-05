@@ -101,14 +101,31 @@ body carries `"requested_reviewers": []` in the same case, with no error anywher
 `NOT_PENDING` is therefore **not** evidence the request failed, and never on its own grounds for
 `not-configured`. The issues timeline is the surface that confirms it landed:
 
+**Filter by the Copilot login and compare against a pre-trigger snapshot — presence alone is not
+evidence.** A PR carries every `review_requested` event it has ever had, including a human
+reviewer request (not a Copilot event at all) and any earlier Copilot round. A query that prints
+any login from any time reports "the request landed" on a PR that has merely been reviewed
+before, so a genuinely failed post skips its retry and polls with nothing live behind it.
+
 ```bash
-gh api --paginate repos/{owner}/{repo}/issues/<pr>/timeline \
-  --jq '.[] | select(.event == "review_requested") | .requested_reviewer.login'
+# BEFORE the reviewer-request post — ids of Copilot review-request events that already exist
+TL_SEEN=$(gh api --paginate --slurp "repos/{owner}/{repo}/issues/<pr>/timeline" \
+  | jq -c '[.[][] | select(.event == "review_requested")
+            | select(.requested_reviewer.login == "Copilot") | .id]')
+
+# AFTER a post whose outcome is unknown — is there one that was not there before?
+gh api --paginate --slurp "repos/{owner}/{repo}/issues/<pr>/timeline" \
+  | jq "[.[][] | select(.event == \"review_requested\")
+         | select(.requested_reviewer.login == \"Copilot\")
+         | select(.id as \$i | $TL_SEEN | index(\$i) | not)] | length"
 ```
 
-The login there is `Copilot`, **not** `copilot-pull-request-reviewer[bot]` — matching only the
-bot form finds nothing on a PR whose request is live. Consult it whenever the pending check and
-the submitted-review check both come back empty (step 3 of SKILL.md).
+The login to match is `Copilot`, **not** `copilot-pull-request-reviewer[bot]` — matching only the
+bot form finds nothing on a PR whose request is live. Non-zero → this attempt landed; poll, do
+not re-request. Zero from a **definite** read → nothing landed; retry the post. Consult this
+whenever the pending check and the submitted-review check both come back empty (step 3 of
+SKILL.md). Where no usable event id is exposed, compare `created_at` against the pre-call UTC
+timestamp step 3 already requires — never bare presence.
 
 ## Replying
 
