@@ -412,11 +412,14 @@ if [ -f "$TS" ]; then
   # tickets under the same prefix.
   echo "== ticket-system — a 404 is a workspace binding, not a wrong id =="
 
-  assert_present "ticket-system: a 404 on the configured database is a workspace-binding problem" \
-    "$TS" 1 "$L" 'workspace-binding problem, not a wrong id'
+  assert_present "ticket-system: a 404 on the configured database is ambiguous among three causes" \
+    "$TS" 1 "$L" 'is ambiguous — report$'
 
-  assert_present "ticket-system: \`notion-fetch \"self\"\` reports the bound workspace" \
-    "$TS" 1 "$L" 'Diagnose it with `notion-fetch "self"`'
+  assert_present "ticket-system: \`notion-fetch \"self\"\` names the bound workspace without proving a mismatch" \
+    "$TS" 1 "$L" '\*\*`notion-fetch "self"` names the workspace the session is bound to; it does not prove the'
+
+  assert_present "ticket-system: only a read resolving the database elsewhere confirms a mismatch" \
+    "$TS" 1 "$L" 'resolves the database elsewhere confirms a workspace mismatch'
 
   assert_present "ticket-system: the lookup is never widened to recover from it" \
     "$TS" 1 "$L" '\*\*Never widen the lookup to recover from it\.\*\*'

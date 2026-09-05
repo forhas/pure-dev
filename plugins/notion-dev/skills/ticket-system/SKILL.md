@@ -292,14 +292,27 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
    - Otherwise treat `id` as a logical key: normalize it to numeric, then query the database (or data source if configured) for the page where `idProperty` equals the numeric id — use `mcp__notion__notion-query-data-sources` with an exact filter on `idProperty` (semantic `notion-search` is not reliable for numeric-ID equality, and `notion-fetch` only fetches by URL/ID; fall back to a DB-scoped `notion-search` only if the query tool is unavailable, verifying the hit's `idProperty` value before trusting it). When `idProperty` is a `unique_id` column, filter by its numeric component — ignore the textual prefix. Load the resolved page content with `mcp__notion__notion-fetch`.
 2. **Apply the project scoping guardrail** (see section above) — abort here if any pinned `staticProperties` mismatch the live page. Fail before any further work.
 
-   **A `404 object_not_found` on the configured `databaseId`/`dataSourceId` is almost always a
-   workspace-binding problem, not a wrong id.** The Notion MCP session is authenticated to exactly
-   one workspace; a database that lives in a different one is simply not visible to it, and the
-   symptom is a clean 404 on the database id, a 404 on its data-source reference, and
-   `data_source_not_found` on a query — all three at once, with the configured values perfectly
-   correct. Diagnose it with `notion-fetch "self"`, which reports the workspace the session is
-   actually bound to, and report that workspace to the user rather than the raw 404. Stop here:
-   the run has created nothing yet, and this is the right place for that to stay true.
+   **A `404 object_not_found` on the configured `databaseId`/`dataSourceId` is ambiguous — report
+   its causes, do not pick one.** Three produce the identical response, and nothing available here
+   distinguishes them:
+
+   1. the id is **wrong or stale** — mistyped, or pointing at a database since deleted or replaced;
+   2. the integration has **not been granted access** to that database, though it exists in the
+      workspace the session is bound to;
+   3. the database lives in a **different workspace** from the one the session is authenticated to,
+      so it is simply not visible.
+
+   The shape that makes the third worth naming is all three symptoms at once — a clean 404 on the
+   database id, a 404 on its data-source reference, and `data_source_not_found` on a query — with
+   the configured values perfectly correct. That is a *hint*, not a finding.
+
+   **`notion-fetch "self"` names the workspace the session is bound to; it does not prove the
+   database is elsewhere.** It cannot see a database it has no access to, so it cannot tell case 3
+   from case 2 or case 1. Report the 404 with the bound workspace as context and all three causes
+   as the things to check — a run told "wrong workspace" when the real cause was an ungranted
+   integration or a stale id is sent to fix the wrong thing. Only another read that actually
+   resolves the database elsewhere confirms a workspace mismatch. Stop here either way: the run
+   has created nothing yet, and this is the right place for that to stay true.
 
    **Never widen the lookup to recover from it.** A workspace-scoped search by logical key looks
    like an obvious fallback and is the one thing that must not be done — ticket-key prefixes are
