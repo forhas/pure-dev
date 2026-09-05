@@ -117,13 +117,18 @@ Commit any remaining uncommitted work in the worktree with a clear conventional 
 1. `git push -u origin "$BRANCH"`
 2. Compose the PR body to include the frozen acceptance criteria verbatim under an `## Acceptance criteria` heading, alongside the plan review's `file` items already placed here — **the PR body is the freeze**, written before review, timestamped, and unaffected by any later edit to the criteria file. Then create the PR:
    ```bash
-   # write the body to a file first — see the rule below
-   gh pr create --base "$MAIN" --head "$BRANCH" --title "<feature title>" --body-file "$PR_BODY"
+   gh pr create --base "$MAIN" --head "$BRANCH" --title "<feature title>" --body-file - <<'BODY'
+   <the composed body: summary, plus the ## Acceptance criteria section>
+   BODY
    gh pr view <pr> --json body --jq '.body | length'   # confirm a realistic length
    ```
 3. Record the PR number.
 
-   **Pass a long PR body with `--body-file`, never `--body`, and never `@-`.** `gh pr create` does **not** support `@-` for `--body`: passed literally it becomes the *entire body* — two characters, **exit code 0, no warning** — and the prepared description is silently gone. `--body` with an inline string is barely better for anything multi-line, since backticks and newlines are mishandled. Write the body to a file and pass `--body-file <path>`. Then **read it back and confirm a realistic length** (`gh pr view <pr> --json body`): the write is cheap, and it is the only thing standing between a silent truncation and a review window spent against a body nobody can see.
+   **Pass a long PR body with `--body-file`, never `--body`, and never `@-`.** `gh pr create` does **not** support `@-` for `--body`: passed literally it becomes the *entire body* — two characters, **exit code 0, no warning** — and the prepared description is silently gone. `--body` with an inline string is barely better for anything multi-line, since backticks and newlines are mishandled.
+
+   **`--body-file -` is the correct spelling of what `@-` was reaching for**: `gh pr create --help` documents `-F, --body-file file` as *Read body text from file (use "-" to read from standard input)*, so a heredoc piped into `--body-file -` gives the same ergonomics `@-` promised and actually works. **Prefer it to a temp file.** A body file written inside the worktree is never committed and never cleaned up, so it sits as an untracked file — and `quick-dev:review-and-merge` requires `git status --porcelain` to be empty before it will start, which would stop every run before review. If you do use a file, put it outside the worktree and delete it after the read-back.
+
+   Then **read the body back and confirm a realistic length** (`gh pr view <pr> --json body`): the check is cheap, and it is the only thing standing between a silent truncation and a review window spent against a body nobody can see.
 
    Measured in a client: a PR was created with a body of exactly `@-` and sat through **all three review rounds** with no description. Nothing false was published — the literal `@-` claims nothing — but the run's explicit "acceptance criterion 1 is unmet" disclosure, the one thing it most wanted a human to read, was absent for the entire review window and was caught only at the merge gate.
 

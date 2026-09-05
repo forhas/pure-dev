@@ -413,7 +413,13 @@ if [ -f "$T" ]; then
     "$T" 1 "$L" '\*\*Pass a long PR body with `--body-file`, never `--body`, and never `@-`'
 
   assert_present "ticket.md: the created body is read back and its length confirmed" \
-    "$T" 1 "$L" '\*\*read it back and confirm a realistic length\*\*'
+    "$T" 1 "$L" '\*\*read the body back and confirm a realistic length\*\*'
+
+  assert_present "ticket.md: \`--body-file -\` reads the body from standard input" \
+    "$T" 1 "$L" '`--body-file -` is the correct spelling of what `@-` was reaching for'
+
+  assert_present "ticket.md: a body file left in the worktree blocks the clean-tree gate" \
+    "$T" 1 "$L" 'would stop every run before review'
 fi
 
 F=plugins/notion-dev/commands/finalize.md
@@ -444,6 +450,12 @@ if [ -f "$D" ]; then
 
   assert_present "develop: the PR is created with --body-file rather than an inline body" \
     "$D" 1 "$L" 'gh pr create --base "\$MAIN" --head "\$BRANCH" --title "<feature title>" --body-file'
+
+  assert_present "develop: \`--body-file -\` reads the body from standard input" \
+    "$D" 1 "$L" '`--body-file -` is the correct spelling of what `@-` was reaching for'
+
+  assert_present "develop: a body file left in the worktree blocks the clean-tree gate" \
+    "$D" 1 "$L" 'would stop every run before review'
 fi
 
 E=plugins/quick-dev/skills/develop/references/environment-setup.md
