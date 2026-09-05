@@ -779,6 +779,25 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
     bot is absent **and** no Copilot review has been submitted after the trigger timestamp (the
     bot is auto-removed the moment it submits, so absence alone is ambiguous — check for the
     review too, per step 3).
+
+    **On a repo where this endpoint never lists Copilot at all, that "genuinely gone" test is
+    trivially satisfied and must not be used.** The bot is permanently absent there by
+    construction, so a live-but-slow request meets both halves of the condition the moment the
+    10-minute window elapses — and the re-trigger this branch then issues produces the duplicate
+    round the whole rule exists to prevent, on exactly the repos most exposed to it. Recognise
+    the repo by the trigger-time evidence step 3 already gathered: the bot was never listed and
+    the POST's own 2xx body carried an empty `requested_reviewers`.
+
+    **The timeline does not substitute for the pending check here.** It records that a request
+    *was made*, never that one is *currently outstanding*, so a `review_requested` event — even
+    one correctly matched to this attempt — cannot tell a live request from a completed or
+    dropped one. Use it in step 3, where the question is whether the post landed; do not read it
+    as a pending marker.
+
+    So on such a repo the pending state is **indeterminate, never "confirmed gone"**: keep
+    polling to the ~30-minute bound rather than re-triggering at 10 minutes, then re-trigger once
+    at that bound exactly as the shared rule below prescribes. Indeterminate resolves to the
+    bound, not to the shorter window.
   - **codex** → no equivalent pending marker exists. Re-read reviews and issue comments with a
     **definite** read before concluding — a failed read is not silence.
 

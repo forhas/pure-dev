@@ -242,6 +242,15 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: the issues timeline is consulted before re-requesting" \
     "$S" 1 "$L" '\*\*Confirm with the issues timeline before re-requesting\.\*\*'
 
+  assert_present "$n: a repo that never lists Copilot cannot use the confirmed-gone test" \
+    "$S" 1 "$L" '\*\*On a repo where this endpoint never lists Copilot at all, that "genuinely gone" test is'
+
+  assert_present "$n: the timeline is not a pending marker for the silence rule" \
+    "$S" 1 "$L" '\*\*The timeline does not substitute for the pending check here\.\*\*'
+
+  assert_present "$n: an indeterminate pending state polls to the bound instead of re-triggering" \
+    "$S" 1 "$L" '\*\*indeterminate, never "confirmed gone"\*\*'
+
   assert_present "$n: the timeline reviewer login is \`Copilot\`, not the bot form" \
     "$S" 1 "$L" '`Copilot` — note \*\*that\*\* login, not `copilot-pull-request-reviewer'
 
