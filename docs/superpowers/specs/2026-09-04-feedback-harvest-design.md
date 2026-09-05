@@ -278,14 +278,15 @@ it globs `scripts/verify-*.sh`.
 
 ## 5. Accepted limitations
 
-- **A concurrent increment is lost.** If a client run increments a harvested signature's
-  `Occurrences` between Phase 2 and Phase 8, the mismatch branch fires and the section survives —
-  correct. If it increments *and* the harvest re-reads a matching count, the increment is
-  dropped. This mirrors `issue-log`'s own accepted read-modify-write race: the log is
-  diagnostics, not accounting.
-- **The harvest cannot see runs that died.** `issue-log`'s header states it: a killed run leaves
-  nothing behind to record its own death, so a short log is not evidence of a healthy client. The
-  archive inherits that limitation and must not be read as a complete account.
-- **Reset loses cumulative occurrence history for re-declined items.** Phase 1's prior-archive
-  read mitigates this by carrying the previous count and rationale forward, but a signature that
-  reappears starts counting from 1 in the client log.
+- **A concurrent increment is lost.** Disposition: `drop`. If a client run increments a
+  harvested signature's `Occurrences` between Phase 2 and Phase 8, the mismatch branch fires and
+  the section survives — correct. If it increments *and* the harvest re-reads a matching count,
+  the increment is dropped. This mirrors `issue-log`'s own accepted read-modify-write race: the
+  log is diagnostics, not accounting.
+- **The harvest cannot see runs that died.** Disposition: `drop`. `issue-log`'s header states it:
+  a killed run leaves nothing behind to record its own death, so a short log is not evidence of a
+  healthy client. The archive inherits that limitation and must not be read as a complete
+  account.
+- **Reset loses cumulative occurrence history for re-declined items.** Disposition: `drop`.
+  Phase 1's prior-archive read mitigates this by carrying the previous count and rationale
+  forward, but a signature that reappears starts counting from 1 in the client log.

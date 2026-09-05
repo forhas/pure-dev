@@ -331,14 +331,15 @@ reintroduced at the last step.
 
 ## Accepted limitations
 
-- **A concurrent increment can be lost.** If a client run increments a harvested signature's
-  `Occurrences` between Phase 2 and Phase 8, the mismatch branch fires and the section
-  survives. If the counts happen to match anyway, the increment is dropped. This mirrors
-  `issue-log`'s own accepted read-modify-write race: the log is **diagnostics, not accounting**.
-- **The harvest cannot see runs that died.** `issue-log` records what an agent was still
-  running to record; a killed run leaves nothing behind.
+- **A concurrent increment can be lost.** Disposition: `drop`. If a client run increments a
+  harvested signature's `Occurrences` between Phase 2 and Phase 8, the mismatch branch fires and
+  the section survives. If the counts happen to match anyway, the increment is dropped. This
+  mirrors `issue-log`'s own accepted read-modify-write race: the log is
+  **diagnostics, not accounting**.
+- **The harvest cannot see runs that died.** Disposition: `drop`. `issue-log` records what an
+  agent was still running to record; a killed run leaves nothing behind.
   A short log is not evidence of a healthy client, and the archive inherits that limit —
   never read it as a complete account.
-- **Cumulative occurrence history is lost for a re-declined item.** Phase 1 carries the previous
-  count and rationale forward, but a signature that reappears starts counting from 1 in the
-  client log.
+- **Cumulative occurrence history is lost for a re-declined item.** Disposition: `drop`. Phase 1
+  carries the previous count and rationale forward, but a signature that reappears starts
+  counting from 1 in the client log.
