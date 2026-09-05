@@ -260,6 +260,15 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: \`reason=silent\` may only be reached from reads that succeeded" \
     "$S" 1 "$L" '`reason=silent` is a claim that the reviewer did not respond'
 
+  assert_present "$n: the failed-poll-read retry is bounded, or the rule deadlocks the run" \
+    "$S" 1 "$L" '\*\*Bound that retry, or this rule deadlocks the run\.\*\*'
+
+  assert_present "$n: a sustained outage would otherwise let neither the silence timeout nor the cap fire" \
+    "$S" 1 "$L" 'neither the silence timeout nor the round cap can ever fire'
+
+  assert_present "$n: the bound is 3 retries, then stop and report the API unavailable" \
+    "$S" 1 "$L" 'retry a failed poll read at most .{0,4}3 .{0,4}times with a short backoff.*stop and report the API as unavailable'
+
   # ---------------------------------------------------------------------------
   # review-and-merge — the local review loop's own zero-byte case
   # ---------------------------------------------------------------------------
