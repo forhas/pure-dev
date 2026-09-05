@@ -92,6 +92,24 @@ COVERAGE-MAP:
 
 Use `(no test suite in this repo)` as the whole map when the repo has none.
 
+**A `GAP` is a commitment to a *blocking* finding — so do not mark one you have already decided
+not to raise.** "Each `GAP` becomes a finding" means a **Critical or Required** finding: those are
+what the caller's contract check counts, and pairing a `GAP` with an `Optional` or FYI finding
+makes the output self-contradictory — it asserts a defect in one field that no blocking finding
+discharges — which the check classifies as **unusable** and spends the one permitted retry on.
+
+The selectivity rule above and this one point the same way. If the axis cannot be verified because
+the repo has no convention for it, record that in the map and **skip the axis** — do not mark
+`GAP`. If you have concluded, and are about to write, that no cheap fix exists within the repo's
+conventions, that is the same judgment: it is not a `GAP`, and forcing it into one converts your
+own selectivity into a contract violation. Mark `GAP` only where you are raising a blocking
+finding for it.
+
+Measured in a client: a reviewer emitted a well-formed block whose `GAP` was matched only by an
+FYI finding, while its own prose argued the gap was not actionable in that repo. The retry cost a
+full extra reviewer dispatch, and the retry's own Required finding — a false factual claim in a
+proposed docs edit — was accepted and applied, so the round was not wasted, only doubled.
+
 ## Severity labels
 
 - **Critical** — the plan, executed as written, produces a wrong or broken outcome: it addresses a different problem than the stated intent, a task cannot be executed at all, there is a forward dependency or dependency cycle, or a step would destroy data or state.

@@ -70,7 +70,11 @@ Parse from its output: the findings list with severities, `TRIAGE-COMPLETE` toge
 
   Separately, a **missing** `COVERAGE-MAP:` is disqualifying on its own terms: it means the test-coverage axis was probably never performed, so a `clean` result would be unearned.
 
-**Degradation.** If the agent fails, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `TRIAGE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
+**Degradation.** If the agent fails, returns nothing at all, or its output is unusable per the check above, retry **once** with the same prompt. If it fails again, emit the output block with `PLAN-REVIEW: degraded`, all counts `0`, `NONE` on both `TRIAGE:` and `DECLINED-WITH-REASONING:`, and a one-line reason on the `UNRESOLVED:` line. Every one of the nine keys must be present even in this path — callers parse the whole block. Do not block the build.
+
+**A zero-byte result is its own failure shape — not a malformed one.** An agent that signals idle with no payload has not returned a report lacking required sections; it has returned nothing, and a check written against output that is *missing or malformed* does not cover an empty result at all. Handle it explicitly: **send one follow-up message** restating the required output format and saying plainly that the reply body is the deliverable — nothing else the agent produced reaches the caller. Measured in a client: six review seats in one run each returned zero bytes, and that single nudge recovered **all six on the first attempt**.
+
+**The nudge is not a remedy, and must never be treated as one.** On the same host and the same plugin version eight hours later, the identical nudge was applied to two agents and recovered neither — each returned zero bytes twice. The two conditions are **indistinguishable at the moment of failure**: both present as a contentless idle, and only the response to the nudge tells them apart. So nudge **once**, then treat a still-empty result as the failure it is. Never read "the agent went idle" as "the agent finished successfully" — that silently converts a seat that never ran into a clean verdict, which is the one outcome an independent-review seat exists to make impossible.
 
 ## Step 3 — Triage the findings
 

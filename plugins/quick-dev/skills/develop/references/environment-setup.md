@@ -73,6 +73,7 @@ Anything less → local mode. Local mode is a first-class path, not an error: sa
 - **Branch exists but no worktree** (leftover from an aborted run): do not reuse or delete it silently — it may hold unmerged work. Pick a new slug (`-2` suffix), per the uniqueness rule in SKILL.md Phase 1, and mention the leftover branch in the final report so the user can inspect it.
 - **Worktree path exists on disk but unregistered**: run `git worktree prune`, and if the directory remains, choose a different slug — never `rm -rf` a directory the flow did not create in this run.
 - **`git worktree remove` fails** with "contains modified or untracked files" during cleanup: this happens after a successful merge when build artifacts (node_modules, target/, etc.) remain. Confirm the path matches `$WORKTREE` recorded earlier in this run, then `git worktree remove --force "$WORKTREE"`.
+- **`git worktree remove` fails** with `fatal: working trees containing submodules cannot be moved or removed`: same `--force` remedy, but a different *cause* — a repo that vendors its dependencies as git submodules puts them in **every** worktree it creates, so this failure is **deterministic, not incidental**, and `--force` is the norm there rather than a sign something went wrong. Measured: 3 consecutive runs in one submodule-bearing repository, 3 for 3.
 - **Repo uses submodules**: worktrees need `git -C "$WORKTREE" submodule update --init` after creation.
 
 ## Dirty primary checkout at cleanup time

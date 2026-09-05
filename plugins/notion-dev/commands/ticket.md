@@ -30,7 +30,7 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list`, i.e. the **primary checkout** root, never a worktree path. (This recipe is correct from anywhere, including the no-arg resume path invoked from inside the ticket worktree, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. All config reads — here and in every later phase or invoked skill — resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never the worktree: the worktree is cut from `origin/<git.baseBranch>`, which lacks the config whenever it is uncommitted, unpushed, or gitignored.
 - The repo has an `origin` remote.
-- The working tree is clean, OR the only dirt is the init-generated setup files (`.claude/notion-dev.config.json`, `.mcp.json` — init's commit step is optional, and this command must stay usable when it was declined; all implementation happens in the worktree and config is read from `$REPO_ROOT`, so these files never contaminate the ticket branch), OR the user is resuming inside an existing worktree for this ticket. Any other dirt: stop and ask the user to commit or stash first (non-interactive: stop and report).
+- The working tree is clean, OR the only dirt is exempt, OR the user is resuming inside an existing worktree for this ticket. Any other dirt: stop and ask the user to commit or stash first (non-interactive: stop and report). **Exactly two kinds of dirt are exempt, and the list is exhaustive:** the init-generated setup files (`.claude/notion-dev.config.json`, `.mcp.json` — init's commit step is optional, and this command must stay usable when it was declined), and a **harness-managed local settings file** (`.claude/settings.local.json`), which the coding harness rewrites on its own — adding an MCP-enablement key, for instance — with no user edit involved. Both are exempt for the same reason: all implementation happens in a worktree cut from `origin/<git.baseBranch>` and config is read from `$REPO_ROOT`, so neither can contaminate the ticket branch. The second is not a courtesy — the file is tracked in some repos, so a literal reading of this precondition halts most non-interactive runs on a modification nobody made. Measured once in a client: the run proceeded, merged correctly, and the modification never reached the branch.
 
 ---
 
@@ -135,11 +135,22 @@ Read values from config: `git.baseBranch`. The branch-name parser in the preambl
 
 `cd` into the worktree for all subsequent work.
 
+**Gitignored local files are not carried into the worktree — recreate any a verify step needs.** A fresh worktree contains only tracked content, so a gitignored `.env.local` (or any similar local-only file) exists in the primary checkout and nowhere else, and a build or deploy target that reads one fails in the worktree while passing in the primary. **Recreate it from its committed example before treating the failure as a finding** — recorded twice in one client, where `make deploy-local` failed until `.env.local` was copied from `.env.example`. This matters for what the failure *looks* like, not just for the fix: it presents as a deploy regression in the branch under test, right before a merge gate, which is exactly the wrong conclusion to draw. A long-running local service the target expects (a node, a daemon) is the same class of gap and is likewise not a regression in the branch.
+
 Mark the ticket as started — invoke `notion-dev:ticket-system`:
 
 - `updateStatus(id, "inProgress")` — the ticket now stays in "In Progress" through triage, planning, implementation, and PR review. The plugin does not flip it to a further state until Phase 8. Idempotent on resume (re-running on an existing worktree is safe).
 
 All subsequent file work happens in the worktree. Ledger writes go to `$REPO_ROOT/.claude/notion-dev/` — a sanctioned exception to the worktree-only rule, and a self-ignored directory that never appears in `git status`.
+
+**Assert the primary checkout is unchanged after each build task.** Every clean-tree gate in this
+flow inspects the **worktree**; none inspects `$REPO_ROOT`, so an implementer that writes to a
+relative path resolved against the wrong root produces a modification no gate can see. After each
+task, `git -C "$REPO_ROOT" status --porcelain` must still show exactly what preflight recorded —
+nothing new. A new entry means the task wrote outside the worktree: report it with the path, and
+do not treat the task as complete until the stray write is understood. Catching it here is the
+difference between a one-line correction and an unattributable edit discovered after the worktree
+that explains it has been deleted.
 
 ---
 
@@ -294,6 +305,16 @@ Target: `git.prTargetBranch` (falls back to `git.baseBranch`).
 
 Prefer the GitHub MCP tool `mcp__github__create_pull_request` when available; fall back to `gh pr create`.
 
+**Pass a long PR body with `--body-file`, never `--body`, and never `@-`.** `gh pr create` does **not** support `@-` for `--body`: passed literally it becomes the *entire body* — two characters, **exit code 0, no warning** — and the prepared description is silently gone. `--body` with an inline string is barely better for anything multi-line, since backticks and newlines are mishandled.
+
+**`--body-file -` is the correct spelling of what `@-` was reaching for**: `gh pr create --help` documents `-F, --body-file file` as *Read body text from file (use "-" to read from standard input)*, so a heredoc piped into `--body-file -` gives the same ergonomics `@-` promised and actually works. **Prefer it to a temp file.** A body file written inside the worktree is never committed and never cleaned up, so it sits as an untracked file — and `quick-dev:review-and-merge` requires `git status --porcelain` to be empty before it will start, which would stop every run before review. If you do use a file, put it outside the worktree and delete it after the read-back.
+
+Then **read the body back and confirm a realistic length** (`gh pr view <pr> --json body`): the check is cheap, and it is the only thing standing between a silent truncation and a review window spent against a body nobody can see.
+
+Measured in a client: a PR was created with a body of exactly `@-` and sat through **all three review rounds** with no description. Nothing false was published — the literal `@-` claims nothing — but the run's explicit "acceptance criterion 1 is unmet" disclosure, the one thing it most wanted a human to read, was absent for the entire review window and was caught only at the merge gate.
+
+The MCP tool takes the body as a parameter and is not exposed to this failure; the rule binds the `gh` fallback path.
+
 PR body structure:
 - **Summary** — 1-3 bullets.
 - **Ticket** — link to the ticket URL returned from fetchTicket.
@@ -422,10 +443,31 @@ Only start cleanup after confirming the merge landed: `gh pr view <pr> --json st
 
 From `$REPO_ROOT` — `cd $REPO_ROOT` first if the run is still inside the worktree, since step 1 removes it out from under the current directory. **The worktree goes first and the primary checkout's `checkout` goes last** — nothing in worktree removal or branch deletion needs the primary to be on the base branch, and doing the primary's checkout while a worktree may still be sitting on that branch is what produced `fatal: '<baseRefName>' is already used by worktree at '<primary>'`:
 
-1. Confirm `<worktree-path>` is the worktree this flow created (the path computed in Phase 1.2/2.1), then `git worktree remove <worktree-path>`. If it fails because of untracked leftovers (e.g. build artifacts — PLAN.md itself is already gone per 6.6), retry with `git worktree remove --force <worktree-path>`. Then `git worktree prune`.
+1. Confirm `<worktree-path>` is the worktree this flow created (the path computed in Phase 1.2/2.1), then `git worktree remove <worktree-path>`. If it fails, retry with `git worktree remove --force <worktree-path>`. **Two causes reach that retry, and only the first is incidental**: untracked leftovers (e.g. build artifacts — PLAN.md itself is already gone per 6.6), and `fatal: working trees containing submodules cannot be moved or removed`. The second is **deterministic, not an anomaly** — a repo that vendors dependencies as git submodules puts them in every worktree it creates, so `--force` is the norm there rather than the exception, and a watcher should not read it as a fault. Measured: 3 consecutive ticket runs in one submodule-bearing client, 3 for 3. Then `git worktree prune`.
 2. `git branch -D <branch>` using the branch name recorded in 2.1 (`ticket/<project.key>-<id>-<slug>`) — do not re-spell the template here (`-D` required — squash merges aren't detected by `-d`; safe because the merge was verified above). If it fails because `<branch>` is checked out in the primary checkout, run step 4 first and retry this step after it.
 3. Verify the remote branch is gone (`git ls-remote --heads origin <branch>`); if not, `git push origin --delete <branch>` (swallow "already deleted" errors). `notion-dev:review-and-merge` deletes the remote branch itself as its own command after the merge, so this is normally a no-op confirmation — it stays because that deletion is not guaranteed to have been reached. Targeting `origin` directly is correct **here specifically**, and the asymmetry with `/notion-dev:finalize` step 3 is deliberate rather than an oversight: this flow created `<branch>` and pushed it to `origin` itself in Phase 5, so the head repository is `origin` by construction and no fork case exists. `finalize` takes an arbitrary PR number and must resolve the head repository first.
 4. Checkout + pull the branch the PR merged into (its `baseRefName` — equals `git.baseBranch` in the simple flow): `git checkout <baseRefName> && git pull --ff-only origin <baseRefName>`. **`--ff-only` is required, not stylistic**: a primary whose base branch carries local-only commits has diverged, and a default `pull` would silently manufacture a merge commit to reconcile it — the exact unintended merge commit this whole ordering exists to prevent. `--ff-only` aborts instead, which is what "do not stash or discard anything" means for a diverged branch. Best-effort — on failure, do not stash or discard anything; continue with the remaining cleanup steps and report that the branch needs a manual checkout/pull.
+
+**A failed pull must be diagnosed, not merely reported — the evidence is gone one step later.**
+`--ff-only` covers a *diverged* base, but the other cause is a **dirty primary checkout**, which
+surfaces as `Your local changes to the following files would be overwritten by merge` and means
+something wrote outside the worktree during the run. Before continuing, capture and report
+`git -C "$REPO_ROOT" status --porcelain`, naming the offending paths. Do not stash or discard
+anything — but do not let the run end with only "the branch needs a manual pull" either.
+
+The ordering makes this urgent rather than optional: the worktree and the branch are removed
+**before** this step, so by the time the pull fails, the only record of where a stray edit came
+from is already deleted. A run that follows "continue with the remaining cleanup steps and report"
+literally, with no diagnosis, leaves the edit sitting in the primary checkout indefinitely and
+unattributable.
+
+Measured in a client: a build-flow implementer subagent, dispatched with the worktree as its
+working directory and an absolute worktree path in its brief, **also** wrote its edit to the same
+relative path under the primary checkout. Both copies got the change; the worktree copy was
+committed and merged normally while the primary copy sat as an uncommitted modification —
+invisible to every gate in the flow, because each of them inspects the worktree and none inspects
+the primary. It was recovered only by diffing the stray copy against the merged base, which showed
+it to be an older intermediate state of the same edit, and discarding it.
 5. Remove the worktrees parent directory if now empty: `rmdir "$(dirname <worktree-path>)"` — derived from the path Phase 1.2/2.1 computed, so the target is checkable without introducing a second name for it. `rmdir`, never `rm -rf`: it refuses on a non-empty directory, which is the whole safety property here.
 
 ### Post-merge hooks
