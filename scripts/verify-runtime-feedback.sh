@@ -137,7 +137,19 @@ for S in plugins/*/skills/flow-triage/SKILL.md; do
   # The carve-out must not read as licence to invent evidence — an unbounded
   # version of it would let every dimension be scored from nothing.
   assert_present "$n flow-triage: a dimension with no direct finding behind it is still null" \
-    "$S" 1 "$L" 'is still `null`'
+    "$S" 1 "$L" 'is still `null`, and a run with no prior findings at all'
+
+  assert_present "$n flow-triage: the unconditional degraded-mode rule would discard the substitution" \
+    "$S" 1 "$L" 'the degraded-mode rule above is unconditional, and left alone it'
+
+  assert_present "$n flow-triage: all seven answered scores and routes normally" \
+    "$S" 1 "$L" '\*\*All seven dimensions answered\*\*'
+
+  assert_present "$n flow-triage: a complete substituted score does not fall back to \`feature-dev\`" \
+    "$S" 1 "$L" 'it does \*\*not\*\* fall back to `feature-dev`'
+
+  assert_present "$n flow-triage: a partly answered score stays degraded and borderline" \
+    "$S" 1 "$L" '\*\*Some answered, some still `null`\*\*'
 done
 
 # ---------------------------------------------------------------------------
