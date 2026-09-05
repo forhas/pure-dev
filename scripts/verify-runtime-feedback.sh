@@ -226,6 +226,12 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: a refusal review is \`reason=error\`, never \`not-configured\`" \
     "$S" 1 "$L" '`reason=error`, \*\*not\*\* `not-configured`'
 
+  assert_present "$n: the error classification governs reporting, not retrying the reviewer" \
+    "$S" 1 "$L" '\*\*The distinction is about what this run reports, never about retrying the reviewer in it\*\*'
+
+  assert_present "$n: a refusal review still switches permanently to the local loop" \
+    "$S" 1 "$L" 'never re-trigger the configured reviewer again this run'
+
   # ---------------------------------------------------------------------------
   # review-and-merge — an empty requested_reviewers is evidence of nothing
   # ---------------------------------------------------------------------------
