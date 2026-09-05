@@ -590,15 +590,36 @@ On any non-zero exit from a trigger command:
      - **Confirm with the issues timeline before re-requesting.** The timeline is the surface that
        actually shows the request landed: a `review_requested` event whose `requested_reviewer` is
        `Copilot` — note **that** login, not `copilot-pull-request-reviewer[bot]`. Read it as a third
-       source whenever (a) and (b) both come back empty:
+       source whenever (a) and (b) both come back empty.
+
+       **Filter by that login and correlate with this attempt's baseline — an unfiltered read is
+       the stale-comment bug in a new place.** A PR carries every `review_requested` event it has
+       ever had: an earlier round's Copilot request, or a human reviewer request, which is not a
+       Copilot event at all. A query that prints any login, from any time, reports "the request
+       landed" on a PR that has simply been reviewed before — so a genuinely failed post skips its
+       retry and enters a full silence poll with no live request behind it. That is exactly the
+       failure the attempt baseline above exists to prevent, and it is why that baseline is
+       required *before every trigger, including the first*.
+
+       Snapshot the matching event ids immediately **before** the post, then compare after:
 
        ```bash
-       gh api --paginate repos/{owner}/{repo}/issues/<pr>/timeline \
-         --jq '.[] | select(.event == "review_requested") | .requested_reviewer.login'
+       # BEFORE the post — ids of Copilot review-request events that already exist
+       TL_SEEN=$(gh api --paginate --slurp "repos/{owner}/{repo}/issues/<pr>/timeline" \
+         | jq -c '[.[][] | select(.event == "review_requested")
+                   | select(.requested_reviewer.login == "Copilot") | .id]')
+
+       # AFTER the failed post — is there one that was not there before?
+       gh api --paginate --slurp "repos/{owner}/{repo}/issues/<pr>/timeline" \
+         | jq "[.[][] | select(.event == \"review_requested\")
+                | select(.requested_reviewer.login == \"Copilot\")
+                | select(.id as \$i | $TL_SEEN | index(\$i) | not)] | length"
        ```
 
-       Present → the request landed; poll, do not re-request. Absent from a **definite** read → retry the
-       post. Absent from a failed read is not absence at all (rule 2 below).
+       Non-zero → **this attempt** landed; poll, do not re-request. Zero from a **definite** read →
+       nothing landed; retry the post. Zero from a failed read is not zero at all (rule 2 below).
+       Where the timeline exposes no usable id, fall back to comparing `created_at` against the
+       pre-call UTC timestamp step 3 already requires — never to bare presence.
 
      This also weakens the silence rule downstream, and the weakening is silent: that rule treats "bot
      still listed" as proof the request is merely slow, and on a repo where the condition can never be

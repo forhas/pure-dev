@@ -230,8 +230,17 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: the timeline reviewer login is \`Copilot\`, not the bot form" \
     "$S" 1 "$L" '`Copilot` — note \*\*that\*\* login, not `copilot-pull-request-reviewer'
 
-  assert_present "$n: the timeline read is a \`review_requested\` event on the requested reviewer" \
-    "$S" 1 "$L" 'select\(\.event == "review_requested"\) \| \.requested_reviewer\.login'
+  assert_count "$n: the timeline read is a \`review_requested\` event on the requested reviewer (the before and after reads)" \
+    "$S" 1 "$L" 'select\(\.event == .{0,2}review_requested' 2
+
+  assert_present "$n: the timeline read filters on the \`Copilot\` reviewer login" \
+    "$S" 1 "$L" 'select\(\.requested_reviewer\.login == "Copilot"\)'
+
+  assert_present "$n: an unfiltered timeline read is the stale-comment bug in a new place" \
+    "$S" 1 "$L" 'correlate with this attempt.s baseline — an unfiltered read is$'
+
+  assert_present "$n: only an event absent from the pre-post snapshot proves this attempt landed" \
+    "$S" 1 "$L" 'Non-zero → \*\*this attempt\*\* landed'
 
   # ---------------------------------------------------------------------------
   # review-and-merge — a poll read that fails is not silence
