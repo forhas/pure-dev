@@ -218,6 +218,12 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: an empty \`requested_reviewers\` is evidence of nothing" \
     "$S" 1 "$L" 'an empty `requested_reviewers` is$'
 
+  assert_present "$n: the neither branch is inconclusive rather than a retry verdict" \
+    "$S" 1 "$L" '\*\*Neither is not a verdict\*\* — it is inconclusive, and the'
+
+  assert_present "$n: the neither branch never retries the post on its own" \
+    "$S" 1 "$L" 'Do \*\*not\*\* retry the post from this state'
+
   assert_present "$n: the POST's own 2xx response body carries the same empty array" \
     "$S" 1 "$L" 'the POST.s \*\*own 2xx response body\*\* carries'
 

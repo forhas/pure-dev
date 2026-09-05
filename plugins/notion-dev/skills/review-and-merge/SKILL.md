@@ -584,7 +584,9 @@ On any non-zero exit from a trigger command:
        ```
 
      Either → the request succeeded; continue (if (b), that review *is* the round's response —
-     handle it, do not re-request). Neither → nothing landed; retry.
+     handle it, do not re-request). **Neither is not a verdict** — it is inconclusive, and the
+     timeline check immediately below decides it. Do **not** retry the post from this state; that
+     re-requests a review that may well be live and produces a duplicate round.
 
      **Neither is not the same as "nothing landed" for copilot — an empty `requested_reviewers` is
      evidence of nothing.** On some repos the bot is never surfaced under `.users[]` at all, so (a)
