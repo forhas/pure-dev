@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Parity check for this repo's own copies of the skills it ships.
 #
-# Every directory under `.claude/skills/` is a verbatim mirror of the
-# same-named directory under `plugins/quick-dev/skills/`, so this repo can
-# drive its own work with the skills it ships. The review-and-merge mirror
+# Every directory under `.claude/skills/` is one of two kinds: a verbatim
+# mirror of the same-named directory under `plugins/quick-dev/skills/`, or a
+# declared repo-local skill listed in `.claude/skills/REPO-LOCAL` — so this
+# repo can drive its own work with the skills it ships, plus the maintainer
+# workflows that belong to neither shipped plugin. The review-and-merge mirror
 # drifted twice — first silently, then again after a README told contributors
 # to re-sync in the same commit. A written reminder is not a mechanism; this is.
 #
@@ -40,19 +42,116 @@ else
   IN_GIT=no
 fi
 
+# ---------------------------------------------------------------------------
+# Repo-local skills — the one documented exception to mirror parity
+# ---------------------------------------------------------------------------
+#
+# `feedback-harvest` is a maintainer workflow for this marketplace. It belongs to
+# neither shipped plugin: putting it in quick-dev would ship a notion-dev-specific
+# harvester to everyone installing a generic feature-development plugin, and
+# notion-dev's skills are not mirrored, so it would not be invocable here at all.
+#
+# The exemption is a TRACKED MANIFEST, never a naming convention. A directory
+# under the mirror root that is in neither set still FAILs, which is the property
+# .gitignore's comment depends on — the whole mirror directory is un-ignored, and
+# this loop is what makes that exposure safe.
+LOCAL_MANIFEST=$MIRROR_ROOT/REPO-LOCAL
+
+is_repo_local() {
+  [ -f "$LOCAL_MANIFEST" ] || return 1
+  grep -qxF -- "$1" <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST")
+}
+
+echo "== repo-local skill manifest =="
+
+if [ -f "$LOCAL_MANIFEST" ]; then
+  ok "REPO-LOCAL manifest present"
+else
+  bad "REPO-LOCAL manifest missing at $LOCAL_MANIFEST"
+fi
+
+if [ "$IN_GIT" = yes ]; then
+  if git ls-files --error-unmatch "$LOCAL_MANIFEST" >/dev/null 2>&1; then
+    ok "REPO-LOCAL manifest is tracked by git"
+  else
+    bad "REPO-LOCAL manifest is NOT tracked by git (check .gitignore)"
+  fi
+fi
+
+# Every declared name must exist, and must NOT have a plugin counterpart. The
+# second half is the guard that matters: without it a drifted mirror could be
+# relabelled repo-local and skip parity entirely.
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  if [ -d "$MIRROR_ROOT/$name" ]; then
+    ok "repo-local '$name' exists on disk"
+  else
+    bad "repo-local '$name' is declared in REPO-LOCAL but absent from $MIRROR_ROOT"
+  fi
+  if [ -d "$PLUGIN_SKILLS/$name" ]; then
+    bad "repo-local '$name' also exists in $PLUGIN_SKILLS — a mirror cannot declare itself repo-local"
+  else
+    ok "repo-local '$name' has no plugin counterpart"
+  fi
+done < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$LOCAL_MANIFEST" 2>/dev/null | grep -v '^$')
+
+# ---------------------------------------------------------------------------
+# Loose files at the mirror root — REPO-LOCAL is the one documented exception
+# ---------------------------------------------------------------------------
+#
+# The directory loop below only ever walks "$MIRROR_ROOT"/*/, so a second loose
+# FILE dropped next to REPO-LOCAL is invisible to every check above and below
+# it, while CLAUDE.md already asserts the un-ignored mirror root is safe. This
+# closes that gap by name, not by directory-ness (final review, Minor 7).
+echo "== loose files under the mirror root =="
+
+loose_seen=0
+# `"$MIRROR_ROOT"/*` is a bare glob, and a bare glob does not match dotfiles —
+# `find -maxdepth 1` does, closing exactly the gap a project-local scratch
+# file dropped as `.something` would otherwise pass through silently
+# (re-review, dotfile gap).
+while IFS= read -r f; do
+  loose_seen=$((loose_seen + 1))
+  if [ "$f" = "$LOCAL_MANIFEST" ]; then
+    ok "$(basename "$f") is the documented loose file at the mirror root"
+  else
+    bad "$(basename "$f") is an undeclared loose file directly under $MIRROR_ROOT"
+  fi
+done < <(find "$MIRROR_ROOT" -maxdepth 1 ! -type d | sort)
+[ "$loose_seen" -gt 0 ] || ok "no loose files under $MIRROR_ROOT to check"
+
 mirrored=0
-for mdir in "$MIRROR_ROOT"/*/; do
-  [ -d "$mdir" ] || continue
-  skill=$(basename "$mdir")
+# A bare glob `*/` does not match dot-prefixed directories — the same gap the
+# loose-file check above closes with `find` — so a hidden skill directory
+# (e.g. a project-local scratch skill) was invisible to every check below.
+while IFS= read -r dir; do
+  mdir="$dir/"
+  skill=$(basename "$dir")
   src="$PLUGIN_SKILLS/$skill"
-  mirrored=$((mirrored + 1))
 
   echo "== $skill mirror parity =="
 
   if [ ! -d "$src" ]; then
-    bad "$skill exists only in the mirror (project-local fork)"
+    if is_repo_local "$skill"; then
+      ok "$skill is a declared repo-local skill (no mirror parity expected)"
+      # Content parity is meaningless without a counterpart, but *tracked-ness*
+      # is not — that is the failure a fresh checkout caught once already.
+      if [ "$IN_GIT" = yes ]; then
+        while IFS= read -r f; do
+          if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+            ok "$skill: ${f#"$MIRROR_ROOT"/} is tracked by git"
+          else
+            bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
+          fi
+        done < <(find "$mdir" ! -type d | sort)
+      fi
+    else
+      bad "$skill exists only in the mirror and is not declared in REPO-LOCAL (project-local fork)"
+    fi
     continue
   fi
+
+  mirrored=$((mirrored + 1))
 
   # Forward: every file the plugin ships must be mirrored, byte for byte. Walking
   # the tree rather than naming paths keeps a newly added file from being silently
@@ -84,7 +183,7 @@ for mdir in "$MIRROR_ROOT"/*/; do
     else
       bad "$skill: $rel exists only in the mirror (project-local file)"
     fi
-  done < <(find "$mdir" -type f | sort)
+  done < <(find "$mdir" ! -type d | sort)
 
   # Present on disk is not the invariant — *versioned* is. A mirror file that
   # .gitignore excludes passes every content check locally and then vanishes on a
@@ -97,9 +196,9 @@ for mdir in "$MIRROR_ROOT"/*/; do
       else
         bad "$skill: ${f#"$MIRROR_ROOT"/} is NOT tracked by git (check .gitignore)"
       fi
-    done < <(find "$mdir" -type f | sort)
+    done < <(find "$mdir" ! -type d | sort)
   fi
-done
+done < <(find "$MIRROR_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
 
 echo "== mirror set =="
 

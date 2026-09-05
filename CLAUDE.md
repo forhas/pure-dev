@@ -49,9 +49,10 @@ floors (`verify-completeness.sh`, `verify-convergence.sh`) — floors rot, invar
 
 ## The `.claude/skills/` mirror
 
-Every directory under `.claude/skills/` is a byte-identical mirror of the same-named directory
-under `plugins/quick-dev/skills/`, so this repo drives its own work with the skills it ships.
-Edit the plugin copy, then re-sync:
+Every directory under `.claude/skills/` is one of two kinds, and `scripts/verify-mirror.sh`
+rejects anything that is neither. Most are **byte-identical mirrors** of the same-named
+directory under `plugins/quick-dev/skills/`, so this repo drives its own work with the skills
+it ships. Edit the plugin copy, then re-sync:
 
 ```bash
 cp -r plugins/quick-dev/skills/<skill>/. .claude/skills/<skill>/
@@ -59,6 +60,13 @@ cp -r plugins/quick-dev/skills/<skill>/. .claude/skills/<skill>/
 
 `scripts/verify-mirror.sh` enforces this and discovers the mirror set automatically. It has caught
 real drift more than once; do not treat it as a formality.
+
+The other kind is a **repo-local skill** — a maintainer workflow that belongs to neither
+shipped plugin, declared by name in `.claude/skills/REPO-LOCAL`. `feedback-harvest` is the
+one that exists. A repo-local skill is exempt from mirror parity and from nothing else: it
+must be tracked by git, it must exist on disk, and it must **not** have a `quick-dev`
+counterpart — a mirror that relabelled itself repo-local would otherwise skip parity silently.
+An undeclared directory still fails, which is what keeps the un-ignored mirror root safe.
 
 `plugins/notion-dev` vendors adapted copies of several `quick-dev` skills. They are deliberate
 forks, not mirrors — when you change shared behaviour, change both and check the wording that
