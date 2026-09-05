@@ -572,6 +572,37 @@ On any non-zero exit from a trigger command:
 
      Either → the request succeeded; continue (if (b), that review *is* the round's response —
      handle it, do not re-request). Neither → nothing landed; retry.
+
+     **Neither is not the same as "nothing landed" for copilot — an empty `requested_reviewers` is
+     evidence of nothing.** On some repos the bot is never surfaced under `.users[]` at all, so (a)
+     reads empty for the entire life of a live request, and the POST's **own 2xx response body** carries
+     `"requested_reviewers": []` as well. Every signal available at trigger time then reports "nothing
+     landed" simultaneously, **with no error message anywhere**, while the request is genuinely live and
+     the review arrives 90 s to 3.5 min later. Measured in one client across four rounds on three PRs.
+
+     Two consequences, and both are load-bearing:
+
+     - **Never conclude `not-configured` from an absence.** That classification requires an explicit
+       message saying Copilot review is unavailable (step 3's three-bucket rule). With no message to read,
+       the observable state is indistinguishable from a silently-dropped request — one client run came
+       within a single judgment call of recording `not-configured` and switching permanently to the local
+       fallback, discarding a working cross-model review that was merely slow.
+     - **Confirm with the issues timeline before re-requesting.** The timeline is the surface that
+       actually shows the request landed: a `review_requested` event whose `requested_reviewer` is
+       `Copilot` — note **that** login, not `copilot-pull-request-reviewer[bot]`. Read it as a third
+       source whenever (a) and (b) both come back empty:
+
+       ```bash
+       gh api --paginate repos/{owner}/{repo}/issues/<pr>/timeline \
+         --jq '.[] | select(.event == "review_requested") | .requested_reviewer.login'
+       ```
+
+       Present → the request landed; poll, do not re-request. Absent from a **definite** read → retry the
+       post. Absent from a failed read is not absence at all (rule 2 below).
+
+     This also weakens the silence rule downstream, and the weakening is silent: that rule treats "bot
+     still listed" as proof the request is merely slow, and on a repo where the condition can never be
+     true, a slow round is indistinguishable from a dead one. Use the timeline there too.
 2. **The state re-read must itself succeed before it decides anything.** A read that errors,
    times out, or returns empty is not evidence of either outcome — it tells you nothing about
    whether the mutation landed. Never compare a failed read's empty result against the
@@ -668,6 +699,10 @@ Rounds are counted from the first reviewer trigger. **Hard cap: the resolved `re
 
 Poll for a **new** reviewer response every 30 seconds (`sleep 30` — do not busy-loop), reading reviews, issue comments, and inline comments with `--paginate`, acting only on items newer than the newest already seen. A **reviewer response** is a review or comment authored by the bound profile's reviewer bot whose **id is absent from the round's `$SEEN` snapshot** (step 3). Newness is decided by that snapshot alone — never by a wall-clock comparison, which has a second-precision boundary that silently drops a response submitted in the same second as the baseline. Authorship is an exact match against the profile's **set** of logins — never a substring or prefix test:
 
+**Every poll read must succeed before it is allowed to mean anything, and a failed one must fail loudly.** This is the same rule step 3 states for the trigger re-read, and it applies here for the same reason — but the poll is where it has actually been violated, because a poll is a loop and the cheapest loop body suppresses its own errors. **Never redirect a poll read's stderr away, and never let a non-zero `gh` exit fall through into the response count.** A read that errors, times out, or returns unparseable output tells you nothing about whether the reviewer responded; folding it into the response count converts it into *zero responses*, which is indistinguishable from genuine silence. Retry the read — do not consume a poll interval's worth of evidence from it, and do not let it advance the silence window.
+
+Measured in a client: a poll that suppressed stderr and treated a failed read as zero responses reported silence across the **full 20-poll window** while the reviewer had submitted a review roughly 5 minutes in. The run re-triggered unnecessarily, produced a duplicate review on the same commit, and the real round-1 findings were discovered only on a later manual read. `reason=silent` is a claim that the reviewer did not respond — it may only be reached from reads that actually succeeded.
+
 - **codex** — `user.login` exactly equals `chatgpt-codex-connector[bot]` on every surface.
 - **copilot** — the bot renders under **two** logins, and filtering on either one alone silently drops half its output: `user.login` is `copilot-pull-request-reviewer[bot]` on the **review** object but `Copilot` on that review's **inline comments** (both carry the same `user.node_id`). Accept **either** login. Then attribute inline comments to the round by **review id**, not by login or timestamp — the review carries `submitted_at`, its inline comments do not:
 
@@ -703,7 +738,9 @@ While polling, watch for signals that the bound reviewer cannot review. Detectio
 - **Quota** (codex only) — a new bot message whose body contains the case-insensitive substring `reached your codex usage limit`. `reason=quota`. Not applicable to copilot — copilot has no comment-based quota notice.
 - **Not-configured / error / refusal**:
   - **codex** — a message from the Codex app itself (author login exactly `chatgpt-codex-connector[bot]`, matching the response filter above) or explicitly about Codex (e.g. a workflow notice that Codex is disabled or not installed) that is *exclusively* an inability-to-review notice: it carries **no** `Reviewed commit` marker and **no** findings. Two guards matter here: the exclusivity guard — a normal review that merely mentions an error while still carrying findings or a reviewed-commit marker is a normal round, not an unavailability signal — and the author guard — another review/CI app's failure notice is never a codex signal. `reason=not-configured` when the message says Codex is disabled / not set up / no app installed; otherwise `reason=error`.
-  - **copilot** — only a **permanent rejection** is a signal: a `422`, `403`, or `404` whose **message** says Copilot review is not enabled for the repo/org. Status alone is never enough — `422` on this endpoint also covers validation failure and spam protection, which are retryable. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
+  - **copilot** — **two** signals, and only the first is a configuration verdict.
+    - A **permanent rejection** of the reviewer-request: a `422`, `403`, or `404` whose **message** says Copilot review is not enabled for the repo/org. Status alone is never enough — `422` on this endpoint also covers validation failure and spam protection, which are retryable. `reason=not-configured`; a persistent rejection is `not-configured`, not `error`. **Transient responses** (`500`, `502`, `503`, `429`, rate-limit `403`) and **transport failures** are neither — retry them per step 3's three-bucket classification and never record `not-configured` for them.
+    - A **submitted review that is exclusively an inability-to-review notice** — the copilot analogue of the codex rule above, and it needs the same two guards. The request succeeded and the bot *did* respond, so nothing in the request-rejection bucket above fires; what arrived is a review object (HTTP 2xx) whose body says only that it could not review — **no findings, no inline comments, and no reviewed-commit marker**. The **exclusivity guard**: a normal review that merely mentions an error while still carrying findings is a normal round, not an unavailability signal. `reason=error`, **not** `not-configured` — the bot is configured and answering, it just failed this time, and the distinction decides whether a later round may retry it. Measured in two clients: one saw 2xx refusal bodies on two consecutive rounds of the same PR, and another saw two on one PR (`Copilot encountered an error and was unable to review this pull request`, zero inline comments) while the same bot had reviewed a different PR on the same repo normally under an hour earlier — which is exactly why `error` and not `not-configured` is the correct reading.
 - **Silence** — no new reviewer response within **~10 minutes (20 polls)** of a trigger.
   **The window elapsing is not proof the request is dead.** Reviewer latency varies widely:
   copilot has been observed responding in under 30 seconds on one round and ~16 minutes on
@@ -809,7 +846,7 @@ Each round:
      local loop's counterpart to the reviewer loop's "do not re-trigger when nothing changed".
    - **Oscillation guard**: the same Critical/Required finding (or finding-set) recurs across rounds even though fixes addressing it were applied and pushed → stop early and treat it as a disagreed finding (interactive: pause per pause point (a); non-interactive: resolve autonomously and log).
    - Round counter reaches the cap → stop; go to merge under the cap semantics.
-   - **Contract violation**: the reviewer's output has no `VERDICT` line, or its verdict contradicts its own listed severities → derive the verdict from the findings (`CLEAN` iff zero Critical/Required) and proceed with these rules. If the output is unusable (no parseable findings at all), discard it and spawn one replacement reviewer without incrementing the counter; if the replacement also fails, stop and report.
+   - **Contract violation**: the reviewer's output has no `VERDICT` line, or its verdict contradicts its own listed severities → derive the verdict from the findings (`CLEAN` iff zero Critical/Required) and proceed with these rules. If the output is unusable (no parseable findings at all) **or empty**, discard it and spawn one replacement reviewer without incrementing the counter; if the replacement also fails, stop and report. **A zero-byte result is its own failure shape**, distinct from a malformed one — before discarding it, send one follow-up message restating the required output format and saying the reply body is the deliverable. That nudge has been measured to recover six seats for six in one run and to recover neither of two in another, on the same host and version, so nudge **once** and then treat a still-empty result as the failure it is — never as a clean verdict.
    - Otherwise: increment the counter and spawn a fresh reviewer on the new HEAD.
 
 Local-reviewer output consists of plain PR comments — no GraphQL thread resolution applies to them. The all-threads-resolved merge gate in step 5 still applies to all review threads — pre-existing, human, and any reviewer threads, including late arrivals from pre-switch triggers.
@@ -889,6 +926,14 @@ A citation that does not resolve demotes its criterion to `unverified`, a third 
 - **The verifier ran and its citations did not resolve** — the gate did the resolving and came up short. This is genuine `unverified`: something *was* checked and could not be confirmed. The stated remedy is a citation that actually resolves, so it goes to pass 2 like any other unresolved criterion, and only the terminal rule below decides its final disposition.
 
 Only the second is a completeness finding about the work. The first is a finding about the **check**, and it must never be silently converted into one about the work.
+
+**Key the degradation to which charge failed, not to the criteria list.** Every default above is stated *per criterion*, and that indexing silently degrades to a **no-op** when `CRITERIA-TOTAL` is `0` — a standalone invocation on a hand-opened PR with no `--criteria-file`. "One item per criterion" over zero criteria yields zero items, so a gate whose charges 2 and 3 never ran reports nothing wrong at all. Charges 2 and 3 audit the **PR's own prose**, and they are independent of whether any criteria exist — so an undispatchable verifier costs them whether `CRITERIA-TOTAL` is 6 or 0.
+
+So when the verifier could not be dispatched, record **one item for the charges themselves**, in addition to whatever the per-criterion default produced: `blocked — charges 2 and 3 did not run; no independent party read this PR's claims`, unblocked by a dispatch that delivers. It is the only item the gate raises when there are no criteria, and without it that run reports `degraded` with an empty item list, which reads as a clean gate.
+
+Measured in a client: a standalone run with `CRITERIA-TOTAL: 0` lost charges 2 and 3 and *only* charges 2 and 3, against a PR body carrying **eight checkable factual assertions** — a file census, a claimed pass/fail count, a commit date, a three-row results table, a byte count — every one produced and stated by the author of the change, and none ever read by an independent party. The runs where this is worst are exactly the runs where it is most invisible: a standalone `review-and-merge` on a hand-opened PR is where the body is most likely to be long, unreviewed prose.
+
+**A dead reviewer and a dead fallback are not independent conditions.** This skill treats the configured reviewer being unavailable and the local fallback being unavailable as separate failures with separate remedies — but the fallback *is* a dispatched subagent, so on a host where subagent delivery is broken the two are **correlated**, and losing the configured reviewer for any reason leaves no working degradation path at all. Measured in a client: the configured reviewer errored twice on one PR, which correctly routed the run into the local loop — the designed remedy for exactly that — and the local reviewer then returned zero bytes on dispatch and again after a nudge. A transient reviewer-side outage, ordinarily fully absorbed, became an unreviewable pull request. When both seats fail this way, **stop before the merge and report it** rather than substituting your own reading of the diff; say plainly that the safety net was itself unavailable, so the state is legible as a host defect and not as a review that happened.
 
 Then, in both cases:
 

@@ -44,7 +44,18 @@ Run all checks before creating anything:
    git worktree add "$(dirname "$REPO_ROOT")/${REPO_NAME}-worktrees/$SLUG" -b "$BRANCH" "$BASE"
    ```
    Record the absolute worktree path as `WORKTREE`.
+
+   **Gitignored local files are not carried into the worktree — recreate any a verify step needs.** A fresh worktree contains only tracked content, so a gitignored `.env.local` (or any similar local-only file) exists in `$REPO_ROOT` and nowhere else, and a build or deploy target that reads one fails in the worktree while passing in the primary checkout. Recreate it from its committed example before treating the failure as a finding — it presents as a regression in the branch under test, right before a merge gate, which is exactly the wrong conclusion to draw. A long-running local service the target expects is the same class of gap and is likewise not a regression in the branch.
 5. `cd "$WORKTREE"` and perform **all** subsequent work there. Use absolute paths under `$WORKTREE` for every file read/write/edit until cleanup. Never modify files under `$REPO_ROOT` during the feature work — with one sanctioned exception: ledger writes under `$REPO_ROOT/.claude/quick-dev/` (Phases 2a and 6, and failure handling), a self-ignored directory that never appears in `git status`.
+
+**Assert the primary checkout is unchanged after each build task.** Every clean-tree gate in this
+flow inspects the **worktree**; none inspects `$REPO_ROOT`, so an implementer that writes to a
+relative path resolved against the wrong root produces a modification no gate can see. After each
+task, `git -C "$REPO_ROOT" status --porcelain` must still show exactly what preflight recorded —
+nothing new. A new entry means the task wrote outside the worktree: report it with the path, and
+do not treat the task as complete until the stray write is understood. Catching it here is the
+difference between a one-line correction and an unattributable edit discovered after the worktree
+that explains it has been deleted.
 
 ## Phase 2 — Triage and build
 
@@ -106,9 +117,16 @@ Commit any remaining uncommitted work in the worktree with a clear conventional 
 1. `git push -u origin "$BRANCH"`
 2. Compose the PR body to include the frozen acceptance criteria verbatim under an `## Acceptance criteria` heading, alongside the plan review's `file` items already placed here — **the PR body is the freeze**, written before review, timestamped, and unaffected by any later edit to the criteria file. Then create the PR:
    ```bash
-   gh pr create --base "$MAIN" --head "$BRANCH" --title "<feature title>" --body "<summary of what was built and why, plus the Acceptance criteria section>"
+   # write the body to a file first — see the rule below
+   gh pr create --base "$MAIN" --head "$BRANCH" --title "<feature title>" --body-file "$PR_BODY"
+   gh pr view <pr> --json body --jq '.body | length'   # confirm a realistic length
    ```
 3. Record the PR number.
+
+   **Pass a long PR body with `--body-file`, never `--body`, and never `@-`.** `gh pr create` does **not** support `@-` for `--body`: passed literally it becomes the *entire body* — two characters, **exit code 0, no warning** — and the prepared description is silently gone. `--body` with an inline string is barely better for anything multi-line, since backticks and newlines are mishandled. Write the body to a file and pass `--body-file <path>`. Then **read it back and confirm a realistic length** (`gh pr view <pr> --json body`): the write is cheap, and it is the only thing standing between a silent truncation and a review window spent against a body nobody can see.
+
+   Measured in a client: a PR was created with a body of exactly `@-` and sat through **all three review rounds** with no description. Nothing false was published — the literal `@-` claims nothing — but the run's explicit "acceptance criterion 1 is unmet" disclosure, the one thing it most wanted a human to read, was absent for the entire review window and was caught only at the merge gate.
+
 
 Local mode has no PR, so its only freeze is the criteria file, which is editable. That is a real weakness of local mode rather than an oversight, and it is **unmitigated**. In particular the `Unmet:` trailers (Phase 4's local mode step 6) do **not** bound it: a weakened criterion is one the completeness gate then settles as `met`, met criteria get no trailer, and so the squash commit is byte-identical to a genuinely complete run. The trailers record what was not met; nothing here can detect a criterion that was quietly made easier. GitHub mode's PR-body freeze is the only real defence in this flow, and local mode does not have it — state that plainly rather than claiming a mitigation that does not mitigate.
 
@@ -182,10 +200,31 @@ Only start cleanup after confirming the merge landed: GitHub mode — `gh pr vie
 
 From `$REPO_ROOT` (leave the worktree first). **The worktree goes first and the primary checkout's `checkout` goes last** — nothing in worktree removal or branch deletion needs the primary to be on `$MAIN`, and doing the primary's checkout while a worktree may still be sitting on that branch is what produces `fatal: '$MAIN' is already used by worktree at '<primary>'`:
 
-1. Remove the worktree: `git worktree remove "$WORKTREE"` (add `--force` only if it fails on untracked leftovers, after confirming the path is the worktree this flow created — see "Worktree edge cases" in `references/environment-setup.md`). Then `git worktree prune`.
+1. Remove the worktree: `git worktree remove "$WORKTREE"` (add `--force` only if it fails — on untracked leftovers, or on the submodule refusal, which is deterministic rather than incidental — after confirming the path is the worktree this flow created; see "Worktree edge cases" in `references/environment-setup.md`). Then `git worktree prune`.
 2. Delete the local branch: `git branch -D "$BRANCH"` (`-D` is required — squash merges are not detected by `-d`; safe because the merge was verified above). If it fails because `$BRANCH` is checked out in the primary checkout, run step 4 first and retry this step after it.
 3. GitHub mode: verify the remote branch is gone (`git ls-remote --heads origin "$BRANCH"`); delete it if the merge step didn't: `git push origin --delete "$BRANCH"`. `quick-dev:review-and-merge` deletes the remote branch itself as its own command after the merge, so this is normally a no-op confirmation — it stays because that deletion is not guaranteed to have been reached.
 4. GitHub mode: `git checkout "$MAIN" && git pull --ff-only origin "$MAIN"` so the primary checkout contains the merged feature. **`--ff-only` is required, not stylistic**: a primary whose `$MAIN` carries local-only commits has diverged, and a default `pull` would silently manufacture a merge commit to reconcile it. `--ff-only` aborts instead, which is what "do not stash or discard anything" means for a diverged branch. This step is **best-effort**: if it fails (e.g. `PREEXISTING_DIRTY` changes conflict with the update, or `$MAIN` has diverged), do not stash or discard anything — continue and report that `$MAIN` needs a manual checkout/pull. The merge already landed; a blocked local update must not strand the worktree and branch cleanup above, which is why it no longer runs before them.
+
+**A failed pull must be diagnosed, not merely reported — the evidence is gone one step later.**
+`--ff-only` covers a *diverged* base, but the other cause is a **dirty primary checkout**, which
+surfaces as `Your local changes to the following files would be overwritten by merge` and means
+something wrote outside the worktree during the run. Before continuing, capture and report
+`git -C "$REPO_ROOT" status --porcelain`, naming the offending paths. Do not stash or discard
+anything — but do not let the run end with only "the branch needs a manual pull" either.
+
+The ordering makes this urgent rather than optional: the worktree and the branch are removed
+**before** this step, so by the time the pull fails, the only record of where a stray edit came
+from is already deleted. A run that follows "continue with the remaining cleanup steps and report"
+literally, with no diagnosis, leaves the edit sitting in the primary checkout indefinitely and
+unattributable.
+
+Measured in a client: a build-flow implementer subagent, dispatched with the worktree as its
+working directory and an absolute worktree path in its brief, **also** wrote its edit to the same
+relative path under the primary checkout. Both copies got the change; the worktree copy was
+committed and merged normally while the primary copy sat as an uncommitted modification —
+invisible to every gate in the flow, because each of them inspects the worktree and none inspects
+the primary. It was recovered only by diffing the stray copy against the merged base, which showed
+it to be an older intermediate state of the same edit, and discarding it.
 5. Remove the `<repo>-worktrees` parent directory if now empty: `rmdir "$(dirname "$WORKTREE")"` — derived from `$WORKTREE`, the variable this phase already works with, rather than restating Phase 1's `$(dirname "$REPO_ROOT")/${REPO_NAME}-worktrees` construction, which would silently diverge if that layout ever changed. `rmdir`, never `rm -rf`: it refuses on a non-empty directory, which is the whole safety property here.
 
 ## Phase 6 — Verify and report

@@ -95,6 +95,21 @@ Bot login present (`PENDING`) → the request is live. `NOT_PENDING` → either 
 or Copilot already submitted and was auto-removed — absence alone is ambiguous (see the
 "response landed" check in step 3 of SKILL.md, which also checks for a submitted review).
 
+**On some repos this endpoint never lists Copilot at all**, so `NOT_PENDING` is its permanent
+answer for a request that is genuinely live — and the reviewer-request POST's own 2xx response
+body carries `"requested_reviewers": []` in the same case, with no error anywhere. A definite
+`NOT_PENDING` is therefore **not** evidence the request failed, and never on its own grounds for
+`not-configured`. The issues timeline is the surface that confirms it landed:
+
+```bash
+gh api --paginate repos/{owner}/{repo}/issues/<pr>/timeline \
+  --jq '.[] | select(.event == "review_requested") | .requested_reviewer.login'
+```
+
+The login there is `Copilot`, **not** `copilot-pull-request-reviewer[bot]` — matching only the
+bot form finds nothing on a PR whose request is live. Consult it whenever the pending check and
+the submitted-review check both come back empty (step 3 of SKILL.md).
+
 ## Replying
 
 In-thread reply to an inline review comment (use the REST `comment_id` / `databaseId`):

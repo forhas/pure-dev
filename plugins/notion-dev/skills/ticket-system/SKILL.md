@@ -80,6 +80,27 @@ idempotence breaks, accumulating `[PDS-1] [PDS-1] …` one prefix per touch.
 Strip the escapes from the captured title as well, not only from the prefix: a title whose body
 contains brackets arrives escaped throughout.
 
+**The escaping is a property of Notion's markdown, not of the title property — so it binds every
+read-back of a `[<KEY>-<n>]` bracket form this plugin writes, not just the title.** This is the
+canonical statement; the other two sites cite it. Any parse or targeted search-and-replace
+written against the *unescaped* form fails silently on a page that demonstrably contains the
+text, and the two failures look nothing alike:
+
+- **A parse finds zero entries** on a populated section. `getEpicContext` step 5's
+  `### [<KEY>-<n>] resolved` parse of `## Resolution Log` is the consequential one, because
+  `epic-update` step 1a's idempotency check reads it: against the unescaped form `already-recorded`
+  can never fire, so a recovery invocation re-runs the filing pass and appends a **duplicate log
+  entry**. Per-follow-up `PROVENANCE` dedup still prevents duplicate *tickets*, so the damage is a
+  duplicated entry rather than lost work — but the check is defeated, not degraded.
+- **A write fails outright.** An `update_content` whose `old_str` uses the unescaped form returns
+  `validation_error: No matches found` — which at least fails loudly, unlike the parse above.
+
+Measured in a client under a live database: a `## Tasks` line read back as
+`- [ ] \[<KEY>-<n>\] <title> — Backlog` and a log heading as `### \[<KEY>-<n>\] resolved — …`, both
+escaped, and an unescaped `### \[<KEY>-\d+\] resolved` regex matched **zero** entries on a page
+holding several. Tolerate an optional `\` before `[` and
+before `]` at every such site, and strip it from whatever is captured.
+
 Only a prefix matching **this project's** `project.key` counts. On a DB shared between projects, a leading `[FOO-12] ` is part of the title, not a prefix — leave it alone.
 
 **Writing.** `createTicket` and `updateTicket` write `[<KEY>-<n>] <bare title>`, stripping any already-matching prefix from the incoming value first. Idempotent: never double-prefixes, and a prefix carrying the wrong number is corrected to the page's real ID.
@@ -270,6 +291,23 @@ When `updateTicket`'s body merge re-writes an existing section, **read the exist
    - If `id` is a Notion page id (32 hex chars with or without dashes), a dashed UUID, or a Notion page URL: **fetch the page directly** with `mcp__notion__notion-fetch` — skip the database query entirely.
    - Otherwise treat `id` as a logical key: normalize it to numeric, then query the database (or data source if configured) for the page where `idProperty` equals the numeric id — use `mcp__notion__notion-query-data-sources` with an exact filter on `idProperty` (semantic `notion-search` is not reliable for numeric-ID equality, and `notion-fetch` only fetches by URL/ID; fall back to a DB-scoped `notion-search` only if the query tool is unavailable, verifying the hit's `idProperty` value before trusting it). When `idProperty` is a `unique_id` column, filter by its numeric component — ignore the textual prefix. Load the resolved page content with `mcp__notion__notion-fetch`.
 2. **Apply the project scoping guardrail** (see section above) — abort here if any pinned `staticProperties` mismatch the live page. Fail before any further work.
+
+   **A `404 object_not_found` on the configured `databaseId`/`dataSourceId` is almost always a
+   workspace-binding problem, not a wrong id.** The Notion MCP session is authenticated to exactly
+   one workspace; a database that lives in a different one is simply not visible to it, and the
+   symptom is a clean 404 on the database id, a 404 on its data-source reference, and
+   `data_source_not_found` on a query — all three at once, with the configured values perfectly
+   correct. Diagnose it with `notion-fetch "self"`, which reports the workspace the session is
+   actually bound to, and report that workspace to the user rather than the raw 404. Stop here:
+   the run has created nothing yet, and this is the right place for that to stay true.
+
+   **Never widen the lookup to recover from it.** A workspace-scoped search by logical key looks
+   like an obvious fallback and is the one thing that must not be done — ticket-key prefixes are
+   not globally unique, and an unrelated database in the reachable workspace can carry the same
+   `<KEY>-<n>` shape. Measured in a client: the reachable workspace held a different project's
+   tickets under the same key prefix, so a relaxed lookup would have resolved to a foreign
+   project's ticket and operated on it silently. The DB-scoped fallback in step 1 is bounded for
+   this reason, and step 2's guardrail is the backstop; neither is a licence to search wider.
 3. Convert blocks to markdown, preserving **Requirements**, **Acceptance Criteria**, **Context**, **Open Questions** sections.
 4. Read `typeProperty` (if present): normalize to a logical key via reverse lookup through `typeMap` (defaults above). For `multi_select`, the first option wins.
 4a. Read the mission/epic-adjacent raw values, each absence-tolerant (missing or unset → that type's empty default, never a warning — these are routine, not exceptional):
@@ -562,7 +600,7 @@ Read-only. Assembles the bounded context block that `/notion-dev:ticket` threads
 2. `fetchTicket(epicId)` → epic identity (`key`, `title`, `url`), `body`, and its own `metadata.parentTaskProperty` / `metadata.epicMarkerProperty`. **Validate before proceeding**: if the fetched page's own `parentTaskProperty` is non-empty, or its `epicMarkerProperty` is not `true` (`false` whether because the box is unchecked, the property is absent from the live DB, or it is present but not a Checkbox — `fetchTicket` collapses all three to the same default; see "Property type handling"), this is not a structurally valid epic — return `null`, the same signal as step 1's "no epic" case, and do nothing further. This is the same predicate `findEpics()`, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply; enforcing it here, inside the adapter, means every caller — present or future — inherits it rather than having to re-check at each call site. Without it, a `parentTaskProperty` value that merely points at an ordinary Notion Sub-items parent (not an epic) would be handed back as if it were one: a nonexistent `## Overview`, the parent's other children mislabeled as "siblings," and none of it flagged as anything other than epic context.
 3. **Overview.** Extract the `## Overview` section verbatim from `body`. Omit the heading and body entirely from the output when the section is absent.
 4. **Sibling status.** Call `listEpicChildren(epicId)` — a **live** call, never derived from the epic body's `## Tasks` section. That section is documented as "Snapshot as of the last resolution" and is only refreshed when a child resolves, so it is stale by construction; handing a starting ticket stale sibling status would be worse than handing it none. Render one line per child: `[{key}] {title} — {status}`. Mark the entry whose `id` equals `currentTicketId` with a trailing ` (this ticket)` so the reader can locate itself among its siblings. When `currentTicketId` matches no entry — e.g. the parent relation was just set but the epic's child query has not yet picked it up — mark nothing and continue; this is not an error.
-5. **Recent resolution history.** Parse `## Resolution Log` from `body` into its `### [<KEY>-<n>] resolved — <datetime>` entries, in document order. `appendToSection` always appends at the end, so the **last 3** entries in document order are the most recent 3 resolutions — take those. When more than 3 entries exist, prepend a line stating how many older entries were omitted, so the reader knows there is more history and where to find it (the epic `url` from step 2).
+5. **Recent resolution history.** Parse `## Resolution Log` from `body` into its `### [<KEY>-<n>] resolved — <datetime>` entries, in document order. **Tolerate the backslash-escaped bracket form** (`### \[<KEY>-<n>\] resolved`) exactly as the title-prefix detection does — see "Title prefix" for the canonical rule and what an unescaped parse costs `epic-update`'s idempotency check. `appendToSection` always appends at the end, so the **last 3** entries in document order are the most recent 3 resolutions — take those. When more than 3 entries exist, prepend a line stating how many older entries were omitted, so the reader knows there is more history and where to find it (the epic `url` from step 2).
 6. Assemble and return one markdown block, in this order — identity, `## Overview` (when present), sibling status, recent resolution history:
 
 ```
@@ -601,7 +639,7 @@ Re-renders an epic's `## Tasks` section from its live children. **The single own
 - [ ] [STO-69] Backfill historic wallets — Backlog
 ```
 
-   The box is ticked when the child's `status` is in the **resolved set**. Each line is `[{key}] {title} — {status}` from the `listEpicChildren` entry.
+   The box is ticked when the child's `status` is in the **resolved set**. Each line is `[{key}] {title} — {status}` from the `listEpicChildren` entry. **When updating an existing line rather than re-rendering the section, match the backslash-escaped bracket form too** — a read-back line arrives as `- [ ] \[<KEY>-<n>\] <title> — <status>`, and an `old_str` written against the unescaped form fails with `validation_error: No matches found`. See "Title prefix" for the canonical rule.
 4. Prepend this note as the section's first paragraph: *"Snapshot as of the last resolution — see the Parent task column for live status."*
 5. `upsertSection(epicId, "Tasks", <rendered blocks>)`.
 
