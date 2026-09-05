@@ -177,6 +177,15 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   assert_present "$n: an empty item list on a degraded gate reads as a clean gate" \
     "$S" 1 "$L" 'reports `degraded` with an empty item list, which reads as a clean gate'
 
+  assert_present "$n: the interactive branch carries the charges item at any criteria count" \
+    "$S" 1 "$L" 'the charges item above, always and regardless of the criteria count'
+
+  assert_present "$n: the non-interactive branch carries the charges item too" \
+    "$S" 1 "$L" 'per criterion \*\*together with the charges item above\*\*'
+
+  assert_present "$n: neither per-mode branch may drop the charges item" \
+    "$S" 1 "$L" '\*\*The charges item is never dropped by either branch'
+
   echo "== $n review-and-merge — reviewer and fallback are correlated =="
 
   assert_present "$n: a dead reviewer and a dead fallback are not independent conditions" \
