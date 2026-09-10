@@ -119,6 +119,15 @@ assert_present "a split condition needs a distinct identity, not just a distinct
   "$SK" 1 "$L" 'needs a \*\*distinct identity\*\*, not just a distinct paragraph'
 assert_present "the discriminator is a bracketed suffix carried through triage and the archive heading" \
   "$SK" 1 "$L" 'discriminator in brackets to the signature everywhere this harvest records it'
+# The bracketed form has spaces, so it is not a signature and not a section
+# boundary. Safe in an archive heading, ruinous in a client log — where the
+# convention is issue-log's space-free hyphenated subject instead.
+assert_present "the bracketed form is for this repo's own records only" \
+  "$SK" 1 "$L" "own records only, and is never written into a client"
+assert_present "a heading that is not a signature is not a section boundary" \
+  "$SK" 1 "$L" 'is not a section boundary'
+assert_present "the client log's convention is the space-free `mcp-unavailable:notion-never-registered` subject" \
+  "$SK" 1 "$L" '`mcp-unavailable:notion-never-registered`'
 assert_present "phase 1 matches a split condition next time by observed, not the bare signature" \
   "$SK" 1 "$L" 'Phase 1 matches it next time by re-reading `Observed`, not the bare signature alone\.'
 
