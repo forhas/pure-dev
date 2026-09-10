@@ -828,8 +828,14 @@ if [ -f "$TK" ]; then
   assert_present "ticket: the stop report confirms each artifact exists at the moment it names it" \
     "$TK" 1 "$L" '\*\*Confirm each artifact exists at the moment you name it\*\*'
 
-  assert_present "ticket: PLAN.md is rescued out of the worktree before stopping" \
-    "$TK" 1 "$L" '\*\*Rescue `PLAN\.md` before stopping\*\*'
+  # Copy, not move: 1.2's resume detection reads the worktree's own PLAN.md and
+  # its checkboxes, and this path leaves the worktree intact by design — so a
+  # move makes a stopped superpowers run look like a fresh one.
+  assert_present "ticket: PLAN.md is copied out before stopping, never moved" \
+    "$TK" 1 "$L" '\*\*Copy `PLAN\.md` out before stopping — copy, never move\.\*\*'
+
+  assert_present "ticket: the worktree's own PLAN.md is left where it is, because resume reads it" \
+    "$TK" 1 "$L" "leave the worktree's own \`PLAN.md\` exactly where it is"
 fi
 
 D=plugins/quick-dev/skills/develop/SKILL.md
