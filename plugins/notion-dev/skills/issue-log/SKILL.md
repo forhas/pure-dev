@@ -87,6 +87,8 @@ a healthy run.
 
 Every field is required. `Context` may be the literal `none` when no permitted pair applies.
 
+**`Kind` is not the signature's class.** They are two different closed vocabularies that sit two lines apart in the template, and conflating them is the mistake this warning exists to stop: `Kind` is one of exactly `failed` / `degraded` / `unexpected` and answers *did the run continue?* (see "`Kind`" below), while the class is the part of the signature before the colon and answers *what kind of condition is this?* Writing `**Kind**: mcp-unavailable` on an `mcp-unavailable:notion` entry is the shape this takes — it restates the signature and throws away the only thing the field carries. Measured in a client: four live entries, and every one of the four had copied its own class into `Kind`.
+
 ```markdown
 ## missing-property:parentTaskProperty
 **Kind**: degraded · **Occurrences**: 7
@@ -118,6 +120,8 @@ There is deliberately no `drift` value. Drift and degradation are different axes
 **Read the version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` at write time.** Never hardcode it. A literal version string here would be a second copy of a fact that lives in the manifest, and it would go stale at the first release.
 
 An entry whose first-seen and last-seen versions differ is an issue that survived an upgrade.
+
+**No line inside an entry may begin with `## `.** The `##` heading is what separates one section from the next — for this file's own dedup search in "Write procedure" below, and for anything downstream that reads the log — so a body line starting with it forges a section boundary in the middle of an entry. The way this happens is not exotic: `Effect` and `Observed` are prose, they routinely name a Notion section (`## Implementation`, `## Tasks`), and a hard wrap can put such a name at the start of a line without anyone choosing to. Measured in a client, where exactly that split an entry in two. Keep every section name inline — reflow the sentence so it does not begin a line, and prefer the backticked form.
 
 ## Signature grammar
 
@@ -193,10 +197,13 @@ Signature is the identity.
 1. Read `$REPO_ROOT/.claude/notion-dev/notion-dev-issues.md` if it exists.
 2. Search for a line matching exactly `## <signature>`.
 3. **Present** — update that section's `**Last seen**` line to now plus the current version, and increment the integer on its `**Occurrences**` line. Leave every other byte of the section unchanged.
+3a. **More than one section matches** — the file already carries duplicate headings for this signature, which nothing here can undo (entries are never removed). Update **the last** of them and never add a third. A deterministic choice is the whole point: without one, successive runs update different copies and the occurrence count splits across headings that claim to be one condition. Measured in a client: two signatures, each with two sections, in a single log.
 4. **Absent** — append a blank line and the full entry at the end of the file.
 5. **File absent** — create the directory and gitignore, write the header, then the entry.
 
-**On a repeat, only `Last seen` and `Occurrences` change.** The five descriptive fields and `Kind` keep their first-seen values. Mutating them would make the entry lie about what was first observed and make the write non-deterministic. If `Observed` would differ materially from what is recorded, that is a different condition and belongs under a different signature.
+**On a repeat, only `Last seen` and `Occurrences` change.** The five descriptive fields and `Kind` keep their first-seen values. Mutating them would make the entry lie about what was first observed and make the write non-deterministic. If `Observed` would differ materially from what is recorded, that is a different condition and belongs under a different signature. **Give it a different signature, not a second section under the same one** — extend the **subject** with a short kebab-case discriminator drawn from the `Observed` difference itself, so the two conditions have distinct identities: `mcp-unavailable:notion-never-registered` beside `mcp-unavailable:notion-registered-timed-out`. This is the same shape `option-missing`'s Kind A subject already uses (`<propertyName>-<logicalKey>`), and it is in-grammar by construction. **Never a bracketed or space-bearing suffix.** A signature has no spaces (see "Signature grammar" above), and everything that reads this file back keys on that: a heading like `## mcp-unavailable:notion [never registered]` is not recognisable as a signature, so a reader splitting the file into sections does not see a new section starting there and folds the entry into the one above it — where it can then be removed under **that** entry's disposition, losing a condition nobody triaged. The discriminator is subject to every redaction rule the signature is, since it lands in a `##` heading. Writing the new condition under the heading that already exists is the failure mode this replaces, and it is unrecoverable once written (see step 3a).
+
+**A recurrence worth more than a count may be appended to its section, and only to its section.** Step 3's *leave every other byte unchanged* is about the five descriptive fields, which must keep their first-seen values; it is not a ban on recording a later occurrence that carries a sharper finding — a second consumer of the same defect, a wider exposure window, a prediction the later run confirmed. Write it as a **bolded lead-in or a depth-three-or-deeper subsection below the fixed fields of the section whose signature it names**, never at depth two (see "No line inside an entry may begin with `## `" above), and **still increment `Occurrences`** — the note records what was learned, the counter records that it happened, and neither substitutes for the other. Measured in a client: one such note was appended under a neighbouring signature's section instead of its own, leaving its real entry reading `Occurrences: 2` for a condition that had by then occurred three times.
 
 `Occurrences` counts **write events**, not underlying incidents. Most enumerated sites are specified as "log one warning per run", so for those it counts runs. The registry marks each site's frequency.
 

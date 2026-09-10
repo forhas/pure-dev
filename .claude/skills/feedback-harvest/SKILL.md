@@ -77,7 +77,9 @@ carries more than the original: one entry's third recurrence reports a *second c
 same defect and a wider exposure window than when it was filed.
 
 **Also record a digest of the section's complete text**, from its `##` heading to the next
-heading at depth two or end of file. Phase 8 compares this digest, not just two fields, before
+signature heading — `## <class>:<subject>`, colon, no spaces — or end of file; a prose line that
+merely starts with `## ` is not a boundary, and Phase 8 states the test. Phase 8 compares this
+digest, not just two fields, before
 deciding a section unchanged — a free-form recurrence or correction can be appended without
 touching either `Occurrences` or `Last seen`.
 
@@ -92,6 +94,17 @@ notes and the archive's `##` heading — drawn from the `Observed` difference th
 the split: `mcp-unavailable:notion [registered, timed out]` versus `mcp-unavailable:notion
 [never registered]`. The client log itself stays untouched.
 Phase 1 matches it next time by re-reading `Observed`, not the bare signature alone.
+
+**The bracketed form is for this repo's own records only, and is never written into a client
+log.** It carries spaces, so it is not a signature — and a `##` heading that is not a signature
+is not a section boundary (Phase 8 step 2), which is exactly how an entry gets folded into the
+one above it and removed under that entry's disposition. It is safe here because an archive
+heading is read by people and by Phase 1, neither of which splits sections on it. The client
+log's own convention for a materially different condition is `issue-log`'s: extend the
+**subject** with a kebab-case discriminator, `mcp-unavailable:notion-never-registered`, which
+stays a single space-free token. Two surfaces, two forms. The split above is still needed
+whichever form a client wrote, because `issue-log` dedups per repo and cannot see that two
+clients used one signature for two conditions.
 
 ### Phase 3 — Triage
 
@@ -302,13 +315,23 @@ of this feedback, and a pull request that does not land would take it with it.
 Removal is surgical, matched on the section's **complete text** as harvested:
 
 1. Locate `## <signature>` in the client log. Recompute the digest of its complete section —
-   from the `##` heading to the next heading at depth two or end of file — and compare it to
+   from the `##` heading to the next signature heading (step 2's test) or end of file — and compare it to
    the digest Phase 2 recorded. `Occurrences` and `Last seen` alone are not enough: a free-form
    recurrence or correction can be appended without changing either field.
-2. Match → delete the section, from its `##` heading to the line before the next heading at
-   exactly depth two (`## `), or end of file. A recurrence subsection is appended below the
+2. Match → delete the section, from its `##` heading to the line before the next **signature**
+   heading, or end of file. A recurrence subsection is appended below the
    fixed fields at depth three or deeper, so it is inside the range being deleted, not a
    boundary that stops it.
+
+   **Depth two alone does not identify a boundary — the heading must also look like a
+   signature.** `issue-log`'s own grammar guarantees the shape: `## <class>:<subject>`, a single
+   token carrying a colon and **no spaces**. A body line can begin `## ` without anyone
+   choosing it — `Effect` and `Observed` are prose, they name Notion sections, and a hard wrap
+   puts the name at the start of a line. Measured in a live client log: a line reading
+   `## Merged, six of eight AC boxes ticked…` sits inside an entry's own resolution note. A
+   range keyed on bare `^## ` stops there and orphans the rest of the section it was deleting —
+   the tail of a harvested entry left behind to be re-triaged next harvest as a fragment with no
+   fields. So test the token, not the hashes; the same test bounds Phase 2's digest range.
 3. Mismatch → leave the section in place and report it. The client appended to, corrected, or
    incremented that signature after the harvest read it, and the new evidence is untriaged.
 4. **All five dispositions are removed**, `decline` and `track` included. Their durable home is
