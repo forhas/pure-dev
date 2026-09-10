@@ -535,6 +535,316 @@ if [ -f "$E" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# A dispatch that never returns is a third failure shape
+# ---------------------------------------------------------------------------
+# The two shapes above both END — an agent errors, or it goes idle — which is
+# what lets a rule inspect what came back. Measured in a client: five dispatches
+# across two seats stayed in `running` state and never emitted, two of them
+# stopped only after 75 and 50 minutes. A check written against a delivered
+# result cannot fire on one that never arrives, so without a bound the seat waits
+# forever and nothing says the seat is empty. The `ListAgents` tell and the bound
+# are both load-bearing: the tell is what distinguishes looping from merely slow,
+# and the bound is what ends it.
+never_returns_sites=0
+for S in plugins/*/skills/plan-review/SKILL.md plugins/*/skills/flow-triage/SKILL.md; do
+  [ -f "$S" ] || continue
+  never_returns_sites=$((never_returns_sites + 1))
+  n=$(plugin_of "$S"); k=$(basename "$(dirname "$S")"); L=$(total_lines "$S")
+
+  echo "== $n $k — a dispatch that never returns =="
+
+  assert_present "$n $k: never-returning is a third shape neither earlier rule covers" \
+    "$S" 1 "$L" 'A dispatch that never returns is a third shape, and neither rule above covers it'
+
+  assert_present "$n $k: the agent stays in running state and never emits a final block" \
+    "$S" 1 "$L" 'stays in `running` state and never'
+
+  assert_present "$n $k: the tell is ListAgents reporting the same agent as started <1m ago" \
+    "$S" 1 "$L" '`ListAgents` reporting the same agent as "started <1m ago"'
+
+  assert_present "$n $k: the nudge does not reach an agent that is looping rather than waiting" \
+    "$S" 1 "$L" 'answered by an agent that is waiting, not by one that is looping'
+
+  assert_present "$n $k: the wait is bounded, and an unbounded wait is named as the defect" \
+    "$S" 1 "$L" '\*\*Bound the wait\*\*'
+
+  assert_present "$n $k: an unbounded wait is the defect because nothing else reports the empty seat" \
+    "$S" 1 "$L" 'unbounded wait is the defect'
+
+  # A sibling agent that delivers is the reading that makes a run wait longer
+  # instead of stopping — measured in the same run that lost two seats.
+  assert_present "$n $k: a sibling agent that works is not evidence this one will" \
+    "$S" 1 "$L" 'not evidence that this one will'
+
+  # The third shape has to read as a further case of the same failure handling,
+  # after the two shapes it is distinguished from. Hoisted above them it reads as
+  # the general rule, and the zero-byte nudge becomes an exception to it.
+  assert_order "$n $k: the zero-byte shape and its nudge precede the never-returns shape" \
+    "$S" 1 "$L" \
+    "zero-byte shape" 'A zero-byte result is its own failure shape' \
+    "never returns"   'A dispatch that never returns is a third shape'
+done
+
+[ "$never_returns_sites" -ge 4 ] \
+  && ok "every plan-review and flow-triage seat was checked ($never_returns_sites)" \
+  || bad "expected at least 4 never-returns dispatch sites, walked $never_returns_sites"
+
+# The same shape at review-and-merge's two seats, which have their own failure
+# paths (one replacement then stop; the Degradation path with its charges item).
+for S in plugins/*/skills/review-and-merge/SKILL.md; do
+  [ -f "$S" ] || continue
+  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  echo "== $n review-and-merge — a seat that never returns =="
+
+  assert_present "$n review-and-merge: a seat that never returns is a third failure shape" \
+    "$S" 1 "$L" 'A seat that never returns is a third failure shape'
+
+  assert_present "$n review-and-merge: the ListAgents tell is stated here too" \
+    "$S" 1 "$L" '`ListAgents` reporting the same agent as "started <1m ago"'
+
+  assert_present "$n review-and-merge: the wait is bounded before the seat's failure path is taken" \
+    "$S" 1 "$L" '\*\*Bound the wait\*\*'
+
+  assert_present "$n review-and-merge: an unbounded wait is named as the defect" \
+    "$S" 1 "$L" 'An unbounded wait is the defect'
+done
+
+# ---------------------------------------------------------------------------
+# A control probe separates a broken dispatch from a broken host
+# ---------------------------------------------------------------------------
+# Both silent shapes invite "the prompt was too long / the rubric too complex /
+# the task too hard", and each of those readings costs another dispatch to
+# disprove. Measured in a client: a `general-purpose` agent whose whole prompt was
+# a PONG echo also returned zero bytes, which settled it in one call. The
+# correlation it exposes must stay a DISCLOSURE and not become a stop — in the
+# same harvest, one run lost both local seats while the configured reviewer
+# completed four rounds and the pull request merged normally.
+for S in plugins/*/skills/plan-review/SKILL.md; do
+  [ -f "$S" ] || continue
+  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  echo "== $n plan-review — control probe and correlated seats =="
+
+  assert_present "$n plan-review: a control probe tells a broken dispatch from a broken host" \
+    "$S" 1 "$L" 'Tell "this dispatch is broken" from "dispatch is broken on this host" with a control probe'
+
+  assert_present "$n plan-review: the probe prompt is the PONG echo with no tools" \
+    "$S" 1 "$L" 'Reply with exactly the word PONG and nothing else'
+
+  assert_present "$n plan-review: one probe rules out prompt size, rubric complexity, tool use and difficulty" \
+    "$S" 1 "$L" 'prompt size, rubric complexity, tool use and task difficulty'
+
+  assert_present "$n plan-review: a seat lost to the mechanism predicts the merge-gate seats" \
+    "$S" 1 "$L" 'predicts the merge-gate seats'
+
+  # The half that keeps it honest. Without it the paragraph reads as licence to
+  # abort the build whenever this seat degrades.
+  assert_present "$n plan-review: the prediction is disclosed, never converted into a stop" \
+    "$S" 1 "$L" 'Do \*\*not\*\* convert it into a stop'
+
+  assert_present "$n plan-review: the configured reviewer is not a subagent and can carry the review alone" \
+    "$S" 1 "$L" 'not a subagent — completed four rounds normally'
+done
+
+# ---------------------------------------------------------------------------
+# The last gate before an irreversible merge
+# ---------------------------------------------------------------------------
+# Measured in a client: the all-threads-resolved re-read produced no output when
+# it shared a shell batch with the merge — a multi-line GraphQL string did not
+# survive the quoting — and the batch merged anyway. The standing rule that a
+# failed read is never evidence is stated four times in this skill already, and
+# nowhere at the one gate whose mistake cannot be undone.
+for S in plugins/*/skills/review-and-merge/SKILL.md; do
+  [ -f "$S" ] || continue
+  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  echo "== $n review-and-merge — gate 2 is its own command =="
+
+  assert_present "$n review-and-merge: the thread query never shares a shell invocation with the merge" \
+    "$S" 1 "$L" 'never in the same shell invocation as the merge'
+
+  assert_present "$n review-and-merge: an empty result at gate 2 is a failed read, not a pass" \
+    "$S" 1 "$L" 'treat an empty result as a failed read rather than a pass'
+
+  assert_present "$n review-and-merge: a multi-line GraphQL string does not reliably survive batched quoting" \
+    "$S" 1 "$L" 'does not reliably survive quoting when it shares a batch'
+
+  assert_present "$n review-and-merge: earlier evidence is not a substitute — the gate is the re-read" \
+    "$S" 1 "$L" 'the gate is the re-read'
+done
+
+# ---------------------------------------------------------------------------
+# A silently ignored filter is not a multi-hit
+# ---------------------------------------------------------------------------
+# Measured in a client on three separate runs: a rows-mode `number_equals` filter
+# on the id column returned five unrelated rows of the SAME database with
+# `has_more: true` and no error, while SQL mode with a bound parameter returned
+# the one intended row each time. The project-scoping guardrail cannot catch it —
+# those rows carry the same pinned staticProperties, being the same project's
+# tickets — so verifying the resolved id is the only thing standing in the way.
+TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+if [ -f "$TS" ]; then
+  L=$(total_lines "$TS")
+  echo "== notion-dev ticket-system — id lookup =="
+
+  assert_present "ticket-system: the resolved page's idProperty is verified on every path, not only the fallback" \
+    "$TS" 1 "$L" 'on every path, not only the fallback'
+
+  assert_present "ticket-system: a structured filter can be silently ignored rather than rejected" \
+    "$TS" 1 "$L" 'can be \*\*silently ignored\*\*'
+
+  assert_present "ticket-system: an ignored filter is indistinguishable from a genuine multi-hit" \
+    "$TS" 1 "$L" 'indistinguishable at the call site from a genuine multi-hit'
+
+  assert_present "ticket-system: the project-scoping guardrail does not catch it" \
+    "$TS" 1 "$L" 'step 2 does not catch it'
+
+  assert_present "ticket-system: more than one row, or has_more, is never resolved by taking the first row" \
+    "$TS" 1 "$L" 'is never resolved by taking the first row'
+
+  # ---------------------------------------------------------------------------
+  # refreshEpicTasks never creates the section it refreshes
+  # ---------------------------------------------------------------------------
+  # `upsertSection` creates an absent section, which is right for an epic this
+  # plugin wrote and wrong for one it was pointed at. Measured in a client: a
+  # curated, hand-authored task list would have gained a second ~50-item
+  # auto-generated list beside it, disagreeing from the first status change with
+  # nothing on the page saying which governs. `refreshAcceptanceCriteria` already
+  # declines for exactly this reason; the asymmetry was the defect.
+  echo "== notion-dev ticket-system — refreshEpicTasks =="
+
+  assert_present "ticket-system: refreshEpicTasks returns without writing when there is no ## Tasks section" \
+    "$TS" 1 "$L" 'If the epic page has no `## Tasks` section, warn once and return without writing one'
+
+  assert_present "ticket-system: upsertSection creating an absent section is the mechanism being guarded" \
+    "$TS" 1 "$L" 'which \*creates\* a section that is absent'
+
+  assert_present "ticket-system: refreshAcceptanceCriteria is cited as the sibling that already declines" \
+    "$TS" 1 "$L" 'already declines for the same reason'
+
+  assert_present "ticket-system: creating the section belongs to create-task, never to a refresh" \
+    "$TS" 1 "$L" 'never to a refresh'
+
+  assert_present "ticket-system: the operations table records the no-op too" \
+    "$TS" 1 "$L" '\*\*No-op when the epic has no `## Tasks` section\*\*'
+
+  # ---------------------------------------------------------------------------
+  # An absent MCP tool family is a session failure, not a configuration one
+  # ---------------------------------------------------------------------------
+  # fetchTicket is the first Notion action of every command, so the whole
+  # family's absence surfaces here — and the obvious reading (bad config, bad
+  # credentials, wrong database) sends the user to re-run init, which fixes
+  # nothing. Measured in a client: the hand-run proxy completed OAuth discovery
+  # and connected, which localised the fault to the session's own MCP client.
+  echo "== notion-dev ticket-system — absent MCP tool family =="
+
+  assert_present "ticket-system: no registered mcp__notion__ tool is a session-level connection failure" \
+    "$TS" 1 "$L" 'that is a session-level connection failure'
+
+  assert_present "ticket-system: the user is not sent to /notion-dev:init for it" \
+    "$TS" 1 "$L" 'do not send the user to `/notion-dev:init`'
+
+  assert_present "ticket-system: one command discriminates — run the server's own launch command by hand" \
+    "$TS" 1 "$L" '\*\*One command discriminates:\*\*'
+
+  assert_present "ticket-system: a successful hand-run proxy confines the fault to this session's MCP client" \
+    "$TS" 1 "$L" "confined to this session's MCP client connect"
+fi
+
+# ---------------------------------------------------------------------------
+# The issue log's own conformance rules
+# ---------------------------------------------------------------------------
+# Every rule here was forced by a live client log that violates it: two
+# signatures each carrying two `##` sections, a recurrence note filed under a
+# neighbouring signature while its own entry undercounted, a hard-wrapped
+# `Effect` line beginning `## `, and four entries that copied their class into
+# the `Kind` field. None of these is repairable after the fact — the log is
+# append-only by design — so each has to be prevented at the write.
+IL=plugins/notion-dev/skills/issue-log/SKILL.md
+if [ -f "$IL" ]; then
+  L=$(total_lines "$IL")
+  echo "== notion-dev issue-log — entry conformance =="
+
+  assert_present "issue-log: Kind is not the signature's class" \
+    "$IL" 1 "$L" "\*\*.Kind. is not the signature's class\.\*\*"
+
+  assert_present "issue-log: the two vocabularies are distinguished by the question each answers" \
+    "$IL" 1 "$L" 'answers \*did the run continue\?\*'
+
+  assert_present "issue-log: no line inside an entry may begin with a depth-two heading" \
+    "$IL" 1 "$L" '\*\*No line inside an entry may begin with `## `\.\*\*'
+
+  assert_present "issue-log: a hard wrap can start a line with a section name without anyone choosing it" \
+    "$IL" 1 "$L" 'without anyone choosing to'
+
+  assert_present "issue-log: duplicate headings are resolved by updating the last of them" \
+    "$IL" 1 "$L" 'Update \*\*the last\*\* of them'
+
+  assert_present "issue-log: a third section is never added when duplicates already exist" \
+    "$IL" 1 "$L" 'never add a third'
+
+  assert_present "issue-log: a materially different condition gets its own signature, not a second section under the same one" \
+    "$IL" 1 "$L" '\*\*Give it a different signature, not a second section under the same one\*\*'
+
+  assert_present "issue-log: the discriminator is subject to the same redaction rules as the signature" \
+    "$IL" 1 "$L" 'subject to every redaction'
+
+  assert_present "issue-log: a recurrence note goes only in the section whose signature it names" \
+    "$IL" 1 "$L" 'and only to its section'
+
+  assert_present "issue-log: a recurrence note never sits at depth two" \
+    "$IL" 1 "$L" 'never at depth two'
+
+  assert_present "issue-log: a recurrence note still increments Occurrences" \
+    "$IL" 1 "$L" '\*\*still increment `Occurrences`\*\*'
+fi
+
+# ---------------------------------------------------------------------------
+# Preconditions and stop reports name what is actually there
+# ---------------------------------------------------------------------------
+# `git stash` does not touch untracked files, so a gate that says "commit or
+# stash" over untracked dirt hands the user a remedy that leaves the tree exactly
+# as dirty — measured twice in one client. And a stop report is the one record a
+# resume trusts: measured in a client, a deliberate work-preserving stop asserted
+# a worktree, a branch and an 8-task plan were intact when none existed.
+TK=plugins/notion-dev/commands/ticket.md
+if [ -f "$TK" ]; then
+  L=$(total_lines "$TK")
+  echo "== notion-dev ticket — preconditions, gate 1.3, stop report =="
+
+  assert_present "ticket: untracked dirt is named, with git stash -u as its remedy" \
+    "$TK" 1 "$L" 'say so and name `git stash -u`'
+
+  assert_present "ticket: plain git stash is stated not to touch untracked files" \
+    "$TK" 1 "$L" 'does not touch untracked files'
+
+  assert_present "ticket: a clear but not-yet-satisfiable requirement is its own gate outcome" \
+    "$TK" 1 "$L" 'If the requirement is clear but not satisfiable \*now\*'
+
+  assert_present "ticket: it is reported as blocked on a named external precondition, not as under-spec" \
+    "$TK" 1 "$L" 'not as under-spec'
+
+  assert_present "ticket: a watch ticket can be well-formed and still unbuildable" \
+    "$TK" 1 "$L" 'well-formed and still unbuildable'
+
+  assert_present "ticket: the stop report confirms each artifact exists at the moment it names it" \
+    "$TK" 1 "$L" '\*\*Confirm each artifact exists at the moment you name it\*\*'
+
+  assert_present "ticket: PLAN.md is rescued out of the worktree before stopping" \
+    "$TK" 1 "$L" '\*\*Rescue `PLAN\.md` before stopping\*\*'
+fi
+
+D=plugins/quick-dev/skills/develop/SKILL.md
+if [ -f "$D" ]; then
+  L=$(total_lines "$D")
+  echo "== quick-dev develop — preconditions and stop report =="
+
+  assert_present "develop: untracked dirt is named, with git stash -u as its remedy" \
+    "$D" 1 "$L" '\*\*When the dirt is untracked, say so and name `git stash -u`\*\*'
+
+  assert_present "develop: the stop report confirms each artifact exists at the moment it names it" \
+    "$D" 1 "$L" '\*\*Confirm each artifact exists at the moment you name it\*\*'
+fi
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"

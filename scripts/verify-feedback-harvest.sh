@@ -364,8 +364,22 @@ assert_present "occurrences and last seen alone cannot prove a section is unchan
 # A `^##` prefix match stops at the first `###` recurrence subsection and
 # leaves it orphaned — recurrences live at depth three or deeper, undocumented
 # by `issue-log` at any fixed depth (final review, Important 3).
-assert_present "the delete boundary is the next depth-two heading, not any subheading" \
-  "$SK" 1 "$L" 'exactly depth two \(`## `\), or end of file'
+#
+# And depth two alone is not the boundary either: measured in a live client log,
+# a hard-wrapped `Effect` line naming a Notion section begins `## `, so a range
+# keyed on bare `^## ` stops inside the entry it is deleting and orphans its
+# tail. The boundary test is the signature SHAPE — colon, no spaces — which
+# `issue-log`'s own grammar guarantees and a prose line cannot accidentally have.
+assert_present "the delete boundary is the next signature heading, not any depth-two line" \
+  "$SK" 1 "$L" 'to the line before the next \*\*signature\*\*'
+assert_present "a depth-two heading bounds a section only when it also looks like a signature" \
+  "$SK" 1 "$L" '\*\*Depth two alone does not identify a boundary'
+assert_present "the signature shape is a single token carrying a colon and no spaces" \
+  "$SK" 1 "$L" 'token carrying a colon and \*\*no spaces\*\*'
+assert_count "the \`## <class>:<subject>\` shape is stated at both the digest range and the delete range" \
+  "$SK" 1 "$L" '`## <class>:<subject>`' 2
+assert_present "a prose line that merely starts with \`## \` is not a boundary" \
+  "$SK" 1 "$L" 'merely starts with `## ` is not a boundary'
 assert_present "a mismatched section is left in place and reported" \
   "$SK" 1 "$L" 'leave the section in place and report it'
 assert_present "the file is never truncated and never deleted" \
