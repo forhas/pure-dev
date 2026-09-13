@@ -52,8 +52,8 @@ Walk `NEXT` in order. A candidate is **valid** when all of:
 **Resume first.** Before walking `NEXT`, scan `CHILDREN` for any child in the configured in-progress status (`statusMap.inProgress`) that **does** have our worktree. If one exists, it is the pick regardless of order: resuming an interrupted run is the most valuable next action, and `/notion-dev:ticket` owns the resume (its Phase 1.2). Say `resuming [<key>]` instead of `next`.
 
 **No valid candidate in `NEXT`:**
-- interactive → `AskUserQuestion` over the remaining unresolved, unblocked children in `CHILDREN` (Phase/Step order), plus **Stop**;
-- non-interactive → the first unresolved, unblocked child in Phase/Step order, logged as a decision for the report;
+- interactive → `AskUserQuestion` over the remaining children in `CHILDREN` that pass **every** validity rule above (unresolved, not in `BLOCKED`, dependencies settled, not someone else's in-progress ticket), in Phase/Step order, plus **Stop**;
+- non-interactive → the first child in Phase/Step order that passes those same rules, logged as a decision for the report;
 - none at all → stop with `epic blocked`, printing the brief's `## Open threads` verbatim — those are what someone must clear.
 
 ### 3. Delegate
