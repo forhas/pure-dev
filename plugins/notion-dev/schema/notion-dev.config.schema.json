@@ -162,6 +162,17 @@
         }
       }
     },
+    "epicDocs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "type": "string",
+          "default": "docs/epics",
+          "description": "Directory, relative to the repo root, holding the per-epic markdown briefs written by notion-dev:epic-doc. One file per epic, named <KEY>-<n>-<slug>.md. Not opt-in: every epic gets one on its first resolution or first /notion-dev:next-task run."
+        }
+      }
+    },
     "verify": {
       "type": "object",
       "required": ["steps"],
