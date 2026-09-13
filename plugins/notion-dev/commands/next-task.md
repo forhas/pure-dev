@@ -44,6 +44,7 @@ Distilling a long hand-written plan is real work; landing it now, rather than ho
 ### 2. Pick
 
 Walk `NEXT` in order. A candidate is **valid** when all of:
+- its dependencies are settled: fetch its body (`fetchTicket`) and require every ticket its `## Blocked by` section names to be in the resolved set — the brief's item 1 is unblocked by construction, but a later item such as `[STO-71] — after STO-70` is runnable only once what it waits for has resolved, and the `Blocked:` line covers threads, not order;
 - its live status in `CHILDREN` is not in the resolved set;
 - its key is not in `BLOCKED`;
 - it is not in the configured in-progress status (`statusMap.inProgress`, default `In Progress` — compare the live option name against that, never the literal) **without** a worktree of ours — compute the worktree path exactly as `/notion-dev:ticket` Phase 1.2 does (`$(dirname "$REPO_ROOT")/<repo-name>-worktrees/<worktree.prefix>`) and test for it. That status with no worktree means someone else has it: skip it, and say so in the report.
