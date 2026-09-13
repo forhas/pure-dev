@@ -46,9 +46,9 @@ Distilling a long hand-written plan is real work; landing it now, rather than ho
 Walk `NEXT` in order. A candidate is **valid** when all of:
 - its live status in `CHILDREN` is not in the resolved set;
 - its key is not in `BLOCKED`;
-- it is not `In Progress` **without** a worktree of ours — compute the worktree path exactly as `/notion-dev:ticket` Phase 1.2 does (`$(dirname "$REPO_ROOT")/<repo-name>-worktrees/<worktree.prefix>`) and test for it. `In Progress` with no worktree means someone else has it: skip it, and say so in the report.
+- it is not in the configured in-progress status (`statusMap.inProgress`, default `In Progress` — compare the live option name against that, never the literal) **without** a worktree of ours — compute the worktree path exactly as `/notion-dev:ticket` Phase 1.2 does (`$(dirname "$REPO_ROOT")/<repo-name>-worktrees/<worktree.prefix>`) and test for it. That status with no worktree means someone else has it: skip it, and say so in the report.
 
-**Resume first.** Before walking `NEXT`, scan `CHILDREN` for any `In Progress` child that **does** have our worktree. If one exists, it is the pick regardless of order: resuming an interrupted run is the most valuable next action, and `/notion-dev:ticket` owns the resume (its Phase 1.2). Say `resuming [<key>]` instead of `next`.
+**Resume first.** Before walking `NEXT`, scan `CHILDREN` for any child in the configured in-progress status (`statusMap.inProgress`) that **does** have our worktree. If one exists, it is the pick regardless of order: resuming an interrupted run is the most valuable next action, and `/notion-dev:ticket` owns the resume (its Phase 1.2). Say `resuming [<key>]` instead of `next`.
 
 **No valid candidate in `NEXT`:**
 - interactive → `AskUserQuestion` over the remaining unresolved, unblocked children in `CHILDREN` (Phase/Step order), plus **Stop**;
