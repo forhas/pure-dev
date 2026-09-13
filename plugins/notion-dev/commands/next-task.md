@@ -35,7 +35,7 @@ Then the **inverted epic guard**: `fetchTicket(<epic-id>)` via `notion-dev:ticke
 
 Invoke the `notion-dev:epic-doc` skill, operation `read(<epic-id>)`. It returns `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN`, `BOOTSTRAP`, and `SEED`.
 
-`STATUS: closed` → stop: `epic complete` — print the brief's `## Next` and end.
+`STATUS: closed` → stop: `epic complete` — print the brief's `## Next` and end — **unless the epic's live status (from the preconditions' `fetchTicket`) is not in the resolved set**: the epic was reopened in Notion after the brief closed, so the header is stale, not authoritative. Say so, continue as if `STATUS` were `open` (the next `record` repairs the header), and pick from `CHILDREN` under the rules below.
 
 **`BOOTSTRAP: true` — create the brief before doing anything else.** The primary is clean (preconditions), so: `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>` (`<epicBranch>` = `git.prTargetBranch`, falling back to `git.baseBranch` — the branch the brief lives on, per `notion-dev:epic-doc`) (a `--ff-only` failure stops the run with the same diverged-base report `/notion-dev:ticket` Phase 9 gives — never stash or discard). Then invoke `notion-dev:epic-doc`, operation `record --bootstrap <epic-id>`, passing `REPO_ROOT` and `<epicBranch>` as `<baseRefName>`. It writes `<epicDocs.dir>/<KEY>-<n>-<slug>.md`, removes the seed plan when there was one (`SEED:` names it), commits `docs(epic): bootstrap <KEY>-<n>`, and pushes. Announce the path and the seed. `EPIC-DOC: failed` → stop and report its `CAUSE:`; a brief that could not be committed is not a basis for automated selection. Then re-run `read` so the loop works from the committed file.
 
