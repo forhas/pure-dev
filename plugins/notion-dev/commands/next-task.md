@@ -64,7 +64,7 @@ Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | sel
 
 ### 4. After the run
 
-`DONE += 1`. The delegated run's own Phase 10 already ran `record`, so the brief on `origin/<base>` now reflects this resolution; the next iteration's `read` picks it up.
+`DONE += 1`. The delegated run's own Phase 10 already ran `record`, so the brief on `origin/<epicBranch>` now reflects this resolution. **Re-read it now** — invoke `epic-doc` `read(<epic-id>)` immediately after every delegated run, whether or not another iteration follows: with the default `--depth 1` there is no next iteration, and the closed-status check and the final `## Next` in the report must come from the rewritten brief, never from the pre-delegation copy still in memory.
 
 **Stop early** — do not start another iteration — when any of:
 - the delegated run ended in a **stop or failure** (its "Failure and stop conditions" path: a worktree, branch, or PR left for inspection). Never pick the next ticket over a worktree left for inspection; report the run's own stop report verbatim.
