@@ -42,7 +42,7 @@ echo "== epic-doc: format owner =="
 if [ -f "$ED" ]; then
   L=$(total_lines "$ED")
   for h in '## Why' '## Goal' '## Where we stand' '## Open threads' '## Decisions & constraints' '## Next'; do
-    assert_has "epic-doc template carries the \`$h\` heading" "$ED" "$h"
+    assert_present "epic-doc template carries the \`$h\` heading" "$ED" 1 "$L" "^${h}\$"
   done
   assert_has "epic-doc names the soft budget" "$ED" '120 lines'
   assert_has "epic-doc read path resolves the file by key, never slug" "$ED" '<KEY>-<n>-*.md'
