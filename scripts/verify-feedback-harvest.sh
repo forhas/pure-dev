@@ -126,7 +126,7 @@ assert_present "the bracketed form is for this repo's own records only" \
   "$SK" 1 "$L" "own records only, and is never written into a client"
 assert_present "a heading that is not a signature is not a section boundary" \
   "$SK" 1 "$L" 'is not a section boundary'
-assert_present "the client log's convention is the space-free `mcp-unavailable:notion-never-registered` subject" \
+assert_present "the client log's convention is the space-free \`mcp-unavailable:notion-never-registered\` subject" \
   "$SK" 1 "$L" '`mcp-unavailable:notion-never-registered`'
 assert_present "phase 1 matches a split condition next time by observed, not the bare signature" \
   "$SK" 1 "$L" 'Phase 1 matches it next time by re-reading `Observed`, not the bare signature alone\.'
