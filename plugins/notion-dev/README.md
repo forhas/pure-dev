@@ -118,6 +118,7 @@ Then:
 | `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). Flags: `--non-interactive` (answers its own interview via a fresh subagent grounded in `--context-file`), `--context-file=<path>`, `--epic=<name>`, `--parent=<id>`, `--assignee=<id>`. |
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → plan review (superpowers path) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
+| `/notion-dev:next-task <epic-id>` | Drive an epic from its markdown brief: read `docs/epics/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket, run `/notion-dev:ticket` on it, re-read, repeat. Flags: `--depth all|N` (default 1), `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. |
 
 Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 
@@ -129,6 +130,7 @@ Key fields:
 
 - `project.{key, name}` — ticket ID prefix (e.g. `STO`) and short project name (used in worktree naming).
 - `ticketSystem` — the Notion ticket-database config: `databaseId` (required) plus optional property-name overrides and `statusMap` / `typeMap` / `staticProperties`. Assignee support adds `assigneeProperty` (the People column, default `"Assignee"`) and `defaultAssignee` (a user id, email, or display name; `""` means create-task prompts each run). `/notion-dev:init` sets both. Epic support adds `parentTaskProperty` (the self-referential Relation linking a ticket to its Epic container page, default `"Parent task"`), `epicMarkerProperty` (the Checkbox that marks a page as an Epic container, default `"Is Epic"` — the **sole** signal used to identify epics; carrying an `Epic` select value alone never makes a page a container), and `creationDateProperty` (default `"Creation Date"`, tolerating either a `Date` property the plugin writes at creation or a `Created time` property Notion auto-fills). All three are absence-tolerant, and each also tolerates a wrong live type by degrading exactly as it does for absence. `epicMarkerProperty` is stricter than a skipped write: when it is unusable — **absent, or present but not a Checkbox** — epics cannot be identified at all, so epic discovery and every epic-aware guard degrade to treating every page as "not an epic" rather than guess from shape, and no operation queries the property. `findEpics` likewise returns `null` when `Parent task` is unusable: epic containers need both columns, so discovery never reports a container that could not actually take children.
+- `epicDocs.dir` — directory for the per-epic markdown briefs (default `docs/epics`). See "Epic docs".
 - `inputSources` — enabled source adapters: any of `"prompt"`, `"existing-ticket"`, `"notion-page"`.
 - `git.{baseBranch, prTargetBranch, mergeStrategy, preMergeChecks, postMergeHooks}` — git-flow config; `preMergeChecks` runs as a merge gate inside the review loop (`notion-dev:review-and-merge`), `postMergeHooks` is a phase-2 seam (empty by default).
 - `dependencies.{superpowers, featureDev}` — set by `/notion-dev:init` after verifying both build-flow plugins are installed. Both must be `true` for `/notion-dev:ticket` to run.
@@ -193,7 +195,7 @@ This marker exists because shape alone is ambiguous: on a database upgraded to u
 - **Most review findings never become tickets.** When a review turns up work the ticket did not plan for, the flow triages it: `absorb` (do it now, in this PR — the default), `file` (its own ticket, only when it reaches code outside the PR, needs a new interface/dependency/config/migration, or needs a decision the acceptance criteria do not settle), or `drop` (recorded with a rationale, never built). Absorbed work is gated: `/notion-dev:ticket` will not merge while an `absorb` item is outstanding. Only `file` items become real tickets, and they land under the same Epic.
 - **A ticket closes against what it said it would do.** The `## Acceptance Criteria` you wrote are checked at merge, not assumed: each is `met` with a citation the gate itself resolves — running the command, matching the quoted code against the diff — or it becomes an item in the same `absorb` / `file` / `drop` triage. Met criteria get their Notion to-do boxes ticked; escaped ones stay unticked with the rationale recorded on the ticket, because reducing a ticket's criteria is a scope change and belongs where the work is tracked. The same completeness gate reports any claim in the change that names something absent, and any stated caveat carrying no triage label.
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
-- **`/notion-dev:ticket` reads its Epic before planning.** A starting ticket pulls the epic's `## Overview`, live sibling statuses (not the `## Tasks` snapshot), and the 3 most recent `## Resolution Log` entries as context — background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build.
+- **`/notion-dev:ticket` reads its Epic's brief before planning.** A starting ticket reads `docs/epics/<KEY>-<n>-<slug>.md` from `origin/<base>` — why the epic exists, where it stands, what is waiting on whom, what is next — as context: background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build. The Notion epic page is written on every resolution but no longer read. See "Epic docs" below.
 
 An Epic page carries three sections:
 
@@ -204,6 +206,15 @@ An Epic page carries three sections:
 | `## Resolution Log` | Append-only history. Every time a child resolves, a divider and a dated entry are added with what was done, follow-ups filed and dropped, how many tasks remain, and what's next. |
 
 When the last unresolved child resolves and no filing has failed, the Epic's own status moves to `Implemented`. A follow-up you decline at the filing prompt is recorded as a **drop** — a decision, which closes work rather than blocking the Epic indefinitely.
+
+### Epic docs
+
+Every epic has one concise markdown brief in the repo, `<epicDocs.dir>/<KEY>-<n>-<slug>.md` (default `docs/epics/`), owned by the `epic-doc` skill. It carries six sections — `Why`, `Goal`, `Where we stand`, `Open threads`, `Decisions & constraints`, `Next` — and a soft budget of 120 lines. It holds what Notion cannot say: why the epic exists, what is waiting on whom (and what would clear it), the decisions later tickets must respect, and the single most recommended unblocked ticket with the reason it is next.
+
+- **One writer.** Every resolution — `/notion-dev:ticket` and `/notion-dev:finalize` alike — rewrites the brief after the merge and commits it straight to the base branch (`docs(epic): …`), under the same git assertions the post-merge hooks use. The update is a diff, not a rewrite: it adds the threads this run evidenced (blocked items with their cause, unmet criteria, the "worth your attention" caveats a report would otherwise scroll away), removes what this run resolved, and recomputes `Next`.
+- **Human edits are welcome.** Edit the file to record something the plugin cannot see ("customer logs arrived — STO-22 unblocked") and commit; the next resolution preserves every line it has no evidence to change.
+- **First use.** With no brief yet, `/notion-dev:next-task` creates and commits one before it starts — distilled from an existing hand-written plan named after the epic (`docs/*<KEY>-<n>*.md`), which it then `git rm`s so two files cannot drift against each other (the removal SHA is cited on the brief's header line); or from the Notion epic when there is none. A `/notion-dev:ticket` run started directly on a child of an epic with no brief works from an in-memory version and creates the file at its own resolution.
+- **`epicDocs.dir`** in `.claude/notion-dev.config.json` moves the directory. There is no switch to turn the brief off.
 
 > **Upgrading to `0.13.0`: skim epics that close soon after the upgrade.**
 > Before this version, declining a follow-up at the filing prompt recorded a `SKIPPED` entry that blocked the Epic's closure **permanently** — one decline and the Epic could never reach `Implemented`. That is the bug this release fixes: a decline is now a recorded **drop**, and a drop does not block.
@@ -240,7 +251,7 @@ No v1 refactor required to adopt phase 2.
 ├── .claude-plugin/
 │   ├── plugin.json           # plugin manifest
 │   └── marketplace.json      # self-contained single-plugin marketplace
-├── commands/                 # slash commands (init, create-task, ticket, finalize)
+├── commands/                 # slash commands (init, create-task, ticket, finalize, next-task)
 ├── skills/
 │   ├── ticket-system/        # Notion ticket operations (single SKILL.md)
 │   ├── input-source/         # input adapters (SKILL.md + prompt.md + existing-ticket.md + notion-page.md)
@@ -251,6 +262,7 @@ No v1 refactor required to adopt phase 2.
 │   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
 │   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
 │   ├── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
+│   ├── epic-doc/             # per-epic markdown brief: read at ticket start, rewritten at resolution (used by ticket, finalize, next-task)
 │   ├── session-closeout/     # zero-tails gate before any final report (used by ticket, finalize)
 │   └── issue-log/            # durable, redacted runtime deviation log (used by all four commands, ticket-system)
 ├── schema/
