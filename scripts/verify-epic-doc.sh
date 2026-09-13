@@ -48,8 +48,8 @@ if [ -f "$ED" ]; then
   assert_has "epic-doc read path resolves the file by key, never slug" "$ED" '<KEY>-<n>-*.md'
   assert_has "epic-doc supports \`--bootstrap\`" "$ED" '--bootstrap'
   assert_has "epic-doc removes the seed with \`git rm\`" "$ED" 'git rm'
-  assert_count "epic-doc commits under the \`docs(epic):\` prefix, once per commit kind" \
-    "$ED" 1 "$L" 'docs\(epic\):' 2
+  assert_count "epic-doc cites the \`docs(epic):\` prefix three times: two commit kinds and the idempotency lookup" \
+    "$ED" 1 "$L" 'docs\(epic\):' 3
 
   R0=$(find_line "$ED" 1 "$L" '^## `read\(')
   R1=$(find_line "$ED" 1 "$L" '^## `record\(')
