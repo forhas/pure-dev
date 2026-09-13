@@ -54,8 +54,12 @@ if [ -f "$ED" ]; then
   R0=$(find_line "$ED" 1 "$L" '^## `read\(')
   R1=$(find_line "$ED" 1 "$L" '^## `record\(')
   if [ -n "$R0" ] && [ -n "$R1" ]; then
-    assert_present "read: reads the brief from \`origin/<git.baseBranch>\`" \
-      "$ED" "$R0" "$R1" 'git show origin/<git\.baseBranch>:'
+    assert_present "read: reads the brief from \`origin/<epicBranch>\`" \
+      "$ED" "$R0" "$R1" 'git show origin/<epicBranch>:'
+    assert_present "the brief's branch is defined once as \`<epicBranch>\`" \
+      "$ED" 1 "$R0" '^\*\*Branch\.\*\* The brief lives on .* called `<epicBranch>` below'
+    assert_absent "epic-doc never reads \`origin/<git.baseBranch>\` directly" \
+      "$ED" 1 "$L" 'origin/<git\.baseBranch>'
     assert_absent "read: never commits" "$ED" "$R0" "$R1" 'git commit'
     assert_absent "read: never pushes"  "$ED" "$R0" "$R1" 'git push'
     assert_present "record: asserts the primary is on the base branch" \
