@@ -18,7 +18,7 @@ Both operations are **best-effort in the `epic-update` sense**: a failure never 
 ```
 # [STO-60] Wallet Indexing
 Epic: <notion url> · Status: open | closed · Updated: 2026-09-13 after [STO-67]
-Seeded from docs/STO-67-release-plan.md (removed in a1b2c3d) · 2026-09-13
+Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
 
 ## Why
 <2-4 sentences: the motivation — from the Notion Overview or the seed>
@@ -92,7 +92,7 @@ test "$(git -C $REPO_ROOT rev-parse HEAD)" = \
      "$(git -C $REPO_ROOT rev-parse origin/<baseRefName>)"       # must be equal
 ```
 
-Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the assertion that failed>`. The three lines are the same three for the same reason: a commit made on a stale or diverged primary would publish the wrong thing to base. On `--bootstrap` there is no merge commit, so the second line is omitted and `git status --porcelain` must be empty instead.
+Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the assertion that failed>`. The three lines are the same three for the same reason: a commit made on a stale or diverged primary would publish the wrong thing to base. On `--bootstrap` there is no merge commit, so the second line is omitted and, in its place, `git -C $REPO_ROOT diff --quiet && git -C $REPO_ROOT diff --cached --quiet` must both succeed — no tracked modifications. Untracked dirt is fine: the bootstrap commit stages only the brief and the seed (`git add <brief>`, `git rm <seed>`, never `-a`), so it cannot sweep anything else in.
 
 **Steps.**
 
@@ -102,12 +102,12 @@ Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the asser
    - `## Open threads` — **add** one bullet per `REVIEW_REPORT` `BLOCKED` item (cause, what unblocks, which tickets it holds), per `COMPLETION_CLOSEOUT` `blocked:` line, per `not-met` or `unverified` criterion (naming the ticket it belongs to), and per caveat sentence in `DRAFT_REPORT` — the sentences shaped like "worth your attention", "waiting on you", "caveat before you queue it", "note for the next ticket", each rewritten to name what it blocks or informs. **Remove** every bullet this resolution resolved: its `Unblocked by:` happened, or every ticket it named is now resolved. A `tracked:` line and a `FILED` follow-up are tickets, not threads — they appear in `## Next`, never here.
    - `## Decisions & constraints` — add decisions this run made that later tickets must respect: an approach chosen, a version deployed, a `DROPPED` finding whose rationale constrains later work, a `DECISIONS` entry that changed scope.
    - `## Next` — recompute: `listEpicChildren(<epic-id>)` for live statuses; for each unresolved child its `## Blocked by` section and Phase/Step properties (fetch bodies of unresolved children only); the open threads decide `Blocked:`. Item 1 is unblocked by construction and carries a one-line reason. Nothing under `Blocked:` appears in the numbered list.
-   - Header — `Updated: <YYYY-MM-DD> after [<KEY>-<id>]`. When `EPIC_REPORT` reads `EPIC-UPDATE: closed`, set `Status: closed` and make `## Next` read `epic complete`.
+   - Header — `Updated: <YYYY-MM-DD> after [<KEY>-<id>]`. When `EPIC_REPORT` reads `EPIC-UPDATE: closed`, set `Status: closed` and make `## Next` read `epic complete`. A header that already reads `after [<KEY>-<id>]` for this ticket is the idempotency signal: this resolution was recorded by an earlier invocation, so re-apply nothing — recompute `## Next` from live children only, and add no thread twice.
 3. **Budget.** Over 120 lines, prune before adding: compress `## Where we stand` first, then `## Decisions & constraints` entries no unresolved ticket depends on. Never prune a thread that names an unresolved ticket.
-4. **Write and commit.** Write the file (creating `<epicDocs.dir>/` if absent), `git add` it, and — when this invocation created it from a seed — `git rm` the seed in the same commit and put `Seeded from <seed path> (removed in <this commit's SHA, from git rev-parse --short HEAD after the commit; amend the header line and commit --amend --no-edit>) · <date>` on the header. Commit message: `docs(epic): <KEY>-<n> after <ticket key>`. Push: `git push origin <baseRefName>`.
+4. **Write and commit.** When this invocation created the brief from a seed, first cite `git rev-parse --short HEAD` — by precondition this equals `origin/<baseRefName>` and is already pushed, so it is the last base commit that still holds `<seed path>` (`git show <sha>:<seed path>` recovers it) — and put `Seeded from <seed path> (last at <sha>) · <date>` on the header. Then write the file (creating `<epicDocs.dir>/` if absent), `git add` it, and `git rm` the seed in the same commit. Commit message: `docs(epic): <KEY>-<n> after <ticket key>`. Push: `git push origin <baseRefName>`. After staging, if `git diff --cached --quiet` succeeds — the brief is byte-identical to the one on `origin/<baseRefName>`, meaning this resolution was already recorded — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0`.
 5. **Push rejected** (branch protection, a base that moved) → leave the local commit in place, **do not force**, and return `EPIC-DOC: failed` with `CAUSE: push rejected — <git's message>`. The caller's closeout workspace pass sees the unpushed commit and forces it into a `blocked:` line with that cause.
 
-**`record --bootstrap <epic-id>`** — invoked by `/notion-dev:next-task` when `read` returned `BOOTSTRAP: true`. Preconditions as above minus the ancestor line. Runs the bootstrap to disk: write the distilled brief, `git rm` the seed when there was one, commit `docs(epic): bootstrap <KEY>-<n>`, push. Same rejected-push handling. Returns `EPIC-DOC: created`.
+**`record --bootstrap <epic-id>`** — invoked by `/notion-dev:next-task` when `read` returned `BOOTSTRAP: true`. Preconditions as above minus the ancestor line, with the porcelain check narrowed to tracked modifications only, as above — untracked dirt (init-generated files, `.claude/settings.local.json`) is exempt because this step never runs `git add -a`. Resolve the epic via `fetchTicket(<epic-id>)` exactly as `read` step 1 does (there is no `EPIC_REPORT` on this path). Runs the bootstrap to disk: write the distilled brief, `git rm` the seed when there was one, commit `docs(epic): bootstrap <KEY>-<n>`, push. Same rejected-push handling. Returns `EPIC-DOC: created`.
 
 **What `record` must never do:** invent a thread not evidenced by an input; restate ticket history Notion already holds; reword an existing line without evidence from this run; delete a human-written line it has no evidence against; write from anywhere but `$REPO_ROOT` on `<baseRefName>`.
 
@@ -118,7 +118,7 @@ Return exactly one block for the caller's report:
 ```
 EPIC-DOC: created | updated | closed | none | failed
 PATH: docs/epics/STO-60-wallet-indexing.md                 (omit on none)
-SEED: docs/STO-67-release-plan.md · removed in a1b2c3d      (only when created from a seed)
+SEED: docs/STO-67-release-plan.md · last at a1b2c3d         (only when created from a seed)
 THREADS: +2 -1                                              (bullets added / removed this run)
 NEXT: [STO-70] Backfill historic wallets — <reason>         (or `epic complete`, or `blocked: <thread>`)
 CAUSE: <failed assertion, or push rejection>                (only on failed)

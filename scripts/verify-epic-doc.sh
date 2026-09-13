@@ -66,6 +66,16 @@ if [ -f "$ED" ]; then
       "$ED" "$R1" "$L" 'rev-parse origin/<baseRefName>'
     assert_present "record: output block states its five values" \
       "$ED" "$R1" "$L" '^EPIC-DOC: created \| updated \| closed \| none \| failed'
+    assert_present "record: output block carries \`PATH:\`" \
+      "$ED" "$R1" "$L" '^PATH: '
+    assert_present "record: output block carries \`SEED:\`" \
+      "$ED" "$R1" "$L" '^SEED: '
+    assert_present "record: output block carries \`THREADS:\`" \
+      "$ED" "$R1" "$L" '^THREADS: '
+    assert_present "record: output block carries \`NEXT:\`" \
+      "$ED" "$R1" "$L" '^NEXT: '
+    assert_present "record: output block carries \`CAUSE:\`" \
+      "$ED" "$R1" "$L" '^CAUSE: '
     assert_present "record: a rejected push is never forced" \
       "$ED" "$R1" "$L" 'do not force'
   else
@@ -99,7 +109,7 @@ if [ -f "$TICKET" ]; then
     "$TICKET" "$P1" "$P2" 'notion-dev:epic-doc. skill, operation .read\(metadata\.parentTaskProperty, <id>\)'
   assert_lacks "ticket.md no longer calls getEpicContext" "$TICKET" 'getEpicContext('
   assert_present "ticket.md records after the draft, before the closeout" \
-    "$TICKET" "$P10" "$PF" '^\*\*Epic doc — record the resolution\.\*\* Runs after the draft report is composed and before the closeout workspace pass'
+    "$TICKET" "$P10" "$PF" '^\*\*Epic doc — record the resolution\.\*\*'
   assert_order "ticket Phase 10 order: \`record\` before the workspace pass before the summary" \
     "$TICKET" "$P10" "$PF" \
     "record"   'notion-dev:epic-doc. skill, operation .record\(<id>\)' \
@@ -125,7 +135,7 @@ if [ -f "$FINALIZE" ]; then
   assert_present "finalize.md keeps \`disable-model-invocation: true\`" \
     "$FINALIZE" 1 5 '^disable-model-invocation: true'
   assert_present "finalize.md records after the draft, before the closeout" \
-    "$FINALIZE" "$P5" "$PF" '^\*\*Epic doc — record the resolution\.\*\* Runs after the draft report is composed and before the closeout workspace pass'
+    "$FINALIZE" "$P5" "$PF" '^\*\*Epic doc — record the resolution\.\*\*'
   assert_order "finalize Phase 5 order: \`record\` before the workspace pass before the summary" \
     "$FINALIZE" "$P5" "$PF" \
     "record"   'notion-dev:epic-doc. skill, operation .record\(<id>\)' \

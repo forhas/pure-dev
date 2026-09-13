@@ -107,7 +107,7 @@ Non-interactive mode: self-answer every resume question above with the most reas
 
 ### 1.3 Hard gate — requirement clarification
 
-Read the ticket body together with `CLAUDE.md` at the repo root, any files the ticket references, and `EPIC_CONTEXT` when present. The brief's open threads may already answer an open question on this ticket, and one of them may *be* the reason this ticket exists. `EPIC_CONTEXT` is background, not requirements (see 1.1) — if a thread or decision in the brief appears to conflict with the ticket body, surface the conflict to the user at this gate rather than silently favoring the log.
+Read the ticket body together with `CLAUDE.md` at the repo root, any files the ticket references, and `EPIC_CONTEXT` when present. The brief's open threads may already answer an open question on this ticket, and one of them may *be* the reason this ticket exists. `EPIC_CONTEXT` is background, not requirements (see 1.1) — if a thread or decision in the brief appears to conflict with the ticket body, surface the conflict to the user at this gate rather than silently favoring the brief.
 
 Ask yourself: do I understand the goal, scope, and acceptance criteria well enough to implement without guessing?
 
@@ -189,7 +189,7 @@ Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_F
 - **Save location**: write the plan to `<worktree>/PLAN.md`. Do **not** use writing-plans' default `docs/superpowers/plans/...` path.
 - **Feature name** for the plan header: `<KEY>-<id>: <title>`.
 
-When `EPIC_CONTEXT` is present, also pass it — labeled explicitly as **background context, not spec**: writing-plans must not turn a resolution-log entry into a task. Only the ticket body is the spec.
+When `EPIC_CONTEXT` is present, also pass it — labeled explicitly as **background context, not spec**: writing-plans must not turn an open thread or a recorded decision from the brief into a task. Only the ticket body is the spec.
 
 Writing-plans produces a TDD-structured plan with bite-sized (2-5 minute) tasks, explicit file-by-file create/modify paths, and checkbox (`- [ ]`) tracking.
 
@@ -380,6 +380,8 @@ resolved from `.claude/notion-dev.config.json`), the local fallback
 (`notion-dev:local-code-review`), merge gates (including config `git.preMergeChecks`),
 the merge itself per `git.mergeStrategy`, and remote branch deletion. Record its final
 report (which loop ran, rounds, applied vs. declined) as `REVIEW_REPORT`.
+
+Also record the completion pass's `CLOSEOUT:` block — printed when `notion-dev:review-and-merge` evaluated the `--pre-merge-check` above — as `COMPLETION_CLOSEOUT`, together with its `tracked:` and `blocked:` lines. Phase 10's `epic-doc` `record` step reads it; when the block cannot be found in this run's output, leave `COMPLETION_CLOSEOUT` absent rather than reconstructing one.
 
 `REVIEW_REPORT` carries the skill's four triage lists verbatim — `ABSORBED`, `FILED`, `DROPPED`, `BLOCKED` — and they must survive the persist below intact. **Only the `FILED` list is passed to `notion-dev:epic-update` in 8.2.** `ABSORBED` items are already merged, `DROPPED` items are already decided, and `BLOCKED` items cannot be worked by anyone until their named external cause changes; filing any of the three would recreate the non-convergence this split exists to stop. A `BLOCKED` item filed as a ticket is strictly worse than a forgotten one — it is a queue entry no future run can close, and it will be re-read as ordinary backlog once the cause is out of sight. Carry it to Phase 10 instead, where it becomes a `blocked:` line in the closeout.
 

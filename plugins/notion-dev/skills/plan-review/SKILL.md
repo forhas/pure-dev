@@ -34,7 +34,7 @@ MICRO-PLAN:
 VERIFY:
 <the project's verify/test commands, one per line, or NONE>
 EPIC-CONTEXT:
-<the epic context block from ticket-system's getEpicContext, verbatim, or "NONE — not available">
+<the epic brief returned by `notion-dev:epic-doc` `read` (`EPIC_CONTEXT`), verbatim, or `NONE — not available`>
 ```
 
 `SCOUT-FINDINGS` and `MICRO-PLAN` are legitimately absent when the caller skipped triage (for example a resumed run). When they are, tell the reviewer they are unavailable — never fabricate a stand-in.

@@ -33,7 +33,7 @@ index of epic docs; `create-task` involvement.
 | Where the logic lives | New skill `epic-doc` with two operations, `read` and `record` | Single owner of the format. `epic-update` runs at Phase 8.2 — inside the worktree, before the report and closeout exist — and is already the densest file in the plugin. |
 | `next-task` scope | One ticket by default; `--depth all\|N`; `--non-interactive` | User decision. |
 | Chaining into `ticket` | Drop `disable-model-invocation: true` from `ticket.md`, add a guard sentence | The flag dates from the first commit with no incident behind it. `ticket`'s preconditions and clarification gate stop a stray invocation before it does damage. |
-| Existing hand-written plans | Seed the canonical doc from them, then `git rm` the seed | Two files describing one epic drift against each other. The seed's detail stays in git history, cited by SHA. |
+| Existing hand-written plans | Seed the canonical doc from them, then `git rm` the seed | Two files describing one epic drift against each other. The seed's detail stays in git history; the header cites the last base commit that still holds it. |
 | Bootstrap when no doc exists | `next-task` bootstraps and commits before delegating; `ticket` invoked directly bootstraps in memory and the resolution writes the file | `next-task` already requires a clean primary and can assert base; `ticket` Phase 1.1 cannot, and must not dirty the primary before a worktree exists. |
 
 ## 1. The file
@@ -49,7 +49,7 @@ by slug, so a title change in Notion cannot orphan the file.
 ```markdown
 # [STO-60] Wallet Indexing
 Epic: <notion url> · Status: open | closed · Updated: 2026-09-13 after [STO-67]
-Seeded from docs/STO-67-release-plan.md (removed in a1b2c3d) · 2026-09-13    ← only when seeded
+Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13    ← only when seeded
 
 ## Why
 <2-4 sentences: the motivation — bootstrapped from the Notion Overview or the seed>
@@ -167,7 +167,7 @@ human-written line it has no evidence against.
 ```
 EPIC-DOC: created | updated | closed | none | failed
 PATH: docs/epics/STO-60-wallet-indexing.md          (omit on none)
-SEED: docs/STO-67-release-plan.md · removed in a1b2c3d   (only on created-from-seed)
+SEED: docs/STO-67-release-plan.md · last at a1b2c3d   (only on created-from-seed)
 THREADS: +2 -1
 NEXT: [STO-70] Backfill historic wallets — <reason>   (or `epic complete` / `blocked`)
 CAUSE: <assertion or push failure>                   (only on failed)
@@ -193,8 +193,8 @@ When `read` finds no canonical file:
    - **`/notion-dev:next-task`** bootstraps **and commits** before delegating. It already
      requires a clean primary; it adds `git checkout <base> && git pull --ff-only origin
      <base>`, then `record --bootstrap`: write the canonical file, `git rm` the seed, commit
-     `docs(epic): bootstrap <KEY>-<n>`, push. The seed's removal SHA is cited on the doc's
-     header line so its detail stays one `git show` away. The distillation of a 500-line plan
+     `docs(epic): bootstrap <KEY>-<n>`, push. The last base commit that still holds the seed is cited on the doc's
+     header line, so its detail stays one `git show` away. The distillation of a 500-line plan
      is real work worth landing at once, not held in memory across an hour-long run.
    - **`/notion-dev:ticket` invoked directly** on a child with no doc keeps the in-memory
      result as `EPIC_CONTEXT`; the resolution's `record` creates the file and removes the seed
