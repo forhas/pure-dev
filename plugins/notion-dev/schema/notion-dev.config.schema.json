@@ -169,7 +169,9 @@
         "dir": {
           "type": "string",
           "default": "docs/epics",
-          "description": "Directory, relative to the repo root, holding the per-epic markdown briefs written by notion-dev:epic-doc. One file per epic, named <KEY>-<n>-<slug>.md. Not opt-in: every epic gets one on its first resolution or first /notion-dev:next-task run."
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\.\\.(/|$))(?!.*/\\.\\.(/|$))[^\\u0000]+$",
+          "description": "Directory, relative to the repo root (non-empty; no leading slash; no `..` segment, so it cannot escape the repository), holding the per-epic markdown briefs written by notion-dev:epic-doc. One file per epic, named <KEY>-<n>-<slug>.md. Not opt-in: every epic gets one on its first resolution or first /notion-dev:next-task run."
         }
       }
     },
