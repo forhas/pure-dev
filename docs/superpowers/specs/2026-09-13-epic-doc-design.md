@@ -127,8 +127,10 @@ assertion that failed; the caller reports it as a tail. On `--bootstrap` (no res
 **Inputs** (caller-supplied context): `EPIC_REPORT` (epic identity, `FILED` with the ticket
 IDs `epic-update` assigned, whether the epic closed), `REVIEW_REPORT` (`BLOCKED` with external
 cause and unblocker; `DROPPED` with rationale), `COMPLETENESS_REPORT` (`not-met` and
-`unverified` criteria, `TRIAGE` `file`/`drop` entries), the closeout block's `blocked:` and
-`tracked:` lines, the run's non-interactive decisions, and the **draft final report** — the
+`unverified` criteria, `TRIAGE` `file`/`drop` entries), the **completion pass's** closeout
+block (`blocked:` and `tracked:` lines — it ran before the merge; the workspace pass runs after
+`record`, so it can see the doc commit), the run's non-interactive decisions, and the **draft
+final report** — the
 source of caveat sentences ("worth your attention", "waiting on you", "caveat before you
 queue it" and the like). Any input may be absent; absence is not evidence.
 
@@ -274,7 +276,7 @@ reported done. It asserts mechanism, not wording:
 | Bootstrap source kept | `ticket-system/SKILL.md` | `## getEpicContext(` still present |
 | Writer present once, in order | `ticket.md`, `finalize.md` | one `record` invocation; ordered after the draft-composition line and before the closeout workspace-pass line |
 | Notion side untouched | `ticket.md`, `finalize.md` | `epic-update` invocation line count unchanged (1 each) |
-| Format owner | `epic-doc/SKILL.md` | the seven `## ` headings; `origin/<git.baseBranch>` on the read path; the three assertion commands; `docs(epic):`; `git rm`; `EPIC-DOC:` block keys; the `120` budget; `--bootstrap` |
+| Format owner | `epic-doc/SKILL.md` | the six `## ` headings; `origin/<git.baseBranch>` on the read path; the three assertion commands; `docs(epic):`; `git rm`; `EPIC-DOC:` block keys; the `120` budget; `--bootstrap` |
 | Read never writes | `epic-doc/SKILL.md` | no `git commit` / `git push` in the `read` region |
 | Command contract | `next-task.md` | `--depth`, default `1`, `all`, `disable-model-invocation: true`, `/notion-dev:ticket` invocation, the stop-on-failure rule, the inverted epic guard |
 | Flag moved | `ticket.md`, `finalize.md` | `disable-model-invocation` absent from `ticket.md`, present in `finalize.md`; the guard sentence present in `ticket.md` |
