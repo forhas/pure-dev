@@ -39,7 +39,7 @@ EPIC-CONTEXT:
 
 `SCOUT-FINDINGS` and `MICRO-PLAN` are legitimately absent when the caller skipped triage (for example a resumed run). When they are, tell the reviewer they are unavailable — never fabricate a stand-in.
 
-`EPIC-CONTEXT` is legitimately absent whenever the ticket has no epic — the ordinary case. When present, it is **background, not spec**: the reviewer may use it to judge whether the plan is consistent with what siblings already decided, but must never treat a resolution-log entry as a requirement — the ticket body (`INTENT`, plus `--spec-file` when given) remains the single source of truth.
+`EPIC-CONTEXT` is legitimately absent whenever the ticket has no epic — the ordinary case. When present, it is **background, not spec**: the reviewer may use it to judge whether the plan is consistent with what siblings already decided, but must never treat an open thread or a recorded decision from the brief as a requirement — the ticket body (`INTENT`, plus `--spec-file` when given) remains the single source of truth.
 
 ## Step 1 — Build the reviewer prompt
 
