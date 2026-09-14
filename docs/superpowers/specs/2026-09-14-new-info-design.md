@@ -259,14 +259,15 @@ Same scope, proposal and gate; the landing differs:
    `<noteBranch>` = `notes/new-info-<YYYYMMDD>-<slug>` (`<slug>` from `<short fact>`, kebab-cased
    as `/notion-dev:ticket` Phase 2.1 slugs a branch). No worktree: the primary is clean by
    precondition and returns to `<epicBranch>` in step 5.
-2. Every `note --apply` carries `--branch <noteBranch>`. Its preconditions then read: HEAD's
-   branch equals `<noteBranch>`; `git merge-base --is-ancestor origin/<epicBranch> HEAD` exits 0
-   (the branch was cut from, and still contains, the epic branch). Those two checks replace
-   the **first two** inherited lines — the primary-on-`<baseRefName>` check, which HEAD on a
-   note branch cannot satisfy, and the HEAD-equals-origin line, which cannot hold from the
-   second commit on; both porcelain checks, the brief's included, are unchanged. Commit per epic as in 3.4; **no push per epic**. A `BOOTSTRAP: true` epic is
-   bootstrapped on this branch too — `record --bootstrap` given `--branch` commits without
-   pushing, under the same three lines.
+2. Every `note --apply` carries `--branch <noteBranch>`. Its preconditions then read:
+   HEAD's branch equals `<noteBranch>`; `git merge-base --is-ancestor origin/<epicBranch>
+   HEAD` exits 0 (the branch was cut from, and still contains, the epic branch). Those
+   two checks replace the **first two** inherited lines — the primary-on-`<baseRefName>`
+   check, which HEAD on a note branch cannot satisfy, and the HEAD-equals-origin line, which
+   cannot hold from the second commit on; both porcelain checks, the brief's included,
+   are unchanged. Commit per epic as in 3.4; **no push per epic**. A `BOOTSTRAP: true`
+   epic is bootstrapped on this branch too — `record --bootstrap` given `--branch`
+   commits without pushing, under the same four lines.
 3. Zero commits after the loop → `git checkout <epicBranch>`, `git branch -D <noteBranch>`,
    report `nothing to land`. Otherwise `git push -u origin <noteBranch>` and open the PR —
    `gh pr create --base <epicBranch> --body-file -` as Phase 5 of `/notion-dev:ticket` spells
@@ -286,10 +287,10 @@ Print, in this order:
 
 - The fact, `<short fact>`, and the scope (`N briefs, M open epics without a brief`, or the
   `--epic` list).
-- One line per epic in scope: `[<KEY>-<n>] <title> — updated | created+updated | skipped —
-  <REASON>` then, indented, `cleared:` / `added:` / `replaced:` / `next:` / `unblocked:` /
-  `commented:` / `notion: ok | failed` / `AC-impact:` lines, each only when non-empty. An
-  epic that failed carries its `CAUSE:`.
+- One line per epic in scope: `[<KEY>-<n>] <title> — updated | created+updated | closed
+  | skipped — <REASON>` then, indented, `cleared:` / `added:` / `replaced:` / `next:` /
+  `unblocked:` / `commented:` / `notion: ok | failed` / `AC-impact:` lines, each only when
+  non-empty. An epic that failed carries its `CAUSE:`.
 - Per updated epic on a client with `git.postMergeHooks`: `knowledge bundle: not touched —
   <hook names> run at the next ticket merge and read this brief` (decision 7).
 - Non-interactive decisions (every auto-Apply, every auto-comment).

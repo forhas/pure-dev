@@ -156,7 +156,8 @@ if [ -f "$ED" ]; then
       "$ED" "$N0" "$L" 'rev-parse --abbrev-ref HEAD'
     assert_present "note: on the note branch, ancestry replaces remote equality (\`merge-base --is-ancestor\`)" \
       "$ED" "$N0" "$L" 'merge-base --is-ancestor origin/<epicBranch> HEAD'
-    assert_has "epic-doc note supports \`--branch <noteBranch>\`" "$ED" '--branch <noteBranch>'
+    assert_count "note region cites \`--branch <noteBranch>\` twice: the context line and the swapped-assertion clause" \
+      "$ED" "$N0" "$L" '--branch <noteBranch>' 2
     assert_present "note: a byte-identical brief commits nothing (\`git diff --cached --quiet\`)" \
       "$ED" "$N0" "$L" 'git diff --cached --quiet -- <brief path>'
     assert_present "note: commits \`docs(epic): note\` by pathspec" \
