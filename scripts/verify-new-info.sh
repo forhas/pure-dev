@@ -158,8 +158,8 @@ if [ -f "$ED" ]; then
       "$ED" "$N0" "$L" '--branch <noteBranch>' 2
     assert_present "note: a byte-identical brief commits nothing (\`git diff --cached --quiet\`)" \
       "$ED" "$N0" "$L" 'git diff --cached --quiet -- <brief path>'
-    assert_present "note: commits \`docs(epic): note\` by pathspec" \
-      "$ED" "$N0" "$L" 'git commit --only -m "docs\(epic\): note <KEY>-<n> — <short fact>" -- <brief path>'
+    assert_present "note: commits \`docs(epic): note\` through the write path's pathspec" \
+      "$ED" "$N0" "$L" 'through `## The write path`.*docs\(epic\): note <KEY>-<n> — <short fact>.*the same pathspec'
     assert_present "note: a rejected push is never forced" "$ED" "$N0" "$L" 'do not force'
   else
     bad "epic-doc: could not locate the note heading"
