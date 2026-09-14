@@ -456,6 +456,7 @@ no per-repo flags. The same lines replace a local pre-commit hook where a client
 | `.claude/notion-dev.config.json`: `postMergeHooks: ["knowledge-capture"]` | `["notion-dev:knowledge"]`, plus the `knowledge` block |
 | `knowledge/ticket/STO-67.md` stays; it is the epic's `Ticket` concept (its `# Ruled out` has no home in the brief template) and the new `epic/STO-67-…` root links it under `## Decisions & constraints` | — |
 | `scripts/knowledge/mail-extract.js` stays (dream input, client-side by decision 2) | — |
+| **Client-data repairs the migration proof surfaced** (`migrate --apply` on a scratch copy reverted on exactly these 13 `check` findings; the script is not at fault): five dangling links to `ticket/STO-70`, `STO-129`, `STO-131`, `STO-132`, `STO-133` (concepts that were never written), and `knowledge/references/project-current-state-2026-08-17.md` — a raw artifact whose own header says it is not a concept — sitting where `check` validates it | write the five concepts or drop the links; move `references/` out of `<knowledge.dir>` (or into a dot-directory, which `check` ignores) — before `migrate --apply` |
 
 **smart-contracts-foundry** (`~/dev/oinc/LAST/smart-contracts-foundry`, epic STO-306):
 
