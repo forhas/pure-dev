@@ -62,6 +62,8 @@ if [ -f "$NI" ]; then
     # scope
     assert_present "scope: briefs are listed from \`origin/<epicBranch>\`" \
       "$NI" "$S0" "$P0" 'ls-tree -r --name-only origin/<epicBranch> -- <epicDocs.dir>/'
+    assert_present "scope: briefs are filtered by \`<KEY>-<n>-*.md\`" \
+      "$NI" "$S0" "$P0" 'filtered to `<KEY>-<n>-\*\.md`'
     assert_present "scope: brief-less open epics come from \`findEpics()\`" \
       "$NI" "$S0" "$P0" 'findEpics\(\)'
     assert_present "scope: a closed epic is skipped as \`epic closed\`" \
@@ -94,6 +96,8 @@ if [ -f "$NI" ]; then
     # --pr
     assert_present "pull-request path: cuts \`<noteBranch>\` from \`origin/<epicBranch>\`" \
       "$NI" "$PR" "$RP" 'checkout -b <noteBranch> origin/<epicBranch>'
+    assert_present "pull-request path: every apply carries \`--branch <noteBranch>\`" \
+      "$NI" "$PR" "$RP" 'carries `--branch <noteBranch>`'
     assert_present "pull-request path: ancestry replaces remote equality (\`merge-base --is-ancestor\`)" \
       "$NI" "$PR" "$RP" 'merge-base --is-ancestor origin/<epicBranch> HEAD'
     assert_present "pull-request path: pushes the note branch once (\`git push -u origin <noteBranch>\`)" \
@@ -105,8 +109,10 @@ if [ -f "$NI" ]; then
     assert_present "pull-request path: returns to the epic branch with \`pull --ff-only\`" \
       "$NI" "$PR" "$RP" 'pull --ff-only origin <epicBranch>'
     # report
-    assert_has_n "new-info names \`postMergeHooks\` exactly once — in the report, never as a step" \
-      "$NI" 'postMergeHooks' 1
+    assert_count "report: \`postMergeHooks\` is named once, in the report" \
+      "$NI" "$RP" "$L" 'postMergeHooks' 1
+    assert_absent "new-info never runs \`postMergeHooks\` as a step" \
+      "$NI" 1 "$RP" 'postMergeHooks'
     assert_present "report: knowledge bundles are \`not touched\`" \
       "$NI" "$RP" "$L" 'knowledge bundle: not touched'
     assert_present "report: ends with the closeout workspace pass" \
@@ -142,12 +148,15 @@ if [ -f "$ED" ]; then
     assert_present "note: proposal block carries \`AC-IMPACT:\`" "$ED" "$N0" "$L" '^AC-IMPACT: '
     assert_present "note: proposal block carries \`DIFF:\`"      "$ED" "$N0" "$L" '^DIFF:'
     assert_present "note: apply returns \`UNBLOCKED:\`"          "$ED" "$N0" "$L" '^UNBLOCKED: '
+    assert_present "note: the apply phase has its own heading (\`note --apply <epic-id>\`)" \
+      "$ED" "$N0" "$L" '^### Apply — `note --apply <epic-id>`$'
     assert_present "note: preconditions are \`record --bootstrap\`'s, by reference" \
       "$ED" "$N0" "$L" 'exactly `record --bootstrap`.s precondition block'
     assert_absent "note: never restates record's assertion commands (\`rev-parse --abbrev-ref HEAD\`)" \
       "$ED" "$N0" "$L" 'rev-parse --abbrev-ref HEAD'
     assert_present "note: on the note branch, ancestry replaces remote equality (\`merge-base --is-ancestor\`)" \
       "$ED" "$N0" "$L" 'merge-base --is-ancestor origin/<epicBranch> HEAD'
+    assert_has "epic-doc note supports \`--branch <noteBranch>\`" "$ED" '--branch <noteBranch>'
     assert_present "note: a byte-identical brief commits nothing (\`git diff --cached --quiet\`)" \
       "$ED" "$N0" "$L" 'git diff --cached --quiet -- <brief path>'
     assert_present "note: commits \`docs(epic): note\` by pathspec" \

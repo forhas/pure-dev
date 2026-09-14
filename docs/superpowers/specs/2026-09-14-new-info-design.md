@@ -82,9 +82,10 @@ silently narrow the scope.
 Without `--epic`:
 
 1. **Briefs on disk.** `git ls-tree -r --name-only origin/<epicBranch> -- <epicDocs.dir>/`
-   filtered to `<KEY>-<n>-*.md`; each yields an epic key. This is the authoritative list; a
-   brief whose epic Notion no longer returns (deleted, re-parented) is still judged — the file
-   is what `next-task` reads.
+   filtered to `<KEY>-<n>-*.md`; each yields an epic key. This is the authoritative list of
+   what enters the scope: a brief whose epic Notion no longer returns (deleted, re-parented)
+   is still listed here, then skipped at 3.1 with reason `not an epic`, and the report names
+   it so a person can retire or re-parent the file.
 2. **Open epics without a brief.** `findEpics()` via `notion-dev:ticket-system`. It returns no
    status, so `fetchTicket` each hit whose key has no brief from step 1 and keep those whose
    status is not in the resolved set. `findEpics` returning `null` (marker or parent slot
@@ -195,9 +196,14 @@ commands, so the existing harness anchors on those commands stay unique.
 
 **Bootstrap first when `BOOTSTRAP: true`:** invoke `record --bootstrap <epic-id>` exactly as
 `next-task.md` does (it writes the distilled brief, `git rm`s the seed, commits
-`docs(epic): bootstrap <KEY>-<n>`, pushes), then re-run `read` and re-propose on the committed
-file — the proposal is re-derived, not re-gated, unless its `DIFF` changed. `failed` there
-stops this epic with the bootstrap's `CAUSE:`.
+`docs(epic): bootstrap <KEY>-<n>`, pushes; on the `--pr` path it takes `--branch <noteBranch>`
+and commits without pushing), then re-derive the proposal on the bootstrapped brief: on the
+direct path re-run `read` and re-propose. Under `--pr`, `read` is **not** the source — it
+always resolves the brief on `origin/<epicBranch>`, where the local bootstrap commit is not
+yet present — so `EPIC_CONTEXT` comes from `git show HEAD:<brief path>` (the bootstrap's
+`PATH:`) with the `CHILDREN` already in hand, and only 3.2 re-runs. Either way the proposal is
+re-derived, not re-gated, unless its `DIFF` changed. `failed` there stops this epic with the
+bootstrap's `CAUSE:`.
 
 **Then:** write the brief; `git add <brief>`; if `git diff --cached --quiet -- <brief>`
 succeeds, the accepted diff is already on `origin/<baseRefName>` — commit nothing, return
@@ -255,15 +261,18 @@ Same scope, proposal and gate; the landing differs:
    precondition and returns to `<epicBranch>` in step 5.
 2. Every `note --apply` carries `--branch <noteBranch>`. Its preconditions then read: HEAD's
    branch equals `<noteBranch>`; `git merge-base --is-ancestor origin/<epicBranch> HEAD` exits 0
-   (the branch was cut from, and still contains, the epic branch — this replaces the
-   HEAD-equals-origin line, which cannot hold from the second commit on); brief porcelain
-   empty. Commit per epic as in 3.4; **no push per epic**. A `BOOTSTRAP: true` epic is
+   (the branch was cut from, and still contains, the epic branch). Those two checks replace
+   the **first two** inherited lines — the primary-on-`<baseRefName>` check, which HEAD on a
+   note branch cannot satisfy, and the HEAD-equals-origin line, which cannot hold from the
+   second commit on; both porcelain checks, the brief's included, are unchanged. Commit per epic as in 3.4; **no push per epic**. A `BOOTSTRAP: true` epic is
    bootstrapped on this branch too — `record --bootstrap` given `--branch` commits without
    pushing, under the same three lines.
 3. Zero commits after the loop → `git checkout <epicBranch>`, `git branch -D <noteBranch>`,
    report `nothing to land`. Otherwise `git push -u origin <noteBranch>` and open the PR —
    `gh pr create --base <epicBranch> --body-file -` as Phase 5 of `/notion-dev:ticket` spells
-   it — with a body listing every epic changed and its `REASON`.
+   it — with a body listing every epic changed and its `REASON`. A rejected push there leaves
+   the branch and its commits local, **never** forces, adds the §5 `blocked:` line naming
+   `<noteBranch>` and git's rejection, skips the PR, and goes to the report.
 4. `notion-dev:review-and-merge <pr> [--non-interactive] --pre-merge-check "<the completion
    pass requirement /notion-dev:ticket Phase 7 passes, verbatim>"`. A run that stops before the
    merge leaves the branch and PR for inspection and reports both; nothing in 3.5–3.6 runs.
@@ -287,8 +296,11 @@ Print, in this order:
 - On `--pr`: the PR URL and merge SHA, or where it stopped.
 - **Closeout:** compose the draft above, then invoke the **workspace pass** of
   `notion-dev:session-closeout` and end with its `CLOSEOUT:` block verbatim, followed by its
-  `tracked:` and `blocked:` lines. An unpushed note commit is a `blocked:` line with the push
-  rejection as cause. There is no completion pass on the direct-commit path (nothing merges);
+  `tracked:` and `blocked:` lines. The workspace pass does not enumerate unpushed
+  work — that is the completion pass's source 2 — so **the command adds that line itself**,
+  before invoking the pass: `- blocked: docs(epic): note commit <sha> unpushed on
+  <epicBranch> — push rejected: <git's message>; unblocked by pushing once the branch accepts
+  it`. There is no completion pass on the direct-commit path (nothing merges);
   on `--pr` the completion pass runs as step 4's pre-merge check.
 
 **`partial:new-info`** — recorded once per run when any `note --apply` returned `failed`, a
@@ -306,17 +318,17 @@ each proven to fail by mutation. Anchors:
 | User-only | `new-info.md` | `disable-model-invocation: true` in the frontmatter |
 | Flags | `new-info.md` | `--epic`, `--non-interactive`, `--pr` each named once in the args paragraph |
 | Reads through the owner | `new-info.md` | one `read(<epic-id>)` invocation; one `note(<fact>, <epic-id>)`; one `note --apply` |
-| Scope | `new-info.md` | `findEpics` named; `<KEY>-<n>-*.md` lookup |
+| Scope | `new-info.md` | `findEpics()` named; the `<KEY>-<n>-*.md` filter, both in the scope region |
 | Gate | `new-info.md` | `Apply`, `Skip`, `Revise` on one line; the AC-impact question |
 | Never edits tickets | `new-info.md` | `never edits a ticket body`; `upsertSection` absent |
 | Notion append | `new-info.md` | `appendToSection(EPIC_ID, "Notes"` once; `upsertSection` absent |
 | Comments | `new-info.md` | `postComment` in the tickets section |
-| Hooks not run | `new-info.md` | `postMergeHooks` appears only in the report paragraph (count 1); `not touched` |
+| Hooks not run | `new-info.md` | `postMergeHooks` exactly once in the report region (`assert_count`) and absent before it (`assert_absent`); `not touched` |
 | Stop on rejected push | `new-info.md` | `earlier push rejected` |
 | Closeout | `new-info.md` | the workspace-pass invocation line; `CLOSEOUT:` |
-| `--pr` mechanics | `new-info.md` | `checkout -b <noteBranch> origin/<epicBranch>`; `merge-base --is-ancestor origin/<epicBranch> HEAD`; `notion-dev:review-and-merge <pr>`; `pull --ff-only origin <epicBranch>` |
+| `--pr` mechanics | `new-info.md` | `checkout -b <noteBranch> origin/<epicBranch>`; every apply `carries \`--branch <noteBranch>\``; `merge-base --is-ancestor origin/<epicBranch> HEAD`; `notion-dev:review-and-merge <pr>`; `pull --ff-only origin <epicBranch>` |
 | Signature | `new-info.md`, `signatures.md` | `record \`partial:new-info\` per \`notion-dev:issue-log\``; the registry row |
-| `note` exists | `epic-doc/SKILL.md` | `## \`note(` heading; `--apply`; `--branch`; the `NOTE: affected \| unaffected` block; `REPLACED:`; `AC-IMPACT:`; `UNBLOCKED:`; `docs(epic): note`; `git diff --cached --quiet -- <brief` in the note region; `do not force` in the note region |
+| `note` exists | `epic-doc/SKILL.md` | `## \`note(` heading; the `### Apply — \`note --apply <epic-id>\`` heading; `--branch <noteBranch>`; the `NOTE: affected \| unaffected` block; `REPLACED:`; `AC-IMPACT:`; `UNBLOCKED:`; `docs(epic): note`; `git diff --cached --quiet -- <brief` in the note region; `do not force` in the note region |
 | `note` region does not restate record's assertions | `epic-doc/SKILL.md` | `rev-parse --abbrev-ref HEAD` absent from the note region |
 | Palette | `ticket-system/SKILL.md` | the `Notes` palette row |
 | Surfaces | `README.md` | `/notion-dev:new-info` row; the Epic docs bullet naming it |
