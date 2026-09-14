@@ -170,7 +170,7 @@ DIFF:
 Called from `$REPO_ROOT` with the accepted proposal. **Preconditions are exactly `record --bootstrap`'s precondition block, applied by reference:** the primary on `<baseRefName>`, HEAD equal to the remote, no tracked modification outside the exempt paths, and the brief's own porcelain empty. The three commands are stated once, under `record`, and not repeated here. With `--branch <noteBranch>` (the caller's `--pr` path), HEAD's branch must be `<noteBranch>` and `git merge-base --is-ancestor origin/<epicBranch> HEAD` must exit 0 — the branch was cut from the epic branch and still contains it. Those two checks stand **in place of the first two** inherited lines — the primary-on-`<baseRefName>` check, which HEAD on a note branch cannot satisfy, and the remote-equality check, which cannot hold from the second commit on; the two porcelain checks are unchanged. Any failure → `EPIC-DOC: failed` with `CAUSE:`, nothing written. `record --bootstrap` accepts the same `--branch` form on that path: the same two swapped assertions, commit, no push.
 
 1. Write the brief with the accepted diff (creating `<epicDocs.dir>/` if absent) and `git add <brief path>`.
-2. If `git diff --cached --quiet -- <brief path>` succeeds — the brief is byte-identical to the one already on the branch, meaning this fact was already applied — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0`. The caller reads that pair as "nothing landed" and skips its Notion note and ticket comments.
+2. If `git diff --cached --quiet -- <brief path>` succeeds — the brief is byte-identical to the one already on the branch, meaning this fact was already applied — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0` and `COMMIT: none`. The caller reads `COMMIT: none` — never the thread count, which is `+0 -0` on a constraint-only commit too — as "nothing landed" and skips its Notion note and ticket comments.
 3. Otherwise `git commit --only -m "docs(epic): note <KEY>-<n> — <short fact>" -- <brief path>` (`--only`, for the same reason `record` gives: an exempt setup file may already be staged and must not ride along). Push `git push origin <baseRefName>` — skipped under `--branch`, where the caller pushes once.
 4. **Push rejected** → leave the local commit in place, **do not force**, return `EPIC-DOC: failed` with `CAUSE: push rejected — <git's message>`. HEAD now differs from the remote, so the caller must not apply another epic on this run; it reports the rest as skipped and its closeout finds the unpushed commit.
 
@@ -178,4 +178,5 @@ Return the `EPIC-DOC:` block exactly as `record` does — `closed` when this app
 
 ```
 UNBLOCKED: STO-22, STO-23                                   (tickets CLEARED freed; empty when none)
+COMMIT: <sha> | none                                        (the note commit made, or none on the byte-identical path)
 ```

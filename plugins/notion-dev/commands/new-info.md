@@ -62,8 +62,8 @@ Invoke the `notion-dev:epic-doc` skill, operation `note(<fact>, <epic-id>)`, pas
 
 Then invoke the `notion-dev:epic-doc` skill, operation `note --apply <epic-id>`, passing the accepted proposal, `<short fact>` (the commit subject carries it), `REPO_ROOT`, `<epicBranch>` as `<baseRefName>`, and under `--pr` `--branch <noteBranch>`. Record its `EPIC-DOC:` block as this epic's `EPIC_DOC_REPORT`. Three outcomes:
 
-- `updated` or `closed` with a commit → continue to the Notion epic and Tickets steps.
-- `updated` with `THREADS: +0 -0` — the brief was already byte-identical, nothing was committed — **skip the Notion epic and Tickets steps for this epic**: a re-run must not append a second Notion note or a second comment.
+- `updated` or `closed` with `COMMIT: <sha>` → continue to the Notion epic and Tickets steps.
+- `updated` with `COMMIT: none` — the brief was already byte-identical, nothing was committed; `THREADS: +0 -0` alone is not the signal, since a constraint-only commit also touches no thread — **skip the Notion epic and Tickets steps for this epic**: a re-run must not append a second Notion note or a second comment.
 - `failed` → record `partial:new-info` per `notion-dev:issue-log` (once per run) and report the `CAUSE:`. When the cause is a rejected push, **stop the loop**: HEAD now differs from `origin/<epicBranch>`, so every later epic would fail the same precondition; report each remaining epic as `skipped — earlier push rejected`. This command then writes the unpushed commit's `blocked:` line into the report's closeout block itself (see `## Report`) — the workspace pass enumerates the workspace, not unpushed work. A `failed` whose cause is *not* a rejected push — a precondition assertion, a bootstrap failure — skips only this epic; the loop continues with the next.
 
 ### Notion epic
