@@ -1,6 +1,6 @@
 ---
 name: epic-doc
-description: Use when a ticket that belongs to an epic starts (read the epic's markdown brief from origin/<base> as context), when a ticket resolves (rewrite that brief and commit it to the base branch), when /notion-dev:next-task needs the epic's recommended next ticket, and when /notion-dev:new-info routes a fact to the brief (`note`). The single owner of `<epicDocs.dir>/<KEY>-<n>-<slug>.md`.
+description: Use when a ticket that belongs to an epic starts (read the epic's markdown brief from origin/<base> as context), when a ticket resolves (rewrite that brief and commit it to the base branch), when /notion-dev:next-task needs the epic's recommended next ticket, and when /notion-dev:new-info routes a fact to the brief (`note`). The single owner of the epic brief — see "The file" below for its path.
 ---
 
 # epic-doc
@@ -11,13 +11,23 @@ All three operations are **best-effort in the `epic-update` sense**: a failure n
 
 ## The file
 
-**Path:** `<epicDocs.dir>/<KEY>-<n>-<slug>.md`. `epicDocs.dir` comes from `.claude/notion-dev.config.json` (default `docs/epics`). `<KEY>-<n>` is the epic's ticket key; `<slug>` is the epic title kebab-cased exactly as `/notion-dev:ticket` Phase 2.1 slugs a branch (lowercase, non-alphanumerics → `-`, collapse repeats, trim, 40 characters). The H1 carries the exact epic title. **Lookup is always `<KEY>-<n>-*.md`, never by slug**, so a title change in Notion cannot orphan the file.
+**Path:** `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`. `knowledge.dir` comes from `.claude/notion-dev.config.json` (default `knowledge`). `<KEY>-<n>` is the epic's ticket key; `<slug>` is the epic title kebab-cased exactly as `/notion-dev:ticket` Phase 2.1 slugs a branch (lowercase, non-alphanumerics → `-`, collapse repeats, trim, 40 characters). The H1 carries the exact epic title. **Lookup is always `<KEY>-<n>-*.md`, never by slug**, so a title change in Notion cannot orphan the file.
 
 **Branch.** The brief lives on the branch pull requests merge into — `git.prTargetBranch`, falling back to `git.baseBranch` — called `<epicBranch>` below. `read` and `record` use that one branch for every read and every commit; a brief read from one branch and written to another is stale on the next run, and `/notion-dev:next-task` would bootstrap a second, divergent copy.
 
-**Template.** Six sections, all mandatory, always in this order:
+**Template.** Frontmatter (the epic root concept, OKF v0.2) plus six mandatory sections, always in this order:
 
 ```
+---
+type: Epic
+title: [STO-60] Wallet Indexing
+description: <the Goal in one line>
+status: stable
+epic: STO-60
+generated: { by: notion-dev:epic-doc, at: 2026-09-13T00:00:00Z }
+sources:
+  - { id: epic, resource: <notion url>, title: "[STO-60] Wallet Indexing" }
+---
 # [STO-60] Wallet Indexing
 Epic: <notion url> · Status: open | closed · Updated: 2026-09-13 after [STO-67]
 Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
@@ -46,7 +56,7 @@ Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
 Blocked: STO-22, STO-23 (see Open threads).
 ```
 
-The `Seeded from` line exists only on a brief distilled from a pre-existing hand-written plan (see "Bootstrap" below).
+The `Seeded from` line exists only on a brief distilled from a pre-existing hand-written plan (see "Bootstrap" below). A bullet under `## Decisions & constraints` or `## Open threads` may link a concept plus one clause instead of stating the fact in prose (`- [Offline deploy](../decision/offline-deploy.md) — binds STO-70.`); `record` and `note` write the link form whenever a concept for the fact exists, and the prose form otherwise.
 
 **Rules of content.**
 
@@ -56,26 +66,20 @@ The `Seeded from` line exists only on a brief distilled from a pre-existing hand
 - **Soft budget: 120 lines.** Over it, `record` prunes before it adds. It never prunes a thread that still names an unresolved ticket.
 - **Human edits are first-class.** A person may edit the file (for example, "logs arrived — STO-22 unblocked") and commit it. `record` applies a diff evidenced by its inputs and preserves every line it has no evidence to change.
 
-## `read(<epic-id>, <current-ticket-id>?)` → `EPIC_CONTEXT` or `null`
+## `read(<epic-id>, <current-ticket-id>?, KNOWLEDGE_CONTEXT?)` → `EPIC_CONTEXT` or `null`
 
-Read-only. Runs before any worktree exists, so it **writes nothing** — not the brief, not a bootstrap, nothing in the primary checkout.
+Read-only. Runs before any worktree exists, so it **writes nothing** — not the brief, not a bootstrap, nothing in the primary checkout. `read` is now a thin parse over a `retrieve` result: the fetch itself lives in `notion-dev:knowledge`, and `read` never runs `iwe` or `git` on its own.
 
-1. `fetchTicket(<epic-id>)` via `notion-dev:ticket-system` and apply the epic predicate: `metadata.parentTaskProperty` empty **and** `metadata.epicMarkerProperty` true — the same predicate `findEpics()`, `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply. Not an epic → return `null`. Record the epic's `key`, `title`, `url`, and derive `<KEY>-<n>`.
-2. `git fetch origin`, then locate the brief on the remote base: `git ls-tree -r --name-only origin/<epicBranch> -- <epicDocs.dir>/` filtered to `<KEY>-<n>-*.md`, and read it with `git show origin/<epicBranch>:<that path>`. **Always the remote base**, never the primary checkout or a worktree: a stale local branch would hand a run last week's picture. More than one match → take the first in sort order and warn; a second brief for one epic is a defect to name in the report, not to merge silently.
-3. **Found** → return the file verbatim as `EPIC_CONTEXT`, plus:
-   - `NEXT`: the ordered list parsed from `## Next` — each item's `<KEY>-<n>` and its reason text — and the `Blocked:` line's keys as `BLOCKED`;
-   - `STATUS`: `open` or `closed` from the header line;
-   - `CHILDREN`: one `listEpicChildren(<epic-id>)` call, `[{ id, key, title, status, url }]`, for the caller's validation. The brief itself carries no statuses, so live ones must travel beside it. When `<current-ticket-id>` is given, mark that entry `(this ticket)` as `getEpicContext` does.
-   - `BOOTSTRAP: false`.
-4. **Missing** → bootstrap **in memory** per "Bootstrap" below and return the same shape with `BOOTSTRAP: true` and `SEED: <path>` or `SEED: notion`. The file is created later by the first `record` — a resolution's, or `/notion-dev:next-task`'s `record --bootstrap`.
+1. `KNOWLEDGE_CONTEXT` supplied by the caller → use it, **no fetch of any kind — not Notion, not git.** Otherwise invoke the `notion-dev:knowledge` skill, operation `retrieve(<epic-id>, <current-ticket-id>)` once — this applies the epic predicate itself, exactly as `findEpics()`, `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply it; not an epic → return `null` — and take its result as `KNOWLEDGE_CONTEXT`.
+2. Return `EPIC_CONTEXT` — the root document (`KNOWLEDGE_CONTEXT`'s first fenced document, frontmatter stripped) — plus the fields already parsed from it: `NEXT` (the ordered list from `## Next`, each item's `<KEY>-<n>` and its reason text), `BLOCKED` (the `Blocked:` line's keys), `STATUS` (`open` or `closed` from the header line), `CHILDREN` (one `listEpicChildren(<epic-id>)` call inside `retrieve`, `[{ id, key, title, status, url }]`, for the caller's validation — when `<current-ticket-id>` is given, marked `(this ticket)` as `getEpicContext` does), and `BOOTSTRAP`. `BOOTSTRAP: true` (with `SEED: <path>` or `SEED: notion`) means the brief does not exist yet — `retrieve` bootstrapped it **in memory**; the file is created later by the first `record` — a resolution's, or `/notion-dev:next-task`'s `record --bootstrap`.
 
 Callers treat `EPIC_CONTEXT` as **background, not requirements** — the ticket body remains the single source of truth for what to build, exactly as it was when this context came from Notion.
 
 ## Bootstrap
 
-Runs inside `read` (in memory) and inside `record --bootstrap` (to disk). Produces a complete brief from one of two sources:
+Runs inside `read` (in memory, via `retrieve`) and inside `record --bootstrap` (to disk). Produces a complete brief from one of two sources — seed search now also covers `<knowledge.dir>/epic/`, so a bootstrap never mistakes the epic's own brief for the seed it is meant to replace:
 
-1. **Seed search.** On `origin/<epicBranch>`, `git ls-tree -r --name-only origin/<epicBranch> -- docs/` filtered case-insensitively to names containing `<KEY>-<n>` followed by a non-digit or the end of the stem — `STO-6` must match `STO-6-plan.md` and `sto-6.md` but never `STO-60-release-plan.md` — excluding `<epicDocs.dir>/`. This matches a hand-written plan such as `docs/STO-67-release-plan.md` or `docs/sto-306-completion-plan.md`. Exactly one hit → the seed. Several → the most recently committed (`git log -1 --format=%ct origin/<epicBranch> -- <path>`), and every candidate is named in the output block. None → the Notion source below.
+1. **Seed search.** On `origin/<epicBranch>`, `git ls-tree -r --name-only origin/<epicBranch> -- docs/` filtered case-insensitively to names containing `<KEY>-<n>` followed by a non-digit or the end of the stem — `STO-6` must match `STO-6-plan.md` and `sto-6.md` but never `STO-60-release-plan.md` — excluding `<knowledge.dir>/epic/`. This matches a hand-written plan such as `docs/STO-67-release-plan.md` or `docs/sto-306-completion-plan.md`. Exactly one hit → the seed. Several → the most recently committed (`git log -1 --format=%ct origin/<epicBranch> -- <path>`), and every candidate is named in the output block. None → the Notion source below.
 2. **Distill a seed** into the template. **Every actionable item carries over**: every wait on someone else with its cause and what clears it, every blocked item, every decision and constraint, every recommended order and the reason for it. What is compressed is reasoning and narrative. `## Why` and `## Goal` come from the seed's opening. Items the seed marks done, struck through, or superseded are dropped — they are history, and Notion holds it.
 3. **Notion source** (no seed): identity and `## Overview` via `getEpicContext(<epic-id>, <current-ticket-id>)` — this is now that operation's only job — plus `listEpicChildren(<epic-id>)`, and for order the children's `## Blocked by` sections and their Phase/Step values — `metadata.phaseProperty` and `metadata.stepProperty` from `fetchTicket`, ordered by phase then step, ties by numeric id (fetch each unresolved child once; resolved children need no fetch). `## Why` is the Overview; `## Goal` is what closing every child would achieve, stated in one sentence; `## Open threads` is empty; `## Next` is the unresolved children in dependency order, item 1 being the first with no unresolved `## Blocked by`.
 
@@ -98,7 +102,7 @@ Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the asser
 
 **Steps.**
 
-1. **Resolve the epic.** From `EPIC_REPORT`: `EPIC-UPDATE: none` → return `EPIC-DOC: none` and stop (the ticket has no epic). Otherwise take the epic key and url from its `EPIC:` line, `git fetch origin`, and load the current brief from `origin/<baseRefName>` as `read` step 2 does. Missing → bootstrap per above; this invocation will create the file.
+1. **Resolve the epic.** From `EPIC_REPORT`: `EPIC-UPDATE: none` → return `EPIC-DOC: none` and stop (the ticket has no epic). Otherwise take the epic key and url from its `EPIC:` line, `git fetch origin`, and load the current brief from `origin/<baseRefName>` exactly as `notion-dev:knowledge` `retrieve` step 2 locates the root — against `<baseRefName>`, which by precondition equals `<epicBranch>`. Missing → bootstrap per above; this invocation will create the file.
 2. **Apply a diff, not a rewrite.** Touch only lines this run has evidence for:
    - `## Where we stand` — restate in the light of this resolution: what landed (`DRAFT_REPORT`'s PR and ticket lines), what changed the picture.
    - `## Open threads` — **add** one bullet per `REVIEW_REPORT` `BLOCKED` item (cause, what unblocks, which tickets it holds), per `COMPLETION_CLOSEOUT` `blocked:` line, per `not-met` or `unverified` criterion (naming the ticket it belongs to), and per caveat sentence in `DRAFT_REPORT` — the sentences shaped like "worth your attention", "waiting on you", "caveat before you queue it", "note for the next ticket", each rewritten to name what it blocks or informs. **Remove** every bullet this resolution resolved: its `Unblocked by:` happened, or every ticket it named is now resolved. A `tracked:` line and a `FILED` follow-up are tickets, not threads — they appear in `## Next`, never here.
@@ -106,10 +110,10 @@ Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the asser
    - `## Next` — recompute: `listEpicChildren(<epic-id>)` for live statuses; for each unresolved child its `## Blocked by` section and its `metadata.phaseProperty` / `metadata.stepProperty` from `fetchTicket` — order by phase, then step, ties by numeric id (fetch unresolved children only); the open threads decide `Blocked:`. Item 1 is unblocked by construction and carries a one-line reason. Nothing under `Blocked:` appears in the numbered list.
    - Header — `Updated: <YYYY-MM-DD> after [<KEY>-<id>]`. Set `Status: closed` and make `## Next` read `epic complete` when the epic is closed — decided by the epic's **live** status (`fetchTicket(<epic-id>).status` in the resolved set), never only by `EPIC_REPORT` reading `EPIC-UPDATE: closed`: a recovery invocation receives `already-recorded` for a close the original run already performed, and the brief must still catch up. The idempotency signal is the brief's **git history on the epic branch**, not its current header: `git log origin/<epicBranch> --format=%s -- <brief path>` already listing `docs(epic): <KEY>-<n> after <ticket key>` for this ticket means this resolution was recorded by an earlier invocation — even if later children have since moved the header past it — so re-apply nothing from this ticket's reports: recompute `## Next` from live children only, add no thread twice, and never move `Updated:` backwards.
 3. **Budget.** Over 120 lines, prune before adding: compress `## Where we stand` first, then `## Decisions & constraints` entries no unresolved ticket depends on. Never prune a thread that names an unresolved ticket.
-4. **Write and commit.** When this invocation created the brief from a seed, first cite `git rev-parse --short HEAD` — by precondition this equals `origin/<baseRefName>` and is already pushed, so it is the last base commit that still holds `<seed path>` (`git show <sha>:<seed path>` recovers it) — and put `Seeded from <seed path> (last at <sha>) · <date>` on the header. Then write the file (creating `<epicDocs.dir>/` if absent), `git add` it, and `git rm` the seed in the same commit. **Commit by pathspec, never the whole index:** `git commit --only -m "docs(epic): <KEY>-<n> after <ticket key>" -- <brief path> [<seed path>]` (`git commit -h`: `--only` — commit only specified files). A caller's precondition permits an exempt setup file (`.claude/notion-dev.config.json`, `.mcp.json`, `.claude/settings.local.json`) to be already **staged**; a bare `git commit` would carry it onto the epic branch, and the precondition's exclusion only stops the run from refusing — it unstages nothing. Push: `git push origin <baseRefName>`. After staging, if `git diff --cached --quiet -- <brief path>` succeeds — the brief is byte-identical to the one on `origin/<baseRefName>`, meaning this resolution was already recorded — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0`.
+4. **Write and commit.** When this invocation created the brief from a seed, first cite `git rev-parse --short HEAD` — by precondition this equals `origin/<baseRefName>` and is already pushed, so it is the last base commit that still holds `<seed path>` (`git show <sha>:<seed path>` recovers it) — and put `Seeded from <seed path> (last at <sha>) · <date>` on the header. Then write the file — the frontmatter of the template when this creates it, or the existing frontmatter preserved verbatim except `updated: { by, at }` otherwise, the `Status:` header line unchanged — creating the epic directory if absent, `git add` it, and `git rm` the seed in the same commit. **Commit by pathspec, never the whole index:** `git commit --only -m "docs(epic): <KEY>-<n> after <ticket key>" -- <brief path> [<seed path>]` (`git commit -h`: `--only` — commit only specified files). A caller's precondition permits an exempt setup file (`.claude/notion-dev.config.json`, `.mcp.json`, `.claude/settings.local.json`) to be already **staged**; a bare `git commit` would carry it onto the epic branch, and the precondition's exclusion only stops the run from refusing — it unstages nothing. Push: `git push origin <baseRefName>`. After staging, if `git diff --cached --quiet -- <brief path>` succeeds — the brief is byte-identical to the one on `origin/<baseRefName>`, meaning this resolution was already recorded — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0`.
 5. **Push rejected** (branch protection, a base that moved) → leave the local commit in place, **do not force**, and return `EPIC-DOC: failed` with `CAUSE: push rejected — <git's message>`. The caller writes that commit into its report's closeout as a `blocked:` line with this cause — the closeout's workspace pass enumerates the workspace, not unpushed work, so the caller must name it itself.
 
-**`record --bootstrap <epic-id>`** — invoked by `/notion-dev:next-task` when `read` returned `BOOTSTRAP: true`. Preconditions as above minus the ancestor line, with the porcelain check narrowed to tracked modifications outside the caller's exempt paths, as above — the init-generated files and `.claude/settings.local.json` are exempt whether tracked or not, because this step never runs `git add -a`. Resolve the epic via `fetchTicket(<epic-id>)` exactly as `read` step 1 does (there is no `EPIC_REPORT` on this path). Runs the bootstrap to disk: write the distilled brief, `git rm` the seed when there was one, commit `docs(epic): bootstrap <KEY>-<n>`, push. Same rejected-push handling. Returns `EPIC-DOC: created`. **`--branch <noteBranch>`** — passed by `/notion-dev:new-info --pr`: the first two of the precondition lines above, the primary-on-`<baseRefName>` check and the remote-equality check, are replaced by the two branch checks the `note` section states; the bootstrap commit is made on that branch; nothing is pushed.
+**`record --bootstrap <epic-id>`** — invoked by `/notion-dev:next-task` when `read` returned `BOOTSTRAP: true`. Preconditions as above minus the ancestor line, with the porcelain check narrowed to tracked modifications outside the caller's exempt paths, as above — the init-generated files and `.claude/settings.local.json` are exempt whether tracked or not, because this step never runs `git add -a`. Resolve the epic via `fetchTicket(<epic-id>)` and the epic predicate exactly as `notion-dev:knowledge` `retrieve` step 1 applies it (there is no `EPIC_REPORT` on this path). Runs the bootstrap to disk: write the distilled brief, `git rm` the seed when there was one, commit `docs(epic): bootstrap <KEY>-<n>`, push. Same rejected-push handling. Returns `EPIC-DOC: created`. **`--branch <noteBranch>`** — passed by `/notion-dev:new-info --pr`: the first two of the precondition lines above, the primary-on-`<baseRefName>` check and the remote-equality check, are replaced by the two branch checks the `note` section states; the bootstrap commit is made on that branch; nothing is pushed.
 
 **What `record` must never do:** invent a thread not evidenced by an input; restate ticket history Notion already holds; reword an existing line without evidence from this run; delete a human-written line it has no evidence against; write from anywhere but `$REPO_ROOT` on `<baseRefName>`.
 
@@ -119,7 +123,7 @@ Return exactly one block for the caller's report:
 
 ```
 EPIC-DOC: created | updated | closed | none | failed
-PATH: docs/epics/STO-60-wallet-indexing.md                 (omit on none)
+PATH: knowledge/epic/STO-60-wallet-indexing.md              (omit on none)
 SEED: docs/STO-67-release-plan.md · last at a1b2c3d         (only when created from a seed)
 THREADS: +2 -1                                              (bullets added / removed this run)
 NEXT: [STO-70] Backfill historic wallets — <reason>         (or `epic complete`, or `blocked: <thread>`)
@@ -169,7 +173,7 @@ DIFF:
 
 Called from `$REPO_ROOT` with the accepted proposal. **Preconditions are exactly `record --bootstrap`'s precondition block, applied by reference:** the primary on `<baseRefName>`, HEAD equal to the remote, no tracked modification outside the exempt paths, and the brief's own porcelain empty. The three commands are stated once, under `record`, and not repeated here. With `--branch <noteBranch>` (the caller's `--pr` path), HEAD's branch must be `<noteBranch>` and `git merge-base --is-ancestor origin/<epicBranch> HEAD` must exit 0 — the branch was cut from the epic branch and still contains it. Those two checks stand **in place of the first two** inherited lines — the primary-on-`<baseRefName>` check, which HEAD on a note branch cannot satisfy, and the remote-equality check, which cannot hold from the second commit on; the two porcelain checks are unchanged. Any failure → `EPIC-DOC: failed` with `CAUSE:`, nothing written. `record --bootstrap` accepts the same `--branch` form on that path: the same two swapped assertions, commit, no push.
 
-1. Write the brief with the accepted diff (creating `<epicDocs.dir>/` if absent) and `git add <brief path>`.
+1. Write the brief with the accepted diff — the frontmatter of the template when this creates the file, or the existing frontmatter preserved verbatim except `updated: { by, at }` otherwise, the `Status:` header line unchanged — creating the epic directory if absent, and `git add <brief path>`.
 2. If `git diff --cached --quiet -- <brief path>` succeeds — the brief is byte-identical to the one already on the branch, meaning this fact was already applied — commit nothing, skip the push, and return `EPIC-DOC: updated` with `THREADS: +0 -0` and `COMMIT: none`. The caller reads `COMMIT: none` — never the thread count, which is `+0 -0` on a constraint-only commit too — as "nothing landed" and skips its Notion note and ticket comments.
 3. Otherwise `git commit --only -m "docs(epic): note <KEY>-<n> — <short fact>" -- <brief path>` (`--only`, for the same reason `record` gives: an exempt setup file may already be staged and must not ride along). Push `git push origin <baseRefName>` — skipped under `--branch`, where the caller pushes once.
 4. **Push rejected** → leave the local commit in place, **do not force**, return `EPIC-DOC: failed` with `CAUSE: push rejected — <git's message>`. HEAD now differs from the remote, so the caller must not apply another epic on this run; it reports the rest as skipped and its closeout finds the unpushed commit.

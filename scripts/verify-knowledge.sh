@@ -267,7 +267,7 @@ if [ -f "$ED" ]; then
   assert_has "epic-doc: frontmatter shows \`status: stable\`" "$ED" 'status: stable'
   assert_has "epic-doc: bullets \`write the link form whenever a concept for the fact exists\`" \
     "$ED" 'write the link form whenever a concept for the fact exists'
-  assert_count "epic-doc: \`record --bootstrap\` writes into \`<knowledge.dir>/epic/\` (cited 3 times: the Path line, the seed-search exclusion, and the bootstrap description — tune this count in the same commit that writes the section, per CLAUDE.md)" \
+  assert_count "epic-doc: the brief lives under \`<knowledge.dir>/epic/\` (cited 3 times: the path line, the seed-search exclusion, and the bootstrap description — tune this count in the same commit that writes the section, per CLAUDE.md)" \
     "$ED" 1 "$L" '<knowledge\.dir>/epic/' 3
 else
   bad "epic-doc skill missing: $ED"
@@ -278,11 +278,11 @@ echo "== config schema =="
 # ---------------------------------------------------------------------------
 assert_has "config schema: \`\"knowledge\": {\` block opens" "$SCHEMA" '"knowledge": {'
 assert_has "config schema: has the \`\"dir\"\` key" "$SCHEMA" '"dir"'
-assert_has "config schema: \`dir\` defaults to \`\"knowledge\"\`" "$SCHEMA" '"default": "knowledge"'
+assert_has "config schema: dir's default is \`\"knowledge\"\`" "$SCHEMA" '"default": "knowledge"'
 assert_has "config schema: has the \`\"retrieveBudget\"\` key" "$SCHEMA" '"retrieveBudget"'
-assert_has "config schema: \`retrieveBudget\` defaults to \`8000\`" "$SCHEMA" '"default": 8000'
+assert_has "config schema: retrieveBudget's default is \`8000\`" "$SCHEMA" '"default": 8000'
 assert_has "config schema: has the \`\"warnBytes\"\` key" "$SCHEMA" '"warnBytes"'
-assert_has "config schema: \`warnBytes\` defaults to \`8192\`" "$SCHEMA" '"default": 8192'
+assert_has "config schema: warnBytes's default is \`8192\`" "$SCHEMA" '"default": 8192'
 assert_has "config schema: has the \`\"extraTypes\"\` key" "$SCHEMA" '"extraTypes"'
 assert_lacks "config schema: \`epicDocs\` key removed" "$SCHEMA" '"epicDocs"'
 
@@ -377,7 +377,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "== call sites: ticket-system SKILL.md =="
 # ---------------------------------------------------------------------------
-assert_has "ticket-system: \`getEpicContext\` is marked superseded by \`notion-dev:knowledge\` \`retrieve\`" \
+assert_has "ticket-system: getEpicContext is marked superseded by \`notion-dev:knowledge\` \`retrieve\`" \
   "$TS" 'superseded by `notion-dev:knowledge` `retrieve`'
 
 # ---------------------------------------------------------------------------

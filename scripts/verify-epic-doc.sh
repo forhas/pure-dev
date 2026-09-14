@@ -53,13 +53,24 @@ if [ -f "$ED" ]; then
 
   R0=$(find_line "$ED" 1 "$L" '^## `read\(')
   R1=$(find_line "$ED" 1 "$L" '^## `record\(')
+  # `read`'s own body ends where `## Bootstrap` begins; Bootstrap legitimately
+  # runs `git ls-tree`/`git show` for the seed search, so the "read never
+  # touches git directly" checks below must not spill into it.
+  RB=$(find_line "$ED" 1 "$L" '^## Bootstrap')
+  [ -n "$RB" ] || RB=$R1
   # The record region ends where `note` begins (verify-new-info.sh owns that
   # section); without a note heading it runs to end of file as before.
   R2=$(find_line "$ED" 1 "$L" '^## `note\(')
   [ -n "$R2" ] || R2=$L
   if [ -n "$R0" ] && [ -n "$R1" ]; then
-    assert_present "read: reads the brief from \`origin/<epicBranch>\`" \
-      "$ED" "$R0" "$R1" 'git show origin/<epicBranch>:'
+    assert_present "read: delegates the fetch to the \`notion-dev:knowledge\` skill, operation \`retrieve(<epic-id>, <current-ticket-id>)\`" \
+      "$ED" "$R0" "$RB" 'notion-dev:knowledge. skill, operation .retrieve\(<epic-id>, <current-ticket-id>\)'
+    assert_present "read: skips the fetch entirely — no fetch of any kind — when the caller supplies \`KNOWLEDGE_CONTEXT\`" \
+      "$ED" "$R0" "$RB" 'KNOWLEDGE_CONTEXT. supplied by the caller.*no fetch of any kind'
+    assert_absent "read: never runs \`git ls-tree\` itself — that fetch moved to \`retrieve\`" \
+      "$ED" "$R0" "$RB" 'git ls-tree'
+    assert_absent "read: never runs \`git show\` itself — that fetch moved to \`retrieve\`" \
+      "$ED" "$R0" "$RB" 'git show'
     assert_present "the brief's branch is defined once as \`<epicBranch>\`" \
       "$ED" 1 "$R0" '^\*\*Branch\.\*\* The brief lives on .* called `<epicBranch>` below'
     assert_absent "epic-doc never reads \`origin/<git.baseBranch>\` directly" \
@@ -94,10 +105,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo "== config: epicDocs.dir =="
+echo "== config: knowledge.dir =="
 # ---------------------------------------------------------------------------
-assert_has "schema declares \`epicDocs\`" "$SCHEMA" '"epicDocs"'
-assert_has "schema defaults the dir to \`docs/epics\`" "$SCHEMA" '"default": "docs/epics"'
+assert_lacks "schema no longer declares \`epicDocs\`" "$SCHEMA" '"epicDocs"'
+assert_has "config schema: \`knowledge\` block's dir key defaults to \`knowledge\`" "$SCHEMA" '"default": "knowledge"'
 
 # ---------------------------------------------------------------------------
 echo "== ticket.md =="
@@ -163,8 +174,8 @@ fi
 echo "== ticket-system: getEpicContext kept as the bootstrap source =="
 # ---------------------------------------------------------------------------
 assert_has "ticket-system still defines \`## getEpicContext(\`" "$TS" '## getEpicContext('
-assert_has "ticket-system: getEpicContext is the bootstrap source for \`notion-dev:epic-doc\`" \
-  "$TS" 'bootstrap source for `notion-dev:epic-doc`'
+assert_has "ticket-system: getEpicContext superseded by \`notion-dev:knowledge\` \`retrieve\`; only \`notion-dev:epic-doc\`'\''s Notion-source bootstrap still calls it" \
+  "$TS" 'superseded by `notion-dev:knowledge` `retrieve` for every context read; only `notion-dev:epic-doc`'\''s Notion-source bootstrap still calls it.'
 
 # ---------------------------------------------------------------------------
 echo "== issue-log: partial:epic-doc =="
