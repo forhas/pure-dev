@@ -56,7 +56,7 @@ Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
 Blocked: STO-22, STO-23 (see Open threads).
 ```
 
-**The title is quoted.** `title: [STO-60] Wallet Indexing` unquoted opens a YAML flow sequence
+**The title is quoted.** Left unquoted, `[STO-60] Wallet Indexing` opens a YAML flow sequence
 and then trails a scalar, so the document has no parseable frontmatter at all and `check` reports
 every required property missing — which makes the next `capture` write nothing. The quoted form
 above is the only one to write, and `sources[].title` is quoted for the same reason.

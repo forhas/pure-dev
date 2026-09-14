@@ -273,7 +273,7 @@ if [ -f "$ED" ]; then
   assert_present "epic-doc: the template's \`title\` is quoted — \`title: \"[STO-60] Wallet Indexing\"\`" \
     "$ED" 1 "$L" '^title: "\[STO-60\] Wallet Indexing"$'
   assert_absent "epic-doc: no unquoted \`title: [STO-60]\` anywhere — that spelling costs the brief its frontmatter" \
-    "$ED" 1 "$L" '^title: \[STO-60\]'
+    "$ED" 1 "$L" 'title: \[STO-60\]'
   # The brief is `status: stable`, so check rule 6 requires an index.md bullet for it.
   assert_present "epic-doc: the brief's \`index.md\` bullet is written by every operation that writes the brief" \
     "$ED" 1 "$L" 'no bullet in `index\.md` resolves to'
