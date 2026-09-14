@@ -21,12 +21,12 @@ All three operations are **best-effort in the `epic-update` sense**: a failure n
 ---
 type: Epic
 title: "[STO-60] Wallet Indexing"
-description: <the Goal in one line>
+description: "<the Goal in one line>"
 status: stable
 epic: STO-60
 generated: { by: notion-dev:epic-doc, at: 2026-09-13T00:00:00Z }
 sources:
-  - { id: epic, resource: <notion url>, title: "[STO-60] Wallet Indexing" }
+  - { id: epic, resource: "<notion url>", title: "[STO-60] Wallet Indexing" }
 ---
 # [STO-60] Wallet Indexing
 Epic: <notion url> · Status: open | closed · Updated: 2026-09-13 after [STO-67]
@@ -55,6 +55,8 @@ Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
 2. [STO-71] Cache metrics — after STO-70 (reads its index).
 Blocked: STO-22, STO-23 (see Open threads).
 ```
+
+**Every dynamic frontmatter value is written as a double-quoted YAML string with `"` and `\` escaped — a JSON string literal**: the title, the description, the Notion URL, and the source title. A title carrying a quote, or a Goal that begins `Target: deploy`, would otherwise break the block and fail every later `check`; `migrate` serializes the same four values the same way.
 
 **The title is quoted.** Left unquoted, `[STO-60] Wallet Indexing` opens a YAML flow sequence
 and then trails a scalar, so the document has no parseable frontmatter at all and `check` reports
