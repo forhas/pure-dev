@@ -90,15 +90,15 @@ if [ -f "$KS" ]; then
       "$KS" "$R0" "$C0" '--expand-includes'
     assert_absent "knowledge skill: never runs \`grep -r\` over the bundle" \
       "$KS" 1 "$L" 'grep -r'
-    assert_count "knowledge skill: \`index.md\` is written, never read for context (cited 4 times: the layout block, the read-once table's never-from column, capture's index update, and migrate's reshape — tune this count in the same commit that writes the section, per CLAUDE.md)" \
-      "$KS" 1 "$L" 'index\.md' 4
+    assert_count "knowledge skill: \`index.md\` is written, never read for context (cited 5 times: the layout block, the read-once table's never-from column, capture's index update, migrate's reshape, and migrate's seed for a bundle that has none — tune this count in the same commit that writes the section, per CLAUDE.md)" \
+      "$KS" 1 "$L" 'index\.md' 5
 
     # -------------------------------------------------------------------
     echo "== knowledge skill: capture =="
     # -------------------------------------------------------------------
     assert_present "knowledge skill: \`capture(\` heading covers both the hook and \`--fact\` forms" \
       "$KS" "$C0" "$U0" '^## `capture\(<ticket-id>, <merge-sha>\)` and `capture --fact <fact> <epic-id>`$'
-    assert_present "capture: precondition asserts \`git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD\` equals \`<base>\`" \
+    assert_present "capture: precondition asserts \`git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD\` equals \`<baseRefName>\`" \
       "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD +# must equal <baseRefName>'
     assert_present "capture: precondition asserts HEAD equals \`origin/<baseRefName>\` — the remote-equality line decision 8 keeps, anchored on the second line of the wrapped test, since these files are hard-wrapped" \
       "$KS" "$C0" "$U0" '"\$\(git -C \$REPO_ROOT rev-parse origin/<baseRefName>\)"'
@@ -106,9 +106,9 @@ if [ -f "$KS" ]; then
       "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT status --porcelain -- <knowledge.dir>\` is empty" \
       "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT status --porcelain -- <knowledge\.dir>'
-    assert_absent "knowledge skill: no leftover \`HEAD == origin\` equality check (decision 8 retires it)" \
+    assert_absent "knowledge skill: the remote-equality check decision 8 KEEPS is never written as the unassertable prose shorthand \`HEAD == origin\` — the \`test\` form is pinned above" \
       "$KS" 1 "$L" 'HEAD == origin'
-    assert_absent "knowledge skill: no leftover \`HEAD==origin\` equality check, unspaced form" \
+    assert_absent "knowledge skill: the same shorthand in its unspaced form \`HEAD==origin\`" \
       "$KS" 1 "$L" 'HEAD==origin'
     assert_present "capture: filter question — \`would an engineer reading the merged code\`" \
       "$KS" "$C0" "$U0" 'would an engineer reading the merged code'
@@ -195,12 +195,14 @@ for spec in "$ED:epic-doc/SKILL.md" "$TK:ticket.md" "$NT:next-task.md" "$NI:new-
             "$IN:init.md" "$FZ:finalize.md" "$TS:ticket-system/SKILL.md" "$KC:knowledge.md"; do
   f=${spec%%:*}
   name=${spec#*:}
-  for lit in "iwe find" "iwe retrieve" "iwe schema" "iwe stats"; do
+  for lit in "iwe find" "iwe retrieve" "iwe schema" "iwe stats" "iwe rename"; do
     assert_lacks "iwe surface: $name never invokes \`$lit\`" "$f" "$lit"
   done
 done
 assert_has "iwe surface: init.md probes \`iwe --version\` only" "$IN" 'iwe --version'
 assert_lacks "iwe surface: init.md never invokes \`iwe retrieve\`" "$IN" 'iwe retrieve'
+assert_lacks "iwe surface: the knowledge skill never claims \`iwe rename\` — migrate rewrites links in Python" \
+  "$KS" 'iwe rename'
 
 # ---------------------------------------------------------------------------
 echo "== command: knowledge.md =="
@@ -265,6 +267,18 @@ if [ -f "$ED" ]; then
   assert_has "epic-doc: carries \`KNOWLEDGE_CONTEXT\`" "$ED" 'KNOWLEDGE_CONTEXT'
   assert_has "epic-doc: frontmatter shows \`type: Epic\`" "$ED" 'type: Epic'
   assert_has "epic-doc: frontmatter shows \`status: stable\`" "$ED" 'status: stable'
+  # The template's title must be QUOTED. Unquoted, `[STO-60] …` opens a YAML flow sequence
+  # and the document has no parseable frontmatter at all, so `check` reports all six
+  # required properties missing and the next `capture` writes nothing.
+  assert_present "epic-doc: the template's \`title\` is quoted — \`title: \"[STO-60] Wallet Indexing\"\`" \
+    "$ED" 1 "$L" '^title: "\[STO-60\] Wallet Indexing"$'
+  assert_absent "epic-doc: no unquoted \`title: [STO-60]\` anywhere — that spelling costs the brief its frontmatter" \
+    "$ED" 1 "$L" '^title: \[STO-60\]'
+  # The brief is `status: stable`, so check rule 6 requires an index.md bullet for it.
+  assert_present "epic-doc: the brief's \`index.md\` bullet is written by every operation that writes the brief" \
+    "$ED" 1 "$L" 'no bullet in `index\.md` resolves to'
+  assert_count "epic-doc: \`<knowledge.dir>/index.md\` is written and committed by every operation that writes the brief (cited 6 times: twice in the catalog rule, once in record's pathspec, once in the bootstrap's, twice in the note-apply add and commit — tune this count in the same commit that changes the section, per CLAUDE.md)" \
+    "$ED" 1 "$L" '<knowledge\.dir>/index\.md' 6
   assert_has "epic-doc: bullets \`write the link form whenever a concept for the fact exists\`" \
     "$ED" 'write the link form whenever a concept for the fact exists'
   assert_count "epic-doc: the brief lives under \`<knowledge.dir>/epic/\` (cited 3 times: the path line, the seed-search exclusion, and the bootstrap description — tune this count in the same commit that writes the section, per CLAUDE.md)" \
@@ -352,14 +366,30 @@ fi
 echo "== call sites: init.md =="
 # ---------------------------------------------------------------------------
 if [ -f "$IN" ]; then
-  assert_has "init.md: preflight probes \`iwe --version\`" "$IN" 'iwe --version'
-  assert_has "init.md: preflight probes \`python3\`" "$IN" 'python3'
+  L=$(total_lines "$IN")
+  PF=$(find_line "$IN" 1 "$L" '^### 1\. Preflight$')
+  PF_END=$(find_line "$IN" $((PF + 1)) "$L" '^### ')
+  [ -n "$PF_END" ] || PF_END=$L
+  assert_present "init.md preflight, region-scoped to step 1, probes \`iwe --version\`" \
+    "$IN" "$PF" "$PF_END" 'Probe `iwe --version`'
+  assert_present "init.md preflight, same region, probes \`python3 --version\` beside it" \
+    "$IN" "$PF" "$PF_END" 'and `python3 --version`'
   assert_has "init.md: writes \`postMergeHooks: [\"notion-dev:knowledge\"]\`" \
     "$IN" 'postMergeHooks: ["notion-dev:knowledge"]'
   assert_lacks "init.md: no leftover \`epicDocs\` reference" "$IN" 'epicDocs'
   assert_has "init.md: scaffolds \`index.md\`" "$IN" 'index.md'
   assert_has "init.md: scaffolds \`log.md\`" "$IN" 'log.md'
   assert_has "init.md: scaffolds \`.iwe/\`" "$IN" '.iwe/'
+  # A scaffold of bare headings fails the shipped okf-index/okf-log schemas, so the very
+  # first post-merge capture on a new project returns KNOWLEDGE: failed.
+  assert_has "init.md: the scaffolded catalog carries one seed bullet pointing at \`log.md\`, not just a heading" \
+    "$IN" '- [Update log](log.md) — this'
+  assert_has "init.md: the scaffolded log carries one dated \`- bundle created\` entry" \
+    "$IN" '- bundle created'
+  assert_has "init.md: type directories are NOT created — git cannot track an empty directory" \
+    "$IN" 'Type directories are not created'
+  assert_lacks "init.md: no leftover \"create the canonical type directories\" promise" \
+    "$IN" 'create the canonical type directories'
 else
   bad "missing: $IN"
 fi
@@ -369,7 +399,7 @@ echo "== call sites: finalize.md =="
 # ---------------------------------------------------------------------------
 if [ -f "$FZ" ]; then
   assert_has "finalize.md: hook paragraph names \`notion-dev:knowledge\`" "$FZ" 'notion-dev:knowledge'
-  assert_lacks "finalize.md: no leftover \`HEAD == origin\` equality check" "$FZ" 'HEAD == origin'
+  assert_lacks "finalize.md: the remote-equality check decision 8 KEEPS is never written as the prose shorthand \`HEAD == origin\`" "$FZ" 'HEAD == origin'
 else
   bad "missing: $FZ"
 fi
@@ -388,8 +418,14 @@ assert_has "signature registry has the \`partial:knowledge-capture\` row" "$SG" 
 assert_has "signature registry has the \`missing-dependency:iwe\` row" "$SG" '| `missing-dependency:iwe` |'
 
 assert_has "README documents \`/notion-dev:knowledge\`" "$README" '| `/notion-dev:knowledge'
-assert_has "README Requirements lists \`iwe\`" "$README" '`iwe`'
-assert_has "README Requirements lists \`python3\`" "$README" '`python3`'
+RL=$(total_lines "$README")
+PR0=$(find_line "$README" 1 "$RL" '^## Prerequisites$')
+PR1=$(find_line "$README" $((PR0 + 1)) "$RL" '^## ')
+[ -n "$PR1" ] || PR1=$RL
+assert_present "README prerequisites, region-scoped to that section, list \`iwe\` as required" \
+  "$README" "$PR0" "$PR1" '^- [*][*]`iwe` . 0[.]19 on `PATH`[*][*] . [*][*]required[*][*]'
+assert_present "README prerequisites, same region, list \`python3\` as required" \
+  "$README" "$PR0" "$PR1" '^- [*][*]`python3`[*][*] . [*][*]required[*][*]'
 assert_has "README documents \`knowledge.dir\`" "$README" 'knowledge.dir'
 assert_lacks "README: no leftover \`epicDocs\` reference" "$README" 'epicDocs'
 assert_lacks "README: no leftover \"Knowledge bundles are not touched\" sentence" \

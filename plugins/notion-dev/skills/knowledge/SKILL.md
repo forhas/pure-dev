@@ -52,9 +52,11 @@ older than 2.39, which includes Ubuntu 22.04 under WSL), and `brew install iwe` 
 no `pip` step.
 
 **This skill and `scripts/knowledge.py` are the plugin's only iwe callers.** The skill touches
-`iwe retrieve`, `iwe find`, `iwe stats similarity` and `iwe rename`; the script touches
-`iwe find -f json` for frontmatter and `iwe schema validate` for shape. No command, no other
-skill invokes the binary, so the dependency can be swapped by editing one skill and one script.
+`iwe retrieve`, `iwe find` and `iwe stats similarity`; the script touches `iwe find -f json`
+for frontmatter and `iwe schema validate` for shape — four subcommands in all, and no fifth.
+Link rewriting on migration is Python in the script, not an iwe subcommand. No command, no
+other skill invokes the binary, so the dependency can be swapped by editing one skill and one
+script.
 
 ## `retrieve(<epic-id>, <ticket-title>?, <ticket-id>?)` → `KNOWLEDGE_CONTEXT` or `null`
 
@@ -168,8 +170,11 @@ test "$(git -C $REPO_ROOT rev-parse HEAD)" = \
 git -C $REPO_ROOT status --porcelain -- <knowledge.dir>          # must be empty
 ```
 
-`<baseRefName>` is the hook contract's name for `<epicBranch>` (see **Branch** above); the lines
-are quoted in `/notion-dev:ticket`'s form so the two cannot drift apart silently.
+`<baseRefName>` is the hook contract's name for `<epicBranch>` (see **Branch** above), and
+`<merge-sha>` is its `<merge-commit>`; the lines are quoted in `/notion-dev:ticket`'s form so
+the two cannot drift apart silently. **Line 2 belongs to the hook form only.** The direct
+`capture --fact <fact> <epic-id>` call `/notion-dev:new-info` makes has no merge commit, so it
+asserts lines 1, 3 and 4 and nothing stands in for the second — there is nothing to assert.
 
 Line 1 puts the write on the branch the merge landed on rather than a worktree or a leftover
 ticket branch; line 2 proves the merge this capture reads is present whatever a stale
@@ -247,9 +252,12 @@ directory read as undeclared, which fails `check` and — by the rule below — 
 whole capture on every merge.
 
 **Write nothing** when `check` exits non-zero, and never downgrade its exit 2: restore the
-working tree with `git checkout -- <knowledge.dir>`, then fail as the paragraph below describes,
-carrying the check's first finding line as the cause. A check that cannot run and says nothing is
-the outcome both clients learned to fear.
+working tree with `git checkout -- <knowledge.dir>` **and** `git clean -fd -- <knowledge.dir>`,
+then fail as the paragraph below describes, carrying the check's first finding line as the cause.
+Both halves are needed: a concept this capture **created** is untracked, `git checkout --` does
+not remove it, and a survivor breaks precondition 4 on every later capture — one failed capture
+would disable the hook until someone cleaned the tree by hand. A check that cannot run and says
+nothing is the outcome both clients learned to fear.
 
 Otherwise stage and commit by pathspec — never the whole index, since a caller's precondition
 permits an exempt setup file to sit staged:
@@ -319,19 +327,38 @@ Without `--apply` it prints the complete diff and writes nothing.
    a bundle cannot silently loosen the schema it is checked against.
 3. **Rewrite every concept** under `<knowledge.dir>` outside dot-directories: map the `current`
    status — one client's local vocabulary — to `stable`; drop `stale_after`, `reconciled`,
-   `verified` and `vouch`; add `sources` when missing, from a ticket or PR reference in the body,
-   else `{ id: migrated, resource: <own path> }` with `status: draft`; collect any
-   `## Reconciliation notes` under `## Updates`. Every other field and all prose are left alone.
+   `verified` and `vouch`, **each together with its wrapped or nested continuation lines**, since
+   a key dropped one physical line at a time leaves an orphan that costs the document its whole
+   frontmatter; normalise a `superseded_by` written from the repo root so it reads from the
+   bundle root; add `sources` when missing, from a ticket or PR reference in the body, else
+   `{ id: migrated, resource: <own path> }` with `status: draft`; collect any
+   `## Reconciliation notes` under `## Updates`. Every other field and all prose are left alone,
+   and a CRLF or BOM-prefixed concept is migrated like any other — the output is always `\n`.
    Reshape `log.md` to the shipped `okf-log.yaml` form (one title section, `## YYYY-MM-DD` groups
    newest first, bullets only) and `index.md` to `okf-index.yaml` (sections of link bullets only)
-   — both clients' logs fail that schema today.
+   — both clients' logs fail that schema today. **The reshape reshapes; it never deletes.** Every
+   log line survives: a dated heading keeps its title as the group's first bullet, a wrapped
+   bullet keeps its continuation, a sub-section the log schema's depth limit forbids becomes a
+   bullet of its own, and a log with no dated content at all is left exactly as it was rather
+   than emitted empty. The index drops a section that ends up with no bullets — the shipped
+   schema rejects one — and gains a bullet for every `stable` concept the client never
+   catalogued, because `check` requires one. A bundle with no `index.md` or `log.md` is given the
+   same seed `/notion-dev:init` writes.
 4. **Move the brief.** `docs/epics/<KEY>-<n>-<slug>.md`, or whatever `epicDocs.dir` named, moves
-   to `<knowledge.dir>/epic/` with the `type: Epic` frontmatter added. A hand-written seed plan
-   is left where it is, for `next-task`'s bootstrap, which now writes into `epic/`.
-5. **Rewrite the links the moves broke** — `iwe rename` per moved file, so no relative link is
-   repaired by hand.
+   to `<knowledge.dir>/epic/` with the `type: Epic` frontmatter added — `status: stable`, since
+   `retrieve` seeds on this document under `--filter 'status: stable'`, citing the Notion URL on
+   its own `Epic:` header line. **`epicDocs.dir` is optional**: absent, the documented default
+   `docs/epics` is used, and a move that finds nothing to move says so in a `note:` line rather
+   than passing silently. A hand-written seed plan is left where it is, for `next-task`'s
+   bootstrap, which now writes into `epic/`.
+5. **Rewrite the links the moves broke** — in Python, relative to each linking file: every
+   relative link inside the moved brief recomputed for its new depth, and every tracked `*.md`
+   outside the bundle that pointed at the old brief path repointed. No relative link is repaired
+   by hand, and no fifth iwe subcommand is involved.
 6. **Config.** Drop `epicDocs` from `.claude/notion-dev.config.json`, add the `knowledge` block
-   with `extraTypes` set to the non-canonical directories found, and replace the client's own
+   with `dir` and with `extraTypes` set to the non-canonical directories found — `dir` because a
+   config that omits it silently points `check` at the default bundle path — carrying through any
+   `retrieveBudget` or `warnBytes` the client had already set, and replace the client's own
    `postMergeHooks` entry with `notion-dev:knowledge`.
 7. **Check the result:**
 
@@ -358,9 +385,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" migrate [--apply] --dir <kn
   --config .claude/notion-dev.config.json --plugin-root "${CLAUDE_PLUGIN_ROOT}"
 ```
 
-Steps 4 and 8 are this skill's work over what the script reports; steps 2, 3, 5, 6 and 7 are the
-script's. Returns `capture`'s output block with `COMMIT: none` — `migrate` stages nothing and
-commits nothing; the client's migration PR carries the diff.
+Step 8 is this skill's work over what the script reports; steps 2 through 7 are the script's.
+Returns `capture`'s output block with `COMMIT: none` — `migrate` stages nothing and commits
+nothing; the client's migration PR carries the diff.
 
 ## Failure handling
 
@@ -375,6 +402,8 @@ the log never fails the run:
 - `partial:knowledge-retrieve` — `iwe` missing or `retrieve` failed; the brief was served alone.
 - `partial:knowledge-capture` — `check` failed or the push was rejected; nothing was written, or
   a commit is unpushed.
-- `missing-dependency:iwe` — `iwe` absent or below 0.19, at the preconditions of
-  `/notion-dev:ticket`, `/notion-dev:next-task`, `/notion-dev:new-info` and
-  `/notion-dev:knowledge`.
+- `missing-dependency:iwe` — `iwe` absent or below 0.19, at the three places that probe for it:
+  `/notion-dev:knowledge`'s preconditions, `/notion-dev:new-info`'s preconditions, and
+  `/notion-dev:init`'s preflight. `/notion-dev:ticket` and `/notion-dev:next-task` do not probe —
+  they reach the bundle only through `retrieve`, which degrades with `partial:knowledge-retrieve`
+  and lets the run continue, so a probe there would abort a run that has no need to stop.

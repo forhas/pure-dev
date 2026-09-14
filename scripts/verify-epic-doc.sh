@@ -63,8 +63,8 @@ if [ -f "$ED" ]; then
   R2=$(find_line "$ED" 1 "$L" '^## `note\(')
   [ -n "$R2" ] || R2=$L
   if [ -n "$R0" ] && [ -n "$R1" ]; then
-    assert_present "read: delegates the fetch to the \`notion-dev:knowledge\` skill, operation \`retrieve(<epic-id>, <current-ticket-id>)\`" \
-      "$ED" "$R0" "$RB" 'notion-dev:knowledge. skill, operation .retrieve\(<epic-id>, <current-ticket-id>\)'
+    assert_present "read: delegates the fetch to the \`notion-dev:knowledge\` skill, operation \`retrieve(<epic-id>, <ticket-title>?, <current-ticket-id>)\` — the id in the THIRD argument, where the signature puts it" \
+      "$ED" "$R0" "$RB" 'notion-dev:knowledge. skill, operation .retrieve\(<epic-id>, <ticket-title>\?, <current-ticket-id>\)'
     assert_present "read: skips the fetch entirely — no fetch of any kind — when the caller supplies \`KNOWLEDGE_CONTEXT\`" \
       "$ED" "$R0" "$RB" 'KNOWLEDGE_CONTEXT. supplied by the caller.*no fetch of any kind'
     assert_absent "read: never runs \`git ls-tree\` itself — that fetch moved to \`retrieve\`" \

@@ -374,7 +374,20 @@ Always write `reviewer` explicitly (unlike the omit-when-default properties abov
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 
-Scaffold `<knowledge.dir>/` when absent: copy `${CLAUDE_PLUGIN_ROOT}/skills/knowledge/references/iwe/` to `<knowledge.dir>/.iwe/`, write `index.md` (`okf_version: "0.2"` frontmatter, `# Index`) and `log.md` (`# Update log`), and create the canonical type directories. Never overwrite an existing bundle's `index.md` or `log.md`. Set `postMergeHooks: ["notion-dev:knowledge"]` in the config **unconditionally** — on a fresh config and on reconfigure alike, whether or not the bundle needed scaffolding this run, so a repo whose bundle already existed still gains the hook. The `knowledge` block itself follows the same omit-when-default convention as the rest of this step: no knowledge field is prompted for here, so every one would equal its schema default on a fresh init and the block is written only when a value differs from default — which reconfigure preserves exactly as it preserves `reviewsCap` above.
+Scaffold `<knowledge.dir>/` when absent: copy `${CLAUDE_PLUGIN_ROOT}/skills/knowledge/references/iwe/` to `<knowledge.dir>/.iwe/`, then write `index.md` and `log.md` **in the exact shape below**. Never overwrite an existing bundle's `index.md` or `log.md`. Type directories are not created: git cannot track an empty directory, so they would vanish on the first clone — each is created by the first concept written into it, and `check` only ever looks at directories that hold a `.md` file.
+
+```
+index.md                          log.md
+
+---                               # Update log
+okf_version: "0.2"
+---                               ## <today, YYYY-MM-DD>
+# Index                           - bundle created
+- [Update log](log.md) — this
+  bundle's history
+```
+
+**The seed bullet and the seed entry are not decoration.** The shipped `okf-index.yaml` requires a bullet list in every section and `okf-log.yaml` requires at least one `## YYYY-MM-DD` group holding one; an `index.md` that is only a heading and a `log.md` that is only a title fail both. Since `notion-dev:knowledge` `capture` writes nothing when `check` is non-zero, a bundle scaffolded without them makes the very first post-merge capture return `KNOWLEDGE: failed` — on a brand-new project, before anything has been written. `notion-dev:knowledge` `migrate` seeds a bundle that has neither file the same way. Set `postMergeHooks: ["notion-dev:knowledge"]` in the config **unconditionally** — on a fresh config and on reconfigure alike, whether or not the bundle needed scaffolding this run, so a repo whose bundle already existed still gains the hook. The `knowledge` block itself follows the same omit-when-default convention as the rest of this step: no knowledge field is prompted for here, so every one would equal its schema default on a fresh init and the block is written only when a value differs from default — which reconfigure preserves exactly as it preserves `reviewsCap` above.
 
 ### 10. Commit (optional)
 
