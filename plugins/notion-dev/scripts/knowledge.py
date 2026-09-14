@@ -712,15 +712,19 @@ def add_epic_frontmatter(body_text, filename):
         if m:
             notion_url = m.group(1)
             break
+    # json.dumps yields a double-quoted YAML scalar with `"` and `\` escaped — a title or
+    # Goal sentence carrying either would otherwise break the frontmatter and fail the
+    # post-apply schema gate, rolling back an otherwise valid migration.
+    q_title, q_desc, q_url = json.dumps(title), json.dumps(description), json.dumps(notion_url or "")
     if notion_url:
-        source = f'  - {{ id: epic, resource: "{notion_url}", title: "{title}" }}'
+        source = f'  - {{ id: epic, resource: {q_url}, title: {q_title} }}'
     else:
         source = f"  - {{ id: migrated, resource: epic/{filename} }}"
     fm = [
         "---",
         "type: Epic",
-        f'title: "{title}"',
-        f'description: "{description}"',
+        f'title: {q_title}',
+        f'description: {q_desc}',
         "status: stable",
         f"epic: {epic_id}",
         f'generated: {{ by: notion-dev:migrate, at: "{MIGRATE_AT_SENTINEL}" }}',
