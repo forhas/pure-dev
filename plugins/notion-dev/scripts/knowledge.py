@@ -703,7 +703,9 @@ def add_epic_frontmatter(body_text, filename):
     body_text = normalise_text(body_text)
     lines = body_text.split("\n")
     title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else filename
-    m = re.match(r"^([A-Za-z]+-\d+)-", filename)
+    # The configured key grammar (`^[A-Z][A-Z0-9]{1,9}$` in the config schema): a key with a
+    # digit, such as `A1`, must match or `epic:` is written empty and the schema gate fails.
+    m = re.match(r"^([A-Z][A-Z0-9]{1,9}-\d+)-", filename)
     epic_id = m.group(1) if m else ""
     description = ""
     for i, ln in enumerate(lines):
