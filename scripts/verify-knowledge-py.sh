@@ -339,6 +339,42 @@ lk release-orphan 0 release --run STO-71
 [ -z "$(ls -d "$LK"/primary.stale-* 2>/dev/null)" ] && ok "lock: no stale-break leftovers remain" || bad "lock: stale-break leftovers remain"
 rm -rf "$LK"
 
+echo "== write path: a rejected push converges by re-deriving against the fresh brief =="
+CV=$(mktemp -d)
+G="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
+$G init -q --bare "$CV/origin.git"
+$G clone -q "$CV/origin.git" "$CV/a" 2>/dev/null
+mkdir -p "$CV/a/knowledge/epic"; cp "$NX/brief.md" "$CV/a/knowledge/epic/STO-60-wallet-indexing.md"
+( cd "$CV/a" && $G add -A && $G commit -q -m seed && $G push -q origin main ) 2>/dev/null
+$G clone -q "$CV/origin.git" "$CV/b" 2>/dev/null
+B=knowledge/epic/STO-60-wallet-indexing.md
+# A: create STO-74 and push
+python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
+cp "$CV/a/out.md" "$CV/a/$B"
+( cd "$CV/a" && $G commit -q --only -m "docs(epic): STO-60 create STO-74" -- "$B" && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: A's commit and push land" || bad "write path: A's commit or push failed"
+
+# B, stale clone: start STO-71, push rejected
+python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out.md" 2>/dev/null
+cp "$CV/b/out.md" "$CV/b/$B"
+( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" ) 2>/dev/null
+if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B's stale push should be rejected"; else ok "write path: B's stale push is rejected"; fi
+# the recipe: exactly one local commit ahead, fetch, reset --hard, re-derive, commit, push
+( cd "$CV/b" && $G fetch -q origin main && n=$($G rev-list origin/main..HEAD | wc -l | tr -d ' ') && [ "$n" -eq 1 ] ) \
+  && ok "write path: rev-list shows exactly one local commit before the reset" || bad "write path: rev-list count is not 1"
+( cd "$CV/b" && $G reset -q --hard origin/main ) 2>/dev/null
+python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
+cp "$CV/b/out2.md" "$CV/b/$B"
+( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: the re-derived commit pushes (ATTEMPTS: 2)" || bad "write path: second push failed"
+$G clone -q "$CV/origin.git" "$CV/c" 2>/dev/null
+assert_has "write path: origin carries B's start"          "$CV/c/$B" 'In progress: [STO-71] Cache metrics — since 2026-09-15, [STO-72] Backfill v2 — since 2026-09-14'
+assert_has "write path: origin still carries A's created child" "$CV/c/$B" '2. [STO-74] Dashboards — ready'
+assert_has "write path: the header names B's start"        "$CV/c/$B" 'after start [STO-71]'
+( cd "$CV/c" && $G log --format=%s ) > "$OUT/cv-log.txt"
+assert_lacks "write path: no merge commit was manufactured" "$OUT/cv-log.txt" 'Merge'
+rm -rf "$CV"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
 exit $(( fails > 0 ? 1 : 0 ))
