@@ -13,7 +13,7 @@ Epic: https://notion.so/STO-9 · Status: open · Updated: 2026-09-01
 
 ## Why
 The migrate fixture needs a pre-OKF epic brief with no frontmatter to move into `epic/`.
-See the [seed](../../docs/STO-9-seed.md) plan for the background this epic grew out of.
+See the [seed](../../docs/STO-9-seed.md) and [guide](/docs/guide.md) plan for the background this epic grew out of.
 
 ## Goal
 Prove that `migrate` adds OKF frontmatter when moving a brief into the bundle.

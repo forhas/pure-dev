@@ -227,6 +227,9 @@ def run_check(a):
     # when they cannot run" failure mode CLAUDE.md and spec decision 9 both forbid — so it is
     # resolved on disk instead of against a doc key (bundle root + key, with `.md` appended
     # when the key carries no extension, since iwe strips it from in-bundle keys too).
+    top_p = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=bundle,
+                           capture_output=True, text=True)
+    repo_top = top_p.stdout.strip() if top_p.returncode == 0 else None
     for d in all_docs:
         for r in d.get("references", []) or []:
             key = r["key"]
@@ -237,6 +240,13 @@ def run_check(a):
                     findings.append(f"{d['key']}.md: link: {key} (outside bundle, not on disk)")
                 continue
             if key not in keys:
+                # iwe renders a root-relative target (`/docs/guide.md`) as the bare key
+                # `docs/guide`, indistinguishable from an in-bundle key — so before calling it
+                # dangling, try it on disk against the repository root (a git top level, when
+                # the bundle sits in one). Still absent → dangling, as before.
+                disk_rel = key if os.path.splitext(key)[1] else key + ".md"
+                if repo_top and os.path.isfile(os.path.join(repo_top, disk_rel)):
+                    continue
                 findings.append(f"{d['key']}.md: link: {key}")
 
     # 5. superseded_by
@@ -748,6 +758,8 @@ def _is_rewritable_link(target):
         return False
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target):  # any URL scheme, incl. mailto:
         return False
+    if target.startswith("/"):  # root-relative (`/docs/x.md`) or protocol-relative (`//host`)
+        return False            # — os.path would read it as filesystem-absolute
     return True
 
 
