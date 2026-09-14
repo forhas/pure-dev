@@ -451,9 +451,9 @@ def migrate_concept_text(text, own_relpath, bundle_name=None):
     if not has_sources:
         m = re.search(r"\((https?://[^\s)]+)\)", body)
         if m:
-            kept.append(("sources", ["sources:", f"  - {{ id: ticket, resource: {m.group(1)} }}"]))
+            kept.append(("sources", ["sources:", f"  - {{ id: ticket, resource: {json.dumps(m.group(1))} }}"]))
         else:
-            kept.append(("sources", ["sources:", f"  - {{ id: migrated, resource: {own_relpath} }}"]))
+            kept.append(("sources", ["sources:", f"  - {{ id: migrated, resource: {json.dumps(own_relpath)} }}"]))
             replaced = False
             for i, (key, lines) in enumerate(kept):
                 if key == "status":

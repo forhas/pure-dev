@@ -6,7 +6,7 @@ status: draft
 generated: { by: smart-contracts:capture, at: 2026-09-01T00:00:00Z }
 ticket: STO-9
 sources:
-  - { id: migrated, resource: ticket/STO-9.md }
+  - { id: migrated, resource: "ticket/STO-9.md" }
 ---
 # Problem
 The old bundle format used `status: current` and tracked staleness fields the plugin no longer needs.
