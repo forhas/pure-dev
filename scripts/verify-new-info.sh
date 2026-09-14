@@ -61,7 +61,7 @@ if [ -f "$NI" ]; then
       "$NI" 1 "$S0" 'is not an epic container'
     # scope
     assert_present "scope: briefs are listed from \`origin/<epicBranch>\`" \
-      "$NI" "$S0" "$P0" 'ls-tree -r --name-only origin/<epicBranch> -- <epicDocs.dir>/'
+      "$NI" "$S0" "$P0" 'ls-tree -r --name-only origin/<epicBranch> -- <knowledge\.dir>/epic/'
     assert_present "scope: briefs are filtered by \`<KEY>-<n>-*.md\`" \
       "$NI" "$S0" "$P0" 'filtered to `<KEY>-<n>-\*\.md`'
     assert_present "scope: brief-less open epics come from \`findEpics()\`" \
@@ -69,8 +69,8 @@ if [ -f "$NI" ]; then
     assert_present "scope: a closed epic is skipped as \`epic closed\`" \
       "$NI" "$P0" "$PR" 'reason `epic closed`'
     # per epic
-    assert_present "per epic: reads through \`epic-doc\` \`read(<epic-id>)\`" \
-      "$NI" "$P0" "$PR" 'notion-dev:epic-doc. skill, operation .read\(<epic-id>\)'
+    assert_present "per epic: reads through \`notion-dev:knowledge\` \`retrieve(<epic-id>)\`" \
+      "$NI" "$P0" "$PR" 'notion-dev:knowledge. skill, operation .retrieve\(<epic-id>\)'
     assert_present "per epic: proposes through \`note(<fact>, <epic-id>)\`" \
       "$NI" "$P0" "$PR" 'operation `note\(<fact>, <epic-id>\)`, passing'
     assert_present "per epic: applies through \`note --apply <epic-id>\`" \
@@ -109,12 +109,10 @@ if [ -f "$NI" ]; then
     assert_present "pull-request path: returns to the epic branch with \`pull --ff-only\`" \
       "$NI" "$PR" "$RP" 'pull --ff-only origin <epicBranch>'
     # report
-    assert_count "report: \`postMergeHooks\` is named once, in the report" \
-      "$NI" "$RP" "$L" 'postMergeHooks' 1
-    assert_absent "new-info never runs \`postMergeHooks\` as a step" \
-      "$NI" 1 "$RP" 'postMergeHooks'
-    assert_present "report: knowledge bundles are \`not touched\`" \
-      "$NI" "$RP" "$L" 'knowledge bundle: not touched'
+    assert_lacks "new-info.md never mentions \`postMergeHooks\` — capture is invoked directly per epic, not deferred to a hook" \
+      "$NI" 'postMergeHooks'
+    assert_present "report: per-epic line reports the knowledge capture outcome (\`knowledge: <captured\`)" \
+      "$NI" "$RP" "$L" 'knowledge: <captured'
     assert_present "report: ends with the closeout workspace pass" \
       "$NI" "$RP" "$L" 'invoke the \*\*workspace pass\*\* of the .notion-dev:session-closeout'
     assert_present "report: the \`CLOSEOUT:\` block closes the report" \

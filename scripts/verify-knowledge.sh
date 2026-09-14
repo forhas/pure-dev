@@ -311,8 +311,8 @@ if [ -f "$TK" ]; then
   assert_lacks "ticket.md: no leftover \`getEpicContext(\` call" "$TK" 'getEpicContext('
 
   if [ -n "$PH0" ] && [ -n "$P10" ]; then
-    assert_present "ticket.md Phase 9 hook paragraph names \`notion-dev:knowledge\`" \
-      "$TK" "$PH0" "$P10" 'notion-dev:knowledge'
+    assert_count "ticket.md Phase 9 hook paragraph names \`notion-dev:knowledge\` (cited twice on purpose: the hook name, and the ordering rationale's example)" \
+      "$TK" "$PH0" "$P10" 'notion-dev:knowledge' 2
   else
     bad "ticket.md: could not locate the Phase 9 post-merge-hooks paragraph"
   fi
@@ -326,7 +326,7 @@ echo "== call sites: next-task.md =="
 if [ -f "$NT" ]; then
   L=$(total_lines "$NT")
   assert_has "next-task.md: invokes \`notion-dev:knowledge\`, operation \`retrieve(<epic-id>)\`" \
-    "$NT" 'operation `retrieve(<epic-id>)`'
+    "$NT" 'the `notion-dev:knowledge` skill, operation `retrieve(<epic-id>)`'
   assert_has "next-task.md: carries \`KNOWLEDGE_CONTEXT\`" "$NT" 'KNOWLEDGE_CONTEXT'
   assert_lacks "next-task.md: no leftover \`epic-doc\` \`read(<epic-id>)\` call" \
     "$NT" 'operation `read(<epic-id>)`'
@@ -338,12 +338,12 @@ fi
 echo "== call sites: new-info.md =="
 # ---------------------------------------------------------------------------
 if [ -f "$NI" ]; then
-  assert_has "new-info.md: invokes \`capture --fact <fact> <epic-id>\` after \`note --apply\`" \
-    "$NI" 'operation `capture --fact <fact> <epic-id>`'
+  assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`capture --fact <fact> <epic-id>\`, after the note-apply outcome bullets" \
+    "$NI" 'the `notion-dev:knowledge` skill, operation `capture --fact <fact> <epic-id>`'
   assert_has "new-info.md: reports a \`KNOWLEDGE:\` line per epic" "$NI" 'KNOWLEDGE:'
   assert_lacks "new-info.md: no leftover \`epicDocs\` reference" "$NI" 'epicDocs'
   assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`retrieve(<epic-id>)\`" \
-    "$NI" 'operation `retrieve(<epic-id>)`'
+    "$NI" 'the `notion-dev:knowledge` skill, operation `retrieve(<epic-id>)`'
 else
   bad "missing: $NI"
 fi

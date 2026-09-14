@@ -33,11 +33,11 @@ Then the **inverted epic guard**: `fetchTicket(<epic-id>)` via `notion-dev:ticke
 
 ### 1. Read the brief
 
-Invoke the `notion-dev:epic-doc` skill, operation `read(<epic-id>)`. It returns `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN`, `BOOTSTRAP`, and `SEED`.
+Invoke the `notion-dev:knowledge` skill, operation `retrieve(<epic-id>)`. It returns `KNOWLEDGE_CONTEXT`, `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN`, `BOOTSTRAP`, and `SEED`.
 
 `STATUS: closed` → stop: `epic complete` — print the brief's `## Next` and end — **unless the epic's live status (from the preconditions' `fetchTicket`) is not in the resolved set**: the epic was reopened in Notion after the brief closed, so the header is stale, not authoritative. Say so, continue as if `STATUS` were `open` (the next `record` repairs the header), and pick from `CHILDREN` under the rules below.
 
-**`BOOTSTRAP: true` — create the brief before doing anything else.** The primary is clean (preconditions), so: `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>` (`<epicBranch>` = `git.prTargetBranch`, falling back to `git.baseBranch` — the branch the brief lives on, per `notion-dev:epic-doc`) (a `--ff-only` failure stops the run with the same diverged-base report `/notion-dev:ticket` Phase 9 gives — never stash or discard). Then invoke `notion-dev:epic-doc`, operation `record --bootstrap <epic-id>`, passing `REPO_ROOT` and `<epicBranch>` as `<baseRefName>`. It writes `<epicDocs.dir>/<KEY>-<n>-<slug>.md`, removes the seed plan when there was one (`SEED:` names it), commits `docs(epic): bootstrap <KEY>-<n>`, and pushes. Announce the path and the seed. `EPIC-DOC: failed` → stop and report its `CAUSE:`; a brief that could not be committed is not a basis for automated selection. Then re-run `read` so the loop works from the committed file.
+**`BOOTSTRAP: true` — create the brief before doing anything else.** The primary is clean (preconditions), so: `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>` (`<epicBranch>` = `git.prTargetBranch`, falling back to `git.baseBranch` — the branch the brief lives on, per `notion-dev:epic-doc`) (a `--ff-only` failure stops the run with the same diverged-base report `/notion-dev:ticket` Phase 9 gives — never stash or discard). Then invoke `notion-dev:epic-doc`, operation `record --bootstrap <epic-id>`, passing `REPO_ROOT` and `<epicBranch>` as `<baseRefName>`. It writes `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, removes the seed plan when there was one (`SEED:` names it), commits `docs(epic): bootstrap <KEY>-<n>`, and pushes. Announce the path and the seed. `EPIC-DOC: failed` → stop and report its `CAUSE:`; a brief that could not be committed is not a basis for automated selection. Then re-run `read` so the loop works from the committed file.
 
 Distilling a long hand-written plan is real work; landing it now, rather than holding it in memory across an hour-long ticket run that may stop, is the point of this step.
 
@@ -61,7 +61,7 @@ Walk `NEXT` in order. A candidate is **valid** when all of:
 
 Announce: `Next: [<key>] <title> — <the reason text from the brief's NEXT item, or "resume" / "fallback: first unblocked child">`.
 
-Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | selected by next-task from <brief path>: <reason>[; <user guidance>]` via the Skill tool, passing exactly the flags recorded above. Remain in `$REPO_ROOT`; `/notion-dev:ticket` manages its own worktree and returns there.
+Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | selected by next-task from <brief path>: <reason>[; <user guidance>]` via the Skill tool, passing exactly the flags recorded above, plus `KNOWLEDGE_CONTEXT` (Step 1) as context so its own 1.1 skips the fetch and the bundle is read once for the whole run. Remain in `$REPO_ROOT`; `/notion-dev:ticket` manages its own worktree and returns there.
 
 ### 4. After the run
 

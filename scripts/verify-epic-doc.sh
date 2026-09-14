@@ -124,8 +124,8 @@ if [ -f "$TICKET" ]; then
     "$TICKET" 1 5 '^disable-model-invocation:'
   assert_present "ticket.md carries the invocation guard" \
     "$TICKET" 1 "$P1" '^\*\*Invocation guard\.\*\*'
-  assert_present "ticket.md 1.1 reads the brief via \`epic-doc\` \`read(\`" \
-    "$TICKET" "$P1" "$P2" 'notion-dev:epic-doc. skill, operation .read\(metadata\.parentTaskProperty, <id>\)'
+  assert_present "ticket.md 1.1 reads the brief via \`notion-dev:knowledge\` \`retrieve(\`" \
+    "$TICKET" "$P1" "$P2" 'notion-dev:knowledge. skill, operation .retrieve\(metadata\.parentTaskProperty, <title>, <id>\)'
   assert_lacks "ticket.md no longer calls getEpicContext" "$TICKET" 'getEpicContext('
   assert_present "ticket.md records after the draft, before the closeout" \
     "$TICKET" "$P10" "$PF" '^\*\*Epic doc — record the resolution\.\*\*'
@@ -193,7 +193,7 @@ if [ -f "$NT" ]; then
   assert_has "next-task: the epic guard is inverted"           "$NT" 'not an epic → abort'
   assert_has "next-task delegates to \`/notion-dev:ticket\`"   "$NT" 'invoke `/notion-dev:ticket <key>'
   assert_has "next-task stops early on a failed run"           "$NT" '**Stop early**'
-  assert_has "next-task reads the brief via \`read(<epic-id>)\`"      "$NT" 'operation `read(<epic-id>)`'
+  assert_has "next-task reads the brief via \`retrieve(<epic-id>)\`"      "$NT" 'operation `retrieve(<epic-id>)`'
   assert_has "next-task bootstraps with \`record --bootstrap\`" "$NT" 'operation `record --bootstrap <epic-id>`'
 else
   bad "missing: $NT"
