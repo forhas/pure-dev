@@ -203,8 +203,8 @@ fi
 echo "== README and release =="
 # ---------------------------------------------------------------------------
 assert_has "README documents \`/notion-dev:next-task\`" "$README" '`/notion-dev:next-task'
-assert_has "README has the Epic docs section"            "$README" '### Epic docs'
-assert_has "README documents \`epicDocs.dir\`"          "$README" '`epicDocs.dir`'
+assert_has "README has the Knowledge bundle section"      "$README" '### Knowledge bundle'
+assert_has "README documents \`knowledge.dir\`"           "$README" '`knowledge.dir`'
 assert_has "README tree lists epic-doc"                  "$README" 'epic-doc/'
 assert_version_above "notion-dev version bumped above the pre-change 0.21.2" "$MANIFEST" 0.21.2
 

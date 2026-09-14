@@ -1,5 +1,8 @@
 # Epic docs — a per-epic markdown brief, and `/notion-dev:next-task`
 
+> Superseded in part by `2026-09-14-knowledge-bundle-design.md` (0.24.0): the brief now lives at
+> `<knowledge.dir>/epic/` as the bundle's root concept.
+
 **Date:** 2026-09-13 · **Plugin:** `notion-dev` · **Release:** 0.21.2 → 0.22.0 (minor)
 
 ## Problem
