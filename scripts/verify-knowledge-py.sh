@@ -47,6 +47,8 @@ assert_has "broken-index names the missing bullet"    "$OUT/broken-index.txt"   
 assert_has "broken-type names the directory"          "$OUT/broken-type.txt"       'type: undeclared directory commitment'
 assert_has "broken-iwe names the drifted file"        "$OUT/broken-iwe.txt"        '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
 assert_has "broken-log names the schema rule"         "$OUT/broken-log.txt"        'log.md: schema:'
+assert_has "broken-link-outward names the missing outside-bundle target" \
+  "$OUT/broken-link-outward.txt" 'epic/STO-1-demo-epic.md: link: ../docs/nope (outside bundle, not on disk)'
 
 echo "== check: warnBytes warns, never fails =="
 run warn 0 check --dir "$FX/valid" --plugin-root "$ROOT" --extra-types commitment --warn-bytes 10

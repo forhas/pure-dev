@@ -135,13 +135,21 @@ def run_check(a):
                     findings.append(f"{relf}: type: undeclared directory {d}")
 
     # 4. links. A reference key that climbs out of the bundle root (iwe renders those as
-    # `../...` keys) points at a file outside the OKF-managed collection entirely — a
-    # filesystem link the bundle doesn't own and has no way to validate — so only
-    # bundle-internal references are held to "must resolve to a known doc key".
+    # `../...` keys — every key iwe emits is bundle-root-relative, so a link resolved against
+    # its own file and re-expressed against the bundle root lands outside it) points at a file
+    # the OKF-managed collection doesn't own. It still has to exist: silently skipping it would
+    # be a check that passes when it cannot actually verify anything — the "checks that pass
+    # when they cannot run" failure mode CLAUDE.md and spec decision 9 both forbid — so it is
+    # resolved on disk instead of against a doc key (bundle root + key, with `.md` appended
+    # when the key carries no extension, since iwe strips it from in-bundle keys too).
     for d in all_docs:
         for r in d.get("references", []) or []:
             key = r["key"]
             if key.split("/")[0] == "..":
+                disk_rel = key if os.path.splitext(key)[1] else key + ".md"
+                disk_path = os.path.normpath(os.path.join(bundle, disk_rel))
+                if not os.path.isfile(disk_path):
+                    findings.append(f"{d['key']}.md: link: {key} (outside bundle, not on disk)")
                 continue
             if key not in keys:
                 findings.append(f"{d['key']}.md: link: {key}")
