@@ -90,8 +90,8 @@ if [ -f "$KS" ]; then
       "$KS" "$R0" "$C0" '--expand-includes'
     assert_absent "knowledge skill: never runs \`grep -r\` over the bundle" \
       "$KS" 1 "$L" 'grep -r'
-    assert_count "knowledge skill: \`index.md\` is written, never read for context (cited 3 times: the read-once table's never-from column, capture's index update, and migrate's reshape — tune this count in the same commit that writes the section, per CLAUDE.md)" \
-      "$KS" 1 "$L" 'index\.md' 3
+    assert_count "knowledge skill: \`index.md\` is written, never read for context (cited 4 times: the layout block, the read-once table's never-from column, capture's index update, and migrate's reshape — tune this count in the same commit that writes the section, per CLAUDE.md)" \
+      "$KS" 1 "$L" 'index\.md' 4
 
     # -------------------------------------------------------------------
     echo "== knowledge skill: capture =="
@@ -99,7 +99,7 @@ if [ -f "$KS" ]; then
     assert_present "knowledge skill: \`capture(\` heading covers both the hook and \`--fact\` forms" \
       "$KS" "$C0" "$U0" '^## `capture\(<ticket-id>, <merge-sha>\)` and `capture --fact <fact> <epic-id>`$'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD\` equals \`<base>\`" \
-      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD'
+      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD` equals `<base>'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD\`" \
       "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT status --porcelain -- <knowledge.dir>\` is empty" \
