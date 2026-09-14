@@ -39,7 +39,7 @@ epic's root concept inside the bundle. Every fact enters a run's context exactly
 | 5 | **Read-once.** Each fact has exactly one read path per run (§4). | Context is the scarce resource; overlap between Notion, brief, and bundle is the waste. |
 | 6 | **Valid until superseded.** No `stale_after`, no `reconciled` clock, no scheduled sweep, no source polling. Knowledge changes only when new information arrives: a merge (`capture`) or a fact (`new-info`). | Minimum maintenance. A green cron nobody opens is not a safeguard. |
 | 7 | **No hard byte cap.** A per-concept size *warning* (`knowledge.warnBytes`, default 8192) and a read-time token budget on `iwe retrieve`. | The 4096 cap cost seven trim passes on one ticket; the budget it protected is now enforced where it matters. |
-| 8 | **Hook precondition** is the three-line check `ticket.md` Phase 9 already uses (primary on `<base>`, merge commit is an ancestor of HEAD, clean tree), never `HEAD == origin/<base>`. | The equality assertion aborted on ordinary drift and needed a manual rebase. |
+| 8 | **Hook precondition** is exactly the three-line check `ticket.md` Phase 9 already asserts before any hook (primary on `<base>`, merge commit is an ancestor of HEAD, HEAD equals `origin/<base>`), plus a clean `<knowledge.dir>`. The remote-equality line stays: a hook that pushes must never publish local-only, unreviewed commits, and `git push` cannot push a subset of history. The drift pain is answered by a **user-invocable re-run**, `/notion-dev:knowledge capture <ticket-id> <merge-sha>`, and a report line that names it. | Reversed during review (Task 3): the earlier reading that the equality line was the client hook's own brittleness was wrong — `ticket.md` asserts it before every hook and skips hooks when it fails, for a reason that still holds. |
 | 9 | **Fail closed on checks, degrade on reads.** `knowledge.py check` failing or absent means nothing is written; `retrieve` with iwe missing returns the brief alone and the ticket still runs. | Both clients learned that a check which cannot run and says nothing is the worst outcome. |
 
 ## 1. Dependencies and install
@@ -203,7 +203,14 @@ Invoked two ways, one procedure:
 - **As the post-merge hook.** A client's `git.postMergeHooks` names `notion-dev:knowledge`;
   the hook contract in `ticket.md` Phase 9 and `finalize.md` runs the skill's `capture`
   operation with `<ticket-id>` and `<merge-sha>`. Preconditions are decision 8's three lines,
-  plus a clean `<knowledge.dir>/` (`git status --porcelain -- <knowledge.dir>` empty).
+  plus a clean `<knowledge.dir>/` (`git status --porcelain -- <knowledge.dir>` empty). The same
+  operation is user-invocable as `/notion-dev:knowledge capture <ticket-id> <merge-sha>` for a
+  hook run that was skipped or failed; it reads the ticket body and PR from `fetchTicket` and
+  `gh` because no session inputs exist, and is otherwise identical.
+- **Under `--pr` from `/notion-dev:new-info`**, `capture --fact … --branch <noteBranch>`
+  swaps the first and third precondition lines for the branch-name check and
+  `git merge-base --is-ancestor origin/<epicBranch> HEAD`, exactly as `epic-doc`'s
+  `note --apply --branch` does, and commits without pushing; `new-info` pushes once.
 - **From `/notion-dev:new-info`**, as `capture --fact <fact> <epic-id>`, after the brief note is
   applied for that epic (§8).
 
@@ -313,7 +320,8 @@ writes nothing.
 - **`commands/finalize.md`**: hook paragraph as `ticket.md`.
 - **`skills/ticket-system/SKILL.md`**: `getEpicContext` is marked superseded by `retrieve` and
   no command calls it.
-- **`commands/knowledge.md`** (new): `/notion-dev:knowledge migrate [--apply] | curate`.
+- **`commands/knowledge.md`** (new): `/notion-dev:knowledge migrate [--apply] | curate |
+  capture <ticket-id> <merge-sha>`.
 
 ## 9. `scripts/knowledge.py`
 
