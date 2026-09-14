@@ -696,6 +696,8 @@ The **append-only** counterpart to `upsertSection`. Where `upsertSection` replac
 
 `content` is markdown, rendered with the same block conventions `upsertSection` uses.
 
+**Epic-page callers prepend their own divider.** The callers that accumulate dated entries on an epic page — `epic-update`'s `Resolution Log`, `/notion-dev:new-info`'s `Notes` — pass a `divider` block ahead of each entry, so entries stay visually separate as the section grows. That is the per-entry divider the Styling conventions refer to; this operation writes the blocks it is given and adds no divider of its own.
+
 ## MCP unavailability
 
 There is no useful CLI fallback for Notion. If the MCP is unreachable, fail with: *"Notion MCP is unavailable. Re-check `.mcp.json`, confirm the `notion` server is listed, and retry."* Record `mcp-unavailable:notion` per `notion-dev:issue-log`.

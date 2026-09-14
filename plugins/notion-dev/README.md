@@ -198,13 +198,14 @@ This marker exists because shape alone is ambiguous: on a database upgraded to u
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
 - **`/notion-dev:ticket` reads its Epic's brief before planning.** A starting ticket reads `docs/epics/<KEY>-<n>-<slug>.md` from `origin/<base>` — why the epic exists, where it stands, what is waiting on whom, what is next — as context: background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build. The Notion epic page is written on every resolution but no longer read. See "Epic docs" below.
 
-An Epic page carries three sections:
+An Epic page carries four sections:
 
 | Section | Content |
 |---|---|
 | `## Overview` | What the initiative or incident is. Written once, at creation. |
 | `## Tasks` | Each child with its status: `- [x] [STO-67] Fix stale index — Implemented`. **Refreshed only when a child resolves**, so between resolutions it lags — the live view is Notion's `Parent task` relation column. |
 | `## Resolution Log` | Append-only history. Every time a child resolves, a divider and a dated entry are added with what was done, follow-ups filed and dropped, how many tasks remain, and what's next. |
+| `## Notes` | Append-only, written by `/notion-dev:new-info`: one dated entry per fact routed to this epic — the fact, the brief it changed, what it cleared and what it unblocked. |
 
 When the last unresolved child resolves and no filing has failed, the Epic's own status moves to `Implemented`. A follow-up you decline at the filing prompt is recorded as a **drop** — a decision, which closes work rather than blocking the Epic indefinitely.
 
