@@ -83,8 +83,8 @@ if [ -f "$NI" ]; then
       "$NI" "$P0" "$PR" '\*\*Comment\*\* \(default\) / \*\*Nothing\*\*'
     assert_present "apply: a byte-identical brief skips the Notion note and the comments" \
       "$NI" "$P0" "$PR" 'a re-run must not append a second Notion note'
-    assert_present "apply: a rejected push stops the loop (\`earlier push rejected\`)" \
-      "$NI" "$P0" "$PR" 'skipped — earlier push rejected'
+    assert_count "apply: a rejected push stops the loop (\`earlier push rejected\`) (cited twice on purpose: a rejected note-apply push, and a rejected capture push obeying the same rule)" \
+      "$NI" "$P0" "$PR" 'skipped — earlier push rejected' 2
     assert_present "notion: appends to the epic's \`Notes\` via \`appendToSection\`" \
       "$NI" "$P0" "$PR" 'appendToSection\(EPIC_ID, "Notes", <entry>\)'
     assert_present "notion: the Resolution Log is never written here" \

@@ -152,7 +152,10 @@ hand — one procedure behind all of them:
   first and third lines below**, which HEAD on a note branch cannot satisfy; the second has no
   merge to assert on this path, and the fourth is unchanged. The commit is made on `<noteBranch>`
   and **nothing is pushed** — `/notion-dev:new-info` pushes once, exactly as `epic-doc`'s
-  `note --apply --branch` behaves.
+  `note --apply --branch` behaves. Its Collide step (step 3 below) also runs against
+  `<knowledge.dir>` in this note-branch working tree, not an export of `origin/<epicBranch>`, so
+  a re-run of the same fact before the branch merges sees the earlier capture and reports
+  `untouched` rather than writing a duplicate concept.
 
 **Preconditions** — exactly the three assertions `/notion-dev:ticket` Phase 9 makes before
 invoking any hook, in its form, plus a fourth that guards the bundle:

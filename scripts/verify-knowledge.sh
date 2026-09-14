@@ -338,8 +338,8 @@ fi
 echo "== call sites: new-info.md =="
 # ---------------------------------------------------------------------------
 if [ -f "$NI" ]; then
-  assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`capture --fact <fact> <epic-id>\`, after the note-apply outcome bullets" \
-    "$NI" 'the `notion-dev:knowledge` skill, operation `capture --fact <fact> <epic-id>`'
+  assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`capture --fact <fact> <epic-id>\`, after \`note --apply\`'s outcome bullets" \
+    "$NI" "unless this epic's \`note --apply\` outcome above was \`failed\`, invoke the \`notion-dev:knowledge\` skill, operation \`capture --fact <fact> <epic-id>\`"
   assert_has "new-info.md: reports a \`KNOWLEDGE:\` line per epic" "$NI" 'KNOWLEDGE:'
   assert_lacks "new-info.md: no leftover \`epicDocs\` reference" "$NI" 'epicDocs'
   assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`retrieve(<epic-id>)\`" \

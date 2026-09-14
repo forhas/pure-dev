@@ -374,7 +374,7 @@ Always write `reviewer` explicitly (unlike the omit-when-default properties abov
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 
-Scaffold `<knowledge.dir>/` when absent: copy `${CLAUDE_PLUGIN_ROOT}/skills/knowledge/references/iwe/` to `<knowledge.dir>/.iwe/`, write `index.md` (`okf_version: "0.2"` frontmatter, `# Index`) and `log.md` (`# Update log`), create the canonical type directories, and set `postMergeHooks: ["notion-dev:knowledge"]` in the config. Never overwrite an existing bundle's `index.md` or `log.md`.
+Scaffold `<knowledge.dir>/` when absent: copy `${CLAUDE_PLUGIN_ROOT}/skills/knowledge/references/iwe/` to `<knowledge.dir>/.iwe/`, write `index.md` (`okf_version: "0.2"` frontmatter, `# Index`) and `log.md` (`# Update log`), and create the canonical type directories. Never overwrite an existing bundle's `index.md` or `log.md`. Set `postMergeHooks: ["notion-dev:knowledge"]` in the config **unconditionally** — on a fresh config and on reconfigure alike, whether or not the bundle needed scaffolding this run, so a repo whose bundle already existed still gains the hook. The `knowledge` block itself follows the same omit-when-default convention as the rest of this step: no knowledge field is prompted for here, so every one would equal its schema default on a fresh init and the block is written only when a value differs from default — which reconfigure preserves exactly as it preserves `reviewsCap` above.
 
 ### 10. Commit (optional)
 
