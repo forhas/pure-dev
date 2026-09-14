@@ -133,12 +133,13 @@ if [ -f "$ED" ]; then
     assert_present "refresh: byte-identical → \`unchanged\`, no commit" "$ED" "$RF" "$WP" 'Byte-identical .* `unchanged`, no commit'
     assert_present "write path step 1: \`lock take\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock take --run <run id> --section <name> --wait <seconds>.*LOCK_HELD'
     assert_present "write path step 2: \`git -C \$REPO_ROOT pull --ff-only origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>'
-    assert_present "write path step 4: \`git rev-list origin/<epicBranch>..HEAD\` must name one commit" "$ED" "$WP" "$R1" 'git rev-list origin/<epicBranch>\.\.HEAD'
+    assert_present "write path step 4: \`git push origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git push origin <epicBranch>'
+    assert_present "write path step 4: \`git rev-list origin/<epicBranch>..HEAD\` names **exactly one** commit" "$ED" "$WP" "$R1" 'git rev-list origin/<epicBranch>\.\.HEAD. names \*\*exactly one\*\* commit'
     assert_present "write path step 4: \`git reset --hard origin/<epicBranch>\` only after the rev-list proof" "$ED" "$WP" "$R1" 'git reset --hard origin/<epicBranch>'
     assert_present "write path step 4: \`Three attempts.\`" "$ED" "$WP" "$R1" 'Three attempts\.'
     assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
     assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \
-      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' reset 'git reset --hard origin/<epicBranch>' release 'lock release --run'
+      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' reset 'git reset --hard origin/<epicBranch>' release 'lock release --run'
     assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
     assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '
     assert_present "output block carries \`DRIFT:\`" "$ED" "$OB" "$L" '^DRIFT: '
@@ -146,7 +147,8 @@ if [ -f "$ED" ]; then
     assert_present "read reports \`DRIFT: true\` and writes nothing" "$ED" "$R0" "$RB" 'DRIFT: true.*writes nothing'
     assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
     assert_present "record step 2 recomputes \`## Next\` through \`refresh\`'s derivation" "$ED" "$R1" "$R2" '`## Next` — recompute through `refresh`'
-    assert_present "record commits through the write path" "$ED" "$R1" "$R2" 'through `## The write path`'
+    assert_count "record commits through the write path (cited twice on purpose: the resolution path's step 4, and the bootstrap path's)" \
+      "$ED" "$R1" "$R2" 'through `## The write path`' 2
     assert_count "commit subjects: after, bootstrap, note, start, stop, create, refresh (lines citing \`docs(epic):\`)" \
       "$ED" 1 "$L" 'docs\(epic\):' 8
   else
