@@ -106,7 +106,7 @@ shipped `okf.yaml`:
 |---|---|---|
 | `type` | yes | `Epic`, `Ticket`, `Decision`, `Gotcha`, `Component`, `Spec`, `Domain`, `Release`, or a name from `extraTypes` (directory name, capitalised) |
 | `title`, `description` | yes | one line each |
-| `status` | yes | `current` \| `draft` \| `deprecated` |
+| `status` | yes | `stable` \| `draft` \| `deprecated` — the upstream OKF v0.2 vocabulary, as `iwe init --okf` ships it |
 | `generated` | yes | `{ by, at }` |
 | `sources` | yes, ≥ 1 | `[{ id, resource, title, last_modified? }]` — a ticket URL, PR URL, or repo path |
 | `updated` | no | `{ by, at }`, set on every in-place change |
@@ -116,7 +116,7 @@ shipped `okf.yaml`:
 | `confidence`, `tags` | no | free |
 
 Dropped, and removed by `migrate`: `stale_after`, `reconciled`, `verified`, `vouch`. Status
-`stable` migrates to `current`. Body headings are free except two conventions: a `Ticket`
+`current` (smart-contracts' local vocabulary) migrates to `stable`. Body headings are free except two conventions: a `Ticket`
 concept carries `# Problem`, `# Decision`, `# Ruled out`; any concept updated in place carries a
 trailing `## Updates` section with one dated line per change (`- 2026-09-14 [STO-140]: …`).
 
@@ -131,7 +131,7 @@ relies on, and `--expand-includes` is never passed.
 type: Epic
 title: [STO-60] Wallet Indexing
 description: <the Goal in one line>
-status: current
+status: stable
 epic: STO-60
 generated: { by: notion-dev:epic-doc, at: 2026-09-13T00:00:00Z }
 sources:
@@ -175,7 +175,7 @@ Read-only, writes nothing, runs before any worktree exists.
 
    ```
    iwe retrieve -k epic/<KEY>-<n>-<slug> --expand-references 1 \
-       --lexical "<ticket title>" --filter 'status: current' \
+       --lexical "<ticket title>" --filter 'status: stable' \
        --max-tokens <knowledge.retrieveBudget> -f markdown
    ```
 
@@ -221,7 +221,7 @@ epic's `KNOWLEDGE_CONTEXT` only.
    the file it names before it is written. `sources[]` cites the PR and the ticket by URL and
    any code path by relative path.
 3. **Collide.** Dedupe against `KNOWLEDGE_CONTEXT` first, then one
-   `iwe find --lexical "<key phrase>" --filter 'status: current' -f json` per candidate.
+   `iwe find --lexical "<key phrase>" --filter 'status: stable' -f json` per candidate.
    Outcome per candidate:
    - **untouched** — an existing concept already says it;
    - **updated** — an existing concept is refined, not contradicted: edit in place, set
@@ -231,7 +231,7 @@ epic's `KNOWLEDGE_CONTEXT` only.
      the ticket or fact that retired it;
    - **created** — nothing collides: new file under its type directory.
 4. **Re-read touched concepts** (hook only). `python3 knowledge.py touched <merge-sha>` lists
-   every `current` concept whose `applies_to` globs intersect the merge's changed paths. Each is
+   every `stable` concept whose `applies_to` globs intersect the merge's changed paths. Each is
    read against the diff and resolved with the same four outcomes. Nothing else in the bundle is
    examined.
 5. **Index and log.** Every created or superseded concept gets its `index.md` bullet added,
@@ -254,8 +254,8 @@ COMMIT: <sha> | none
 ## 6. `curate` — dedupe only
 
 User-invoked, `/notion-dev:knowledge curate`. Runs `knowledge.py check`, then
-`knowledge.py clusters` (a wrapper over `iwe stats similarity`, same-type concepts above a
-similarity threshold). Each cluster is presented with both bodies side by side; the user names
+`iwe stats similarity -t <threshold>` directly (text output, one pair per line; the script
+wraps nothing here because the command has no structured output). Each cluster is presented with both bodies side by side; the user names
 the survivor or `keep both`; the loser is superseded as in §5 step 3. Then index, log, check,
 commit `docs(knowledge): curate — <n> clusters resolved`. Nothing runs on a schedule; the
 command does not read Notion.
@@ -267,11 +267,13 @@ writes nothing.
 
 1. Preconditions: primary on `<epicBranch>`, clean tree, iwe and python3 present.
 2. Install `.iwe/config.toml` and `.iwe/schemas/` from the plugin copy (overwriting).
-3. For every concept under `<knowledge.dir>` outside dot-directories: map `status: stable →
-   current`; drop `stale_after`, `reconciled`, `verified`, `vouch`; add `sources` when missing
+3. For every concept under `<knowledge.dir>` outside dot-directories: map `status: current →
+   stable`; drop `stale_after`, `reconciled`, `verified`, `vouch`; add `sources` when missing
    (from a `ticket`/PR reference in the body, else `{ id: migrated, resource: <own path> }`
    with `status: draft`); collect `## Reconciliation notes` under `## Updates`; leave every
-   other field and all prose alone.
+   other field and all prose alone. Reshape `log.md` to the shipped `okf-log.yaml` form (one
+   title section, `## YYYY-MM-DD` groups newest first, bullets only) — both clients' logs fail
+   that schema today — and `index.md` to `okf-index.yaml` (sections of link bullets only).
 4. Move the brief: `docs/epics/<KEY>-<n>-<slug>.md` (or `epicDocs.dir`) → `epic/`, with the
    frontmatter of §3 added. A hand-written seed plan is left for `next-task`'s bootstrap, which
    now writes into `epic/`.
@@ -315,15 +317,14 @@ writes nothing.
 
 ## 9. `scripts/knowledge.py`
 
-Single file, Python 3.8+, standard library only, `argparse` subcommands, exit 0 on success,
+Single file, Python 3.8+, standard library only, three `argparse` subcommands, exit 0 on success,
 1 on findings, 2 on inability to run (iwe missing, not a bundle, git error). **Exit 2 is never
 downgraded**: a check that cannot run says so and fails.
 
 | subcommand | does |
 |---|---|
-| `check [--dir]` | `iwe schema validate`; every relative link resolves; every `superseded_by` target exists and is not itself deprecated; every `current` concept has an `index.md` bullet and every bullet resolves; type directory is canonical or in `extraTypes`; `.iwe/` matches the plugin copy; per-file size over `warnBytes` → warning line, not failure. Prints one line per finding, `path: rule: detail`. |
-| `touched <sha> [--dir]` | changed paths of `<sha>` (`git show --name-only`) intersected with every `current` concept's `applies_to` globs; prints matching concept paths. |
-| `clusters [--dir] [--threshold]` | `iwe stats similarity -f json`, grouped by type, above the threshold; prints groups. |
+| `check [--dir]` | `iwe schema validate`; every relative link resolves; every `superseded_by` target exists and is not itself deprecated; every `stable` concept has an `index.md` bullet and every bullet resolves; type directory is canonical or in `extraTypes`; `.iwe/` matches the plugin copy; per-file size over `warnBytes` → warning line, not failure. Prints one line per finding, `path: rule: detail`. |
+| `touched <sha> [--dir]` | changed paths of `<sha>` (`git show --name-only`) intersected with every `stable` concept's `applies_to` globs; prints matching concept paths. |
 | `migrate [--apply] [--dir] [--config]` | §7 steps 2–7; without `--apply` prints the unified diff of every file it would write. |
 
 Frontmatter is obtained from `iwe find --filter '' -f json`; the script reads and writes files
@@ -344,7 +345,7 @@ report, or a resolution. New rows in `skills/issue-log/references/signatures.md`
 
 **`scripts/verify-knowledge.sh`** on `scripts/lib/assert.sh`, regions by heading, every check
 mutation-proven: skill operation headings; the single `iwe retrieve` line with `-k epic/`,
-`--expand-references 1`, `--filter 'status: current'`, `--max-tokens`; `assert_lacks
+`--expand-references 1`, `--filter 'status: stable'`, `--max-tokens`; `assert_lacks
 '--expand-includes'`; the read-once table rows; the four collision outcomes; `knowledge.py
 check` before commit and the write-nothing rule; the by-pathspec commit line; the three
 precondition lines and `assert_absent … 'HEAD == origin'`; `stale_after` absent from the skill
