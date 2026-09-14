@@ -138,10 +138,10 @@ if [ -f "$KS" ]; then
       "$KS" "$C0" "$U0" 'git checkout -- <knowledge\.dir>'
     assert_present "capture: records \`partial:knowledge-capture\` on check failure or push rejection" \
       "$KS" "$C0" "$U0" 'partial:knowledge-capture'
-    assert_present "capture: commits by pathspec with \`git commit --only -m\` \`docs(knowledge): capture <KEY>-<n>\`" \
-      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): capture <KEY>-<n>"'
-    assert_present "capture: the \`--fact\` form commits \`docs(knowledge): note <KEY>-<n> — <short fact>\`" \
-      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): note <KEY>-<n> — <short fact>"'
+    assert_present "capture: commits by pathspec with \`git commit --only -m\` \`docs(knowledge): capture <KEY>-<n>\` -- \`<knowledge.dir>\`" \
+      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): capture <KEY>-<n>" -- <knowledge\.dir>'
+    assert_present "capture: the fact-note form commits \`docs(knowledge): note <KEY>-<n>\` ... -- \`<knowledge.dir>\` (regex bridges the em dash and short-fact text with .* since they are not the load-bearing part of the claim)" \
+      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): note <KEY>-<n> .*-- <knowledge\.dir>'
     assert_present "capture: stages with \`git add -- <knowledge.dir>\`" \
       "$KS" "$C0" "$U0" 'git add -- <knowledge\.dir>'
     assert_present "capture: output block states all four \`KNOWLEDGE:\` values" \
@@ -167,7 +167,7 @@ if [ -f "$KS" ]; then
     assert_absent "knowledge skill: no \`--dry-run\` flag anywhere (the default IS the dry run; the flag is \`[--apply]\`)" \
       "$KS" 1 "$L" '\-\-dry\-run'
     assert_present "migrate: without \`--apply\` it prints the complete diff and writes nothing" \
-      "$KS" "$U0" "$L" '\-\-apply.*it prints the complete diff'
+      "$KS" "$U0" "$L" '\-\-apply.*it prints the complete diff and writes nothing'
     assert_present "migrate: runs \`knowledge.py migrate\`" \
       "$KS" "$U0" "$L" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" migrate'
     assert_present "migrate: touches \`postMergeHooks\`" \
