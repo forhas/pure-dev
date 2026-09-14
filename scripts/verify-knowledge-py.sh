@@ -118,14 +118,25 @@ echo "== migrate: dry run writes nothing, apply matches expected =="
 # itself is excluded from every byte-exact diff below, since the static fixtures on disk are
 # plain directories, not repos.
 M=$(mktemp -d); cp -r "$FX/migrate-input/." "$M/"
-( cd "$M" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+# CRLF is manufactured here, not stored: core.autocrlf=input would normalise a committed CRLF
+# fixture to LF on the way in, so the on-disk fixture is LF and the temp copy gets its CRs
+# back before migrate runs. The expected tree is LF, so the byte-exact diff below is what
+# proves the migrated file was written with \n endings whatever it was read with.
+sed -i 's/$/\r/' "$M/knowledge/ticket/STO-10.md"
+( cd "$M" && git init -q && git -c core.autocrlf=false add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 run migrate-dry 0 migrate --dir "$M/knowledge" --config "$M/.claude/notion-dev.config.json" --plugin-root "$ROOT"
-diff -r -x .git "$FX/migrate-input" "$M" >/dev/null && echo "ok: dry run left the tree byte-identical" \
+diff -r -x .git -x STO-10.md "$FX/migrate-input" "$M" >/dev/null && echo "ok: dry run left the tree byte-identical" \
   || { echo "FAIL: dry run modified the tree"; fails=$((fails+1)); }
+CRS=$(tr -cd '\r' < "$M/knowledge/ticket/STO-10.md" | wc -c)
+[ "$CRS" -gt 0 ] && echo "ok: dry run left the CRLF concept's $CRS CRs in place" \
+  || { echo "FAIL: dry run rewrote the CRLF concept"; fails=$((fails+1)); }
 assert_has "dry run prints a unified diff" "$OUT/migrate-dry.txt" '+++ '
 run migrate-apply 0 migrate --apply --dir "$M/knowledge" --config "$M/.claude/notion-dev.config.json" --plugin-root "$ROOT"
 diff -r -x .git "$FX/migrate-expected" "$M" && echo "ok: apply produced the expected tree" \
   || { echo "FAIL: apply differs from expected"; fails=$((fails+1)); }
+CRS=$(tr -cd '\r' < "$M/knowledge/ticket/STO-10.md" | wc -c)
+[ "$CRS" -eq 0 ] && echo "ok: apply wrote the CRLF concept back with LF endings" \
+  || { echo "FAIL: apply left $CRS CRs in the migrated concept"; fails=$((fails+1)); }
 run migrate-check 0 check --dir "$M/knowledge" --plugin-root "$ROOT"
 # A bundle with no log.md is SEEDED, not left without one: the shipped log schema requires a
 # dated group holding a bullet, so an unseeded bundle fails the check migrate has to pass.

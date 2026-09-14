@@ -286,7 +286,10 @@ writes nothing.
    line and stays `stable`, since `retrieve` seeds on it); collect `## Reconciliation notes` under `## Updates`; leave every
    other field and all prose alone. Reshape `log.md` to the shipped `okf-log.yaml` form (one
    title section, `## YYYY-MM-DD` groups newest first, bullets only) — both clients' logs fail
-   that schema today — and `index.md` to `okf-index.yaml` (sections of link bullets only).
+   that schema today — and `index.md` to `okf-index.yaml` (sections of link bullets only),
+   completing it with a bullet for every `stable` concept it lacks; a bundle with no `index.md`
+   or `log.md` gets the same seeded files `init` writes. CRLF files are read as text and written
+   back with `\n` endings.
 4. Move the brief: `docs/epics/<KEY>-<n>-<slug>.md` (or `epicDocs.dir`) → `epic/`, with the
    frontmatter of §3 added. A hand-written seed plan is left for `next-task`'s bootstrap, which
    now writes into `epic/`.
