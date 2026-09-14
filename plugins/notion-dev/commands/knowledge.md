@@ -1,19 +1,21 @@
 ---
-description: Maintain the repo's knowledge bundle — `migrate` moves an existing client bundle onto the plugin's schema (diff first, `--apply` to write), `curate` walks near-duplicate concepts and supersedes the losers. Reading and writing the bundle happen inside a ticket run; this command is for the two things a person decides.
-argument-hint: "migrate [--apply] | curate"
+description: Maintain the repo's knowledge bundle — `capture` re-runs by hand the post-merge write a ticket run skipped or failed, `migrate` moves an existing client bundle onto the plugin's schema (diff first, `--apply` to write), `curate` walks near-duplicate concepts and supersedes the losers. Reading the bundle happens inside a ticket run; these three are what a person invokes.
+argument-hint: "capture <ticket-id> <merge-sha> | migrate [--apply] | curate"
 disable-model-invocation: true
 ---
 
 # /notion-dev:knowledge
 
-The two knowledge-bundle operations a person invokes. Everything else the bundle does happens
-inside a run: `/notion-dev:ticket` reads it through `retrieve`, the post-merge hook writes it
-through `capture`. Both live in the `notion-dev:knowledge` skill, which this command drives.
+The three knowledge-bundle operations a person invokes. Reading the bundle is not one of them:
+`/notion-dev:ticket` does that through `retrieve`, once per run. Writing normally happens through
+the post-merge hook — `capture` here is the same operation run by hand when the hook was skipped
+or failed. All three live in the `notion-dev:knowledge` skill, which this command drives.
 
-Args: `migrate [--apply] | curate`
+Args: `capture <ticket-id> <merge-sha> | migrate [--apply] | curate`
 
 Flag parsing: the first argument selects the operation; anything else → fail with usage.
-`--apply` is accepted on `migrate` only, and on nothing else.
+`capture` takes exactly two positional arguments, the ticket id (every form `/notion-dev:ticket`
+accepts) and the merge commit SHA; `--apply` is accepted on `migrate` only, and on nothing else.
 
 **Standing rule — runtime issues.** Anything unexpected at runtime is recorded via
 `notion-dev:issue-log` at the moment it happens; that skill is authoritative for what counts. A
@@ -36,6 +38,27 @@ failure to write the log never fails the run.
   block applied verbatim, including its two exempt dirt kinds and the
   `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
   it ends with, and its diverged-base report on a `--ff-only` failure — never stash or discard.
+- On `capture` only, and **after** that checkout and pull: the skill's own four precondition
+  lines, which it asserts itself and which this command reports verbatim when one fails. The
+  checkout-and-pull above is what makes the remote-equality line assertable by hand; a primary
+  holding unpushed local commits fails it, and the remedy is to push or reset them, never to skip
+  the check.
+
+## `capture <ticket-id> <merge-sha>`
+
+The post-merge write, run by hand: use it when a ticket run reported that hooks were skipped, or
+when the hook returned `KNOWLEDGE: failed` and the cause has since been fixed. It is the same
+operation the hook runs, with the same four preconditions and the same write-nothing rule.
+
+Invoke the skill `notion-dev:knowledge`, operation `capture(<ticket-id>, <merge-sha>)`, passing
+`REPO_ROOT` and `<epicBranch>`. There is no session to draw on here, so the operation takes the
+ticket body from `fetchTicket(<ticket-id>)` and the pull request from
+`gh pr view <n> --json body,comments` instead — everything else, including the four collision
+outcomes and the `check`-gated commit, is unchanged.
+
+Re-running a capture that already landed is safe: every candidate collides with the concept the
+first run wrote and resolves as **untouched**, so the result is `KNOWLEDGE: empty` with
+`COMMIT: none`. Report the block as it comes back.
 
 ## `migrate`
 
@@ -85,6 +108,9 @@ Print, in this order:
   deletes the code it lists.
 - On `curate`: one line per cluster — `resolved: <survivor> ← <loser>`, `kept both`, or
   `skipped`.
+- On `capture`: the ticket key and the merge SHA it read, and — when a precondition failed — which
+  of the four lines it was, the branch and HEAD the primary was found on, and the checkout and
+  fast-forward pull that make it assertable.
 
 **Closeout — zero tails.** Compose the full draft above first, then invoke the **workspace pass**
 of the `notion-dev:session-closeout` skill via the Skill tool and follow it exactly; end the

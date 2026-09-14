@@ -30,6 +30,12 @@ resolution, and is always stated in the caller's final report.
 - `extraTypes` — client type directories `check` accepts beyond the canonical set, for example
   `["commitment", "node"]`. Dot-directories (`.mirror/`, `.record/`, `.okf/`) are ignored entirely.
 
+**Branch.** The bundle lives on the branch pull requests merge into — `git.prTargetBranch`,
+falling back to `git.baseBranch` — called `<epicBranch>` below, the one name `epic-doc` gives it.
+Every read, every commit and every push here uses that one branch. `<baseRefName>`, in the hook
+lines `capture` quotes from `/notion-dev:ticket`, is the same branch: `epic-doc record` fails the
+run when a PR merged anywhere else.
+
 **Read once.** Each fact enters a run exactly once. The bundle arrives as `KNOWLEDGE_CONTEXT`
 from one `retrieve` before any worktree exists, and nothing downstream reads it again: no second
 search, no catalog read, no recursive grep over the tree, and never the Notion epic page for what
@@ -73,10 +79,13 @@ Read-only. It writes nothing and runs before any worktree exists.
    `git ls-tree -r --name-only origin/<epicBranch> -- <knowledge.dir>/epic/` filtered to
    `<KEY>-<n>-*.md`. Missing → bootstrap **in memory** exactly as `epic-doc` "Bootstrap"
    describes, its seed search now also covering `<knowledge.dir>/epic/`; return the brief alone
-   with `BOOTSTRAP: true` and `SEED: <path>` or `SEED: notion`, and skip step 3.
+   with `BOOTSTRAP: true` and `SEED: <path>` or `SEED: notion`, and skip step 3. A failing
+   fetch or an `ls-tree` error — no network, no such branch — is not "missing": it takes step 5's
+   degrade path, since a bundle that cannot be reached must not be reported as absent.
 3. One call, run from a temporary export of the bundle at `origin/<epicBranch>` so a stale local
    checkout never answers (`git archive origin/<epicBranch> <knowledge.dir> | tar -x -C <tmp>`,
-   then run from `<tmp>/<knowledge.dir>`):
+   then run from `<tmp>/<knowledge.dir>`, and remove `<tmp>` once the call returns, whether it
+   succeeded or not):
 
    ```
    iwe retrieve -k epic/<KEY>-<n>-<slug> --expand-references 1 \
@@ -125,33 +134,58 @@ call.
 
 ## `capture(<ticket-id>, <merge-sha>)` and `capture --fact <fact> <epic-id>`
 
-The bundle's only writer. Invoked two ways, one procedure:
+The bundle's only writer. Invoked by the hook, by `/notion-dev:new-info` on two paths, and by
+hand — one procedure behind all of them:
 
 - **As the post-merge hook.** A client's `git.postMergeHooks` names `notion-dev:knowledge`; the
   hook contract in `/notion-dev:ticket` Phase 9 and `/notion-dev:finalize` runs this operation
-  with `<ticket-id>` and `<merge-sha>`.
+  with `<ticket-id>` and `<merge-sha>`. A hook the flow skipped — a precondition it could not
+  assert — or one that failed is re-run by hand, unchanged, as
+  `/notion-dev:knowledge capture <ticket-id> <merge-sha>`.
 - **From `/notion-dev:new-info`**, as `capture --fact <fact> <epic-id>`, once the brief note for
   that epic has been applied and committed.
+- **Under `/notion-dev:new-info --pr`**, as `capture --fact <fact> <epic-id> --branch <noteBranch>`:
+  HEAD's branch must be `<noteBranch>` and
+  `git -C $REPO_ROOT merge-base --is-ancestor origin/<epicBranch> HEAD` must exit 0 — the branch
+  was cut from the epic branch and still contains it. Those two checks stand **in place of the
+  first and third lines below**, which HEAD on a note branch cannot satisfy; the second has no
+  merge to assert on this path, and the fourth is unchanged. The commit is made on `<noteBranch>`
+  and **nothing is pushed** — `/notion-dev:new-info` pushes once, exactly as `epic-doc`'s
+  `note --apply --branch` behaves.
 
-**Preconditions** — the three assertions `/notion-dev:ticket` Phase 9 makes before invoking any
-hook, applied by reference, with the third narrowed to the bundle:
+**Preconditions** — exactly the three assertions `/notion-dev:ticket` Phase 9 makes before
+invoking any hook, in its form, plus a fourth that guards the bundle:
 
-- `git -C $REPO_ROOT rev-parse --abbrev-ref HEAD` equals `<base>` — the primary checkout is on
-  the branch the merge landed on, not on a worktree or a leftover ticket branch.
-- `git -C $REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD` exits 0 — the merge this capture
-  reads is actually present, whatever a stale remote-tracking ref says.
-- `git -C $REPO_ROOT status --porcelain -- <knowledge.dir>` is empty — nothing uncommitted in the
-  bundle, so a revert of this operation's own writes can never discard someone's edit.
+```bash
+git -C $REPO_ROOT rev-parse --abbrev-ref HEAD                    # must equal <baseRefName>
+git -C $REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD      # must exit 0
+test "$(git -C $REPO_ROOT rev-parse HEAD)" = \
+     "$(git -C $REPO_ROOT rev-parse origin/<baseRefName>)"       # must be equal
+git -C $REPO_ROOT status --porcelain -- <knowledge.dir>          # must be empty
+```
 
-Any failure → write nothing and return `KNOWLEDGE: failed` naming the assertion. The
-remote-equality line `/notion-dev:ticket` adds as its third assertion is deliberately **not**
-inherited: it aborts on ordinary branch drift and cost one client a manual rebase per capture,
-and the ancestor line already proves the merge is present.
+`<baseRefName>` is the hook contract's name for `<epicBranch>` (see **Branch** above); the lines
+are quoted in `/notion-dev:ticket`'s form so the two cannot drift apart silently.
+
+Line 1 puts the write on the branch the merge landed on rather than a worktree or a leftover
+ticket branch; line 2 proves the merge this capture reads is present whatever a stale
+remote-tracking ref says; line 4 keeps a revert of this operation's own writes from discarding
+someone's uncommitted edit. Any failure → write nothing and return `KNOWLEDGE: failed` naming the
+assertion that failed.
+
+**Line 3 is not optional here, because this operation pushes.** A primary carrying local-only
+commits satisfies lines 1 and 2 — right branch, merge present — and `git push` publishes history,
+not a subset, so the capture commit would carry every unreviewed local commit onto the epic branch
+with it. Ordinary drift is answered by re-running the operation by hand after a successful
+checkout and fast-forward pull, never by loosening the assertion; the report names the re-run
+command so nobody has to reconstruct it.
 
 **Inputs come from the session, never from Notion:** the ticket body, `KNOWLEDGE_CONTEXT`, the
 review report and `PLAN_REVIEW` when present, `gh pr view <n> --json body,comments` plus the
 review threads, and `git show <merge-sha>`. For `--fact`, the inputs are the fact text and that
-epic's `KNOWLEDGE_CONTEXT`, nothing else.
+epic's `KNOWLEDGE_CONTEXT`, nothing else. The hand re-run is the one exception, and only because
+there is no session to read: it takes the ticket body from `fetchTicket(<ticket-id>)` and the pull
+request from `gh pr view <n> --json body,comments`, then follows the same six steps.
 
 **1. Filter.** For each candidate fact, one question: *would an engineer reading the merged code
 still not know this?* Keep rejected approaches and why, traps that cost time, decisions and what
@@ -199,14 +233,19 @@ moved, or marked; `log.md` gets one dated entry for this capture, naming the tic
 
 ```
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" check --dir <knowledge.dir> \
-  --plugin-root "${CLAUDE_PLUGIN_ROOT}" --extra-types <knowledge.extraTypes> \
+  --plugin-root "${CLAUDE_PLUGIN_ROOT}" --extra-types <knowledge.extraTypes joined with commas> \
   --warn-bytes <knowledge.warnBytes>
 ```
 
+`--extra-types` takes one comma-separated string, not the config's JSON array: `["commitment",
+"node"]` is passed as `commitment,node`. Passing the array verbatim makes every declared type
+directory read as undeclared, which fails `check` and — by the rule below — silently discards the
+whole capture on every merge.
+
 **Write nothing** when `check` exits non-zero, and never downgrade its exit 2: restore the
-working tree with `git checkout -- <knowledge.dir>`, record `partial:knowledge-capture` per
-`notion-dev:issue-log` with the check's first finding line, and return `KNOWLEDGE: failed`. A
-check that cannot run and says nothing is the outcome both clients learned to fear.
+working tree with `git checkout -- <knowledge.dir>`, then fail as the paragraph below describes,
+carrying the check's first finding line as the cause. A check that cannot run and says nothing is
+the outcome both clients learned to fear.
 
 Otherwise stage and commit by pathspec — never the whole index, since a caller's precondition
 permits an exempt setup file to sit staged:
@@ -214,13 +253,17 @@ permits an exempt setup file to sit staged:
 ```
 git add -- <knowledge.dir>
 git commit --only -m "docs(knowledge): capture <KEY>-<n>" -- <knowledge.dir>
-git commit --only -m "docs(knowledge): note <KEY>-<n> — <short fact>" -- <knowledge.dir>
+git commit --only -m "docs(knowledge): note <KEY>-<n> — <short fact>" -- <knowledge.dir>   # --fact form
 ```
 
-The second subject is the `--fact` form's. Then push as `epic-doc record` pushes, and report a
-rejected push exactly as `record` reports one: leave the local commit, **never force**, record
-the same signature, and return `KNOWLEDGE: failed` with the commit SHA so the caller's closeout
-can name it as blocked.
+Then push as `epic-doc record` pushes — skipped under `--branch`, where the caller pushes once. A
+push git rejects leaves the local commit in place, **never forces**, and fails the same way,
+carrying git's rejection message and the commit SHA so the caller's closeout can name it as
+blocked.
+
+**Either failure of this step records `partial:knowledge-capture`** per `notion-dev:issue-log` —
+this skill's signature, never `epic-doc`'s — and returns `KNOWLEDGE: failed` with the cause on the
+output block's `CAUSE:` line: the check's first finding, or git's rejection.
 
 Output block:
 
@@ -228,6 +271,7 @@ Output block:
 KNOWLEDGE: captured | empty | failed | unavailable
 CREATED: <paths> · UPDATED: <paths> · SUPERSEDED: <old → new> · UNTOUCHED: <n>
 COMMIT: <sha> | none
+CAUSE: <the failed assertion, the check's first finding, or git's rejection>   (only on failed)
 ```
 
 ## `curate`
@@ -239,9 +283,13 @@ nothing here reads Notion.
 
    ```
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" check --dir <knowledge.dir> \
-     --plugin-root "${CLAUDE_PLUGIN_ROOT}"
+     --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
+     --extra-types <knowledge.extraTypes joined with commas> \
+     --warn-bytes <knowledge.warnBytes>
    ```
 
+   The same four flags `capture` step 6 passes, comma-joined the same way: a client with
+   `extraTypes` gets a finding its bundle does not have when they are left off.
    Non-zero → stop and print the findings; a bundle that fails its own rules is not one to merge
    concepts in.
 2. `iwe stats similarity -t <threshold>` directly — text output, one pair per line; the script
@@ -285,7 +333,9 @@ Without `--apply` it prints the complete diff and writes nothing.
 
    ```
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" check --dir <knowledge.dir> \
-     --plugin-root "${CLAUDE_PLUGIN_ROOT}" --extra-types <knowledge.extraTypes>
+     --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
+     --extra-types <the extraTypes step 6 wrote, joined with commas> \
+     --warn-bytes <knowledge.warnBytes>
    ```
 
    Non-zero under `--apply` → revert everything this operation wrote, restoring the bundle to the

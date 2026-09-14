@@ -99,7 +99,9 @@ if [ -f "$KS" ]; then
     assert_present "knowledge skill: \`capture(\` heading covers both the hook and \`--fact\` forms" \
       "$KS" "$C0" "$U0" '^## `capture\(<ticket-id>, <merge-sha>\)` and `capture --fact <fact> <epic-id>`$'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD\` equals \`<base>\`" \
-      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD` equals `<base>'
+      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD +# must equal <baseRefName>'
+    assert_present "capture: precondition asserts HEAD equals \`origin/<baseRefName>\` — the remote-equality line decision 8 keeps, anchored on the second line of the wrapped test, since these files are hard-wrapped" \
+      "$KS" "$C0" "$U0" '"\$\(git -C \$REPO_ROOT rev-parse origin/<baseRefName>\)"'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD\`" \
       "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD'
     assert_present "capture: precondition asserts \`git -C \$REPO_ROOT status --porcelain -- <knowledge.dir>\` is empty" \
