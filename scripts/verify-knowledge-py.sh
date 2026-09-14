@@ -119,6 +119,12 @@ MSHA=$(git -C "$REPO" rev-parse HEAD)
 [ "$(git -C "$REPO" rev-list --parents -n1 "$MSHA" | wc -w)" -eq 3 ] || { echo "FAIL: fixture merge commit is not two-parent"; fails=$((fails+1)); }
 ( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$MSHA" --dir knowledge > "$OUT/touched-merge.txt" 2>&1 ); echo "exit $? (touched, merge commit)"
 assert_has "touched lists the applies_to concept for a two-parent merge commit" "$OUT/touched-merge.txt" 'decision/keep-cache.md'
+# A RENAME away from a matched path: `--name-only` reports only the destination, so the
+# concept whose subject moved would never be re-read; both sides of an R record must count.
+( cd "$REPO" && git mv src/cache/a.rs src/other/moved.rs && git -c user.name=t -c user.email=t@t commit -qm rename )
+RSHA=$(git -C "$REPO" rev-parse HEAD)
+( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$RSHA" --dir knowledge > "$OUT/touched-rename.txt" 2>&1 ); echo "exit $? (touched, rename)"
+assert_has "touched lists the concept whose applies_to path was renamed away" "$OUT/touched-rename.txt" 'decision/keep-cache.md'
 rm -rf "$REPO"
 
 echo "== migrate: dry run writes nothing, apply matches expected =="

@@ -322,14 +322,22 @@ def cmd_touched(a):
     # `applies_to` concept would be silently skipped. `<sha>^1..<sha>` is the PR's landed diff
     # for a merge and the ordinary diff for a squash; a root commit has no `^1`, so fall back
     # to the commit's own tree there.
-    show_p = subprocess.run(["git", "diff", "--name-only", f"{a.sha}^1", a.sha],
+    # `--name-status -M`, not `--name-only`: a rename or copy record (`R100\told\tnew`)
+    # carries BOTH paths, and a concept whose `applies_to` matched the old path must be
+    # re-read when its subject moved away — `--name-only` reports only the destination.
+    show_p = subprocess.run(["git", "diff", "--name-status", "-M", f"{a.sha}^1", a.sha],
                              cwd=repo_root, capture_output=True, text=True)
     if show_p.returncode != 0:
-        show_p = subprocess.run(["git", "show", "--name-only", "--pretty=format:", a.sha],
+        show_p = subprocess.run(["git", "show", "--name-status", "-M", "--pretty=format:", a.sha],
                                  cwd=repo_root, capture_output=True, text=True)
         if show_p.returncode != 0:
             die(f"git diff {a.sha}^1 {a.sha} failed: {show_p.stderr.strip()}")
-    changed = [ln.strip() for ln in show_p.stdout.splitlines() if ln.strip()]
+    changed = []
+    for ln in show_p.stdout.splitlines():
+        parts = ln.rstrip("\n").split("\t")
+        if len(parts) < 2 or not parts[0]:
+            continue
+        changed.extend(pth for pth in parts[1:] if pth)
 
     for d in docs(bundle):
         if d.get("status") != "stable":
