@@ -48,11 +48,15 @@ if [ -f "$ED" ]; then
   assert_has "epic-doc read path resolves the file by key, never slug" "$ED" '<KEY>-<n>-*.md'
   assert_has "epic-doc supports \`--bootstrap\`" "$ED" '--bootstrap'
   assert_has "epic-doc removes the seed with \`git rm\`" "$ED" 'git rm'
-  assert_count "epic-doc cites the \`docs(epic):\` prefix three times: two commit kinds and the idempotency lookup" \
-    "$ED" 1 "$L" 'docs\(epic\):' 3
+  assert_count "epic-doc cites the \`docs(epic):\` prefix four times: three commit kinds and the idempotency lookup" \
+    "$ED" 1 "$L" 'docs\(epic\):' 4
 
   R0=$(find_line "$ED" 1 "$L" '^## `read\(')
   R1=$(find_line "$ED" 1 "$L" '^## `record\(')
+  # The record region ends where `note` begins (verify-new-info.sh owns that
+  # section); without a note heading it runs to end of file as before.
+  R2=$(find_line "$ED" 1 "$L" '^## `note\(')
+  [ -n "$R2" ] || R2=$L
   if [ -n "$R0" ] && [ -n "$R1" ]; then
     assert_present "read: reads the brief from \`origin/<epicBranch>\`" \
       "$ED" "$R0" "$R1" 'git show origin/<epicBranch>:'
@@ -63,25 +67,25 @@ if [ -f "$ED" ]; then
     assert_absent "read: never commits" "$ED" "$R0" "$R1" 'git commit'
     assert_absent "read: never pushes"  "$ED" "$R0" "$R1" 'git push'
     assert_present "record: asserts the primary is on the base branch" \
-      "$ED" "$R1" "$L" 'rev-parse --abbrev-ref HEAD'
+      "$ED" "$R1" "$R2" 'rev-parse --abbrev-ref HEAD'
     assert_present "record: asserts the merge commit is an ancestor" \
-      "$ED" "$R1" "$L" 'merge-base --is-ancestor'
+      "$ED" "$R1" "$R2" 'merge-base --is-ancestor'
     assert_present "record: asserts the primary equals the remote base" \
-      "$ED" "$R1" "$L" 'rev-parse origin/<baseRefName>'
+      "$ED" "$R1" "$R2" 'rev-parse origin/<baseRefName>'
     assert_present "record: output block states its five values" \
-      "$ED" "$R1" "$L" '^EPIC-DOC: created \| updated \| closed \| none \| failed'
+      "$ED" "$R1" "$R2" '^EPIC-DOC: created \| updated \| closed \| none \| failed'
     assert_present "record: output block carries \`PATH:\`" \
-      "$ED" "$R1" "$L" '^PATH: '
+      "$ED" "$R1" "$R2" '^PATH: '
     assert_present "record: output block carries \`SEED:\`" \
-      "$ED" "$R1" "$L" '^SEED: '
+      "$ED" "$R1" "$R2" '^SEED: '
     assert_present "record: output block carries \`THREADS:\`" \
-      "$ED" "$R1" "$L" '^THREADS: '
+      "$ED" "$R1" "$R2" '^THREADS: '
     assert_present "record: output block carries \`NEXT:\`" \
-      "$ED" "$R1" "$L" '^NEXT: '
+      "$ED" "$R1" "$R2" '^NEXT: '
     assert_present "record: output block carries \`CAUSE:\`" \
-      "$ED" "$R1" "$L" '^CAUSE: '
+      "$ED" "$R1" "$R2" '^CAUSE: '
     assert_present "record: a rejected push is never forced" \
-      "$ED" "$R1" "$L" 'do not force'
+      "$ED" "$R1" "$R2" 'do not force'
   else
     bad "epic-doc: could not locate the read/record operation headings"
   fi

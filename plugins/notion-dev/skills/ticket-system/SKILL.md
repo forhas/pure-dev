@@ -208,10 +208,11 @@ Tickets are first-class user-facing documents. The adapter applies a fixed visua
 | `Overview` | `createEpic` | `gray` | — | — |
 | `Tasks` | `createEpic` (empty at creation), create-task Pass 1.5 (populated when a mission is filed), and epic refresh (`/notion-dev:ticket` Phase 8, `/notion-dev:finalize` Phase 3) | `blue` | — | — |
 | `Resolution Log` | epic update (same) | `purple` | — | — |
+| `Notes` | `/notion-dev:new-info` | `gray` | — | — |
 
 Unknown section names (including user-added ones) render with no color and no callout — the plugin only styles sections it owns. Match section names case-insensitively on base text; don't restyle sections a user has manually recolored (see "Heading attribute preservation" below).
 
-The last three sections appear on **epic pages only**. None takes an intro callout — they are self-explanatory, and a callout on every one would be noise. `Tasks` renders as to-do blocks (same convention as `Acceptance Criteria`). The zone-divider rule below applies to `Implementation` / `Merged` on ticket pages only; epic pages use the per-entry divider described under `appendToSection`.
+The last four sections appear on **epic pages only**. None takes an intro callout — they are self-explanatory, and a callout on every one would be noise. `Tasks` renders as to-do blocks (same convention as `Acceptance Criteria`). The zone-divider rule below applies to `Implementation` / `Merged` on ticket pages only; epic pages use the per-entry divider described under `appendToSection`.
 
 `Blocked by` is the one spec-zone section not written at creation — `setDependencies` adds it in Pass 2, once every mission ticket exists and can be resolved. It therefore lands at the end of the spec zone, which is where it belongs: nothing from a later zone has been written yet at Pass 2. It takes no callout for the same reason `Tasks` doesn't, and unlike `Tasks` it does **not** render as to-do blocks — see `setDependencies` for why.
 
@@ -694,6 +695,8 @@ The **append-only** counterpart to `upsertSection`. Where `upsertSection` replac
 4. **Section present** → append `content`'s blocks immediately before the next top-level (`##`) heading, or at end of page when it is the last section. Existing children are never read back, rewritten, or reordered — that is the whole point of this operation.
 
 `content` is markdown, rendered with the same block conventions `upsertSection` uses.
+
+**Epic-page callers prepend their own divider.** The callers that accumulate dated entries on an epic page — `epic-update`'s `Resolution Log`, `/notion-dev:new-info`'s `Notes` — pass a `divider` block ahead of each entry, so entries stay visually separate as the section grows. That is the per-entry divider the Styling conventions refer to; this operation writes the blocks it is given and adds no divider of its own.
 
 ## MCP unavailability
 
