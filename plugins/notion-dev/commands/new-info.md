@@ -78,7 +78,7 @@ Then invoke the `notion-dev:epic-doc` skill, operation `note --apply <epic-id>`,
 **Changed:** <ADDED and REPLACED lines>
 ```
 
-`EPIC_ID` is the epic's page id from the `fetchTicket` that resolved this epic — scope step 2's, or the epic guard's — or its logical key; `appendToSection` accepts either. `Cleared` and `Changed` are omitted when empty. Timestamp from `date -u +"%Y-%m-%d %H:%M UTC"`. Best-effort, like every `epic-update` write: a failure is a warning, the run continues, the epic's report line reads `notion: failed`, and `partial:new-info` is recorded. `## Resolution Log` is never written here — it holds resolutions only.
+`EPIC_ID` is the epic's page id from the `fetchTicket` that resolved this epic — scope step 2's, or the epic guard's — or its logical key; `appendToSection` accepts either. `Cleared` and `Changed` are omitted when empty. Timestamp from `date -u +"%Y-%m-%d %H:%M UTC"`. Best-effort, like every `epic-update` write: a failure is a warning, the run continues, the epic's report line reads `notion: failed`, and `partial:new-info` is recorded — **and the report prints the entry verbatim under that line, with the `appendToSection` call that failed**, because there is no retry path inside the command: a re-run of the same fact reads the already-updated brief, returns `unaffected`, and never reaches this step, so the printed entry is the only way the note still lands. `## Resolution Log` is never written here — it holds resolutions only.
 
 ### Tickets
 
