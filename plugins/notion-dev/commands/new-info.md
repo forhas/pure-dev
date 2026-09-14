@@ -42,7 +42,7 @@ Order by numeric epic id. Every epic in scope appears in the report exactly once
 
 ### Read
 
-Invoke the `notion-dev:epic-doc` skill, operation `read(<epic-id>)`. It returns `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN`, `BOOTSTRAP`, and `SEED`. `null` (not an epic) → skip with reason `not an epic`. `STATUS: closed` → skip with reason `epic closed` — a fact that reopens an epic is a Notion status change, not this command's call — **unless** the live status (`fetchTicket(<epic-id>).status`) is not in the resolved set: then the header is stale and the brief is treated as open, the rule `/notion-dev:next-task` applies. `BOOTSTRAP: true` → the in-memory brief is judged below exactly like a committed one; only an affected epic reaches disk.
+Invoke the `notion-dev:epic-doc` skill, operation `read(<epic-id>)`. It returns `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN`, `BOOTSTRAP`, and `SEED`. `null` (not an epic) → skip with reason `not an epic`. Then fetch the live status (`fetchTicket(<epic-id>).status`) **whatever the header says**, and let it decide: in the resolved set → skip with reason `epic closed` even when the header still reads `open` — a fact that reopens an epic is a Notion status change, not this command's call; not in the resolved set → treat the brief as open even when the header reads `closed`, since the header is stale (the rule `/notion-dev:next-task` applies). `BOOTSTRAP: true` → the in-memory brief is judged below exactly like a committed one; only an affected epic reaches disk.
 
 ### Propose
 
