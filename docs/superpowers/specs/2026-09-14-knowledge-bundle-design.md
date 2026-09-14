@@ -35,7 +35,7 @@ epic's root concept inside the bundle. Every fact enters a run's context exactly
 | 1 | **Dependencies: `iwe` binary required, plus one shipped script** (`plugins/notion-dev/scripts/knowledge.py`, Python 3, standard library only). | iwe gives budgeted search-plus-graph retrieval in one call; the script holds only what iwe lacks. Both are per-machine installs like `gh` and `jq`. |
 | 2 | **Core only.** Schema, capture, retrieve, supersession, dedupe, migrate. Notion/Slack mirroring, source allowlists, verbatim records, transcript and mail inputs stay client-side and are tolerated by the schema. | That machinery was hardened for one client's needs; the schema leaves room for it without carrying it. |
 | 3 | **The brief is the epic's root concept**, at `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, six sections unchanged. `epicDocs.dir` is retired. | One writer discipline, one directory, one retrieve. Bullets link concepts instead of restating them. |
-| 4 | **Clients migrate in this effort**, one PR each after the plugin PR, via `migrate --dry-run` then `--apply`, and **that PR deletes the client's own implementation** (§13). | "No regression" is only demonstrated on the real bundles, hooks, and CI; a bundle with two writers is the state this work ends. |
+| 4 | **Clients migrate in this effort**, one PR each after the plugin PR, via `migrate` (the bare command is the dry run) then `--apply`, and **that PR deletes the client's own implementation** (§13). | "No regression" is only demonstrated on the real bundles, hooks, and CI; a bundle with two writers is the state this work ends. |
 | 5 | **Read-once.** Each fact has exactly one read path per run (§4). | Context is the scarce resource; overlap between Notion, brief, and bundle is the waste. |
 | 6 | **Valid until superseded.** No `stale_after`, no `reconciled` clock, no scheduled sweep, no source polling. Knowledge changes only when new information arrives: a merge (`capture`) or a fact (`new-info`). | Minimum maintenance. A green cron nobody opens is not a safeguard. |
 | 7 | **No hard byte cap.** A per-concept size *warning* (`knowledge.warnBytes`, default 8192) and a read-time token budget on `iwe retrieve`. | The 4096 cap cost seven trim passes on one ticket; the budget it protected is now enforced where it matters. |
@@ -130,7 +130,7 @@ relies on, and `--expand-includes` is never passed.
 ```
 ---
 type: Epic
-title: [STO-60] Wallet Indexing
+title: "[STO-60] Wallet Indexing"
 description: <the Goal in one line>
 status: stable
 epic: STO-60
@@ -363,7 +363,7 @@ report, or a resolution. New rows in `skills/issue-log/references/signatures.md`
 |---|---|---|
 | `partial:knowledge-retrieve` | `knowledge/SKILL.md` | iwe missing or `retrieve` failed; brief served alone |
 | `partial:knowledge-capture` | `knowledge/SKILL.md` | `check` failed or push rejected; nothing written or commit unpushed |
-| `missing-dependency:iwe` | preconditions of `ticket`, `next-task`, `new-info`, `knowledge` | `iwe` absent or below 0.19 |
+| `missing-dependency:iwe` | preconditions of `knowledge` and `new-info`, preflight of `init` — the three sites that probe | `iwe` absent or below 0.19. `ticket` and `next-task` do not probe: they reach the bundle only through `retrieve`, which degrades with `partial:knowledge-retrieve` |
 
 ## 11. Verification
 
@@ -388,7 +388,7 @@ byte-identical and print a diff, with `--apply` must produce the checked-in `exp
 Skips with a clear FAIL, not a pass, when `iwe` or `python3` is absent, since CI installs both
 (`verify.yml` gains the two install steps).
 
-**Regression proof per client**, in that client's PR body: the `migrate --dry-run` diff was
+**Regression proof per client**, in that client's PR body: the bare-`migrate` dry-run diff was
 reviewed; `check` exits 0 after `--apply`; `iwe retrieve` from the epic root returns the brief
 plus its linked concepts under budget (line count in the PR body); the client's old validator
 rules are listed one by one against the `check` rule that covers each, and only then are the
@@ -452,7 +452,7 @@ no per-repo flags. The same lines replace a local pre-commit hook where a client
 | `package.json` scripts `knowledge:check`, `knowledge:report`; the `scripts/knowledge/*.test.js` glob in `test:scripts` | a `knowledge-check` CI job on the fetched script |
 | `.claude/skills/dream/SKILL.md` bundle half (its `knowledge/` orientation, `iwe find`/`retrieve` reads, `knowledge:report` worklist, index pruning) | `/notion-dev:knowledge curate`; the memory-directory half and the mail/transcript inputs stay |
 | `CLAUDE.md` "Tool Routing" bundle paragraphs (`iwe find`/`retrieve`, deprecated-filter guidance) | one line: the bundle reaches a run through `notion-dev:knowledge retrieve`; do not query it again |
-| `.claude/commands/maintain.md` step 13 and `release.md` step 10: the 4096-byte cap and `iwe extract` instructions | "write the concept, then `knowledge.py check`"; those steps keep writing `node/` and `release/` concepts, declared in `extraTypes: ["commitment", "node"]` |
+| `.claude/commands/maintain.md` step 13 and `release.md` step 10: the 4096-byte cap and `iwe extract` instructions | "write the concept, then `knowledge.py check`"; those steps keep writing `node/` and `release/` concepts, declared in `extraTypes: ["commitment", "node", "references"]` — `concept_dirs` derives the list from every non-canonical directory holding a `.md`, and `references/` is one |
 | `.claude/notion-dev.config.json`: `postMergeHooks: ["knowledge-capture"]` | `["notion-dev:knowledge"]`, plus the `knowledge` block |
 | `knowledge/ticket/STO-67.md` stays; it is the epic's `Ticket` concept (its `# Ruled out` has no home in the brief template) and the new `epic/STO-67-…` root links it under `## Decisions & constraints` | — |
 | `scripts/knowledge/mail-extract.js` stays (dream input, client-side by decision 2) | — |
@@ -471,7 +471,7 @@ no per-repo flags. The same lines replace a local pre-commit hook where a client
 | `.claude/notion-dev.config.json`: `postMergeHooks: ["knowledge-capture"]` | `["notion-dev:knowledge"]`, plus the `knowledge` block (`extraTypes: []`) |
 | `docs/sto-306-completion-plan.md` | untouched here; `next-task`'s bootstrap distils it into `epic/` and removes the seed, as today |
 
-**Order.** Plugin PR merges and is tagged → client updates the plugin → `migrate --dry-run`
+**Order.** Plugin PR merges and is tagged → client updates the plugin → bare `migrate`
 reviewed → `migrate --apply` → removals above → `knowledge.py check` exits 0 and the client's
 own suite passes → PR through the client's normal flow → one real post-merge capture observed
 on the next ticket. Each client is one session and one PR.
