@@ -329,8 +329,9 @@ writes nothing.
 - **`commands/init.md`**: preflight probes `iwe` and `python3`; step 9 scaffolds
   `<knowledge.dir>/` with `.iwe/`, `index.md`, `log.md`, and the empty type directories, writes
   the `knowledge` block only when a value differs from its default (init's omit-when-default
-  convention), and sets `postMergeHooks: ["notion-dev:knowledge"]` unconditionally — on a
-  fresh config and on reconfigure alike, so an existing bundle gains the hook; `epicDocs` is no
+  convention), and ensures `notion-dev:knowledge` is in `postMergeHooks` unconditionally — written
+  outright on a fresh config, appended and deduplicated on reconfigure so existing client
+  hooks survive — so an existing bundle gains the hook; `epicDocs` is no
   longer written.
 - **`commands/finalize.md`**: hook paragraph as `ticket.md`.
 - **`skills/ticket-system/SKILL.md`**: `getEpicContext` is marked superseded by `retrieve` and
