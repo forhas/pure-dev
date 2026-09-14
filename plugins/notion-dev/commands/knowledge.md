@@ -51,10 +51,10 @@ when the hook returned `KNOWLEDGE: failed` and the cause has since been fixed. I
 operation the hook runs, with the same four preconditions and the same write-nothing rule.
 
 Invoke the skill `notion-dev:knowledge`, operation `capture(<ticket-id>, <merge-sha>)`, passing
-`REPO_ROOT` and `<epicBranch>`. There is no session to draw on here, so the operation takes the
-ticket body from `fetchTicket(<ticket-id>)` and the pull request from
-`gh pr view <n> --json body,comments` instead — everything else, including the four collision
-outcomes and the `check`-gated commit, is unchanged.
+`REPO_ROOT` and `<epicBranch>`. There is no session to draw on here, so the operation reads its
+inputs from `fetchTicket(<ticket-id>)` and `gh pr view <n> --json body,comments` instead — the
+ticket body and the pull request with its review comments. Everything else, including the four
+collision outcomes and the `check`-gated commit, is unchanged.
 
 Re-running a capture that already landed is safe: every candidate collides with the concept the
 first run wrote and resolves as **untouched**, so the result is `KNOWLEDGE: empty` with

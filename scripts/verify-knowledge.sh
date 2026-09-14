@@ -216,6 +216,22 @@ if [ -f "$KC" ]; then
   assert_present "knowledge.md: \`curate\` heading" \
     "$KC" 1 "$L" '^## `curate`$'
 
+  KH=$(find_line "$KC" 1 "$L" '^## `capture')
+  if [ -n "$KH" ]; then
+    # The section runs to the next `## ` heading, whatever order the three modes
+    # are written in; without its own region the third mode had no coverage at all.
+    KE=$(find_line "$KC" $((KH + 1)) "$L" '^## ')
+    [ -n "$KE" ] || KE=$L
+    assert_present "knowledge.md: \`capture <ticket-id> <merge-sha>\` heading" \
+      "$KC" "$KH" "$KE" '^## `capture <ticket-id> <merge-sha>`$'
+    assert_present "knowledge.md: capture invokes the \`notion-dev:knowledge\` skill, operation \`capture(<ticket-id>, <merge-sha>)\`" \
+      "$KC" "$KH" "$KE" 'the skill `notion-dev:knowledge`, operation `capture\(<ticket-id>, <merge-sha>\)`'
+    assert_present "knowledge.md: the hand re-run reads its inputs from \`fetchTicket\` and \`gh pr view\`, there being no session to draw on" \
+      "$KC" "$KH" "$KE" 'fetchTicket\(<ticket-id>\).*gh pr view'
+  else
+    bad "knowledge.md: could not locate the \`capture\` heading"
+  fi
+
   MH=$(find_line "$KC" 1 "$L" '^## `migrate`$')
   CH=$(find_line "$KC" 1 "$L" '^## `curate`$')
   if [ -n "$MH" ] && [ -n "$CH" ]; then
