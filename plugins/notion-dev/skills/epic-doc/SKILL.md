@@ -7,7 +7,7 @@ description: Use when a ticket that belongs to an epic starts (read the epic's m
 
 One concise markdown brief per epic, in the repo, answering four questions: why the epic exists, where it stands, what is open, and what is next. Read by `/notion-dev:ticket` Phase 1.1 and `/notion-dev:next-task`; written by `/notion-dev:ticket` Phase 10 and `/notion-dev:finalize` Phase 5 — and by `/notion-dev:next-task`'s bootstrap and `/notion-dev:new-info`'s `note`. **Nothing else writes it, and no reader ever fetches the Notion epic page for context** — Notion stays the ledger (`epic-update` keeps writing it); this file holds what the ledger cannot say.
 
-Both operations are **best-effort in the `epic-update` sense**: a failure never fails the caller's run, is always stated in the caller's final report, and — for `record` — is recorded as `partial:epic-doc` per `notion-dev:issue-log`.
+All three operations are **best-effort in the `epic-update` sense**: a failure never fails the caller's run and is always stated in the caller's final report — for `record` it is recorded as `partial:epic-doc`, and for `note` the caller records `partial:new-info`, both per `notion-dev:issue-log`.
 
 ## The file
 
