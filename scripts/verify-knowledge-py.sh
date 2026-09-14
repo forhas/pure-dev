@@ -298,6 +298,39 @@ assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.
   '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
 assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
 
+echo "== lock: mkdir lock on the primary checkout =="
+LK=$(mktemp -d)
+lk() { # name, expected-exit, args...
+  local name=$1 want=$2; shift 2
+  python3 "$PY" lock "$@" --root "$LK" > "$OUT/lock-$name.txt" 2>&1; local got=$?
+  if [ "$got" -ne "$want" ]; then
+    echo "FAIL: lock-$name exited $got, wanted $want"; cat "$OUT/lock-$name.txt"; fails=$((fails+1))
+  else echo "ok: lock-$name exit $got"; fi
+}
+lk status-free 0 status
+assert_has "lock: status reports free"                    "$OUT/lock-status-free.txt" 'free'
+lk take-a 0 take --run STO-70 --section record --wait 0
+assert_has "lock: owner file names the run"               "$LK/primary/owner" 'run: STO-70'
+assert_has "lock: owner file names the section"           "$LK/primary/owner" 'section: record'
+lk take-b 1 take --run STO-71 --section start --wait 0
+assert_has "lock: a second run is told the holder"        "$OUT/lock-take-b.txt" 'held by STO-70 (record) since'
+lk take-a-again 0 take --run STO-70 --section record --wait 0
+assert_has "lock: the holder re-enters"                   "$OUT/lock-take-a-again.txt" 'reentrant'
+lk release-b 1 release --run STO-71
+assert_has "lock: release by another run is refused"      "$OUT/lock-release-b.txt" 'held by STO-70'
+lk release-a 0 release --run STO-70
+lk status-free-2 0 status
+assert_has "lock: released reports free"                  "$OUT/lock-status-free-2.txt" 'free'
+lk release-none 1 release --run STO-70
+assert_has "lock: release when free says not held"        "$OUT/lock-release-none.txt" 'not held'
+mkdir -p "$LK/primary"
+printf 'run: STO-9\nsection: record\nsince: 2000-01-01T00:00:00Z\n' > "$LK/primary/owner"
+lk take-stale 0 take --run STO-71 --section start --wait 0
+assert_has "lock: an abandoned owner is broken and named" "$OUT/lock-take-stale.txt" 'stale: run: STO-9'
+assert_has "lock: after breaking, the new run holds it"   "$LK/primary/owner" 'run: STO-71'
+lk release-71 0 release --run STO-71
+rm -rf "$LK"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
 exit $(( fails > 0 ? 1 : 0 ))

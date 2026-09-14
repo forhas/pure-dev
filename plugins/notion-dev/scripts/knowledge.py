@@ -14,8 +14,10 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 import difflib
 import fnmatch
 
@@ -1435,6 +1437,96 @@ def cmd_next(a):
 
 
 # ---------------------------------------------------------------------------
+# lock — the primary-checkout lock (spec §4)
+# ---------------------------------------------------------------------------
+
+LOCK_STALE_SECONDS = 30 * 60
+LOCK_POLL_SECONDS = 15
+LOCK_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _lock_dir(a):
+    root = a.root
+    if not root:
+        top = _git_toplevel(os.getcwd()) or os.getcwd()
+        root = os.path.join(top, ".claude", "notion-dev", "locks")
+    return os.path.join(root, "primary")
+
+
+def _read_owner(d):
+    kv = {}
+    try:
+        with open(os.path.join(d, "owner"), encoding="utf-8") as fh:
+            for ln in fh:
+                if ": " in ln:
+                    k, v = ln.rstrip("\n").split(": ", 1)
+                    kv[k] = v
+    except OSError:
+        pass
+    return kv
+
+
+def _owner_age(kv):
+    try:
+        since = datetime.datetime.strptime(kv.get("since", ""), LOCK_TIME_FMT)
+    except ValueError:
+        return LOCK_STALE_SECONDS + 1  # unreadable owner counts as abandoned
+    return (datetime.datetime.utcnow() - since).total_seconds()
+
+
+def _held_line(kv):
+    return "held by %s (%s) since %s" % (kv.get("run", "?"), kv.get("section", "?"), kv.get("since", "?"))
+
+
+def _write_owner(d, run, section):
+    now = datetime.datetime.utcnow().strftime(LOCK_TIME_FMT)
+    with open(os.path.join(d, "owner"), "w", encoding="utf-8") as fh:
+        fh.write("run: %s\nsection: %s\nsince: %s\n" % (run, section, now))
+
+
+def cmd_lock(a):
+    d = _lock_dir(a)
+    if a.op == "status":
+        kv = _read_owner(d) if os.path.isdir(d) else {}
+        print(_held_line(kv) if kv else "free")
+        sys.exit(0)
+    if a.op == "release":
+        kv = _read_owner(d) if os.path.isdir(d) else {}
+        if not kv:
+            print("not held")
+            sys.exit(1)
+        if kv.get("run") != a.run:
+            print("refused: " + _held_line(kv))
+            sys.exit(1)
+        shutil.rmtree(d)
+        print("released")
+        sys.exit(0)
+    # take
+    deadline = time.time() + a.wait
+    while True:
+        try:
+            os.makedirs(os.path.dirname(d), exist_ok=True)
+            os.mkdir(d)
+            _write_owner(d, a.run, a.section)
+            print("taken")
+            sys.exit(0)
+        except FileExistsError:
+            pass
+        kv = _read_owner(d)
+        if kv.get("run") == a.run:
+            print("reentrant")
+            sys.exit(0)
+        if _owner_age(kv) > LOCK_STALE_SECONDS:
+            print("stale: run: %s" % kv.get("run", "?"))
+            shutil.rmtree(d, ignore_errors=True)
+            continue
+        if time.time() >= deadline:
+            print(_held_line(kv))
+            sys.exit(1)
+        time.sleep(LOCK_POLL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1490,6 +1582,19 @@ def main():
                         help="start|stop|create|resolve <KEY>-<n>, or new-info; omitted = refresh")
     p_next.add_argument("--today", default=None, help="YYYY-MM-DD (default: today, UTC)")
     p_next.set_defaults(func=cmd_next)
+
+    p_lock = sub.add_parser("lock", help="the primary-checkout lock (spec §4)")
+    lock_sub = p_lock.add_subparsers(dest="op", required=True)
+    p_take = lock_sub.add_parser("take")
+    p_take.add_argument("--run", required=True)
+    p_take.add_argument("--section", required=True)
+    p_take.add_argument("--wait", type=int, default=600, help="seconds to wait (default 600)")
+    p_rel = lock_sub.add_parser("release")
+    p_rel.add_argument("--run", required=True)
+    p_stat = lock_sub.add_parser("status")
+    for p in (p_take, p_rel, p_stat):
+        p.add_argument("--root", default=None, help="locks directory (default: <git toplevel>/.claude/notion-dev/locks)")
+        p.set_defaults(func=cmd_lock)
 
     args = parser.parse_args()
     args.func(args)
