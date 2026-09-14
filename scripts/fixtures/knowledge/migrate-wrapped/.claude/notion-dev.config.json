@@ -1,4 +1,4 @@
 {
   "git": { "postMergeHooks": ["knowledge-capture"] },
-  "knowledge": { "warnBytes": 65536 }
+  "knowledge": { "warnBytes": 200 }
 }

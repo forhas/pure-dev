@@ -33,6 +33,9 @@ echo "== check: valid bundle =="
 run valid 0 check --dir "$FX/valid" --plugin-root "$ROOT" --extra-types commitment
 assert_lacks "valid bundle reports no finding" "$OUT/valid.txt" ': schema:'
 
+# `valid/` carries BOTH superseded_by spellings spec §3 resolves: `gotcha/old-trap.md` writes
+# the bundle-root-relative form both clients store, `decision/legacy-cache.md` the
+# concept-relative one. Resolving against either base alone makes `valid` exit 1.
 echo "== check: each broken fixture names its rule =="
 for d in "$FX"/broken-*; do
   rule=${d##*/broken-}
@@ -61,6 +64,14 @@ echo "== check: iwe missing is exit 2 =="
 # it — so build a PATH that keeps python3 and coreutils but drops iwe's directory instead.
 PYDIR=$(dirname "$(command -v python3)")
 PATH="$PYDIR:/usr/bin:/bin" run noiwe 2 check --dir "$FX/valid" --plugin-root "$ROOT"
+
+echo "== check: fail closed — an iwe call that cannot run is exit 2, never an empty bundle =="
+# `iwe find` exits non-zero on an unparseable .iwe/config.toml. Reading that as `"" or "[]"`
+# reported a clean bundle — the "checks that pass when they cannot run" failure mode, inside
+# the tool meant to replace it.
+run unrunnable 2 check --dir "$FX/unrunnable-iwe-config" --plugin-root "$ROOT" --extra-types commitment
+assert_has "the failed \`iwe find\` names its exit code rather than returning an empty result" \
+  "$OUT/unrunnable.txt" 'iwe find --filter  -f json failed (exit 1)'
 
 echo "== check: fail closed — a missing log.md is a finding, not a skipped rule =="
 NL=$(mktemp -d); cp -r "$FX/valid/." "$NL/"; rm -f "$NL/log.md"
@@ -116,6 +127,13 @@ run migrate-apply 0 migrate --apply --dir "$M/knowledge" --config "$M/.claude/no
 diff -r -x .git "$FX/migrate-expected" "$M" && echo "ok: apply produced the expected tree" \
   || { echo "FAIL: apply differs from expected"; fails=$((fails+1)); }
 run migrate-check 0 check --dir "$M/knowledge" --plugin-root "$ROOT"
+# A bundle with no log.md is SEEDED, not left without one: the shipped log schema requires a
+# dated group holding a bullet, so an unseeded bundle fails the check migrate has to pass.
+ML=$(total_lines "$M/knowledge/log.md")
+assert_present "migrate seeds a dated group into a bundle whose update log did not exist" \
+  "$M/knowledge/log.md" 1 "$ML" '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$'
+assert_present "that seeded log carries the \`- bundle created\` bullet the shipped schema needs" \
+  "$M/knowledge/log.md" 1 "$ML" '^- bundle created$'
 rm -rf "$M"
 
 echo "== migrate: wrapped frontmatter, a wrapped log and a bulletless index section =="
@@ -146,7 +164,9 @@ assert_absent "the bulletless \`# The bundle\` index section is dropped, not emi
 assert_present "every stable concept gets its index bullet, including \`gotcha/uncatalogued.md\`, which the client never catalogued" \
   "$MW/knowledge/index.md" 1 "$MWI" '^- \[.*\]\(gotcha/uncatalogued\.md\)'
 assert_has "the client's own \`warnBytes\` survives the config rewrite" \
-  "$MW/.claude/notion-dev.config.json" '"warnBytes": 65536'
+  "$MW/.claude/notion-dev.config.json" '"warnBytes": 200'
+assert_has "migrate's post-apply check honours the configured \`warnBytes\`, not a hardcoded 8192" \
+  "$OUT/migrate-wrapped.txt" 'exceeds warnBytes 200'
 run migrate-wrapped-check 0 check --dir "$MW/knowledge" --plugin-root "$ROOT"
 rm -rf "$MW"
 

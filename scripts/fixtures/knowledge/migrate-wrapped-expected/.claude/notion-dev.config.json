@@ -5,7 +5,7 @@
     ]
   },
   "knowledge": {
-    "warnBytes": 65536,
+    "warnBytes": 200,
     "dir": "knowledge",
     "extraTypes": []
   }

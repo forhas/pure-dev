@@ -1,0 +1,4 @@
+# Deliberately unparseable TOML. `iwe find` exits non-zero on it, which used to be read as
+# `"" or "[]"` — an empty bundle — and reported clean. It is exit 2: a check that cannot run.
+[markdown
+refs_extension
