@@ -156,6 +156,16 @@ assert_present "that seeded log carries the \`- bundle created\` bullet the ship
   "$M/knowledge/log.md" 1 "$ML" '^- bundle created$'
 rm -rf "$M"
 
+echo "== migrate: a brief whose epic concept already exists is a collision, not an overwrite =="
+MC=$(mktemp -d); cp -r "$FX/migrate-collide/." "$MC/"
+( cd "$MC" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+run migrate-collide-dry 1 migrate --dir "$MC/knowledge" --config "$MC/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+assert_has "collision names the destination, the source, and the rule" "$OUT/migrate-collide-dry.txt" 'knowledge/epic/STO-9-demo.md: migrate: collides with docs/epics/STO-9-demo.md'
+run migrate-collide-apply 1 migrate --apply --dir "$MC/knowledge" --config "$MC/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+diff -r -x .git "$FX/migrate-collide" "$MC" >/dev/null && echo "ok: a colliding apply wrote nothing" \
+  || { echo "FAIL: a colliding apply modified the tree"; fails=$((fails+1)); }
+rm -rf "$MC"
+
 echo "== migrate: wrapped frontmatter, a wrapped log and a bulletless index section =="
 # The three transforms that destroyed both real client bundles, each with its own input:
 # a frontmatter key whose flow mapping wraps over two lines, a log whose bullets wrap and

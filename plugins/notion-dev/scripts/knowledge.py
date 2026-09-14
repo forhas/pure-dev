@@ -895,6 +895,17 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
               f"{'holds no .md file' if os.path.isdir(abs_epics_dir) else 'does not exist'}")
     if briefs:
         new_epic_dir_abs = os.path.join(repo_root, bundle_rel, "epic")
+        # A brief whose destination already exists is a collision, never an overwrite: the
+        # existing epic concept may carry knowledge the legacy brief does not, and a silent
+        # replacement can still pass the post-apply check. Refuse before writing anything —
+        # in the dry run as well — and tell the user to merge the two by hand.
+        collisions = [fn for fn in briefs if os.path.exists(os.path.join(new_epic_dir_abs, fn))]
+        if collisions:
+            for fn in collisions:
+                print(f"{bundle_rel}/epic/{fn}: migrate: collides with "
+                      f"{os.path.relpath(os.path.join(abs_epics_dir, fn), repo_root)} — "
+                      f"merge the two by hand, then re-run")
+            sys.exit(1)
         for fn in briefs:
             src = os.path.join(abs_epics_dir, fn)
             with open(src, "r", encoding="utf-8-sig") as f:
