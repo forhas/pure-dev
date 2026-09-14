@@ -46,6 +46,7 @@ assert_has "broken-superseded-chain: deprecated target" "$OUT/broken-superseded-
 assert_has "broken-index names the missing bullet"    "$OUT/broken-index.txt"      'index.md: index: decision/keep-cache'
 assert_has "broken-type names the directory"          "$OUT/broken-type.txt"       'type: undeclared directory commitment'
 assert_has "broken-iwe names the drifted file"        "$OUT/broken-iwe.txt"        '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
+assert_has "broken-iwe-missing names the absent file" "$OUT/broken-iwe-missing.txt" '.iwe/schemas/okf-index.yaml: iwe: missing'
 assert_has "broken-log names the schema rule"         "$OUT/broken-log.txt"        'log.md: schema:'
 assert_has "broken-link-outward names the missing outside-bundle target" \
   "$OUT/broken-link-outward.txt" 'epic/STO-1-demo-epic.md: link: ../docs/nope (outside bundle, not on disk)'
