@@ -329,6 +329,14 @@ lk take-stale 0 take --run STO-71 --section start --wait 0
 assert_has "lock: an abandoned owner is broken and named" "$OUT/lock-take-stale.txt" 'stale: run: STO-9'
 assert_has "lock: after breaking, the new run holds it"   "$LK/primary/owner" 'run: STO-71'
 lk release-71 0 release --run STO-71
+mkdir -p "$LK/primary"; : > "$LK/primary/owner"           # empty owner, fresh directory = in creation
+lk take-creating 1 take --run STO-71 --section start --wait 0
+assert_has "lock: an owner still being written is waited on, not broken" "$OUT/lock-take-creating.txt" 'held by'
+touch -d '2000-01-01 00:00:00' "$LK/primary"              # same empty owner, but the directory is old
+lk take-orphan 0 take --run STO-71 --section start --wait 0
+assert_has "lock: an orphaned empty owner ages out by directory mtime" "$OUT/lock-take-orphan.txt" 'stale: run: ?'
+lk release-orphan 0 release --run STO-71
+[ -z "$(ls -d "$LK"/primary.stale-* 2>/dev/null)" ] && ok "lock: no stale-break leftovers remain" || bad "lock: stale-break leftovers remain"
 rm -rf "$LK"
 
 echo

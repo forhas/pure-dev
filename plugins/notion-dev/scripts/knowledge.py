@@ -1466,11 +1466,18 @@ def _read_owner(d):
     return kv
 
 
-def _owner_age(kv):
+def _owner_age(kv, d):
+    """Seconds since the owner was written. A `since` that is missing or unparsable means
+    the owner file is either still being written (fresh directory: wait, don't break) or an
+    orphan left behind by a crash (old directory: eligible once 30 minutes have passed) — the
+    directory's own mtime is what tells those two apart."""
     try:
         since = datetime.datetime.strptime(kv.get("since", ""), LOCK_TIME_FMT)
     except ValueError:
-        return LOCK_STALE_SECONDS + 1  # unreadable owner counts as abandoned
+        try:
+            return time.time() - os.stat(d).st_mtime
+        except OSError:
+            return 0
     return (datetime.datetime.utcnow() - since).total_seconds()
 
 
@@ -1507,19 +1514,44 @@ def cmd_lock(a):
         try:
             os.makedirs(os.path.dirname(d), exist_ok=True)
             os.mkdir(d)
-            _write_owner(d, a.run, a.section)
-            print("taken")
-            sys.exit(0)
         except FileExistsError:
             pass
+        else:
+            try:
+                _write_owner(d, a.run, a.section)
+            except OSError:
+                continue  # the directory vanished under a racing breaker; retry
+            print("taken")
+            sys.exit(0)
         kv = _read_owner(d)
         if kv.get("run") == a.run:
             print("reentrant")
             sys.exit(0)
-        if _owner_age(kv) > LOCK_STALE_SECONDS:
-            print("stale: run: %s" % kv.get("run", "?"))
-            shutil.rmtree(d, ignore_errors=True)
-            continue
+        if _owner_age(kv, d) > LOCK_STALE_SECONDS:
+            # Break by rename, then verify. Reading the owner and then rmtree-ing `d`
+            # races with another process that already broke and re-acquired this same
+            # lock in between: that read-then-delete would tear down the new, valid
+            # lock instead of the stale one it looked at. Renaming is atomic, so only
+            # one breaker can win it; re-checking the age of what we actually moved
+            # confirms we broke what we meant to.
+            tmp = d + ".stale-%d-%d" % (os.getpid(), time.time_ns())
+            try:
+                os.rename(d, tmp)          # only one breaker can win this
+            except OSError:
+                continue                   # someone else moved or removed it; loop and re-read
+            moved = _read_owner(tmp)
+            if _owner_age(moved, tmp) > LOCK_STALE_SECONDS:
+                print("stale: run: %s" % moved.get("run", "?"))
+                shutil.rmtree(tmp, ignore_errors=True)
+                continue                   # loop takes the lock with mkdir on the next pass
+            try:
+                os.rename(tmp, d)          # we grabbed a live lock: put it back and keep waiting
+            except OSError:
+                # A new lock appeared at `d` meanwhile — a third process created it while we
+                # held the live one under `tmp`. Documented residual race: accepted on one
+                # machine with a handful of sessions. The holder we just discarded loses its
+                # lock silently; its next `release` reports `refused`/`not held`.
+                shutil.rmtree(tmp, ignore_errors=True)
         if time.time() >= deadline:
             print(_held_line(kv))
             sys.exit(1)
