@@ -145,6 +145,7 @@ if [ -f "$ED" ]; then
     assert_present "output block carries \`DRIFT:\`" "$ED" "$OB" "$L" '^DRIFT: '
     assert_present "output block carries \`ATTEMPTS:\`" "$ED" "$OB" "$L" '^ATTEMPTS: '
     assert_present "read reports \`DRIFT: true\` and writes nothing" "$ED" "$R0" "$RB" 'DRIFT: true.*writes nothing'
+    assert_present "read assembles \`thread_blocked\` from \`## Open threads\`" "$ED" "$R0" "$RB" 'thread_blocked.*## Open threads'
     assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
     assert_present "record step 2 recomputes \`## Next\` through \`refresh\`'s derivation" "$ED" "$R1" "$R2" '`## Next` — recompute through `refresh`'
     assert_count "record commits through the write path (cited twice on purpose: the resolution path's step 4, and the bootstrap path's)" \
