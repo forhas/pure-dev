@@ -307,10 +307,18 @@ def cmd_touched(a):
         die(f"git rev-parse --show-toplevel failed: {root_p.stderr.strip()}")
     repo_root = root_p.stdout.strip()
 
-    show_p = subprocess.run(["git", "show", "--name-only", "--pretty=format:", a.sha],
+    # Diff against the FIRST PARENT, never `git show`: for a two-parent merge commit
+    # (`git.mergeStrategy: merge`) plain `git show` emits no changed paths at all, so every
+    # `applies_to` concept would be silently skipped. `<sha>^1..<sha>` is the PR's landed diff
+    # for a merge and the ordinary diff for a squash; a root commit has no `^1`, so fall back
+    # to the commit's own tree there.
+    show_p = subprocess.run(["git", "diff", "--name-only", f"{a.sha}^1", a.sha],
                              cwd=repo_root, capture_output=True, text=True)
     if show_p.returncode != 0:
-        die(f"git show {a.sha} failed: {show_p.stderr.strip()}")
+        show_p = subprocess.run(["git", "show", "--name-only", "--pretty=format:", a.sha],
+                                 cwd=repo_root, capture_output=True, text=True)
+        if show_p.returncode != 0:
+            die(f"git diff {a.sha}^1 {a.sha} failed: {show_p.stderr.strip()}")
     changed = [ln.strip() for ln in show_p.stdout.splitlines() if ln.strip()]
 
     for d in docs(bundle):

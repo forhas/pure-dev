@@ -110,6 +110,15 @@ if [ "$tex" -ne 0 ]; then
 else echo "ok: touched exit 0"; fi
 assert_has   "touched lists the concept whose applies_to matched" "$OUT/touched.txt" 'decision/keep-cache.md'
 assert_lacks "touched omits concepts without applies_to"          "$OUT/touched.txt" 'gotcha/new-trap.md'
+# A two-parent MERGE commit: `git show` lists nothing for it, so touched must diff against the
+# first parent or every applies_to concept is skipped on a `mergeStrategy: merge` client.
+( cd "$REPO" && git checkout -q -b topic && echo z > src/cache/c.rs && git add -A \
+  && git -c user.name=t -c user.email=t@t commit -qm topic && git checkout -q - \
+  && git -c user.name=t -c user.email=t@t merge -q --no-ff -m merge topic )
+MSHA=$(git -C "$REPO" rev-parse HEAD)
+[ "$(git -C "$REPO" rev-list --parents -n1 "$MSHA" | wc -w)" -eq 3 ] || { echo "FAIL: fixture merge commit is not two-parent"; fails=$((fails+1)); }
+( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$MSHA" --dir knowledge > "$OUT/touched-merge.txt" 2>&1 ); echo "exit $? (touched, merge commit)"
+assert_has "touched lists the applies_to concept for a two-parent merge commit" "$OUT/touched-merge.txt" 'decision/keep-cache.md'
 rm -rf "$REPO"
 
 echo "== migrate: dry run writes nothing, apply matches expected =="
