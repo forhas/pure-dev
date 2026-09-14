@@ -1,0 +1,404 @@
+#!/usr/bin/env bash
+# The knowledge bundle — one shared implementation of the OKF v0.2 bundle,
+# consumed by every notion-dev client through config alone.
+#
+# Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md
+#
+# This harness is written BEFORE the markdown it guards exists (Task 1 landed
+# only plugins/notion-dev/scripts/knowledge.py and its references/iwe/ shipped
+# files). skills/knowledge/SKILL.md and commands/knowledge.md do not exist yet
+# — every assertion that touches them fails with "missing file" until Task 3
+# lands, and stays partially red through Tasks 4-6 as each call site is
+# rewritten. That is deliberate: every group below is meant to flip PASS
+# independently as its own task lands, never all at once at the end.
+#
+# Like verify-epic-doc.sh and verify-new-info.sh this asserts a standing
+# invariant: no baseline, no version floor beyond the one release this change
+# ships in.
+#
+# Run from anywhere: ./scripts/verify-knowledge.sh
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+fails=0
+ok()  { printf '  PASS  %s\n' "$1"; }
+bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+
+# shellcheck source=lib/assert.sh
+. ./scripts/lib/assert.sh
+
+ND=plugins/notion-dev
+KS=$ND/skills/knowledge/SKILL.md
+KC=$ND/commands/knowledge.md
+ED=$ND/skills/epic-doc/SKILL.md
+TK=$ND/commands/ticket.md
+NT=$ND/commands/next-task.md
+NI=$ND/commands/new-info.md
+IN=$ND/commands/init.md
+FZ=$ND/commands/finalize.md
+TS=$ND/skills/ticket-system/SKILL.md
+SG=$ND/skills/issue-log/references/signatures.md
+SCHEMA=$ND/schema/notion-dev.config.schema.json
+README=$ND/README.md
+MANIFEST=$ND/.claude-plugin/plugin.json
+
+# ---------------------------------------------------------------------------
+echo "== knowledge skill: retrieve =="
+# ---------------------------------------------------------------------------
+if [ -f "$KS" ]; then
+  L=$(total_lines "$KS")
+  R0=$(find_line "$KS" 1 "$L" '^## `retrieve\(')
+  C0=$(find_line "$KS" 1 "$L" '^## `capture\(')
+  U0=$(find_line "$KS" 1 "$L" '^## `curate`')
+  M0=$(find_line "$KS" 1 "$L" '^## `migrate')
+
+  if [ -n "$R0" ] && [ -n "$C0" ] && [ -n "$U0" ]; then
+
+    assert_present "knowledge skill: \`retrieve(\` heading returns \`KNOWLEDGE_CONTEXT\` or \`null\`" \
+      "$KS" "$R0" "$C0" '^## `retrieve\(<epic-id>, <ticket-title>\?, <ticket-id>\?\)` → `KNOWLEDGE_CONTEXT` or `null`$'
+    assert_present "retrieve: \`iwe retrieve -k epic/<KEY>-<n>-<slug> --expand-references 1\` opens the fenced command, continued by backslash" \
+      "$KS" "$R0" "$C0" 'iwe retrieve -k epic/<KEY>-<n>-<slug> --expand-references 1 \\$'
+    assert_present "retrieve: continuation line carries \`--lexical\`, \`--filter 'status: stable'\`, and \`--max-tokens <knowledge.retrieveBudget>\`" \
+      "$KS" "$R0" "$C0" '--lexical "<ticket title>" --filter '\''status: stable'\'' --max-tokens <knowledge\.retrieveBudget> -f markdown'
+    assert_present "retrieve: \`git archive origin/<epicBranch> <knowledge.dir>\` piped to \`tar -x -C <tmp>\`" \
+      "$KS" "$R0" "$C0" 'git archive origin/<epicBranch> <knowledge\.dir> \| tar -x -C <tmp>'
+    assert_present "retrieve: locates the root via \`git ls-tree -r --name-only origin/<epicBranch> -- <knowledge.dir>/epic/\`" \
+      "$KS" "$R0" "$C0" 'git ls-tree -r --name-only origin/<epicBranch> -- <knowledge\.dir>/epic/'
+    assert_present "retrieve: \`git fetch origin\` before locating the root" \
+      "$KS" "$R0" "$C0" 'git fetch origin'
+    assert_present "retrieve: iwe failure degrades to \`KNOWLEDGE_CONTEXT: unavailable\`" \
+      "$KS" "$R0" "$C0" 'KNOWLEDGE_CONTEXT: unavailable'
+    assert_present "retrieve: records \`partial:knowledge-retrieve\` on iwe failure" \
+      "$KS" "$R0" "$C0" 'partial:knowledge-retrieve'
+    assert_present "retrieve: missing root bootstraps in memory with \`BOOTSTRAP: true\`" \
+      "$KS" "$R0" "$C0" 'BOOTSTRAP: true'
+
+    assert_present "retrieve: read-once table names \`requirements\` as a row" \
+      "$KS" "$R0" "$C0" '^\| requirements \|'
+    assert_present "retrieve: read-once table names \`children statuses\` as a row" \
+      "$KS" "$R0" "$C0" '^\| children statuses \|'
+    assert_present "retrieve: read-once table names \`epic identity\` as a row" \
+      "$KS" "$R0" "$C0" '^\| epic identity'
+    assert_present "retrieve: read-once table names \`why / where we stand\` as a row" \
+      "$KS" "$R0" "$C0" '^\| why / where we stand'
+    assert_present "retrieve: read-once table names \`ruled-out approaches\` as a row" \
+      "$KS" "$R0" "$C0" '^\| ruled-out approaches'
+    assert_present "retrieve: read-once table names \`the merge's content\` as a row" \
+      "$KS" "$R0" "$C0" '^\| the merge'\''s content'
+
+    assert_absent "retrieve: never passes \`--expand-includes\`" \
+      "$KS" "$R0" "$C0" '--expand-includes'
+    assert_absent "knowledge skill: never runs \`grep -r\` over the bundle" \
+      "$KS" 1 "$L" 'grep -r'
+    assert_count "knowledge skill: \`index.md\` is written, never read for context (cited 3 times: the read-once table's never-from column, capture's index update, and migrate's reshape — tune this count in the same commit that writes the section, per CLAUDE.md)" \
+      "$KS" 1 "$L" 'index\.md' 3
+
+    # -------------------------------------------------------------------
+    echo "== knowledge skill: capture =="
+    # -------------------------------------------------------------------
+    assert_present "knowledge skill: \`capture(\` heading covers both the hook and \`--fact\` forms" \
+      "$KS" "$C0" "$U0" '^## `capture\(<ticket-id>, <merge-sha>\)` and `capture --fact <fact> <epic-id>`$'
+    assert_present "capture: precondition asserts \`git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD\` equals \`<base>\`" \
+      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT rev-parse --abbrev-ref HEAD'
+    assert_present "capture: precondition asserts \`git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD\`" \
+      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT merge-base --is-ancestor <merge-sha> HEAD'
+    assert_present "capture: precondition asserts \`git -C \$REPO_ROOT status --porcelain -- <knowledge.dir>\` is empty" \
+      "$KS" "$C0" "$U0" 'git -C \$REPO_ROOT status --porcelain -- <knowledge\.dir>'
+    assert_absent "knowledge skill: no leftover \`HEAD == origin\` equality check (decision 8 retires it)" \
+      "$KS" 1 "$L" 'HEAD == origin'
+    assert_absent "knowledge skill: no leftover \`HEAD==origin\` equality check, unspaced form" \
+      "$KS" 1 "$L" 'HEAD==origin'
+    assert_present "capture: filter question — \`would an engineer reading the merged code\`" \
+      "$KS" "$C0" "$U0" 'would an engineer reading the merged code'
+    assert_present "capture: an empty capture logs \`nothing durable\`" \
+      "$KS" "$C0" "$U0" 'nothing durable'
+    assert_present "capture: an empty capture returns \`KNOWLEDGE: empty\`" \
+      "$KS" "$C0" "$U0" 'KNOWLEDGE: empty'
+    assert_present "capture: dedup seed carries \`iwe find --lexical\`, \`--filter 'status: stable'\`, and \`-f json\`" \
+      "$KS" "$C0" "$U0" 'iwe find --lexical "<key phrase>" --filter '\''status: stable'\'' -f json'
+    assert_present "capture: collision outcome \`untouched\`" \
+      "$KS" "$C0" "$U0" '^- \*\*untouched\*\*'
+    assert_present "capture: collision outcome \`updated\`" \
+      "$KS" "$C0" "$U0" '^- \*\*updated\*\*'
+    assert_present "capture: collision outcome \`superseded\`" \
+      "$KS" "$C0" "$U0" '^- \*\*superseded\*\*'
+    assert_present "capture: collision outcome \`created\`" \
+      "$KS" "$C0" "$U0" '^- \*\*created\*\*'
+    assert_present "capture: superseded outcome sets \`superseded_by: <new path>\`" \
+      "$KS" "$C0" "$U0" 'superseded_by: <new path>'
+    assert_present "capture: in-place edits append a trailing \`## Updates\` section" \
+      "$KS" "$C0" "$U0" '## Updates'
+    assert_present "capture: re-reads touched concepts via \`knowledge.py touched <merge-sha>\`" \
+      "$KS" "$C0" "$U0" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" touched <merge-sha>'
+    assert_count "knowledge skill: \`knowledge.py check\` gates capture, curate, and migrate (cited 3 times)" \
+      "$KS" 1 "$L" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" check' 3
+    assert_present "capture: \`Write nothing\` when \`check\` exits non-zero" \
+      "$KS" "$C0" "$U0" '\*\*Write nothing\*\* when `check` exits non-zero'
+    assert_present "capture: \`check\` failing reverts via \`git checkout -- <knowledge.dir>\`" \
+      "$KS" "$C0" "$U0" 'git checkout -- <knowledge\.dir>'
+    assert_present "capture: records \`partial:knowledge-capture\` on check failure or push rejection" \
+      "$KS" "$C0" "$U0" 'partial:knowledge-capture'
+    assert_present "capture: commits by pathspec with \`git commit --only -m\` \`docs(knowledge): capture <KEY>-<n>\`" \
+      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): capture <KEY>-<n>"'
+    assert_present "capture: the \`--fact\` form commits \`docs(knowledge): note <KEY>-<n> — <short fact>\`" \
+      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): note <KEY>-<n> — <short fact>"'
+    assert_present "capture: stages with \`git add -- <knowledge.dir>\`" \
+      "$KS" "$C0" "$U0" 'git add -- <knowledge\.dir>'
+    assert_present "capture: output block states all four \`KNOWLEDGE:\` values" \
+      "$KS" "$C0" "$U0" '^KNOWLEDGE: captured \| empty \| failed \| unavailable'
+    assert_present "capture: output block's \`COMMIT: <sha> | none\` line" \
+      "$KS" "$C0" "$U0" '^COMMIT: <sha> \| none'
+    assert_present "capture: inputs come from the session, \`never from Notion\`" \
+      "$KS" "$C0" "$U0" 'never from Notion'
+
+    # -------------------------------------------------------------------
+    echo "== knowledge skill: curate and migrate =="
+    # -------------------------------------------------------------------
+    assert_present "knowledge skill: \`curate\` heading" \
+      "$KS" "$U0" "$L" '^## `curate`$'
+    assert_present "knowledge skill: \`migrate [--apply]\` heading" \
+      "$KS" "$U0" "$L" '^## `migrate \[--apply\]`$'
+    assert_present "curate: runs \`iwe stats similarity -t <threshold>\`" \
+      "$KS" "$U0" "$L" 'iwe stats similarity -t <threshold>'
+    assert_present "curate: the user may choose \`keep both\`" \
+      "$KS" "$U0" "$L" 'keep both'
+    assert_present "curate: commits \`docs(knowledge): curate\`" \
+      "$KS" "$U0" "$L" 'docs\(knowledge\): curate'
+    assert_absent "knowledge skill: no \`--dry-run\` flag anywhere (the default IS the dry run; the flag is \`[--apply]\`)" \
+      "$KS" 1 "$L" '\-\-dry\-run'
+    assert_present "migrate: without \`--apply\` it prints the complete diff and writes nothing" \
+      "$KS" "$U0" "$L" '\-\-apply.*it prints the complete diff'
+    assert_present "migrate: runs \`knowledge.py migrate\`" \
+      "$KS" "$U0" "$L" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" migrate'
+    assert_present "migrate: touches \`postMergeHooks\`" \
+      "$KS" "$U0" "$L" 'postMergeHooks'
+    assert_present "migrate: prints the \`removal checklist\`" \
+      "$KS" "$U0" "$L" 'removal checklist'
+    assert_present "migrate: \`never deletes client code\`" \
+      "$KS" "$U0" "$L" 'never deletes client code'
+  else
+    bad "knowledge skill: could not locate the retrieve/capture/curate operation headings"
+  fi
+else
+  bad "knowledge skill missing: $KS"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== knowledge skill: iwe surface =="
+# ---------------------------------------------------------------------------
+# Global Constraints: iwe is invoked from exactly two files — knowledge/SKILL.md
+# and scripts/knowledge.py (Task 1, already landed, out of scope here). No
+# other plugin file may contain an iwe subcommand.
+for spec in "$ED:epic-doc/SKILL.md" "$TK:ticket.md" "$NT:next-task.md" "$NI:new-info.md" \
+            "$IN:init.md" "$FZ:finalize.md" "$TS:ticket-system/SKILL.md" "$KC:knowledge.md"; do
+  f=${spec%%:*}
+  name=${spec#*:}
+  for lit in "iwe find" "iwe retrieve" "iwe schema" "iwe stats"; do
+    assert_lacks "iwe surface: $name never invokes \`$lit\`" "$f" "$lit"
+  done
+done
+assert_has "iwe surface: init.md probes \`iwe --version\` only" "$IN" 'iwe --version'
+assert_lacks "iwe surface: init.md never invokes \`iwe retrieve\`" "$IN" 'iwe retrieve'
+
+# ---------------------------------------------------------------------------
+echo "== command: knowledge.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$KC" ]; then
+  L=$(total_lines "$KC")
+  assert_present "knowledge.md: \`disable-model-invocation: true\` frontmatter" \
+    "$KC" 1 5 '^disable-model-invocation: true$'
+  assert_present "knowledge.md: \`# /notion-dev:knowledge\` title" \
+    "$KC" 1 "$L" '^# /notion-dev:knowledge$'
+  assert_present "knowledge.md: \`migrate\` heading" \
+    "$KC" 1 "$L" '^## `migrate`$'
+  assert_present "knowledge.md: \`curate\` heading" \
+    "$KC" 1 "$L" '^## `curate`$'
+
+  MH=$(find_line "$KC" 1 "$L" '^## `migrate`$')
+  CH=$(find_line "$KC" 1 "$L" '^## `curate`$')
+  if [ -n "$MH" ] && [ -n "$CH" ]; then
+    if [ "$MH" -lt "$CH" ]; then
+      assert_present "knowledge.md: migrate invokes the \`notion-dev:knowledge\` skill" \
+        "$KC" "$MH" "$CH" 'notion-dev:knowledge'
+      assert_present "knowledge.md: curate invokes the \`notion-dev:knowledge\` skill" \
+        "$KC" "$CH" "$L" 'notion-dev:knowledge'
+    else
+      assert_present "knowledge.md: curate invokes the \`notion-dev:knowledge\` skill" \
+        "$KC" "$CH" "$MH" 'notion-dev:knowledge'
+      assert_present "knowledge.md: migrate invokes the \`notion-dev:knowledge\` skill" \
+        "$KC" "$MH" "$L" 'notion-dev:knowledge'
+    fi
+  else
+    bad "knowledge.md: could not locate migrate/curate headings for the skill-invocation check"
+  fi
+else
+  bad "knowledge.md missing: $KC"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== epic-doc =="
+# ---------------------------------------------------------------------------
+if [ -f "$ED" ]; then
+  L=$(total_lines "$ED")
+  assert_present "epic-doc: \`Path:\` line moves to \`<knowledge.dir>/epic/<KEY>-<n>-<slug>.md\`" \
+    "$ED" 1 "$L" '^\*\*Path:\*\* `<knowledge\.dir>/epic/<KEY>-<n>-<slug>\.md`\.'
+  assert_lacks "epic-doc: no leftover \`epicDocs\` reference" "$ED" 'epicDocs'
+  assert_lacks "epic-doc: no leftover \`docs/epics\` reference" "$ED" 'docs/epics'
+  assert_has "epic-doc: carries \`KNOWLEDGE_CONTEXT\`" "$ED" 'KNOWLEDGE_CONTEXT'
+  assert_has "epic-doc: frontmatter shows \`type: Epic\`" "$ED" 'type: Epic'
+  assert_has "epic-doc: frontmatter shows \`status: stable\`" "$ED" 'status: stable'
+  assert_has "epic-doc: bullets \`write the link form whenever a concept for the fact exists\`" \
+    "$ED" 'write the link form whenever a concept for the fact exists'
+  assert_count "epic-doc: \`record --bootstrap\` writes into \`<knowledge.dir>/epic/\` (cited 3 times: the Path line, the seed-search exclusion, and the bootstrap description — tune this count in the same commit that writes the section, per CLAUDE.md)" \
+    "$ED" 1 "$L" '<knowledge\.dir>/epic/' 3
+else
+  bad "epic-doc skill missing: $ED"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== config schema =="
+# ---------------------------------------------------------------------------
+assert_has "config schema: \`\"knowledge\": {\` block opens" "$SCHEMA" '"knowledge": {'
+assert_has "config schema: has the \`\"dir\"\` key" "$SCHEMA" '"dir"'
+assert_has "config schema: \`dir\` defaults to \`\"knowledge\"\`" "$SCHEMA" '"default": "knowledge"'
+assert_has "config schema: has the \`\"retrieveBudget\"\` key" "$SCHEMA" '"retrieveBudget"'
+assert_has "config schema: \`retrieveBudget\` defaults to \`8000\`" "$SCHEMA" '"default": 8000'
+assert_has "config schema: has the \`\"warnBytes\"\` key" "$SCHEMA" '"warnBytes"'
+assert_has "config schema: \`warnBytes\` defaults to \`8192\`" "$SCHEMA" '"default": 8192'
+assert_has "config schema: has the \`\"extraTypes\"\` key" "$SCHEMA" '"extraTypes"'
+assert_lacks "config schema: \`epicDocs\` key removed" "$SCHEMA" '"epicDocs"'
+
+# ---------------------------------------------------------------------------
+echo "== call sites: ticket.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$TK" ]; then
+  L=$(total_lines "$TK")
+  S11=$(find_line "$TK" 1 "$L" '^### 1\.1 ')
+  S12=$(find_line "$TK" 1 "$L" '^### 1\.2 ')
+  P9=$(find_line "$TK" 1 "$L" '^## Phase 9 ')
+  P10=$(find_line "$TK" 1 "$L" '^## Phase 10 ')
+  PH0=$(find_line "$TK" 1 "$L" '^### Post-merge hooks$')
+
+  if [ -n "$S11" ] && [ -n "$S12" ]; then
+    assert_present "ticket.md 1.1: invokes \`notion-dev:knowledge\`, operation \`retrieve(metadata.parentTaskProperty, <title>, <id>)\`" \
+      "$TK" "$S11" "$S12" 'invoke the `notion-dev:knowledge` skill, operation `retrieve\(metadata\.parentTaskProperty, <title>, <id>\)`'
+    assert_present "ticket.md 1.1: \`skip the fetch when the caller supplied KNOWLEDGE_CONTEXT\`" \
+      "$TK" "$S11" "$S12" '\*\*skip the fetch when the caller supplied `KNOWLEDGE_CONTEXT`\*\*'
+  else
+    bad "ticket.md: could not locate the 1.1/1.2 headings"
+  fi
+  assert_lacks "ticket.md: no leftover \`epic-doc\` \`read(metadata.parentTaskProperty\` call" \
+    "$TK" 'operation `read(metadata.parentTaskProperty'
+  assert_has "ticket.md: carries \`KNOWLEDGE_CONTEXT\`" "$TK" 'KNOWLEDGE_CONTEXT'
+  assert_lacks "ticket.md: no leftover \`getEpicContext(\` call" "$TK" 'getEpicContext('
+
+  if [ -n "$PH0" ] && [ -n "$P10" ]; then
+    assert_present "ticket.md Phase 9 hook paragraph names \`notion-dev:knowledge\`" \
+      "$TK" "$PH0" "$P10" 'notion-dev:knowledge'
+  else
+    bad "ticket.md: could not locate the Phase 9 post-merge-hooks paragraph"
+  fi
+else
+  bad "missing: $TK"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== call sites: next-task.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$NT" ]; then
+  L=$(total_lines "$NT")
+  assert_has "next-task.md: invokes \`notion-dev:knowledge\`, operation \`retrieve(<epic-id>)\`" \
+    "$NT" 'operation `retrieve(<epic-id>)`'
+  assert_has "next-task.md: carries \`KNOWLEDGE_CONTEXT\`" "$NT" 'KNOWLEDGE_CONTEXT'
+  assert_lacks "next-task.md: no leftover \`epic-doc\` \`read(<epic-id>)\` call" \
+    "$NT" 'operation `read(<epic-id>)`'
+else
+  bad "missing: $NT"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== call sites: new-info.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$NI" ]; then
+  assert_has "new-info.md: invokes \`capture --fact <fact> <epic-id>\` after \`note --apply\`" \
+    "$NI" 'operation `capture --fact <fact> <epic-id>`'
+  assert_has "new-info.md: reports a \`KNOWLEDGE:\` line per epic" "$NI" 'KNOWLEDGE:'
+  assert_lacks "new-info.md: no leftover \`epicDocs\` reference" "$NI" 'epicDocs'
+  assert_has "new-info.md: invokes \`notion-dev:knowledge\`, operation \`retrieve(<epic-id>)\`" \
+    "$NI" 'operation `retrieve(<epic-id>)`'
+else
+  bad "missing: $NI"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== call sites: init.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$IN" ]; then
+  assert_has "init.md: preflight probes \`iwe --version\`" "$IN" 'iwe --version'
+  assert_has "init.md: preflight probes \`python3\`" "$IN" 'python3'
+  assert_has "init.md: writes \`postMergeHooks: [\"notion-dev:knowledge\"]\`" \
+    "$IN" 'postMergeHooks: ["notion-dev:knowledge"]'
+  assert_lacks "init.md: no leftover \`epicDocs\` reference" "$IN" 'epicDocs'
+  assert_has "init.md: scaffolds \`index.md\`" "$IN" 'index.md'
+  assert_has "init.md: scaffolds \`log.md\`" "$IN" 'log.md'
+  assert_has "init.md: scaffolds \`.iwe/\`" "$IN" '.iwe/'
+else
+  bad "missing: $IN"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== call sites: finalize.md =="
+# ---------------------------------------------------------------------------
+if [ -f "$FZ" ]; then
+  assert_has "finalize.md: hook paragraph names \`notion-dev:knowledge\`" "$FZ" 'notion-dev:knowledge'
+  assert_lacks "finalize.md: no leftover \`HEAD == origin\` equality check" "$FZ" 'HEAD == origin'
+else
+  bad "missing: $FZ"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== call sites: ticket-system SKILL.md =="
+# ---------------------------------------------------------------------------
+assert_has "ticket-system: \`getEpicContext\` is marked superseded by \`notion-dev:knowledge\` \`retrieve\`" \
+  "$TS" 'superseded by `notion-dev:knowledge` `retrieve`'
+
+# ---------------------------------------------------------------------------
+echo "== signatures, README, version =="
+# ---------------------------------------------------------------------------
+assert_has "signature registry has the \`partial:knowledge-retrieve\` row" "$SG" '| `partial:knowledge-retrieve` |'
+assert_has "signature registry has the \`partial:knowledge-capture\` row" "$SG" '| `partial:knowledge-capture` |'
+assert_has "signature registry has the \`missing-dependency:iwe\` row" "$SG" '| `missing-dependency:iwe` |'
+
+assert_has "README documents \`/notion-dev:knowledge\`" "$README" '| `/notion-dev:knowledge'
+assert_has "README Requirements lists \`iwe\`" "$README" '`iwe`'
+assert_has "README Requirements lists \`python3\`" "$README" '`python3`'
+assert_has "README documents \`knowledge.dir\`" "$README" 'knowledge.dir'
+assert_lacks "README: no leftover \`epicDocs\` reference" "$README" 'epicDocs'
+assert_lacks "README: no leftover \"Knowledge bundles are not touched\" sentence" \
+  "$README" 'Knowledge bundles are not touched'
+assert_version_above "notion-dev version bumped above the pre-change 0.23.0" "$MANIFEST" 0.23.0
+
+# ---------------------------------------------------------------------------
+echo "== status vocabulary =="
+# ---------------------------------------------------------------------------
+# Decisions: status is stable | draft | deprecated. "status: current" (the
+# smart-contracts client's local vocabulary) must not appear in any plugin
+# file except the spec, which this harness never touches.
+for f in "$KS" "$ED" "$KC" "$NI" "$TK" "$NT" "$IN"; do
+  assert_lacks "status vocabulary: $f never writes \`status: current\`" "$f" 'status: current'
+done
+
+echo
+if [ "$fails" -eq 0 ]; then
+  echo "ALL CHECKS PASSED"
+else
+  echo "$fails CHECK(S) FAILED"
+  echo
+  echo "This harness pins the knowledge-bundle contract (spec:"
+  echo "docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md). It is meant to be"
+  echo "red until Tasks 3-6 land skills/knowledge/SKILL.md, commands/knowledge.md, and the"
+  echo "call-site edits — each group above should turn green independently as its task"
+  echo "lands. If a failure is a deliberate change to the contract, change the assertion"
+  echo "with it, in the same commit, with the reasoning."
+fi
+exit $(( fails > 0 ? 1 : 0 ))
