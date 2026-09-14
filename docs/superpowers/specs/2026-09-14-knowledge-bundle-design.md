@@ -210,7 +210,10 @@ Invoked two ways, one procedure:
 - **Under `--pr` from `/notion-dev:new-info`**, `capture --fact … --branch <noteBranch>`
   swaps the first and third precondition lines for the branch-name check and
   `git merge-base --is-ancestor origin/<epicBranch> HEAD`, exactly as `epic-doc`'s
-  `note --apply --branch` does, and commits without pushing; `new-info` pushes once.
+  `note --apply --branch` does, and commits without pushing; `new-info` pushes once. Its
+  collision search (`iwe find`) runs against `<knowledge.dir>` in the note-branch working
+  tree, not an export of `origin/<epicBranch>`, so a re-run before the PR merges sees the
+  earlier capture and reports `untouched` instead of writing it twice.
 - **From `/notion-dev:new-info`**, as `capture --fact <fact> <epic-id>`, after the brief note is
   applied for that epic (§8).
 
@@ -315,7 +318,9 @@ writes nothing.
   `KNOWLEDGE:` line per epic. The README sentence "knowledge bundles are not touched" goes.
 - **`commands/init.md`**: preflight probes `iwe` and `python3`; step 9 scaffolds
   `<knowledge.dir>/` with `.iwe/`, `index.md`, `log.md`, and the empty type directories, writes
-  the `knowledge` block, and sets `postMergeHooks: ["notion-dev:knowledge"]`; `epicDocs` is no
+  the `knowledge` block only when a value differs from its default (init's omit-when-default
+  convention), and sets `postMergeHooks: ["notion-dev:knowledge"]` unconditionally — on a
+  fresh config and on reconfigure alike, so an existing bundle gains the hook; `epicDocs` is no
   longer written.
 - **`commands/finalize.md`**: hook paragraph as `ticket.md`.
 - **`skills/ticket-system/SKILL.md`**: `getEpicContext` is marked superseded by `retrieve` and
