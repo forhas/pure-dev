@@ -51,10 +51,11 @@ epic's root concept inside the bundle. Every fact enters a run's context exactly
   `npm i -g @iwe-org/iwe` where the prebuilt binary runs. Nothing in the plugin depends on the
   LSP (`iwes`) or the MCP server (`iwec`).
 - **`python3`** on `PATH` for `knowledge.py`. Standard library only; no `pip` step.
-- The plugin touches exactly three iwe commands, all inside `skills/knowledge/SKILL.md` and
+- The plugin touches exactly four iwe commands, all inside `skills/knowledge/SKILL.md` and
   `scripts/knowledge.py`: `iwe find` (dedupe seed, JSON frontmatter), `iwe retrieve` (context
-  assembly), `iwe schema validate` (shape). Nothing else in the plugin invokes iwe, so the
-  dependency can be swapped by editing one skill and one script.
+  assembly), `iwe schema validate` (shape), `iwe stats similarity` (curate). Nothing else in
+  the plugin invokes iwe — link rewriting on migration is done by the script in Python, not by
+  `iwe rename` — so the dependency can be swapped by editing one skill and one script.
 - `knowledge.py` never parses YAML. It reads frontmatter as JSON from `iwe find -f json` and
   delegates shape validation to `iwe schema validate`.
 - `README.md` "Requirements" gains both entries beside `gh` and `jq`.
@@ -112,7 +113,7 @@ shipped `okf.yaml`:
 | `updated` | no | `{ by, at }`, set on every in-place change |
 | `ticket`, `epic` | no | `<KEY>-<n>` |
 | `applies_to` | no | path globs; a merge touching one triggers re-read (§5) |
-| `superseded_by` | when deprecated | relative path of the successor |
+| `superseded_by` | when deprecated | the successor as a bundle key (`gotcha/new-trap`) or a path; `check` resolves it against the bundle root first, then against the concept's own directory, and appends `.md` when absent — both clients' existing spellings validate |
 | `confidence`, `tags` | no | free |
 
 Dropped, and removed by `migrate`: `stale_after`, `reconciled`, `verified`, `vouch`. Status
@@ -205,7 +206,8 @@ Invoked two ways, one procedure:
   operation with `<ticket-id>` and `<merge-sha>`. Preconditions are decision 8's three lines,
   plus a clean `<knowledge.dir>/` (`git status --porcelain -- <knowledge.dir>` empty). The same
   operation is user-invocable as `/notion-dev:knowledge capture <ticket-id> <merge-sha>` for a
-  hook run that was skipped or failed; it reads the ticket body and PR from `fetchTicket` and
+  hook run that was skipped or failed. `capture --fact` on the direct path has no merge commit,
+  so it asserts lines 1, 3 and 4 only; it reads the ticket body and PR from `fetchTicket` and
   `gh` because no session inputs exist, and is otherwise identical.
 - **Under `--pr` from `/notion-dev:new-info`**, `capture --fact … --branch <noteBranch>`
   swaps the first and third precondition lines for the branch-name check and
@@ -280,16 +282,20 @@ writes nothing.
 3. For every concept under `<knowledge.dir>` outside dot-directories: map `status: current →
    stable`; drop `stale_after`, `reconciled`, `verified`, `vouch`; add `sources` when missing
    (from a `ticket`/PR reference in the body, else `{ id: migrated, resource: <own path> }`
-   with `status: draft`); collect `## Reconciliation notes` under `## Updates`; leave every
+   with `status: draft`; the epic root instead cites the Notion URL from its own `Epic:` header
+   line and stays `stable`, since `retrieve` seeds on it); collect `## Reconciliation notes` under `## Updates`; leave every
    other field and all prose alone. Reshape `log.md` to the shipped `okf-log.yaml` form (one
    title section, `## YYYY-MM-DD` groups newest first, bullets only) — both clients' logs fail
    that schema today — and `index.md` to `okf-index.yaml` (sections of link bullets only).
 4. Move the brief: `docs/epics/<KEY>-<n>-<slug>.md` (or `epicDocs.dir`) → `epic/`, with the
    frontmatter of §3 added. A hand-written seed plan is left for `next-task`'s bootstrap, which
    now writes into `epic/`.
-5. Rewrite relative links that the moves broke (`iwe rename` per moved file).
-6. Drop `epicDocs` from `.claude/notion-dev.config.json`, add the `knowledge` block with
-   `extraTypes` set to the non-canonical directories found; replace the `postMergeHooks` entry
+5. Rewrite relative links that the moves broke — inside the moved brief for its new depth, and
+   in tracked `*.md` files outside the bundle that pointed at the old brief path — in Python,
+   relative to each linking file. Step 4's move applies whether `epicDocs.dir` is explicit or
+   defaulted to `docs/epics`.
+6. Drop `epicDocs` from `.claude/notion-dev.config.json`, add the `knowledge` block with `dir`
+   and with `extraTypes` set to the non-canonical directories found; replace the `postMergeHooks` entry
    `knowledge-capture` with `notion-dev:knowledge`.
 7. `knowledge.py check` must exit 0 on the result, or `--apply` reverts everything it wrote.
 8. Print the removal checklist for this client (§13), derived from what it found: the skill
@@ -310,9 +316,10 @@ writes nothing.
   and `EPIC_CONTEXT`; 1.3 and Phase 4 pass `KNOWLEDGE_CONTEXT` where they pass `EPIC_CONTEXT`
   today, under the same "background, not requirements" label. Phase 9's hook paragraph names
   `notion-dev:knowledge` as the example hook and states the inputs it receives from the run.
-- **`commands/next-task.md` 1**: calls `retrieve(<epic-id>)`; the delegated `ticket` run
-  receives `KNOWLEDGE_CONTEXT` so it does not retrieve again (`ticket.md` 1.1 skips the fetch
-  when the caller supplied it).
+- **`commands/next-task.md` 1**: calls `retrieve(<epic-id>)` once per loop iteration; the
+  delegated `ticket` run receives `KNOWLEDGE_CONTEXT` so it does not retrieve again (`ticket.md`
+  1.1 skips the fetch when the caller supplied it), and step 4 reads the next iteration's brief
+  from the retrieve that opens it, never a second one of its own.
 - **`commands/new-info.md`**: Read calls `retrieve(<epic-id>)` once per epic; Apply, after the
   `note --apply` commit for an epic, runs `capture --fact <fact> <epic-id>` and reports its
   `KNOWLEDGE:` line per epic. The README sentence "knowledge bundles are not touched" goes.
@@ -336,12 +343,16 @@ downgraded**: a check that cannot run says so and fails.
 
 | subcommand | does |
 |---|---|
-| `check [--dir]` | `iwe schema validate`; every relative link resolves; every `superseded_by` target exists and is not itself deprecated; every `stable` concept has an `index.md` bullet and every bullet resolves; type directory is canonical or in `extraTypes`; `.iwe/` matches the plugin copy; per-file size over `warnBytes` → warning line, not failure. Prints one line per finding, `path: rule: detail`. |
+| `check [--dir] [--config]` | reads `knowledge.dir`, `extraTypes`, `warnBytes` from `--config` (default `.claude/notion-dev.config.json` at the git top level when present; explicit flags override); a missing `index.md` or `log.md` is a finding; `iwe schema validate`; every relative link resolves; every `superseded_by` target exists and is not itself deprecated; every `stable` concept has an `index.md` bullet and every bullet resolves; type directory is canonical or in `extraTypes`; `.iwe/` matches the plugin copy; per-file size over `warnBytes` → warning line, not failure. Prints one line per finding, `path: rule: detail`. |
 | `touched <sha> [--dir]` | changed paths of `<sha>` (`git show --name-only`) intersected with every `stable` concept's `applies_to` globs; prints matching concept paths. |
 | `migrate [--apply] [--dir] [--config]` | §7 steps 2–7; without `--apply` prints the unified diff of every file it would write. |
 
 Frontmatter is obtained from `iwe find --filter '' -f json`; the script reads and writes files
-only in `migrate`, and there it writes bytes with `\n` line endings regardless of host.
+only in `migrate`, and there it writes bytes with `\n` line endings regardless of host. An iwe
+call that exits non-zero for any reason other than reported violations, or whose JSON does not
+parse, is exit 2 — never an empty result. `--plugin-root` defaults to the script's own plugin
+directory; when that directory lacks `skills/knowledge/references/iwe/` the drift rule cannot
+run and `check` exits 2 saying so.
 
 ## 10. Failure handling and signatures
 
@@ -422,12 +433,14 @@ step is:
 
 ```yaml
 - run: |
-    curl -fsSL https://raw.githubusercontent.com/forhas/pure-dev/notion-dev-v0.24.0/plugins/notion-dev/scripts/knowledge.py -o /tmp/knowledge.py
-    python3 /tmp/knowledge.py check
+    curl -fsSL https://github.com/forhas/pure-dev/archive/refs/tags/notion-dev-v0.24.0.tar.gz \
+      | tar -xz -C /tmp --strip-components=2 --wildcards '*/plugins/notion-dev'
+    python3 /tmp/notion-dev/scripts/knowledge.py check --plugin-root /tmp/notion-dev
 ```
 
-pinned to the tag the client's installed plugin version matches. The same one-liner replaces a
-local pre-commit hook where a client had one.
+pinned to the tag the client's installed plugin version matches. `check` reads `knowledge.dir`,
+`extraTypes` and `warnBytes` from `.claude/notion-dev.config.json` itself, so the client passes
+no per-repo flags. The same lines replace a local pre-commit hook where a client had one.
 
 **BTC-Gateway** (`~/win-home/dev/playza/BTC-Gateway`, epic STO-67):
 
