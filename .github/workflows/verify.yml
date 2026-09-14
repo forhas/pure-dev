@@ -8,7 +8,8 @@ name: verify
 # re-sync in the same commit.
 #
 # Every harness is plain bash plus grep, diff and awk, so the default runner
-# needs no setup step.
+# needs no setup step — except verify-knowledge-py.sh, which shells out to iwe
+# and needs it installed first.
 
 on:
   pull_request:
@@ -23,6 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # verify-knowledge-py.sh runs plugins/notion-dev/scripts/knowledge.py, which shells
+      # out to iwe. ubuntu-latest ships GLIBC 2.39, so the prebuilt npm binary runs. Pinned
+      # to the version the plugin's flags were verified against (the plugin requires >=
+      # 0.19), so a CI break is a change we made, not one upstream made.
+      - name: Install iwe
+        run: npm i -g @iwe-org/iwe@0.19.1 && iwe --version
 
       # Discovered rather than listed: a new scripts/verify-*.sh is picked up
       # without editing this file. A harness nobody runs is the failure mode

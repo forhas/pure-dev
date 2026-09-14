@@ -1,0 +1,42 @@
+# extra comment line for broken-iwe fixture
+$schema: https://document-schema.org/draft/2026-06/schema
+description: OKF v0.2 concept document — frontmatter with a non-empty type (SPEC §4.1, §11)
+frontmatter:
+  type: object
+  required: [type, title, description, status, generated, sources]
+  properties:
+    type: { type: string, minLength: 1 }
+    title: { type: string, minLength: 1 }
+    description: { type: string, minLength: 1 }
+    status:
+      enum: [stable, draft, deprecated]
+      description: OKF lifecycle (SPEC §5.4)
+    generated:
+      type: object
+      required: [by, at]
+      properties:
+        by: { type: string }
+        at: { type: string }
+    updated:
+      type: object
+      required: [by, at]
+      properties:
+        by: { type: string }
+        at: { type: string }
+    sources:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [id, resource]
+        properties:
+          id: { type: string }
+          resource: { type: string }
+          title: { type: string }
+          last_modified: { type: string }
+    ticket: { type: string }
+    epic: { type: string }
+    applies_to: { type: array, items: { type: string } }
+    superseded_by: { type: string }
+    confidence: { type: string }
+    tags: { type: array, items: { type: string } }

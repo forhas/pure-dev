@@ -1,0 +1,4 @@
+{
+  "epicDocs": { "dir": "docs/epics" },
+  "git": { "postMergeHooks": ["knowledge-capture"] }
+}
