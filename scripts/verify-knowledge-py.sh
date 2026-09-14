@@ -237,6 +237,61 @@ diff -r -x .git "$FX/migrate-fail" "$MF" && echo "ok: reverted apply left no byt
   || { echo "FAIL: reverted apply left stray files or directories behind"; fails=$((fails+1)); }
 rm -rf "$MF"
 
+echo "== next: renders ## Next, the header and the stop bullet deterministically =="
+NX=$FX/next
+TODAY=2026-09-15
+nx() { # name, expected-exit, brief, state, [reason args...]
+  local name=$1 want=$2 brief=$3 state=$4; shift 4
+  python3 "$PY" next --brief "$brief" --state "$state" --today "$TODAY" "$@" \
+    > "$OUT/next-$name.md" 2> "$OUT/next-$name.err"; local got=$?
+  if [ "$got" -ne "$want" ]; then
+    echo "FAIL: next-$name exited $got, wanted $want"; cat "$OUT/next-$name.err"; fails=$((fails+1))
+  else echo "ok: next-$name exit $got"; fi
+}
+nx basic    0 "$NX/brief.md"          "$NX/state-basic.json"
+assert_identical "next: a true brief re-renders byte-identical" "$OUT/next-basic.md" "$NX/brief.md"
+assert_has "next: a true brief reports DRIFT: 0" "$OUT/next-basic.err" 'DRIFT: 0'
+nx start    1 "$NX/brief.md"          "$NX/state-start.json"    --reason start STO-71
+assert_identical "next: start moves the key to In progress with today's since and keeps the other since" \
+  "$OUT/next-start.md" "$NX/expected-start.md"
+nx stop     1 "$NX/brief.md"          "$NX/state-stop.json"     --reason stop STO-72
+assert_identical "next: stop adds the thread bullet and moves the key to Blocked" \
+  "$OUT/next-stop.md" "$NX/expected-stop.md"
+nx restart  1 "$NX/expected-stop.md"  "$NX/state-basic.json"    --reason start STO-72
+assert_identical "next: start removes the stop bullet and restores In progress" \
+  "$OUT/next-restart.md" "$NX/expected-restart.md"
+nx create   1 "$NX/brief.md"          "$NX/state-create.json"   --reason create STO-74
+assert_identical "next: create appends the new child as ready" "$OUT/next-create.md" "$NX/expected-create.md"
+assert_has "next: create reports the missing key as drift" "$OUT/next-create.err" 'drift: STO-74 missing from ## Next'
+nx drift    1 "$NX/brief-drift.md"    "$NX/state-basic.json"
+assert_identical "next: drift repairs a resolved item, a missing child and the In progress line" \
+  "$OUT/next-drift.md" "$NX/expected-drift.md"
+assert_has "next: drift names the resolved item"   "$OUT/next-drift.err" 'drift: STO-70 listed, live status resolved'
+assert_has "next: drift names the missing child"   "$OUT/next-drift.err" 'drift: STO-73 missing from ## Next'
+assert_has "next: drift names the missing In progress line" "$OUT/next-drift.err" 'drift: In progress line missing'
+assert_has "next: drift counts four findings"      "$OUT/next-drift.err" 'DRIFT: 4'
+nx complete 1 "$NX/brief.md"          "$NX/state-complete.json"
+assert_identical "next: a resolved epic renders epic complete and Status: closed" \
+  "$OUT/next-complete.md" "$NX/expected-complete.md"
+nx rerender 0 "$OUT/next-start.md"    "$NX/state-start.json"
+assert_identical "next: re-rendering its own output is byte-identical" "$OUT/next-rerender.md" "$OUT/next-start.md"
+nx client   1 "$NX/brief.md"          "$NX/state-client-shaped.json"
+# partition invariant: every unresolved key appears in exactly one of the three lists
+if python3 - "$NX/state-client-shaped.json" "$OUT/next-client.md" <<'PYEOF'
+import json, re, sys
+state = json.load(open(sys.argv[1])); text = open(sys.argv[2], encoding="utf-8").read()
+region = text.split("\n## Next\n", 1)[1].split("\n## ", 1)[0].splitlines()
+num = [m.group(1) for ln in region for m in [re.match(r"^\d+\. (?:\*\*)?\[([A-Z0-9-]+)\]", ln)] if m]
+ip = re.findall(r"\[([A-Z0-9-]+)\] [^,]*? — since \d{4}-\d{2}-\d{2}", next((l for l in region if l.startswith("In progress: ")), ""))
+bl = re.findall(r"[A-Z][A-Z0-9]+-\d+", next((l for l in region if l.startswith("Blocked: ")), ""))
+want = sorted(c["key"] for c in state["children"] if c["status_class"] != "resolved")
+got = sorted(num + ip + bl)
+sys.exit(0 if got == want else print("partition:", got, "wanted", want))
+PYEOF
+then ok "next: client-shaped partitions every unresolved child exactly once"; else bad "next: client-shaped partition is wrong"; fi
+printf 'no next heading\n' > "$OUT/next-bad.md"
+nx malformed 2 "$OUT/next-bad.md" "$NX/state-basic.json"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
 exit $(( fails > 0 ? 1 : 0 ))

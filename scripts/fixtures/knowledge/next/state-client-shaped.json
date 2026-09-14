@@ -1,0 +1,18 @@
+{
+  "epic": { "key": "STO-100", "status_class": "open" },
+  "children": [
+    { "key": "STO-101", "id": 101, "title": "Schema audit", "status_class": "resolved", "blocked_by": [], "phase": 1, "step": 1 },
+    { "key": "STO-102", "id": 102, "title": "Index rebuild", "status_class": "resolved", "blocked_by": [], "phase": 1, "step": 2 },
+    { "key": "STO-103", "id": 103, "title": "Backfill checkpoint", "status_class": "resolved", "blocked_by": [], "phase": 1, "step": 3 },
+    { "key": "STO-104", "id": 104, "title": "Wallet reconciliation", "status_class": "open", "blocked_by": ["STO-103"], "phase": 2, "step": 1 },
+    { "key": "STO-105", "id": 105, "title": "Cache warmup", "status_class": "in_progress", "blocked_by": [], "phase": 2, "step": 2 },
+    { "key": "STO-106", "id": 106, "title": "Metrics pipeline", "status_class": "open", "blocked_by": ["STO-105"], "phase": 2, "step": 3 },
+    { "key": "STO-107", "id": 107, "title": "Alert routing", "status_class": "open", "blocked_by": ["STO-106"], "phase": 3, "step": 1 },
+    { "key": "STO-108", "id": 108, "title": "Ledger reconciliation", "status_class": "open", "blocked_by": ["STO-104"], "phase": 3, "step": 2 },
+    { "key": "STO-109", "id": 109, "title": "Client migration", "status_class": "open", "blocked_by": [], "phase": 3, "step": 3 },
+    { "key": "STO-110", "id": 110, "title": "Support handoff", "status_class": "open", "blocked_by": [], "phase": 4, "step": 1 },
+    { "key": "STO-111", "id": 111, "title": "Dashboard polish", "status_class": "open", "blocked_by": [], "phase": 4, "step": 2 },
+    { "key": "STO-112", "id": 112, "title": "Retrospective notes", "status_class": "open", "blocked_by": [], "phase": null, "step": null }
+  ],
+  "thread_blocked": ["STO-110"]
+}

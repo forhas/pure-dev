@@ -1,0 +1,11 @@
+{
+  "epic": { "key": "STO-60", "status_class": "open" },
+  "children": [
+    { "key": "STO-22", "id": 22, "title": "Customer replay", "status_class": "open", "blocked_by": [], "phase": 1, "step": 1 },
+    { "key": "STO-70", "id": 70, "title": "Backfill", "status_class": "resolved", "blocked_by": [], "phase": 2, "step": 1 },
+    { "key": "STO-71", "id": 71, "title": "Cache metrics", "status_class": "open", "blocked_by": ["STO-70"], "phase": 2, "step": 2 },
+    { "key": "STO-72", "id": 72, "title": "Backfill v2", "status_class": "in_progress", "blocked_by": [], "phase": 2, "step": 3 },
+    { "key": "STO-73", "id": 73, "title": "Alerting", "status_class": "open", "blocked_by": ["STO-71"], "phase": 3, "step": 1 }
+  ],
+  "thread_blocked": ["STO-22"]
+}

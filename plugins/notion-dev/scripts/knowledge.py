@@ -10,6 +10,7 @@ is exit 2 — never an empty result standing in for a clean bundle.
 Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9.
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -1130,6 +1131,283 @@ def cmd_migrate(a):
 
 
 # ---------------------------------------------------------------------------
+# next — render `## Next`, the header line and the stop bullet (spec §5)
+# ---------------------------------------------------------------------------
+
+KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d+")
+NEXT_ITEM_RE = re.compile(
+    r"^(\d+)\. (\*\*)?\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?)(\*\*)?(?: — (.*))?$")
+IN_PROGRESS_RE = re.compile(r"^In progress: (.*)$")
+IN_PROGRESS_ITEM_RE = re.compile(r"^\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})$")
+BLOCKED_RE = re.compile(r"^Blocked: (.*)$")
+HEADER_RE = re.compile(r"^(Epic: .*? · Status: )(open|closed)( · Updated: )(\d{4}-\d{2}-\d{2}) after (.*)$")
+STOP_BULLET_RE = re.compile(r"^- \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] stopped at ")
+STATUS_CLASSES = ("resolved", "in_progress", "open")
+
+
+def _section(lines, heading):
+    """(start, end) of the region headed by `heading`, end exclusive; (None, None) if absent."""
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.rstrip() == heading:
+            start = i
+            break
+    if start is None:
+        return None, None
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return start, end
+
+
+def _parse_next(body):
+    items, in_progress, blocked, complete = [], {}, [], False
+    for ln in body:
+        s = ln.strip()
+        if not s:
+            continue
+        if s == "epic complete":
+            complete = True
+            continue
+        m = NEXT_ITEM_RE.match(s)
+        if m:
+            items.append({"key": m.group(3), "title": m.group(4),
+                          "reason": m.group(6) or "", "bold": bool(m.group(2))})
+            continue
+        m = IN_PROGRESS_RE.match(s)
+        if m:
+            for part in m.group(1).split(", "):
+                pm = IN_PROGRESS_ITEM_RE.match(part.strip())
+                if pm:
+                    in_progress[pm.group(1)] = pm.group(3)
+            continue
+        m = BLOCKED_RE.match(s)
+        if m:
+            blocked = KEY_RE.findall(m.group(1))
+    return items, in_progress, blocked, complete
+
+
+def _order_key(c):
+    return (c.get("phase") is None, c.get("phase") or 0,
+            c.get("step") is None, c.get("step") or 0, c["id"])
+
+
+def _validate_state(state):
+    try:
+        epic = state["epic"]
+        children = state["children"]
+        assert epic["status_class"] in STATUS_CLASSES
+        for c in children:
+            assert isinstance(c["key"], str) and KEY_RE.fullmatch(c["key"])
+            assert isinstance(c["id"], int) and isinstance(c["title"], str)
+            assert c["status_class"] in STATUS_CLASSES
+            assert isinstance(c.get("blocked_by", []), list)
+            for p in ("phase", "step"):
+                assert c.get(p) is None or isinstance(c[p], int)
+        assert isinstance(state.get("thread_blocked", []), list)
+    except (KeyError, AssertionError, TypeError):
+        die("next: malformed state JSON (spec §5 shape)")
+
+
+def derive_next(state, stopped_keys):
+    """Partition the unresolved children: (in_progress, blocked, numbered, first)."""
+    by_key = {c["key"]: c for c in state["children"]}
+
+    def resolved(k):
+        c = by_key.get(k)
+        return c is None or c["status_class"] == "resolved"
+
+    thread_blocked = set(state.get("thread_blocked", []))
+    inprog, blocked, numbered = [], [], []
+    for c in sorted((c for c in state["children"] if c["status_class"] != "resolved"), key=_order_key):
+        if c["key"] in stopped_keys:
+            blocked.append(c)
+        elif c["status_class"] == "in_progress":
+            inprog.append(c)
+        elif c["key"] in thread_blocked:
+            blocked.append(c)
+        else:
+            numbered.append(c)
+    first = next((c for c in numbered if all(resolved(k) for k in c.get("blocked_by", []))), None)
+    if first is not None:
+        numbered.remove(first)
+        numbered.insert(0, first)
+    return inprog, blocked, numbered, first, resolved
+
+
+def _item1_reason(first, prev_items, resolved):
+    prev1 = prev_items[0] if prev_items else None
+    if prev1 and prev1["key"] == first["key"] and prev1["reason"]:
+        return prev1["reason"]
+    for it in prev_items:
+        if it["key"] == first["key"] and it["reason"].startswith("after "):
+            landed = [k for k in KEY_RE.findall(it["reason"]) if resolved(k)]
+            if landed:
+                return "unblocked; " + ", ".join(landed) + " landed"
+    return "first in phase order"
+
+
+def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_in_progress, today):
+    if state["epic"]["status_class"] == "resolved":
+        return ["## Next", "epic complete"]
+    out = ["## Next"]
+    for i, c in enumerate(numbered, 1):
+        if c is first:
+            out.append("%d. **[%s] %s** — %s" % (i, c["key"], c["title"],
+                                                 _item1_reason(first, prev_items, resolved)))
+        else:
+            waits = [k for k in c.get("blocked_by", []) if not resolved(k)]
+            out.append("%d. [%s] %s — %s" % (i, c["key"], c["title"],
+                                             ("after " + ", ".join(waits)) if waits else "ready"))
+    if inprog:
+        out.append("In progress: " + ", ".join(
+            "[%s] %s — since %s" % (c["key"], c["title"], prev_in_progress.get(c["key"], today))
+            for c in sorted(inprog, key=lambda c: c["id"])))
+    if blocked:
+        out.append("Blocked: " + ", ".join(c["key"] for c in sorted(blocked, key=lambda c: c["id"]))
+                   + " (see Open threads).")
+    return out
+
+
+def drift_findings(state, prev_items, prev_in_progress, prev_blocked, header_status,
+                   inprog, blocked, numbered):
+    f = []
+    live = {c["key"]: c["status_class"] for c in state["children"]}
+    prev_num = {it["key"] for it in prev_items}
+    prev_ip = set(prev_in_progress)
+    prev_bl = set(prev_blocked)
+    new_num = {c["key"] for c in numbered}
+    new_ip = {c["key"] for c in inprog}
+    new_bl = {c["key"] for c in blocked}
+    for k in sorted(prev_num | prev_ip | prev_bl):
+        if live.get(k, "resolved") == "resolved":
+            f.append("drift: %s listed, live status resolved" % k)
+    for k in sorted(new_num | new_ip | new_bl):
+        if k not in prev_num and k not in prev_ip and k not in prev_bl:
+            f.append("drift: %s missing from ## Next" % k)
+        elif k in new_ip and k not in prev_ip:
+            f.append("drift: %s listed as %s, live status in_progress"
+                     % (k, "next" if k in prev_num else "blocked"))
+        elif k in new_num and k in prev_ip:
+            f.append("drift: %s listed as in progress, live status open" % k)
+        elif k in new_bl and k not in prev_bl:
+            f.append("drift: %s listed as %s, held by a thread"
+                     % (k, "next" if k in prev_num else "in progress"))
+    live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
+    if header_status != live_status:
+        f.append("drift: header Status %s, live %s" % (header_status, live_status))
+    if new_ip and not prev_ip:
+        f.append("drift: In progress line missing")
+    return f
+
+
+def stop_bullet(stop):
+    return ("- **[%s] stopped at %s** — %s; worktree at %s. Unblocked by: /notion-dev:ticket %s (resumes)."
+            % (stop["key"], stop["phase"], stop["cause"], stop["worktree"], stop["key"]))
+
+
+def _remove_stop_bullet(lines, ts, te, key):
+    i = ts + 1
+    while i < te:
+        m = STOP_BULLET_RE.match(lines[i])
+        if m and m.group(1) == key:
+            j = i + 1
+            while j < te and lines[j].startswith("  "):
+                j += 1
+            del lines[i:j]
+            return lines, te - (j - i)
+        i += 1
+    return lines, te
+
+
+def _append_bullet(lines, ts, te, bullet):
+    k = te
+    while k > ts + 1 and lines[k - 1].strip() == "":
+        k -= 1
+    lines.insert(k, bullet)
+    return lines, te + 1
+
+
+def cmd_next(a):
+    try:
+        with open(a.brief, encoding="utf-8", newline=None) as fh:
+            text = fh.read()
+    except OSError as e:
+        die("next: cannot read brief: %s" % e)
+    try:
+        with open(a.state, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except (OSError, ValueError) as e:
+        die("next: cannot read state: %s" % e)
+    _validate_state(state)
+    today = a.today or datetime.date.today().isoformat()
+    reason_word, reason_key = (a.reason + [None])[:2] if a.reason else (None, None)
+    if reason_word not in (None, "start", "stop", "create", "resolve", "new-info"):
+        die("next: --reason must be start|stop|create|resolve|new-info [<key>]")
+    if reason_word in ("start", "stop", "create", "resolve") and not (reason_key and KEY_RE.fullmatch(reason_key)):
+        die("next: --reason %s needs a <KEY>-<n>" % reason_word)
+
+    lines = text.split("\n")
+    trailing_newline = text.endswith("\n")
+    if trailing_newline:
+        lines = lines[:-1]
+    original = list(lines)
+
+    header_idx = next((i for i, ln in enumerate(lines) if HEADER_RE.match(ln)), None)
+    if header_idx is None:
+        die("next: no header line (Epic: … · Status: … · Updated: …)")
+    ns, ne = _section(lines, "## Next")
+    if ns is None:
+        die("next: no `## Next` heading")
+    ts, te = _section(lines, "## Open threads")
+    if reason_word in ("start", "stop") and ts is None:
+        die("next: no `## Open threads` heading, needed for --reason %s" % reason_word)
+
+    if ts is not None:
+        if reason_word == "start":
+            lines, te = _remove_stop_bullet(lines, ts, te, reason_key)
+        elif reason_word == "stop":
+            stop = state.get("stop")
+            if not stop or stop.get("key") != reason_key:
+                die("next: --reason stop %s needs state.stop for that key" % reason_key)
+            lines, te = _remove_stop_bullet(lines, ts, te, reason_key)
+            lines, te = _append_bullet(lines, ts, te, stop_bullet(stop))
+        stopped = {STOP_BULLET_RE.match(ln).group(1) for ln in lines[ts + 1:te] if STOP_BULLET_RE.match(ln)}
+    else:
+        stopped = set()
+
+    header_idx = next(i for i, ln in enumerate(lines) if HEADER_RE.match(ln))
+    ns, ne = _section(lines, "## Next")
+    prev_items, prev_ip, prev_bl, _prev_complete = _parse_next(lines[ns + 1:ne])
+    inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
+    region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
+    tail = []
+    k = ne
+    while k > ns + 1 and lines[k - 1].strip() == "":
+        k -= 1
+        tail.append("")
+    lines[ns:ne] = region + tail
+
+    hm = HEADER_RE.match(lines[header_idx])
+    findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered)
+    changed = lines != original
+    if changed:
+        live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
+        what = {"start": "start [%s]", "stop": "stop [%s]", "create": "create [%s]",
+                "resolve": "[%s]"}.get(reason_word)
+        what = (what % reason_key) if what else ("new-info" if reason_word == "new-info" else "refresh")
+        lines[header_idx] = "%s%s%s%s after %s" % (hm.group(1), live_status, hm.group(3), today, what)
+
+    sys.stdout.write("\n".join(lines) + "\n")
+    for f in findings:
+        sys.stderr.write(f + "\n")
+    sys.stderr.write("DRIFT: %d\n" % len(findings))
+    sys.exit(1 if changed else 0)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1176,6 +1454,15 @@ def main():
                            help="warnBytes for the post-apply check "
                                 "(default: knowledge.warnBytes from --config, else 8192)")
     p_migrate.set_defaults(func=cmd_migrate)
+
+    p_next = sub.add_parser(
+        "next", help="render the brief's ## Next region, header and stop bullet from live state (spec §5)")
+    p_next.add_argument("--brief", required=True, help="the brief to render against")
+    p_next.add_argument("--state", required=True, help="live-state JSON (spec §5 shape)")
+    p_next.add_argument("--reason", nargs="+", default=None,
+                        help="start|stop|create|resolve <KEY>-<n>, or new-info; omitted = refresh")
+    p_next.add_argument("--today", default=None, help="YYYY-MM-DD (default: today, UTC)")
+    p_next.set_defaults(func=cmd_next)
 
     args = parser.parse_args()
     args.func(args)
