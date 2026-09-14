@@ -1163,11 +1163,24 @@ def _section(lines, heading):
 
 
 def _parse_next(body):
-    items, in_progress, blocked, complete = [], {}, [], False
+    """Join hard-wrapped continuation lines into logical lines, then parse each.
+
+    A non-blank line that starts with whitespace and follows a logical line is a
+    continuation of it, not a new entry — dropping it silently both loses item 1's
+    reason and manufactures spurious `missing from ## Next` drift for whatever the
+    continuation actually named.
+    """
+    logical = []
     for ln in body:
-        s = ln.strip()
-        if not s:
+        if ln.strip() == "":
             continue
+        if ln[:1] in (" ", "\t") and logical:
+            logical[-1] = logical[-1] + " " + ln.strip()
+        else:
+            logical.append(ln.strip())
+
+    items, in_progress, blocked, complete, unparsed = [], {}, [], False, []
+    for s in logical:
         if s == "epic complete":
             complete = True
             continue
@@ -1186,7 +1199,9 @@ def _parse_next(body):
         m = BLOCKED_RE.match(s)
         if m:
             blocked = KEY_RE.findall(m.group(1))
-    return items, in_progress, blocked, complete
+            continue
+        unparsed.append(s)
+    return items, in_progress, blocked, complete, unparsed
 
 
 def _order_key(c):
@@ -1207,6 +1222,13 @@ def _validate_state(state):
             for p in ("phase", "step"):
                 assert c.get(p) is None or isinstance(c[p], int)
         assert isinstance(state.get("thread_blocked", []), list)
+        stop = state.get("stop")
+        if stop is not None:
+            assert isinstance(stop, dict)
+            assert isinstance(stop.get("key"), str) and KEY_RE.fullmatch(stop["key"])
+            assert isinstance(stop.get("phase"), str)
+            assert isinstance(stop.get("cause"), str)
+            assert isinstance(stop.get("worktree"), str)
     except (KeyError, AssertionError, TypeError):
         die("next: malformed state JSON (spec §5 shape)")
 
@@ -1348,6 +1370,10 @@ def cmd_next(a):
         die("next: --reason must be start|stop|create|resolve|new-info [<key>]")
     if reason_word in ("start", "stop", "create", "resolve") and not (reason_key and KEY_RE.fullmatch(reason_key)):
         die("next: --reason %s needs a <KEY>-<n>" % reason_word)
+    if reason_word in ("start", "create", "resolve"):
+        child_keys = {c["key"] for c in state["children"]}
+        if reason_key not in child_keys:
+            die("next: --reason %s %s: not a child in state" % (reason_word, reason_key))
 
     lines = text.split("\n")
     trailing_newline = text.endswith("\n")
@@ -1380,7 +1406,7 @@ def cmd_next(a):
 
     header_idx = next(i for i, ln in enumerate(lines) if HEADER_RE.match(ln))
     ns, ne = _section(lines, "## Next")
-    prev_items, prev_ip, prev_bl, _prev_complete = _parse_next(lines[ns + 1:ne])
+    prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed = _parse_next(lines[ns + 1:ne])
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
     region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
     tail = []
@@ -1392,6 +1418,7 @@ def cmd_next(a):
 
     hm = HEADER_RE.match(lines[header_idx])
     findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered)
+    findings += ["drift: unparsed line in ## Next: %s" % u[:60] for u in prev_unparsed]
     changed = lines != original
     if changed:
         live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"

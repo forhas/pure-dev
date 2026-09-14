@@ -291,6 +291,12 @@ PYEOF
 then ok "next: client-shaped partitions every unresolved child exactly once"; else bad "next: client-shaped partition is wrong"; fi
 printf 'no next heading\n' > "$OUT/next-bad.md"
 nx malformed 2 "$OUT/next-bad.md" "$NX/state-basic.json"
+nx stop-bad 2 "$NX/brief.md" "$NX/state-stop-bad.json" --reason stop STO-72
+nx unknown-key 2 "$NX/brief.md" "$NX/state-basic.json" --reason start STO-999
+nx wrapped 1 "$NX/brief-wrapped.md" "$NX/state-basic.json"
+assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.md" \
+  '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
+assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
