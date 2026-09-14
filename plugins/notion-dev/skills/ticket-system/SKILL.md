@@ -208,10 +208,11 @@ Tickets are first-class user-facing documents. The adapter applies a fixed visua
 | `Overview` | `createEpic` | `gray` | — | — |
 | `Tasks` | `createEpic` (empty at creation), create-task Pass 1.5 (populated when a mission is filed), and epic refresh (`/notion-dev:ticket` Phase 8, `/notion-dev:finalize` Phase 3) | `blue` | — | — |
 | `Resolution Log` | epic update (same) | `purple` | — | — |
+| `Notes` | `/notion-dev:new-info` | `gray` | — | — |
 
 Unknown section names (including user-added ones) render with no color and no callout — the plugin only styles sections it owns. Match section names case-insensitively on base text; don't restyle sections a user has manually recolored (see "Heading attribute preservation" below).
 
-The last three sections appear on **epic pages only**. None takes an intro callout — they are self-explanatory, and a callout on every one would be noise. `Tasks` renders as to-do blocks (same convention as `Acceptance Criteria`). The zone-divider rule below applies to `Implementation` / `Merged` on ticket pages only; epic pages use the per-entry divider described under `appendToSection`.
+The last four sections appear on **epic pages only**. None takes an intro callout — they are self-explanatory, and a callout on every one would be noise. `Tasks` renders as to-do blocks (same convention as `Acceptance Criteria`). The zone-divider rule below applies to `Implementation` / `Merged` on ticket pages only; epic pages use the per-entry divider described under `appendToSection`.
 
 `Blocked by` is the one spec-zone section not written at creation — `setDependencies` adds it in Pass 2, once every mission ticket exists and can be resolved. It therefore lands at the end of the spec zone, which is where it belongs: nothing from a later zone has been written yet at Pass 2. It takes no callout for the same reason `Tasks` doesn't, and unlike `Tasks` it does **not** render as to-do blocks — see `setDependencies` for why.
 
