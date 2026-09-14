@@ -277,7 +277,7 @@ if [ -f "$ED" ]; then
   # The brief is `status: stable`, so check rule 6 requires an index.md bullet for it.
   assert_present "epic-doc: the brief's \`index.md\` bullet is written by every operation that writes the brief" \
     "$ED" 1 "$L" 'no bullet in `index\.md` resolves to'
-  assert_count "epic-doc: \`<knowledge.dir>/index.md\` is written and committed by every operation that writes the brief (cited 8 times: twice in the catalog rule, once in the dirty-path guard, once in record's pathspec, once in the bootstrap's, three times in note-apply — its no-op test, add and commit — tune this count in the same commit that changes the section, per CLAUDE.md)" \
+  assert_count "epic-doc: \`<knowledge.dir>/index.md\` is written and committed by every operation that writes the brief (cited on 8 lines: twice in the catalog rule, once in the dirty-path guard, once in record's step 4 (its no-op test and pathspec share that line), once in the bootstrap's, three times in note-apply — its no-op test, add and commit — tune this count in the same commit that changes the section, per CLAUDE.md)" \
     "$ED" 1 "$L" '<knowledge\.dir>/index\.md' 8
   assert_has "epic-doc: bullets \`write the link form whenever a concept for the fact exists\`" \
     "$ED" 'write the link form whenever a concept for the fact exists'
