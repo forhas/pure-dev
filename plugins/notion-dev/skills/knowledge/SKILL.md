@@ -200,7 +200,10 @@ request from `gh pr view <n> --json body,comments`, then follows the same six st
 still not know this?* Keep rejected approaches and why, traps that cost time, decisions and what
 they rule out, constraints that must hold. Drop what the code says, the diff, the ticket text,
 status, and style. **An empty capture is a correct outcome**: append one dated
-`- <date> [<KEY>-<n>]: nothing durable` line to `log.md` and return `KNOWLEDGE: empty`.
+`- <date> [<KEY>-<n>]: nothing durable (<merge-sha>)` line to `log.md` and return
+`KNOWLEDGE: empty` — unless `log.md` already carries that `[<KEY>-<n>]` + `<merge-sha>` line
+(a re-run of an already-landed capture, where every candidate reads `untouched`): then append
+nothing and return the same `empty` block with `COMMIT: none`, so recovery runs stay idempotent.
 
 **2. Verify before citing.** A specific claim — a count, an order, a location — is checked against
 the file it names before it is written. `sources[]` cites the PR and the ticket by URL and any
