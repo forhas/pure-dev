@@ -54,6 +54,17 @@ assert_has "broken-log names the schema rule"         "$OUT/broken-log.txt"     
 assert_has "broken-link-outward names the missing outside-bundle target" \
   "$OUT/broken-link-outward.txt" 'epic/STO-1-demo-epic.md: link: ../docs/nope (outside bundle, not on disk)'
 
+echo "== check: an outward link to an EXTENSIONLESS file resolves to the exact path first =="
+# iwe leaves `../LICENSE` as is (it only strips `.md`), so appending `.md` unconditionally
+# would report a valid link as missing and block captures; the exact path must be tried first.
+XL=$(mktemp -d); cp -r "$FX/valid" "$XL/knowledge"; printf 'MIT\n' > "$XL/LICENSE"
+printf '\nSee [the licence](../../LICENSE).\n' >> "$XL/knowledge/epic/STO-1-demo-epic.md"
+run ext-present 0 check --dir "$XL/knowledge" --plugin-root "$ROOT" --extra-types commitment
+rm -f "$XL/LICENSE"
+run ext-missing 1 check --dir "$XL/knowledge" --plugin-root "$ROOT" --extra-types commitment
+assert_has "a missing extensionless target is still a finding" "$OUT/ext-missing.txt" 'link: ../LICENSE (outside bundle, not on disk)'
+rm -rf "$XL"
+
 echo "== check: warnBytes warns, never fails =="
 run warn 0 check --dir "$FX/valid" --plugin-root "$ROOT" --extra-types commitment --warn-bytes 10
 assert_has "a tiny warn-bytes produces warn lines" "$OUT/warn.txt" ': warn: '

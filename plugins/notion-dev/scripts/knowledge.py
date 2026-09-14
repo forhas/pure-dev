@@ -234,8 +234,10 @@ def run_check(a):
         for r in d.get("references", []) or []:
             key = r["key"]
             if key.split("/")[0] == "..":
-                disk_rel = key if os.path.splitext(key)[1] else key + ".md"
-                disk_path = os.path.normpath(os.path.join(bundle, disk_rel))
+                # iwe strips `.md` from keys but leaves an extensionless target (`../LICENSE`)
+                # as is, so try the exact path first and the `.md` form only as the fallback.
+                exact = os.path.normpath(os.path.join(bundle, key))
+                disk_path = exact if os.path.isfile(exact) else exact + ".md"
                 if not os.path.isfile(disk_path):
                     findings.append(f"{d['key']}.md: link: {key} (outside bundle, not on disk)")
                 continue
@@ -244,8 +246,8 @@ def run_check(a):
                 # `docs/guide`, indistinguishable from an in-bundle key — so before calling it
                 # dangling, try it on disk against the repository root (a git top level, when
                 # the bundle sits in one). Still absent → dangling, as before.
-                disk_rel = key if os.path.splitext(key)[1] else key + ".md"
-                if repo_top and os.path.isfile(os.path.join(repo_top, disk_rel)):
+                if repo_top and (os.path.isfile(os.path.join(repo_top, key))
+                                 or os.path.isfile(os.path.join(repo_top, key + ".md"))):
                     continue
                 findings.append(f"{d['key']}.md: link: {key}")
 
@@ -778,13 +780,18 @@ def _rewrite_links(text, resolve):
 
     def repl(m):
         label, target = m.group(1), m.group(2)
-        if not _is_rewritable_link(target):
+        # `[t](<a path with spaces.md>)` is valid Markdown: unwrap the angle brackets for
+        # resolution and put them back around the relocated destination.
+        wrapped = len(target) >= 2 and target[0] == "<" and target[-1] == ">"
+        inner = target[1:-1] if wrapped else target
+        if not _is_rewritable_link(inner):
             return m.group(0)
-        path_part, sep, frag = target.partition("#")
+        path_part, sep, frag = inner.partition("#")
         new_path = resolve(path_part)
         if new_path is None:
             return m.group(0)
-        return f"[{label}]({new_path}{sep}{frag})"
+        dest = f"{new_path}{sep}{frag}"
+        return f"[{label}](<{dest}>)" if wrapped else f"[{label}]({dest})"
 
     return MD_LINK_RE.sub(repl, text)
 
