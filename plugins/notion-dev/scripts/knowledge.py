@@ -134,11 +134,17 @@ def run_check(a):
                     relf = os.path.relpath(os.path.join(root, fn), bundle)
                     findings.append(f"{relf}: type: undeclared directory {d}")
 
-    # 4. links
+    # 4. links. A reference key that climbs out of the bundle root (iwe renders those as
+    # `../...` keys) points at a file outside the OKF-managed collection entirely — a
+    # filesystem link the bundle doesn't own and has no way to validate — so only
+    # bundle-internal references are held to "must resolve to a known doc key".
     for d in all_docs:
         for r in d.get("references", []) or []:
-            if r["key"] not in keys:
-                findings.append(f"{d['key']}.md: link: {r['key']}")
+            key = r["key"]
+            if key.split("/")[0] == "..":
+                continue
+            if key not in keys:
+                findings.append(f"{d['key']}.md: link: {key}")
 
     # 5. superseded_by
     for d in all_docs:
@@ -371,6 +377,93 @@ def add_epic_frontmatter(body_text, filename):
     return "\n".join(fm) + "\n" + body_text
 
 
+# ---------------------------------------------------------------------------
+# migrate step 5: relative links broken by moving the brief (spec §7 step 5)
+# ---------------------------------------------------------------------------
+
+MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
+
+
+def _is_rewritable_link(target):
+    """False for URLs, mailto:, and bare anchors — nothing os.path can resolve."""
+    if not target or target.startswith("#"):
+        return False
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target):  # any URL scheme, incl. mailto:
+        return False
+    return True
+
+
+def _rewrite_links(text, resolve):
+    """resolve(path_without_fragment) -> new relative path, or None to leave the link as-is."""
+
+    def repl(m):
+        label, target = m.group(1), m.group(2)
+        if not _is_rewritable_link(target):
+            return m.group(0)
+        path_part, sep, frag = target.partition("#")
+        new_path = resolve(path_part)
+        if new_path is None:
+            return m.group(0)
+        return f"[{label}]({new_path}{sep}{frag})"
+
+    return MD_LINK_RE.sub(repl, text)
+
+
+def _resolve_link_target(base_dir_abs, target):
+    return os.path.normpath(os.path.join(base_dir_abs, target))
+
+
+def _rewrite_brief_links(body, old_dir_abs, new_dir_abs):
+    """(a) Every relative link inside the moved brief, recomputed from its new location."""
+
+    def resolve(path_part):
+        old_abs = _resolve_link_target(old_dir_abs, path_part)
+        return os.path.relpath(old_abs, new_dir_abs).replace(os.sep, "/")
+
+    return _rewrite_links(body, resolve)
+
+
+def _rewrite_links_to_brief(text, file_dir_abs, old_brief_abs, new_brief_abs):
+    """(b) Only links that resolve to the moved brief's OLD path get repointed."""
+
+    def resolve(path_part):
+        target_abs = _resolve_link_target(file_dir_abs, path_part)
+        if target_abs != old_brief_abs:
+            return None
+        return os.path.relpath(new_brief_abs, file_dir_abs).replace(os.sep, "/")
+
+    return _rewrite_links(text, resolve)
+
+
+def _git_tracked_md_files(repo_root):
+    """`git ls-files '*.md'` relative to repo_root, or None if not a git repo / no git."""
+    try:
+        p = subprocess.run(["git", "ls-files", "*.md"], cwd=repo_root,
+                            capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
+    if p.returncode != 0:
+        return None
+    return [ln.strip() for ln in p.stdout.splitlines() if ln.strip()]
+
+
+def _apply_text_rewrite(result, repo_root, relpath, rewrite):
+    """Applies `rewrite(text) -> text` to the already-migrated result entry when present,
+    else to the file's current on-disk content. Updates `result` only when text changes."""
+    if relpath in result:
+        current = result[relpath]
+    else:
+        abspath = os.path.join(repo_root, relpath)
+        if not os.path.isfile(abspath):
+            return
+        with open(abspath, "rb") as f:
+            current = f.read()
+    text = current.decode("utf-8")
+    new_text = rewrite(text)
+    if new_text != text:
+        result[relpath] = new_text.encode("utf-8")
+
+
 def _build_migration(bundle, repo_root, plugin_root, config_path):
     """Returns (result: {repo-relative path: new bytes}, to_delete: [repo-relative path])."""
     result = {}
@@ -419,8 +512,10 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
     epic_docs_dir = None
     if isinstance(cfg.get("epicDocs"), dict):
         epic_docs_dir = cfg["epicDocs"].get("dir")
+    moved_briefs = []  # [(old_repo_rel, new_repo_rel)], for step 5
     if epic_docs_dir:
         abs_epics_dir = os.path.join(repo_root, epic_docs_dir)
+        new_epic_dir_abs = os.path.join(repo_root, bundle_rel, "epic")
         if os.path.isdir(abs_epics_dir):
             for fn in sorted(os.listdir(abs_epics_dir)):
                 if not fn.endswith(".md"):
@@ -428,12 +523,38 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                 src = os.path.join(abs_epics_dir, fn)
                 with open(src, "r", encoding="utf-8") as f:
                     body = f.read()
+                # 5(a): recompute this brief's own relative links before adding frontmatter.
+                body = _rewrite_brief_links(body, abs_epics_dir, new_epic_dir_abs)
                 new_body = add_epic_frontmatter(body, fn)
-                result[os.path.join(bundle_rel, "epic", fn)] = new_body.encode("utf-8")
-                to_delete.append(os.path.relpath(src, repo_root))
+                new_rel = os.path.join(bundle_rel, "epic", fn)
+                result[new_rel] = new_body.encode("utf-8")
+                old_rel = os.path.relpath(src, repo_root)
+                to_delete.append(old_rel)
+                moved_briefs.append((old_rel, new_rel))
 
-    # step 5: relative links broken by the move. None of task 1's fixtures move a brief
-    # that anything else links to, so there is nothing to rewrite here; left as a no-op.
+    # step 5(b): every other tracked *.md file that links to a moved brief's old path gets
+    # that link repointed at the new path, relative to the linking file. Requires the bundle
+    # to be inside a git repo (to enumerate tracked files); otherwise this is skipped with a
+    # warning, never an error — migrate still succeeds, just without this rewrite.
+    if moved_briefs:
+        tracked = _git_tracked_md_files(repo_root)
+        if tracked is None:
+            print("warn: migrate step 5b skipped — bundle is not inside a git repository "
+                  "(links to the moved brief from outside the bundle were not rewritten)")
+        else:
+            moved_set = {old for old, _new in moved_briefs}
+            for relpath in tracked:
+                if relpath in moved_set:
+                    continue
+                file_dir_abs = os.path.join(repo_root, os.path.dirname(relpath))
+                for old_rel, new_rel in moved_briefs:
+                    old_abs = os.path.normpath(os.path.join(repo_root, old_rel))
+                    new_abs = os.path.normpath(os.path.join(repo_root, new_rel))
+                    _apply_text_rewrite(
+                        result, repo_root, relpath,
+                        lambda text, fd=file_dir_abs, oa=old_abs, na=new_abs:
+                            _rewrite_links_to_brief(text, fd, oa, na),
+                    )
 
     # step 6: config — drop epicDocs, add knowledge block, rename the post-merge hook
     if config_path:
@@ -502,6 +623,12 @@ def cmd_migrate(a):
         abspath = os.path.join(repo_root, relpath)
         backup[relpath] = open(abspath, "rb").read() if os.path.isfile(abspath) else None
 
+    # Directories os.makedirs() creates along the way that did not exist before this
+    # apply. Tracked so a failed post-apply check can remove them again, not just the
+    # files inside them — otherwise a reverted apply still leaves `epic/`,
+    # `.iwe/schemas/`, etc. behind as new, empty directories.
+    created_dirs = set()
+
     def restore():
         for relpath, content in backup.items():
             abspath = os.path.join(repo_root, relpath)
@@ -512,9 +639,20 @@ def cmd_migrate(a):
                 os.makedirs(os.path.dirname(abspath), exist_ok=True)
                 with open(abspath, "wb") as f:
                     f.write(content)
+        # Deepest first, and only when now-empty: a directory that still holds
+        # something restore() put back (or that pre-dated this apply) must survive.
+        for d in sorted(created_dirs, key=lambda p: p.count(os.sep), reverse=True):
+            try:
+                os.rmdir(d)
+            except OSError:
+                pass
 
     for relpath, content in result.items():
         abspath = os.path.join(repo_root, relpath)
+        d = os.path.dirname(abspath)
+        while d and d != repo_root and not os.path.isdir(d):
+            created_dirs.add(d)
+            d = os.path.dirname(d)
         os.makedirs(os.path.dirname(abspath), exist_ok=True)
         with open(abspath, "wb") as f:
             f.write(content)

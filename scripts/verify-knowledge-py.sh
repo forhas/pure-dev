@@ -71,16 +71,31 @@ assert_lacks "touched omits concepts without applies_to"          "$OUT/touched.
 rm -rf "$REPO"
 
 echo "== migrate: dry run writes nothing, apply matches expected =="
+# git-inited (and committed) because migrate step 5b enumerates `git ls-files '*.md'` to find
+# and repoint external links to the moved brief; mirrors the touched-block setup above. `.git`
+# itself is excluded from every byte-exact diff below, since the static fixtures on disk are
+# plain directories, not repos.
 M=$(mktemp -d); cp -r "$FX/migrate-input/." "$M/"
+( cd "$M" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 run migrate-dry 0 migrate --dir "$M/knowledge" --config "$M/.claude/notion-dev.config.json" --plugin-root "$ROOT"
-diff -r "$FX/migrate-input" "$M" >/dev/null && echo "ok: dry run left the tree byte-identical" \
+diff -r -x .git "$FX/migrate-input" "$M" >/dev/null && echo "ok: dry run left the tree byte-identical" \
   || { echo "FAIL: dry run modified the tree"; fails=$((fails+1)); }
 assert_has "dry run prints a unified diff" "$OUT/migrate-dry.txt" '+++ '
 run migrate-apply 0 migrate --apply --dir "$M/knowledge" --config "$M/.claude/notion-dev.config.json" --plugin-root "$ROOT"
-diff -r "$FX/migrate-expected" "$M" && echo "ok: apply produced the expected tree" \
+diff -r -x .git "$FX/migrate-expected" "$M" && echo "ok: apply produced the expected tree" \
   || { echo "FAIL: apply differs from expected"; fails=$((fails+1)); }
 run migrate-check 0 check --dir "$M/knowledge" --plugin-root "$ROOT"
 rm -rf "$M"
+
+echo "== migrate: a failed post-apply check reverts every file AND every directory it created =="
+MF=$(mktemp -d); cp -r "$FX/migrate-fail/." "$MF/"
+( cd "$MF" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+run migrate-fail 1 migrate --apply --dir "$MF/knowledge" --config "$MF/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+assert_has "the reverted apply's own output names the surviving finding" \
+  "$OUT/migrate-fail.txt" 'ticket/STO-9.md: link: decision/missing'
+diff -r -x .git "$FX/migrate-fail" "$MF" && echo "ok: reverted apply left no byte or directory changed" \
+  || { echo "FAIL: reverted apply left stray files or directories behind"; fails=$((fails+1)); }
+rm -rf "$MF"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
