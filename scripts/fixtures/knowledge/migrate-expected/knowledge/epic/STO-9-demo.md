@@ -2,11 +2,11 @@
 type: Epic
 title: "[STO-9] Demo epic"
 description: "Prove that `migrate` adds OKF frontmatter when moving a brief into the bundle."
-status: draft
+status: stable
 epic: STO-9
 generated: { by: notion-dev:migrate, at: "1970-01-01T00:00:00Z" }
 sources:
-  - { id: migrated, resource: epic/STO-9-demo.md }
+  - { id: epic, resource: "https://notion.so/STO-9", title: "[STO-9] Demo epic" }
 ---
 # [STO-9] Demo epic
 Epic: https://notion.so/STO-9 · Status: open · Updated: 2026-09-01

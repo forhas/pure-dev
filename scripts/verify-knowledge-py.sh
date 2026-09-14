@@ -62,13 +62,41 @@ echo "== check: iwe missing is exit 2 =="
 PYDIR=$(dirname "$(command -v python3)")
 PATH="$PYDIR:/usr/bin:/bin" run noiwe 2 check --dir "$FX/valid" --plugin-root "$ROOT"
 
+echo "== check: fail closed — a missing log.md is a finding, not a skipped rule =="
+NL=$(mktemp -d); cp -r "$FX/valid/." "$NL/"; rm -f "$NL/log.md"
+run nolog 1 check --dir "$NL" --plugin-root "$ROOT" --extra-types commitment
+assert_has "check names the missing \`log.md\`" "$OUT/nolog.txt" 'log.md: missing:'
+rm -rf "$NL"
+
+echo "== check: fail closed — a --plugin-root with no shipped iwe copy is exit 2 =="
+BOGUS=$(mktemp -d)
+run badroot 2 check --dir "$FX/valid" --plugin-root "$BOGUS" --extra-types commitment
+assert_has "the drift rule refuses to run rather than skipping" "$OUT/badroot.txt" 'drift rule cannot run'
+rm -rf "$BOGUS"
+
+echo "== check: --config supplies dir, extraTypes and warnBytes when the flags are absent =="
+CFGD=$(mktemp -d); mkdir -p "$CFGD/.claude"; cp -r "$FX/valid" "$CFGD/bundle"
+cat > "$CFGD/.claude/notion-dev.config.json" <<JSON
+{ "knowledge": { "dir": "bundle", "extraTypes": ["commitment"], "warnBytes": 10 } }
+JSON
+run cfg 0 check --config "$CFGD/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+assert_lacks "the configured \`extraTypes\` silences the type rule with no --extra-types flag" \
+  "$OUT/cfg.txt" ': type: undeclared directory'
+assert_has "the configured \`warnBytes\` is what the size rule warns against" \
+  "$OUT/cfg.txt" 'exceeds warnBytes 10'
+rm -rf "$CFGD"
+
 echo "== touched: fixture repo =="
 REPO=$(mktemp -d); cp -r "$FX/valid" "$REPO/knowledge"; mkdir -p "$REPO/src/cache" "$REPO/src/other"
 ( cd "$REPO" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base \
   && echo x > src/cache/a.rs && echo y > src/other/b.rs && git add -A \
   && git -c user.name=t -c user.email=t@t commit -qm touch )
 SHA=$(git -C "$REPO" rev-parse HEAD)
-( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$SHA" --dir knowledge > "$OUT/touched.txt" 2>&1 ); echo "exit $? (touched)"
+( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$SHA" --dir knowledge > "$OUT/touched.txt" 2>&1 )
+tex=$?
+if [ "$tex" -ne 0 ]; then
+  echo "FAIL: touched exited $tex, wanted 0"; cat "$OUT/touched.txt"; fails=$((fails+1))
+else echo "ok: touched exit 0"; fi
 assert_has   "touched lists the concept whose applies_to matched" "$OUT/touched.txt" 'decision/keep-cache.md'
 assert_lacks "touched omits concepts without applies_to"          "$OUT/touched.txt" 'gotcha/new-trap.md'
 rm -rf "$REPO"
@@ -89,6 +117,38 @@ diff -r -x .git "$FX/migrate-expected" "$M" && echo "ok: apply produced the expe
   || { echo "FAIL: apply differs from expected"; fails=$((fails+1)); }
 run migrate-check 0 check --dir "$M/knowledge" --plugin-root "$ROOT"
 rm -rf "$M"
+
+echo "== migrate: wrapped frontmatter, a wrapped log and a bulletless index section =="
+# The three transforms that destroyed both real client bundles, each with its own input:
+# a frontmatter key whose flow mapping wraps over two lines, a log whose bullets wrap and
+# whose sub-sections the log schema forbids, and an index section carrying prose and no
+# bullet at all. None of them was exercised by any fixture before.
+MW=$(mktemp -d); cp -r "$FX/migrate-wrapped/." "$MW/"
+( cd "$MW" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+run migrate-wrapped-dry 0 migrate --dir "$MW/knowledge" --config "$MW/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+assert_has "migrate says step 4 moved no brief when \`docs/epics\` is absent" \
+  "$OUT/migrate-wrapped-dry.txt" 'migrate step 4 moved no brief — docs/epics/ does not exist'
+run migrate-wrapped 0 migrate --apply --dir "$MW/knowledge" --config "$MW/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+diff -r -x .git "$FX/migrate-wrapped-expected" "$MW" && echo "ok: wrapped apply produced the expected tree" \
+  || { echo "FAIL: wrapped apply differs from expected"; fails=$((fails+1)); }
+assert_lacks "the dropped \`reconciled\` key takes its wrapped continuation line with it" \
+  "$MW/knowledge/decision/flow-mapping.md" 'against: [pr-82'
+assert_lacks "the dropped \`verified\` key takes its nested block lines with it" \
+  "$MW/knowledge/decision/flow-mapping.md" 'by: human:yogev'
+MWL=$(total_lines "$MW/knowledge/log.md")
+MWI=$(total_lines "$MW/knowledge/index.md")
+assert_present "the wrapped log bullet keeps its continuation line, indented under its bullet" \
+  "$MW/knowledge/log.md" 1 "$MWL" '^  the first line break the way the flat entry matcher did\.$'
+assert_present "a \`###\` sub-section the log schema forbids becomes a bullet, never a deletion" \
+  "$MW/knowledge/log.md" 1 "$MWL" '^- \*\*A sub-section the log schema'
+assert_absent "the bulletless \`# The bundle\` index section is dropped, not emitted" \
+  "$MW/knowledge/index.md" 1 "$MWI" '^# The bundle$'
+assert_present "every stable concept gets its index bullet, including \`gotcha/uncatalogued.md\`, which the client never catalogued" \
+  "$MW/knowledge/index.md" 1 "$MWI" '^- \[.*\]\(gotcha/uncatalogued\.md\)'
+assert_has "the client's own \`warnBytes\` survives the config rewrite" \
+  "$MW/.claude/notion-dev.config.json" '"warnBytes": 65536'
+run migrate-wrapped-check 0 check --dir "$MW/knowledge" --plugin-root "$ROOT"
+rm -rf "$MW"
 
 echo "== migrate: a failed post-apply check reverts every file AND every directory it created =="
 MF=$(mktemp -d); cp -r "$FX/migrate-fail/." "$MF/"
