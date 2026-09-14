@@ -391,10 +391,12 @@ okf_version: "0.2"
 
 ### 10. Commit (optional)
 
+The scaffolded `<knowledge.dir>/` is part of this commit: `/notion-dev:ticket`'s clean-tree precondition rejects a run over an untracked bundle, so an init that committed only the config would send the user straight into that refusal. When step 9 scaffolded nothing (the bundle already existed), the pathspec is a no-op.
+
 Ask `AskUserQuestion`: "Commit the new config files?" If yes:
 
 ```
-git add .claude/notion-dev.config.json .mcp.json
+git add .claude/notion-dev.config.json .mcp.json <knowledge.dir>
 git commit -m "chore: initialize notion-dev plugin"
 ```
 
