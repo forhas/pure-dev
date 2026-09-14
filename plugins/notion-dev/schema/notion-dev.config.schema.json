@@ -162,16 +162,34 @@
         }
       }
     },
-    "epicDocs": {
+    "knowledge": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "dir": {
           "type": "string",
-          "default": "docs/epics",
+          "default": "knowledge",
           "minLength": 1,
           "pattern": "^(?![A-Za-z]:)(?!/)(?!\\.\\.(/|$))(?!.*/\\.\\.(/|$))[^\\\\\\u0000]+$",
-          "description": "Directory, relative to the repo root (non-empty; forward slashes only; no leading slash, no drive letter, no `..` segment, so it cannot escape the repository on any platform), holding the per-epic markdown briefs written by notion-dev:epic-doc. One file per epic, named <KEY>-<n>-<slug>.md. Not opt-in: every epic gets one on its first resolution or first /notion-dev:next-task run."
+          "description": "Directory, relative to the repo root, holding the OKF knowledge bundle notion-dev:knowledge reads and writes. The epic brief lives at <dir>/epic/<KEY>-<n>-<slug>.md."
+        },
+        "retrieveBudget": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 8000,
+          "description": "--max-tokens passed to iwe retrieve: the bundle's share of a run's context."
+        },
+        "warnBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "default": 8192,
+          "description": "Per-concept size above which knowledge.py check warns. Never fails."
+        },
+        "extraTypes": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "default": [],
+          "description": "Client-specific concept directories accepted beyond the canonical set."
         }
       }
     },

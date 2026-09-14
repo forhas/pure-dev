@@ -17,6 +17,7 @@ Read project state:
 - Detect the default branch: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'`; fall back to `master` then `main`.
 - Detect tech stack by probing: `foundry.toml`, `Makefile`, `package.json`, `pyproject.toml`.
 - Probe `gh` CLI: `command -v gh` and `gh auth status 2>&1`. Record whether `gh` is available and authenticated — used later in step 4.
+- Probe `iwe --version` (≥ 0.19) and `python3 --version`. Record both — used later in step 9 to scaffold the knowledge bundle. Missing or older `iwe`: name both install routes, `cargo install iwe --root ~/.local` (works wherever Rust does; required on hosts whose GLIBC is older than 2.39, which includes Ubuntu 22.04 under WSL) and `brew install iwe` / `npm i -g @iwe-org/iwe` where the prebuilt binary runs, and record `missing-dependency:iwe` per `notion-dev:issue-log`. Missing `python3`: warn plainly — `${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py` cannot run without it. Neither probe aborts init: the bundle degrades exactly as `notion-dev:knowledge` describes, the same way a missing `gh` does not abort here.
 - **Build-flow plugins (hard requirement).** `/notion-dev:ticket` needs both flows
   available regardless of which one triage picks. Check the available-skills list for:
   - superpowers: `superpowers:writing-plans`, `superpowers:subagent-driven-development`,
@@ -309,7 +310,7 @@ Ask `AskUserQuestion` (multi-select) if the user wants to adjust this list.
 - `baseBranch`: prefill with detected default branch. Ask `AskUserQuestion` to confirm or override.
 - `prTargetBranch`: default to `baseBranch` (omit from config if same).
 - `mergeStrategy`: default `"squash"`. Don't prompt unless the user asks to customize.
-- `preMergeChecks: []`, `postMergeHooks: []`. Do not prompt — these are phase-2 seams and empty is correct for the simple flow.
+- `preMergeChecks: []`. Do not prompt — this is a phase-2 seam and empty is correct for the simple flow. `postMergeHooks` is not set here — step 9 sets it once the knowledge bundle is scaffolded.
 
 ### 6a. Code reviewer
 
@@ -373,12 +374,29 @@ Always write `reviewer` explicitly (unlike the omit-when-default properties abov
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 
+Scaffold `<knowledge.dir>/` when absent: copy `${CLAUDE_PLUGIN_ROOT}/skills/knowledge/references/iwe/` to `<knowledge.dir>/.iwe/`, then write `index.md` and `log.md` **in the exact shape below**. Never overwrite an existing bundle's `index.md` or `log.md`. Type directories are not created: git cannot track an empty directory, so they would vanish on the first clone — each is created by the first concept written into it, and `check` only ever looks at directories that hold a `.md` file.
+
+```
+index.md                          log.md
+
+---                               # Update log
+okf_version: "0.2"
+---                               ## <today, YYYY-MM-DD>
+# Index                           - bundle created
+- [Update log](log.md) — this
+  bundle's history
+```
+
+**The seed bullet and the seed entry are not decoration.** The shipped `okf-index.yaml` requires a bullet list in every section and `okf-log.yaml` requires at least one `## YYYY-MM-DD` group holding one; an `index.md` that is only a heading and a `log.md` that is only a title fail both. Since `notion-dev:knowledge` `capture` writes nothing when `check` is non-zero, a bundle scaffolded without them makes the very first post-merge capture return `KNOWLEDGE: failed` — on a brand-new project, before anything has been written. `notion-dev:knowledge` `migrate` seeds a bundle that has neither file the same way. Ensure `notion-dev:knowledge` is in `git.postMergeHooks` **unconditionally** — on a fresh config that means writing `postMergeHooks: ["notion-dev:knowledge"]`; on reconfigure it means **appending** the name to whatever hooks the config already lists (deduplicated; never replacing the array, which would silently disable a client's own deployment or sync hooks and break the reconfiguration contract) — whether or not the bundle needed scaffolding this run, so a repo whose bundle already existed still gains the hook. The `knowledge` block itself follows the same omit-when-default convention as the rest of this step: no knowledge field is prompted for here, so every one would equal its schema default on a fresh init and the block is written only when a value differs from default — which reconfigure preserves exactly as it preserves `reviewsCap` above.
+
 ### 10. Commit (optional)
+
+The scaffolded `<knowledge.dir>/` is part of this commit: `/notion-dev:ticket`'s clean-tree precondition rejects a run over an untracked bundle, so an init that committed only the config would send the user straight into that refusal. When step 9 scaffolded nothing (the bundle already existed), the pathspec is a no-op.
 
 Ask `AskUserQuestion`: "Commit the new config files?" If yes:
 
 ```
-git add .claude/notion-dev.config.json .mcp.json
+git add .claude/notion-dev.config.json .mcp.json <knowledge.dir>
 git commit -m "chore: initialize notion-dev plugin"
 ```
 
@@ -395,6 +413,7 @@ Print a short summary:
 
   When a slot bound nothing, say so plainly and give the reason, distinguishing missing from mistyped: "Epic containers unavailable — no Checkbox property to use as the Is Epic marker, and `Is Epic` itself is a `select`. Epic grouping will use the Select tag only." versus "…no Checkbox property named `Is Epic` or otherwise available…". When a slot bound a correctly-typed property but the default name is still held by a wrong-typed column (`MARKER_NAME_TAKEN` / `PARENT_MISTYPED` from the resolution steps above — the parent one is the loose diagnostic, which is what names the column the user would clean up), report **available** and add the mistyped column as a note, not as a failure — it is a stale column the user may want to clean up, not something blocking the plugin.
 - Build-flow plugins verified: superpowers + feature-dev (required dependencies)
+- Knowledge bundle: `<knowledge.dir>/` scaffolded (or already present, left untouched) — `iwe` and `python3` available, or the install guidance from step 1 when either was missing.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."
 

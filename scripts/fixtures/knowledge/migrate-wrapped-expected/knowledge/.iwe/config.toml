@@ -1,0 +1,32 @@
+format = "markdown"
+version = 3
+
+[library]
+date_format = "%Y-%m-%d"
+path = ""
+
+[markdown]
+date_format = "%b %d, %Y"
+refs_extension = ".md"
+refs_path = "relative"
+refs_text = "preserve"
+wiki_link_path = "preserve"
+
+[markdown.formatting]
+
+[completion]
+link_format = "markdown"
+
+[search]
+language = "english"
+
+[schemas]
+
+[schemas.okf]
+match = ["**", "!index", "!**/index", "!log", "!**/log"]
+
+[schemas.okf-index]
+match = ["index", "**/index"]
+
+[schemas.okf-log]
+match = ["log", "**/log"]

@@ -1,0 +1,12 @@
+{
+  "git": {
+    "postMergeHooks": [
+      "notion-dev:knowledge"
+    ]
+  },
+  "knowledge": {
+    "warnBytes": 200,
+    "dir": "knowledge",
+    "extraTypes": []
+  }
+}
