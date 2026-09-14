@@ -1083,7 +1083,18 @@ def cmd_migrate(a):
     ca.extra_types = ",".join(sorted(t for t in concept_dirs(bundle) if t not in CANONICAL_TYPES))
     # The client's own `warnBytes` — a migration is the one run that used to ignore it (F25).
     ca.warn_bytes = a.warn_bytes if a.warn_bytes is not None else _config_warn_bytes(config_path)
-    if run_check(ca):
+    # `run_check` reaches `die()` (SystemExit 2) when iwe fails or returns malformed JSON;
+    # that path must restore the backup too, or a check that could not run leaves rewritten
+    # concepts, installed `.iwe/` files and deleted briefs in place behind a non-zero exit.
+    try:
+        ok = run_check(ca)
+    except SystemExit as e:
+        restore()
+        raise e
+    except BaseException:
+        restore()
+        raise
+    if ok:
         sys.exit(0)
     restore()
     sys.exit(1)

@@ -156,6 +156,16 @@ assert_present "that seeded log carries the \`- bundle created\` bullet the ship
   "$M/knowledge/log.md" 1 "$ML" '^- bundle created$'
 rm -rf "$M"
 
+echo "== migrate: a post-apply check that cannot run still restores the tree =="
+# `check` dying (exit 2: iwe missing) after the apply wrote files must leave the tree as it was.
+MX=$(mktemp -d); cp -r "$FX/migrate-input/." "$MX/"
+( cd "$MX" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+FAKE=$(mktemp -d); printf '#!/bin/sh\ncase "$*" in *"schema validate"*|*find*) exit 2;; esac\nexec %s "$@"\n' "$(command -v iwe)" > "$FAKE/iwe"; chmod +x "$FAKE/iwe"
+PATH="$FAKE:$PATH" run migrate-check-dies 2 migrate --apply --dir "$MX/knowledge" --config "$MX/.claude/notion-dev.config.json" --plugin-root "$ROOT"
+diff -r -x .git "$FX/migrate-input" "$MX" >/dev/null && echo "ok: a dying post-apply check restored the tree byte-identically" \
+  || { echo "FAIL: a dying post-apply check left the migration in place"; fails=$((fails+1)); }
+rm -rf "$MX" "$FAKE"
+
 echo "== migrate: a brief whose epic concept already exists is a collision, not an overwrite =="
 MC=$(mktemp -d); cp -r "$FX/migrate-collide/." "$MC/"
 ( cd "$MC" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
