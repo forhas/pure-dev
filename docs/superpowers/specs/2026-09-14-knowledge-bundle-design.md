@@ -35,7 +35,7 @@ epic's root concept inside the bundle. Every fact enters a run's context exactly
 | 1 | **Dependencies: `iwe` binary required, plus one shipped script** (`plugins/notion-dev/scripts/knowledge.py`, Python 3, standard library only). | iwe gives budgeted search-plus-graph retrieval in one call; the script holds only what iwe lacks. Both are per-machine installs like `gh` and `jq`. |
 | 2 | **Core only.** Schema, capture, retrieve, supersession, dedupe, migrate. Notion/Slack mirroring, source allowlists, verbatim records, transcript and mail inputs stay client-side and are tolerated by the schema. | That machinery was hardened for one client's needs; the schema leaves room for it without carrying it. |
 | 3 | **The brief is the epic's root concept**, at `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, six sections unchanged. `epicDocs.dir` is retired. | One writer discipline, one directory, one retrieve. Bullets link concepts instead of restating them. |
-| 4 | **Clients migrate in this effort**, one PR each after the plugin PR, via `migrate --dry-run` then `--apply`. | "No regression" is only demonstrated on the real bundles, hooks, and CI. |
+| 4 | **Clients migrate in this effort**, one PR each after the plugin PR, via `migrate --dry-run` then `--apply`, and **that PR deletes the client's own implementation** (§13). | "No regression" is only demonstrated on the real bundles, hooks, and CI; a bundle with two writers is the state this work ends. |
 | 5 | **Read-once.** Each fact has exactly one read path per run (§4). | Context is the scarce resource; overlap between Notion, brief, and bundle is the waste. |
 | 6 | **Valid until superseded.** No `stale_after`, no `reconciled` clock, no scheduled sweep, no source polling. Knowledge changes only when new information arrives: a merge (`capture`) or a fact (`new-info`). | Minimum maintenance. A green cron nobody opens is not a safeguard. |
 | 7 | **No hard byte cap.** A per-concept size *warning* (`knowledge.warnBytes`, default 8192) and a read-time token budget on `iwe retrieve`. | The 4096 cap cost seven trim passes on one ticket; the budget it protected is now enforced where it matters. |
@@ -280,9 +280,11 @@ writes nothing.
    `extraTypes` set to the non-canonical directories found; replace the `postMergeHooks` entry
    `knowledge-capture` with `notion-dev:knowledge`.
 7. `knowledge.py check` must exit 0 on the result, or `--apply` reverts everything it wrote.
-8. Report what a client still has to delete by hand, with the rule each covered and the `check`
-   rule that now covers it: the client's `knowledge-capture` skill directory, its validators,
-   its CI sweep. The command never deletes client code.
+8. Print the removal checklist for this client (§13), derived from what it found: the skill
+   directory the old `postMergeHooks` entry named, every script under `scripts/knowledge/`,
+   every workflow and Makefile target that invokes one, and the CLAUDE.md lines that route to
+   them. The command never deletes client code; the client PR does (§13), and the checklist is
+   pasted into that PR's body with each line ticked.
 
 ## 8. Changes to existing commands and skills
 
@@ -373,7 +375,8 @@ observed on the next ticket.
 - `README.md`: Requirements (`iwe`, `python3`), command table row for `/notion-dev:knowledge`,
   a "Knowledge bundle" section replacing the epic-docs paragraph's location claim, and the
   `new-info` sentence about bundles.
-- `plugin.json` `0.23.0 → 0.24.0` (new capability).
+- `plugin.json` `0.23.0 → 0.24.0` (new capability). After the squash merge, tag it
+  `notion-dev-v0.24.0` and push the tag: client CI fetches `knowledge.py` by that ref (§13).
 - `docs/superpowers/specs/2026-09-13-epic-doc-design.md` gains one line at the top pointing
   here for the path change.
 
@@ -389,8 +392,65 @@ Modify: `skills/epic-doc/SKILL.md`, `commands/{ticket,next-task,new-info,init,fi
 `schema/notion-dev.config.schema.json`, `README.md`, `.claude-plugin/plugin.json`,
 `.github/workflows/verify.yml`, `scripts/verify-epic-doc.sh`, `scripts/verify-new-info.sh`.
 
+## 13. Client removal — nothing exists twice
+
+Once 0.24.0 is installed in a client, the client's own implementation is deleted **in the same
+client PR that migrates the bundle**. A migrated bundle beside a live `knowledge-capture`
+skill is two writers and two schemas, which is the state this spec exists to end. The PR is
+not done while any line of the inventory below survives, and its body carries the inventory
+with each line ticked and, for every retired check, the `knowledge.py check` rule that covers
+it now.
+
+**Client CI keeps a validate gate.** `knowledge.py` is fetched, not vendored, so it cannot
+diverge: pure-dev is public, and the plugin PR tags its merge commit `notion-dev-v0.24.0`
+(the first tag in this repository; every later notion-dev minor gets one). A client workflow
+step is:
+
+```yaml
+- run: |
+    curl -fsSL https://raw.githubusercontent.com/forhas/pure-dev/notion-dev-v0.24.0/plugins/notion-dev/scripts/knowledge.py -o /tmp/knowledge.py
+    python3 /tmp/knowledge.py check
+```
+
+pinned to the tag the client's installed plugin version matches. The same one-liner replaces a
+local pre-commit hook where a client had one.
+
+**BTC-Gateway** (`~/win-home/dev/playza/BTC-Gateway`, epic STO-67):
+
+| remove | replaced by |
+|---|---|
+| `.claude/skills/knowledge-capture/` | `notion-dev:knowledge` `capture` via the hook |
+| `scripts/knowledge/check.cli.js`, `check.js`, `check.test.js` | `knowledge.py check` (schema, links, index, type dirs; byte cap → `warnBytes` warning) |
+| `scripts/knowledge/report.cli.js`, `report.js`, `report.test.js` | `check` (orphans are index gaps) and `curate` (near-duplicates); staleness has no successor by decision 6 |
+| `package.json` scripts `knowledge:check`, `knowledge:report`; the `scripts/knowledge/*.test.js` glob in `test:scripts` | a `knowledge-check` CI job on the fetched script |
+| `.claude/skills/dream/SKILL.md` bundle half (its `knowledge/` orientation, `iwe find`/`retrieve` reads, `knowledge:report` worklist, index pruning) | `/notion-dev:knowledge curate`; the memory-directory half and the mail/transcript inputs stay |
+| `CLAUDE.md` "Tool Routing" bundle paragraphs (`iwe find`/`retrieve`, deprecated-filter guidance) | one line: the bundle reaches a run through `notion-dev:knowledge retrieve`; do not query it again |
+| `.claude/commands/maintain.md` step 13 and `release.md` step 10: the 4096-byte cap and `iwe extract` instructions | "write the concept, then `knowledge.py check`"; those steps keep writing `node/` and `release/` concepts, declared in `extraTypes: ["commitment", "node"]` |
+| `.claude/notion-dev.config.json`: `postMergeHooks: ["knowledge-capture"]` | `["notion-dev:knowledge"]`, plus the `knowledge` block |
+| `knowledge/ticket/STO-67.md` stays; it is the epic's `Ticket` concept (its `# Ruled out` has no home in the brief template) and the new `epic/STO-67-…` root links it under `## Decisions & constraints` | — |
+| `scripts/knowledge/mail-extract.js` stays (dream input, client-side by decision 2) | — |
+
+**smart-contracts-foundry** (`~/dev/oinc/LAST/smart-contracts-foundry`, epic STO-306):
+
+| remove | replaced by |
+|---|---|
+| `.claude/skills/knowledge-capture/`, `.claude/skills/knowledge-curate/` | `capture` via the hook; `curate` |
+| `scripts/knowledge/okf.py` | `knowledge.py`; before deletion the three helpers `mirror.py` imports (`notion_page_id`, `source_class`, `registry_problem`/`load_registry`) are inlined into `mirror.py`, which stays by decision 2 |
+| `scripts/hooks/pre-commit` `okf.py validate` call; `Makefile` targets `knowledge`, `knowledge-stale`, `knowledge-reconcile` | pre-commit and `make knowledge` run the fetched `knowledge.py check`; the stale and reconcile targets have no successor by decision 6; `knowledge-mirror` stays |
+| `.github/workflows/knowledge-sweep.yml` `sweep` job (weekly cron, issue-opening) and every `okf.py` line | the `validate` job on the fetched script; `mirror.py status/check` may keep a schedule if wanted, as client-only tooling |
+| `knowledge/.okf/schema.yaml` | the shipped `.iwe/schemas/okf.yaml`; the shipped schema permits additional frontmatter fields, so `sources[].author`, `sources[].last_modified`, `applies_to`, `open_questions` remain valid; `knowledge/.okf/sources.yaml` stays as `mirror.py`'s registry |
+| `CLAUDE.md` "## Knowledge Bundle" section and the `okf.py query` instruction | the same one line as BTC-Gateway |
+| `knowledge/index.md` "Optional: query over MCP" section | deleted; the plugin reads through the CLI |
+| `.claude/notion-dev.config.json`: `postMergeHooks: ["knowledge-capture"]` | `["notion-dev:knowledge"]`, plus the `knowledge` block (`extraTypes: []`) |
+| `docs/sto-306-completion-plan.md` | untouched here; `next-task`'s bootstrap distils it into `epic/` and removes the seed, as today |
+
+**Order.** Plugin PR merges and is tagged → client updates the plugin → `migrate --dry-run`
+reviewed → `migrate --apply` → removals above → `knowledge.py check` exits 0 and the client's
+own suite passes → PR through the client's normal flow → one real post-merge capture observed
+on the next ticket. Each client is one session and one PR.
+
 ## Out of scope
 
 Notion/Slack mirroring and source allowlists; verbatim records; transcript or mail inputs;
-embeddings or any search beyond iwe's; a scheduled sweep; editing Notion pages from the bundle;
-the client PRs themselves (each is its own session, driven by this spec's §7 and §11).
+embeddings or any search beyond iwe's; a scheduled sweep; editing Notion pages from the bundle.
+The client PRs are planned here (§7, §11, §13) and executed in their own sessions.
