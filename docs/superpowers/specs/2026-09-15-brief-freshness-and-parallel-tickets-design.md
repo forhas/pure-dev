@@ -234,8 +234,11 @@ tree, stash for the user's permitted edits.
   timeout, return `failed` with `CAUSE: primary lock held by <run> (<section>) since <time>`.
   The `record` sections of `ticket` and `finalize` pass `--wait 3600`; a timeout there is the
   flow's ordinary stop report (cleanup not run, worktree left), because cleanup cannot be skipped.
-- **Stale locks:** `take` treats an `owner` older than 30 minutes as abandoned — no section is
-  designed to hold it that long — removes it, takes the lock, and prints `stale: <old owner>`.
+- **Stale locks:** `take` treats an `owner` older than 60 minutes as abandoned — no section is
+  designed to hold it that long, and the longest wait any section passes (`--wait 3600`) is the
+  same bound, so a waiter never breaks a lock a live section may still hold; a `record` section
+  is bounded by that hour too — a post-merge hook that cannot finish inside it must not be
+  configured — removes it, takes the lock, and prints `stale: <old owner>`.
   The caller records `lock-stale:primary` per `notion-dev:issue-log` and names it in its report.
   Nothing else ever removes another run's lock.
 - **Release on every path:** success, `failed`, and the stop path all release before the run
@@ -370,7 +373,9 @@ are constants in the script, not config.
 ## §8 Merging in parallel (PR 2)
 
 - **`review-and-merge` step 5, before the merge command:** read `mergeStateStatus`. `BEHIND` or
-  `DIRTY` → in the worktree: first record the **bump class** — compare the manifest at
+  `DIRTY`, **or `git merge-base --is-ancestor origin/<base> HEAD` fails** (GitHub reports `BEHIND`
+  only under branch protection; an unprotected base reports `CLEAN` for a head that fell behind) →
+  in the worktree: first record the **bump class** — compare the manifest at
   `git merge-base origin/<base> HEAD` with the head's; the first differing component is the class,
   identical manifests mean no class, a lower head version stops the run — then `git fetch origin
   <base>`, `git rebase origin/<base>`, the version re-check and re-bump commit below, ONE verify run
