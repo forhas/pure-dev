@@ -32,6 +32,7 @@ assert_present "1.2 resume: \`stopped\`, a heartbeat older than 2 hours, or no m
 assert_present "1.2 resume: non-interactive never takes over" "$TICKET" "$P12" "$P13" 'non-interactive never takes over'
 assert_present "1.2 resume: the marker is re-read after the rewrite and a stolen resume aborts" "$TICKET" "$P12" "$P13" 'no longer names this run \(`session` differs\)'
 assert_present "1.2 resume: the resume is claimed with an atomic \`mkdir\` before anything is written" "$TICKET" "$P12" "$P13" 'mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"'
+assert_present "1.2 resume: the parent \`runs/\` is created with \`mkdir -p\`, the claim directory never is" "$TICKET" "$P12" "$P13" 'Create the parent `\$REPO_ROOT/\.claude/notion-dev/runs/` with `mkdir -p` first.*Never `mkdir -p` the claim directory itself'
 assert_present "1.2 resume: a lost \`mkdir\` claim runs none of the resume rules below" "$TICKET" "$P12" "$P13" '`mkdir` fails.*\*\*run none of the resume rules below\*\*'
 assert_present "1.2 resume: a stale \`.claim\` is retired by rename, never by an unqualified remove" "$TICKET" "$P12" "$P13" 'retire it \*\*by rename\*\*, exactly as `knowledge.py`.s stale break does.*then `mkdir` the claim'
 assert_present "1.2 resume: the marker is re-read after \`mkdir\` and before it is rewritten" "$TICKET" "$P12" "$P13" '`mkdir` succeeds → \*\*re-read the marker before rewriting it\*\*'
