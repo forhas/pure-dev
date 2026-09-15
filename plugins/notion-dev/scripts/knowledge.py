@@ -9,6 +9,7 @@ is exit 2 — never an empty result standing in for a clean bundle.
 
 Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9;
 docs/superpowers/specs/2026-09-15-brief-freshness-and-parallel-tickets-design.md §3, §4, §5.
+Windows: Git Bash + `knowledge.python`.
 """
 import argparse
 import datetime
@@ -36,6 +37,25 @@ def die(msg):
     sys.exit(2)
 
 
+_IWE_EXE = None
+
+
+def _iwe_exe():
+    """Resolve the `iwe` binary once via shutil.which, falling back to the bare name.
+
+    Windows `CreateProcess` (what `subprocess.run` uses there with `shell=False`) appends
+    only `.exe` when resolving an extensionless command, and npm installs `iwe`, `iwe.cmd`
+    and `iwe.ps1` — never `iwe.exe` — so spawning literal `"iwe"` raises FileNotFoundError
+    even though `iwe` is on PATH. `shutil.which` honours PATHEXT and returns the `.cmd`
+    path, which `CreateProcess` launches correctly. Elsewhere (POSIX) this is a no-op:
+    `shutil.which("iwe")` already returns the same path `"iwe"` alone would resolve to.
+    """
+    global _IWE_EXE
+    if _IWE_EXE is None:
+        _IWE_EXE = shutil.which("iwe") or "iwe"
+    return _IWE_EXE
+
+
 def iwe(args, cwd, violations_exit=()):
     """Run iwe; exit 2 if the binary is missing or the call fails.
 
@@ -43,9 +63,16 @@ def iwe(args, cwd, violations_exit=()):
     `iwe schema validate` exits 1 with a violation list. Every other non-zero exit is a
     call that could not run, and is exit 2: accepting it and reading `"" or "[]"` as an
     empty result is a check that passes because it never ran.
+
+    `encoding="utf-8"` is explicit because `text=True` alone decodes with the locale
+    encoding, which on native Windows is the ANSI code page (commonly cp1252) — iwe emits
+    UTF-8 JSON, so a bundle with non-ASCII keys would decode to mojibake (false dangling
+    links) or raise UnicodeDecodeError before `iwe_json` parses it. main()'s stream
+    reconfigure fixes this process's own output, never what it reads back from a child.
     """
     try:
-        p = subprocess.run(["iwe", *args], cwd=cwd, capture_output=True, text=True)
+        p = subprocess.run([_iwe_exe(), *args], cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8")
     except FileNotFoundError:
         die("iwe is not on PATH — install: cargo install iwe --root ~/.local (or brew/npm where GLIBC >= 2.39)")
     if p.returncode != 0 and p.returncode not in violations_exit:
@@ -220,7 +247,7 @@ def run_check(a):
         for root, _dirs, files in os.walk(os.path.join(bundle, d)):
             for fn in files:
                 if fn.endswith(".md"):
-                    relf = os.path.relpath(os.path.join(root, fn), bundle)
+                    relf = os.path.relpath(os.path.join(root, fn), bundle).replace(os.sep, "/")
                     findings.append(f"{relf}: type: undeclared directory {d}")
 
     # 4. links. A reference key that climbs out of the bundle root (iwe renders those as
@@ -855,17 +882,28 @@ def _apply_text_rewrite(result, repo_root, relpath, rewrite):
         result[relpath] = new_text.encode("utf-8")
 
 
+def _rel(*parts):
+    """Joins path parts into a repo-relative `result`/`to_delete` key, always forward-slash —
+    so it agrees with `git ls-files` output (step 5b's `tracked`) and with the other keys this
+    file builds, on every platform. `os.path.join` alone leaves Windows backslashes in the
+    joins it performs itself (even when every part passed in is already forward-slash-clean),
+    which would key an in-bundle tracked file's migrated entry twice — once here, once from
+    `_apply_text_rewrite`'s forward-slash `relpath` — with the later (forward-slash) write
+    silently clobbering the migrated content of the earlier (backslash) one."""
+    return os.path.join(*parts).replace(os.sep, "/")
+
+
 def _build_migration(bundle, repo_root, plugin_root, config_path):
     """Returns (result: {repo-relative path: new bytes}, to_delete: [repo-relative path])."""
     result = {}
     to_delete = []
-    bundle_rel = os.path.relpath(bundle, repo_root)
+    bundle_rel = os.path.relpath(bundle, repo_root).replace(os.sep, "/")
 
     # step 2: plugin-owned .iwe/ files, installed verbatim (overwriting)
     plugin_iwe_dir = os.path.join(plugin_root, KNOWLEDGE_IWE_REF)
     for rel in IWE_FILES:
         with open(os.path.join(plugin_iwe_dir, rel), "rb") as f:
-            result[os.path.join(bundle_rel, ".iwe", rel)] = f.read()
+            result[_rel(bundle_rel, ".iwe", rel)] = f.read()
 
     # step 3: concept frontmatter migration, log.md and index.md reshape. The catalog is
     # built from the text this step just produced — every `stable` concept needs an
@@ -879,14 +917,14 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                 if not fn.endswith(".md"):
                     continue
                 fpath = os.path.join(dirpath, fn)
-                rel_to_bundle = os.path.relpath(fpath, bundle)
+                rel_to_bundle = os.path.relpath(fpath, bundle).replace(os.sep, "/")
                 if dirpath == bundle and fn in ("log.md", "index.md"):
                     continue
                 with open(fpath, "r", encoding="utf-8-sig") as f:
                     text = f.read()
                 new_text = migrate_concept_text(text, rel_to_bundle,
                                                 bundle_name=os.path.basename(bundle))
-                result[os.path.join(bundle_rel, rel_to_bundle)] = new_text.encode("utf-8")
+                result[_rel(bundle_rel, rel_to_bundle)] = new_text.encode("utf-8")
                 key = rel_to_bundle[:-3].replace(os.sep, "/")
                 if concept_frontmatter_value(new_text, "status") == "stable":
                     catalog.append((key, concept_frontmatter_value(new_text, "title") or key,
@@ -898,7 +936,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
             log_text = reshape_log(f.read())
     else:
         log_text = seed_log()
-    result[os.path.join(bundle_rel, "log.md")] = log_text.encode("utf-8")
+    result[_rel(bundle_rel, "log.md")] = log_text.encode("utf-8")
 
     index_path = os.path.join(bundle, "index.md")
     index_src = None
@@ -936,7 +974,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
         if collisions:
             for fn in collisions:
                 print(f"{bundle_rel}/epic/{fn}: migrate: collides with "
-                      f"{os.path.relpath(os.path.join(abs_epics_dir, fn), repo_root)} — "
+                      f"{os.path.relpath(os.path.join(abs_epics_dir, fn), repo_root).replace(os.sep, '/')} — "
                       f"merge the two by hand, then re-run")
             sys.exit(1)
         for fn in briefs:
@@ -946,9 +984,9 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
             # 5(a): recompute this brief's own relative links before adding frontmatter.
             body = _rewrite_brief_links(body, abs_epics_dir, new_epic_dir_abs)
             new_body = add_epic_frontmatter(body, fn)
-            new_rel = os.path.join(bundle_rel, "epic", fn)
+            new_rel = _rel(bundle_rel, "epic", fn)
             result[new_rel] = new_body.encode("utf-8")
-            old_rel = os.path.relpath(src, repo_root)
+            old_rel = os.path.relpath(src, repo_root).replace(os.sep, "/")
             to_delete.append(old_rel)
             moved_briefs.append((old_rel, new_rel))
             # The brief is the bundle's root concept and `status: stable`, so it needs its
@@ -958,7 +996,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                             concept_frontmatter_value(new_body, "title") or fn[:-3],
                             concept_frontmatter_value(new_body, "description") or ""))
 
-    result[os.path.join(bundle_rel, "index.md")] = (
+    result[_rel(bundle_rel, "index.md")] = (
         reshape_index(index_src, catalog).encode("utf-8"))
 
     # step 5(b): every other tracked *.md file that links to a moved brief's old path gets
@@ -1004,7 +1042,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                 "notion-dev:knowledge" if h == "knowledge-capture" else h
                 for h in git_cfg["postMergeHooks"]
             ]
-        result[os.path.relpath(config_path, repo_root)] = (
+        result[os.path.relpath(config_path, repo_root).replace(os.sep, "/")] = (
             json.dumps(new_cfg, indent=2) + "\n"
         ).encode("utf-8")
 
@@ -1586,16 +1624,39 @@ def cmd_lock(a):
         tmp = d + ".release-%d-%d" % (os.getpid(), time.time_ns())
         try:
             os.rename(d, tmp)
-        except OSError:
+        except FileNotFoundError:
+            # Gone before we could move it: a breaker retired this run's lock as stale.
+            # Never retry that — half a second later `d` may be the breaker's own fresh
+            # lock, and moving a successor's directory aside is exactly how a release
+            # turns into two writers with no mutual exclusion.
             print("not held")
             sys.exit(1)
+        except PermissionError:
+            # Windows only: another process still has a handle open inside the directory
+            # (a sharing violation) — transient, not evidence the lock isn't held. Retry
+            # once, but re-read the owner first: the retry window is long enough for a
+            # breaker to retire this lock and a successor to take `d`, and the owner is
+            # what proves the directory is still ours to move.
+            time.sleep(0.5)
+            if _read_owner(d).get("run") != a.run:
+                print("not held")
+                sys.exit(1)
+            try:
+                os.rename(d, tmp)
+            except OSError:
+                print("not held")
+                sys.exit(1)
         moved = _read_owner(tmp)
         if moved.get("run") != a.run:
             try:
                 os.rename(tmp, d)          # not ours after all: put the holder's lock back
+                print("refused: " + _held_line(moved))
             except OSError:
-                shutil.rmtree(tmp, ignore_errors=True)
-            print("refused: " + _held_line(moved))
+                # `d` exists again, so someone took the lock while this one was parked.
+                # Leave the parked copy where it is and say where: deleting it would
+                # destroy a lock this run never owned, and an orphaned `.release-*`
+                # directory is inert — `take` and `status` read only `d`.
+                print("refused: " + _held_line(moved) + "; parked copy left at " + tmp)
             sys.exit(1)
         shutil.rmtree(tmp, ignore_errors=True)
         print("released")
@@ -1655,6 +1716,19 @@ def cmd_lock(a):
 # ---------------------------------------------------------------------------
 
 def main():
+    # On Windows Python translates "\n" to "\r\n" on text streams; `next`'s stdout is written
+    # over the brief byte-for-byte, so a CRLF stdout would make `unchanged` undecidable. And a
+    # redirected/piped stdout on Windows defaults to the locale codepage (e.g. cp1252), not
+    # UTF-8, so any non-ASCII character `next` writes (an em dash, a middle dot) would be
+    # silently mis-encoded — corrupting the brief and failing the next `encoding="utf-8"` read.
+    # stdout stays `errors="strict"` (the reconfigure default): byte fidelity is the whole
+    # point there. stderr gets `errors="backslashreplace"` instead — a finding can quote a
+    # surrogate-escaped filename (one `os.walk` handed back un-decodable on this platform),
+    # and a diagnostic stream should degrade that to `\xXX` escapes, never raise over it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(newline="\n", encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(newline="\n", encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="knowledge.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

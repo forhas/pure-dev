@@ -13,17 +13,22 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 
 PY=plugins/notion-dev/scripts/knowledge.py
+# The interpreter to run knowledge.py (and this harness's own inline scripts) with.
+# python3, python, or "py -3" — the same value /notion-dev:init records as knowledge.python.
+# Unquoted everywhere it is invoked below: "py -3" is two words and must word-split.
+PYBIN=${KNOWLEDGE_PY:-python3}
 ROOT=plugins/notion-dev
 FX=scripts/fixtures/knowledge
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
 command -v iwe >/dev/null 2>&1 || { echo "FAIL: iwe not on PATH"; exit 1; }
-command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not on PATH"; exit 1; }
+# Not `command -v "$PYBIN"`: KNOWLEDGE_PY may be "py -3", which is not a single command.
+$PYBIN --version >/dev/null 2>&1 || { echo "FAIL: $PYBIN not runnable"; exit 1; }
 
 run() { # name, expected-exit, args...
   local name=$1 want=$2; shift 2
-  python3 "$PY" "$@" > "$OUT/$name.txt" 2>&1; local got=$?
+  $PYBIN "$PY" "$@" > "$OUT/$name.txt" 2>&1; local got=$?
   if [ "$got" -ne "$want" ]; then
     echo "FAIL: $name exited $got, wanted $want"; cat "$OUT/$name.txt"; fails=$((fails+1))
   else echo "ok: $name exit $got"; fi
@@ -73,7 +78,7 @@ echo "== check: iwe missing is exit 2 =="
 # A bare `PATH=/nonexistent` breaks python3 (and this function's own `cat` fallback) too,
 # since the override applies for the whole function call, not just the `iwe` lookup inside
 # it — so build a PATH that keeps python3 and coreutils but drops iwe's directory instead.
-PYDIR=$(dirname "$(command -v python3)")
+PYDIR=$(dirname "$(command -v "${PYBIN%% *}")")
 PATH="$PYDIR:/usr/bin:/bin" run noiwe 2 check --dir "$FX/valid" --plugin-root "$ROOT"
 
 echo "== check: fail closed — an iwe call that cannot run is exit 2, never an empty bundle =="
@@ -114,7 +119,7 @@ REPO=$(mktemp -d); cp -r "$FX/valid" "$REPO/knowledge"; mkdir -p "$REPO/src/cach
   && echo x > src/cache/a.rs && echo y > src/other/b.rs && git add -A \
   && git -c user.name=t -c user.email=t@t commit -qm touch )
 SHA=$(git -C "$REPO" rev-parse HEAD)
-( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$SHA" --dir knowledge > "$OUT/touched.txt" 2>&1 )
+( cd "$REPO" && $PYBIN "$OLDPWD/$PY" touched "$SHA" --dir knowledge > "$OUT/touched.txt" 2>&1 )
 tex=$?
 if [ "$tex" -ne 0 ]; then
   echo "FAIL: touched exited $tex, wanted 0"; cat "$OUT/touched.txt"; fails=$((fails+1))
@@ -128,13 +133,13 @@ assert_lacks "touched omits concepts without applies_to"          "$OUT/touched.
   && git -c user.name=t -c user.email=t@t merge -q --no-ff -m merge topic )
 MSHA=$(git -C "$REPO" rev-parse HEAD)
 [ "$(git -C "$REPO" rev-list --parents -n1 "$MSHA" | wc -w)" -eq 3 ] || { echo "FAIL: fixture merge commit is not two-parent"; fails=$((fails+1)); }
-( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$MSHA" --dir knowledge > "$OUT/touched-merge.txt" 2>&1 ); echo "exit $? (touched, merge commit)"
+( cd "$REPO" && $PYBIN "$OLDPWD/$PY" touched "$MSHA" --dir knowledge > "$OUT/touched-merge.txt" 2>&1 ); echo "exit $? (touched, merge commit)"
 assert_has "touched lists the applies_to concept for a two-parent merge commit" "$OUT/touched-merge.txt" 'decision/keep-cache.md'
 # A RENAME away from a matched path: `--name-only` reports only the destination, so the
 # concept whose subject moved would never be re-read; both sides of an R record must count.
 ( cd "$REPO" && git mv src/cache/a.rs src/other/moved.rs && git -c user.name=t -c user.email=t@t commit -qm rename )
 RSHA=$(git -C "$REPO" rev-parse HEAD)
-( cd "$REPO" && python3 "$OLDPWD/$PY" touched "$RSHA" --dir knowledge > "$OUT/touched-rename.txt" 2>&1 ); echo "exit $? (touched, rename)"
+( cd "$REPO" && $PYBIN "$OLDPWD/$PY" touched "$RSHA" --dir knowledge > "$OUT/touched-rename.txt" 2>&1 ); echo "exit $? (touched, rename)"
 assert_has "touched lists the concept whose applies_to path was renamed away" "$OUT/touched-rename.txt" 'decision/keep-cache.md'
 rm -rf "$REPO"
 
@@ -178,6 +183,23 @@ echo "== migrate: a post-apply check that cannot run still restores the tree =="
 MX=$(mktemp -d); cp -r "$FX/migrate-input/." "$MX/"
 ( cd "$MX" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 FAKE=$(mktemp -d); printf '#!/bin/sh\ncase "$*" in *"schema validate"*|*find*) exit 2;; esac\nexec %s "$@"\n' "$(command -v iwe)" > "$FAKE/iwe"; chmod +x "$FAKE/iwe"
+case "$(uname -s)" in
+  MINGW*|MSYS*)
+    # knowledge.py resolves `iwe` on Windows via shutil.which, which needs a PATHEXT
+    # candidate — the extensionless shebang script above is invisible to it there. npm's
+    # real binary is `iwe.cmd`; reimplement the same schema/find-exits-2 shim as one. The
+    # substring check is delegated to a tiny Python script (run with $PYBIN, already proven
+    # resolvable) rather than batch findstr/pipe chaining, which is fragile to get right
+    # without a Windows shell to test against.
+    real_cmd=$(command -v iwe.cmd 2>/dev/null || command -v iwe)
+    real_win=$(cygpath -w "$real_cmd")
+    fake_win=$(cygpath -w "$FAKE")
+    printf 'import sys\na = " ".join(sys.argv[1:])\nsys.exit(2 if ("schema validate" in a or "find" in a) else 0)\n' \
+      > "$FAKE/iwe_check.py"
+    printf '@echo off\r\n%s "%s\\iwe_check.py" %%*\r\nif %%errorlevel%%==2 exit /b 2\r\n"%s" %%*\r\nexit /b %%errorlevel%%\r\n' \
+      "$PYBIN" "$fake_win" "$real_win" > "$FAKE/iwe.cmd"
+    ;;
+esac
 PATH="$FAKE:$PATH" run migrate-check-dies 2 migrate --apply --dir "$MX/knowledge" --config "$MX/.claude/notion-dev.config.json" --plugin-root "$ROOT"
 diff -r -x .git "$FX/migrate-input" "$MX" >/dev/null && echo "ok: a dying post-apply check restored the tree byte-identically" \
   || { echo "FAIL: a dying post-apply check left the migration in place"; fails=$((fails+1)); }
@@ -242,7 +264,7 @@ NX=$FX/next
 TODAY=2026-09-15
 nx() { # name, expected-exit, brief, state, [reason args...]
   local name=$1 want=$2 brief=$3 state=$4; shift 4
-  python3 "$PY" next --brief "$brief" --state "$state" --today "$TODAY" "$@" \
+  $PYBIN "$PY" next --brief "$brief" --state "$state" --today "$TODAY" "$@" \
     > "$OUT/next-$name.md" 2> "$OUT/next-$name.err"; local got=$?
   if [ "$got" -ne "$want" ]; then
     echo "FAIL: next-$name exited $got, wanted $want"; cat "$OUT/next-$name.err"; fails=$((fails+1))
@@ -285,7 +307,7 @@ nx rerender 0 "$OUT/next-start.md"    "$NX/state-start.json"
 assert_identical "next: re-rendering its own output is byte-identical" "$OUT/next-rerender.md" "$OUT/next-start.md"
 nx client   1 "$NX/brief.md"          "$NX/state-client-shaped.json"
 # partition invariant: every unresolved key appears in exactly one of the three lists
-if python3 - "$NX/state-client-shaped.json" "$OUT/next-client.md" <<'PYEOF'
+if $PYBIN - "$NX/state-client-shaped.json" "$OUT/next-client.md" <<'PYEOF'
 import json, re, sys
 state = json.load(open(sys.argv[1])); text = open(sys.argv[2], encoding="utf-8").read()
 region = text.split("\n## Next\n", 1)[1].split("\n## ", 1)[0].splitlines()
@@ -362,7 +384,7 @@ echo "== lock: mkdir lock on the primary checkout =="
 LK=$(mktemp -d)
 lk() { # name, expected-exit, args...
   local name=$1 want=$2; shift 2
-  python3 "$PY" lock "$@" --root "$LK" > "$OUT/lock-$name.txt" 2>&1; local got=$?
+  $PYBIN "$PY" lock "$@" --root "$LK" > "$OUT/lock-$name.txt" 2>&1; local got=$?
   if [ "$got" -ne "$want" ]; then
     echo "FAIL: lock-$name exited $got, wanted $want"; cat "$OUT/lock-$name.txt"; fails=$((fails+1))
   else echo "ok: lock-$name exit $got"; fi
@@ -378,6 +400,11 @@ lk take-a-again 0 take --run STO-70 --section record --wait 0
 assert_has "lock: the holder re-enters"                   "$OUT/lock-take-a-again.txt" 'reentrant'
 lk release-b 1 release --run STO-71
 assert_has "lock: release by another run is refused"      "$OUT/lock-release-b.txt" 'held by STO-70'
+# A refused release moves the directory aside to read its real owner, so it must put it back:
+# the holder's lock still stands and nothing is left parked. Deleting instead of restoring is
+# how a release by the wrong run would strip mutual exclusion from the run that does hold it.
+assert_has "lock: a refused release restores the holder's lock" "$LK/primary/owner" 'run: STO-70'
+[ -z "$(ls -d "$LK"/primary.release-* 2>/dev/null)" ] && ok "lock: a refused release leaves no parked copy" || bad "lock: a refused release left a parked copy"
 lk release-a 0 release --run STO-70
 lk status-free-2 0 status
 assert_has "lock: released reports free"                  "$OUT/lock-status-free-2.txt" 'free'
@@ -403,7 +430,7 @@ lk release-orphan 0 release --run STO-71
 # The race is injected deterministically: the replacement happens inside the first owner read,
 # which both the old and the new code perform, so this discriminates the two.
 RL=$(mktemp -d)
-if python3 - "$PY" "$RL" <<'PYRACE'
+if $PYBIN - "$PY" "$RL" <<'PYRACE'
 import importlib.util, os, shutil, sys, types
 sys.dont_write_bytecode = True   # do not leave __pycache__/ beside the shipped script
 py, root = sys.argv[1], sys.argv[2]
@@ -446,7 +473,7 @@ WT=$(mktemp -d)
 WG="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
 ( cd "$WT" && $WG init -q . && $WG commit -q --allow-empty -m base && $WG worktree add -q wt ) 2>/dev/null
 PYABS="$PWD/$PY"   # $PY is repo-relative and the take below runs from the worktree
-( cd "$WT/wt" && python3 "$PYABS" lock take --run STO-88 --section stop --wait 0 ) > "$OUT/lock-worktree.txt" 2>&1
+( cd "$WT/wt" && $PYBIN "$PYABS" lock take --run STO-88 --section stop --wait 0 ) > "$OUT/lock-worktree.txt" 2>&1
 if [ -f "$WT/.claude/notion-dev/locks/primary/owner" ]; then
   ok "lock: a take from a linked worktree lands on the primary checkout"
 else
@@ -482,7 +509,7 @@ printf '{"git":{"baseBranch":"main"},"local":"edit"}\n' > "$CV/b/.claude/notion-
 # and `git stash push -- <path>` errors outright on a path git does not know.
 printf '{"mcpServers":{}}\n' > "$CV/b/.mcp.json"
 # A: create STO-74 and push
-python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
+$PYBIN "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
 cp "$CV/a/out.md" "$CV/a/$B"
 ( cd "$CV/a" && $G commit -q --only -m "docs(epic): STO-60 create STO-74" -- "$B" && $G push -q origin main ) 2>/dev/null \
   && ok "write path: A's commit and push land" || bad "write path: A's commit or push failed"
@@ -492,7 +519,7 @@ printf 'upstream v2\n' > "$CV/a/unrelated.txt"
   && ok "write path: an unrelated upstream commit lands" || bad "write path: unrelated upstream commit failed"
 
 # B, stale clone: start STO-71, push rejected
-python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out.md" 2>/dev/null
+$PYBIN "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out.md" 2>/dev/null
 cp "$CV/b/out.md" "$CV/b/$B"
 ( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" ) 2>/dev/null
 if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B's stale push should be rejected"; else ok "write path: B's stale push is rejected"; fi
@@ -516,7 +543,7 @@ assert_has "write path: a staged exempt edit comes back staged, not merely resto
 # untracked file guards is the stash itself — `git stash push -- <path>` errors on a path git
 # does not know, aborting the recipe — and dropping the flag here fails the four assertions
 # below instead, which is the real consequence.
-python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
+$PYBIN "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
 cp "$CV/b/out2.md" "$CV/b/$B"
 ( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \
   && ok "write path: the re-derived commit pushes (ATTEMPTS: 2)" || bad "write path: second push failed"

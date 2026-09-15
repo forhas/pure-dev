@@ -27,6 +27,8 @@ Identical to `/notion-dev:ticket`'s precondition block, applied verbatim: `depen
 
 - `<run id>` = `next-task-$(date -u +%Y%m%dT%H%M%SZ)-<4 hex>` (e.g. `next-task-20260915T101500Z-a3f9`; the hex from `head -c2 /dev/urandom | od -An -tx1 | tr -dc '0-9a-f'`), generated once at the start of this command and carried through every `lock take` and `lock release` of this run — so a second concurrent invocation is a different holder, while this run's own re-takes stay re-entrant. **Not** `next-task <KEY>-<n>`: two loops on one epic is the workflow this command advertises, and that label is identical for both, so `lock take` would read the second as a re-entrant acquisition by the first — putting both in the bootstrap or drift write path at once, each able to release the other's lock while both check out, commit, reset and push from the primary.
 
+`python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
+
 Then the **inverted epic guard**: `fetchTicket(<epic-id>)` via `notion-dev:ticket-system`. The page is an epic when `metadata.parentTaskProperty` is `""` **and** `metadata.epicMarkerProperty` is `true` — the same predicate `/notion-dev:ticket`'s guard applies, read the other way — not an epic → abort: `[<KEY>-<n>] <title> is not an epic container — run /notion-dev:ticket <id> to implement it`. Epic status in the resolved set (`statusMap.implemented` / `done` / `cancelled`) → report `epic closed — nothing to do` and stop. Record `EPIC_KEY`, `EPIC_URL`, `EPIC_TITLE`.
 
 ## The loop

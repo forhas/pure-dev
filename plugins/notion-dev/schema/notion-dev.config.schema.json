@@ -190,7 +190,8 @@
           "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "default": [],
           "description": "Client-specific concept directories accepted beyond the canonical set."
-        }
+        },
+        "python": { "type": "string", "default": "python3", "minLength": 1, "description": "The Python 3 interpreter every notion-dev command runs scripts/knowledge.py with — python3, python, or py -3. Written by /notion-dev:init from its probe; python3 stands for this value in every skill and command." }
       }
     },
     "verify": {
