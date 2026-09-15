@@ -63,9 +63,16 @@ def iwe(args, cwd, violations_exit=()):
     `iwe schema validate` exits 1 with a violation list. Every other non-zero exit is a
     call that could not run, and is exit 2: accepting it and reading `"" or "[]"` as an
     empty result is a check that passes because it never ran.
+
+    `encoding="utf-8"` is explicit because `text=True` alone decodes with the locale
+    encoding, which on native Windows is the ANSI code page (commonly cp1252) — iwe emits
+    UTF-8 JSON, so a bundle with non-ASCII keys would decode to mojibake (false dangling
+    links) or raise UnicodeDecodeError before `iwe_json` parses it. main()'s stream
+    reconfigure fixes this process's own output, never what it reads back from a child.
     """
     try:
-        p = subprocess.run([_iwe_exe(), *args], cwd=cwd, capture_output=True, text=True)
+        p = subprocess.run([_iwe_exe(), *args], cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8")
     except FileNotFoundError:
         die("iwe is not on PATH — install: cargo install iwe --root ~/.local (or brew/npm where GLIBC >= 2.39)")
     if p.returncode != 0 and p.returncode not in violations_exit:

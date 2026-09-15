@@ -26,6 +26,10 @@ for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/
   assert_present "$f: python3 stands for knowledge.python" "$ND/$f" 1 "$n" '`python3` in every `knowledge.py` line below stands for `knowledge.python`'
 done
 assert_has "knowledge.py: forces LF and UTF-8 on stdout and stderr" "$KPY" 'reconfigure(newline="\n", encoding="utf-8")'
+KPYL=$(total_lines "$KPY")
+KI0=$(find_line "$KPY" 1 "$KPYL" '^def iwe\(args, cwd, violations_exit=\(\)\):$')
+KI1=$(find_line "$KPY" "$KI0" "$KPYL" '^def iwe_json\(')
+assert_present "knowledge.py: the iwe capture decodes the child's output as \`encoding="utf-8"\`, not the locale code page" "$KPY" "$KI0" "$KI1" 'encoding="utf-8"\)$'
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
 assert_has "workflow: a windows-latest job runs verify-knowledge-py.sh under bash" "$WF" 'runs-on: windows-latest'
 WFL=$(total_lines "$WF"); WJ0=$(find_line "$WF" 1 "$WFL" '^  verify-windows:$')
