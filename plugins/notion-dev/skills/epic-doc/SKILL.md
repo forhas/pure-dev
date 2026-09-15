@@ -224,7 +224,9 @@ once here; the others cite it.
    dirt.** When `git -C $REPO_ROOT status --porcelain` shows any of the three exempt setup files
    dirty — `.claude/notion-dev.config.json`, `.mcp.json`, `.claude/settings.local.json`, the
    exhaustive list the preconditions exempt and the only tracked dirt that can legally be here —
-   `git -C $REPO_ROOT stash push --quiet --` those paths first; then
+   `git -C $REPO_ROOT stash push --include-untracked --quiet --` those paths first — untracked,
+   because init's commit step is optional and this operation must stay usable when it was
+   declined, and a plain `stash push -- <path>` errors on a path git does not know; then
    `git -C $REPO_ROOT reset --hard origin/<epicBranch>`; then
    `git -C $REPO_ROOT stash pop --index --quiet` when one was pushed.
    `--index` is not optional there: the preconditions exempt *staged* edits to those files as

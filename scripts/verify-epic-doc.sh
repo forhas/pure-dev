@@ -141,12 +141,12 @@ if [ -f "$ED" ]; then
     # Both halves of the converge reset. Hard, so every path outside the pathspec becomes the
     # fetched tree rather than a staged reversion of it; across a stash, so the exempt setup
     # files the preconditions permit to be dirty are not discarded with this attempt's commit.
-    assert_present "write path step 4: the exempt setup files are stashed across the reset" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash push --quiet --'
+    assert_present "write path step 4: the exempt setup files are stashed across the reset, untracked ones included" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash push --include-untracked --quiet --'
     assert_present "write path step 4: the stash is popped with --index, so staged edits keep their index state" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash pop --index --quiet'
     assert_present "write path step 4: \`Three attempts.\`" "$ED" "$WP" "$R1" 'Three attempts\.'
     assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
     assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \
-      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' stash 'stash push --quiet --' reset 'reset --hard origin/<epicBranch>' release 'lock release --run'
+      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' stash 'stash push --include-untracked --quiet --' reset 'reset --hard origin/<epicBranch>' release 'lock release --run'
     if [ -n "$OB" ]; then
       assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
       assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '

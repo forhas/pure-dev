@@ -466,6 +466,9 @@ printf '{"git":{"baseBranch":"main"},"local":"edit"}\n' > "$CV/b/.claude/notion-
 # staged, not merely modified: the preconditions exempt staged edits to the setup files too,
 # so the converge must return this file to the INDEX, which is what `stash pop --index` does.
 ( cd "$CV/b" && $G add .claude/notion-dev.config.json ) 2>/dev/null
+# and an UNTRACKED exempt file: init's commit step is optional, so this is a supported state,
+# and `git stash push -- <path>` errors outright on a path git does not know.
+printf '{"mcpServers":{}}\n' > "$CV/b/.mcp.json"
 # A: create STO-74 and push
 python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
 cp "$CV/a/out.md" "$CV/a/$B"
@@ -485,7 +488,7 @@ if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B
 # re-derive, commit, push — never `--hard`, which would take the permitted dirt with it
 ( cd "$CV/b" && $G fetch -q origin main && n=$($G rev-list origin/main..HEAD | wc -l | tr -d ' ') && [ "$n" -eq 1 ] ) \
   && ok "write path: rev-list shows exactly one local commit before the reset" || bad "write path: rev-list count is not 1"
-( cd "$CV/b" && $G stash push -q -- .claude/notion-dev.config.json \
+( cd "$CV/b" && $G stash push --include-untracked -q -- .claude/notion-dev.config.json .mcp.json \
     && $G reset -q --hard origin/main && $G stash pop --index -q ) 2>/dev/null
 assert_has "write path: the converge reset keeps permitted dirt outside the pathspec" \
   "$CV/b/.claude/notion-dev.config.json" '"local":"edit"'
@@ -496,6 +499,11 @@ assert_lacks "write path: the converge leaves no staged reversion of an upstream
   "$OUT/cv-status.txt" 'unrelated.txt'
 assert_has "write path: a staged exempt edit comes back staged, not merely restored" \
   "$OUT/cv-status.txt" 'M  .claude/notion-dev.config.json'
+# No assertion on `.mcp.json`'s survival: a hard reset never touches an untracked path, so such
+# a check passes with or without `--include-untracked` and would be an unprovable one. What the
+# untracked file guards is the stash itself — `git stash push -- <path>` errors on a path git
+# does not know, aborting the recipe — and dropping the flag here fails the four assertions
+# below instead, which is the real consequence.
 python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
 cp "$CV/b/out2.md" "$CV/b/$B"
 ( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \

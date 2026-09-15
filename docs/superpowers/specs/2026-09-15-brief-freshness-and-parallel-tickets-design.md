@@ -177,7 +177,7 @@ Used by `refresh`, `record`, `record --bootstrap`, `note --apply` and `notion-de
    rejection: assert `git rev-list origin/<epicBranch>..HEAD` names exactly the one commit this
    attempt made (anything else → `failed`, commit left in place, `CAUSE: push rejected — <git's
    message>`, as today); `git fetch origin <epicBranch>`; stash the dirty exempt setup files when
-   there are any, `git reset --hard origin/<epicBranch>`, pop the stash with `--index`;
+   there are any (`--include-untracked`: init's commit step is optional), `git reset --hard origin/<epicBranch>`, pop the stash with `--index`;
    go back to step 3 against the fresh files. **Three attempts.** `record` and `note --apply`
    re-apply their diff *semantically* — the bullets they add and remove, the sentence they
    restate — to the fresh brief; `refresh` and `capture` simply re-derive. The third rejection is
