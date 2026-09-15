@@ -1248,6 +1248,10 @@ cap:
    met**" while the gate, the ledger, and the run's own final report all recorded 3 met and
    1 unverified — the claim the gate exists to catch, published by the gate's own run.
 
+**Rebase at the gate.** Read `gh pr view <pr> --json mergeStateStatus`. `BEHIND` or `DIRTY` → in the worktree: `git fetch origin <base>` then `git rebase origin/<base>`; re-run the project's verify on the rebased head; `git push --force-with-lease`; re-read `mergeStateStatus` (it must now be `CLEAN`, `UNSTABLE` only if an optional check is pending, or `BLOCKED` only by a gate below — anything else stops). A clean rebase changes no diff, so it triggers no new review round; the final report states that the rebase happened and the new head sha. `git.mergeStrategy` is unchanged by the rebase. This runs **once, at the gate, never per round** — a base that moves during review rounds is caught here, not chased.
+
+One conflict class resolves itself: when the rebase stops with the **only** conflicting hunk being `version` in `.claude-plugin/plugin.json`, take the base's value and re-apply this PR's bump class on top — the bump class is derived, not recorded: compare the manifest at `git merge-base origin/<base> HEAD` with the head's manifest and the first differing component (major, minor, patch) is the class; re-apply it to the base's version, `git add .claude-plugin/plugin.json`, `git rebase --continue`, and re-check that the head's version is strictly greater than the base's (`/notion-dev:ticket` Phase 6.1's rule). Two minor PRs against 0.24.0 land as 0.25.0 and 0.26.0. Any other conflict → `git rebase --abort` and the existing unmergeable stop, worktree and PR left for a person; no automatic resolution of code. A repo without a manifest gets the rebase and nothing else.
+
 5. **Config pre-merge checks**: read `git.preMergeChecks` from
    `.claude/notion-dev.config.json` in the primary checkout (an ordered list of skill names; empty by default).
    Invoke each skill in order via the Skill tool. If any skill signals failure, stop

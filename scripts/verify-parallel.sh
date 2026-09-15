@@ -57,5 +57,20 @@ assert_present "step 2: resume first reads the marker (\`stopped\` or none)" "$N
 assert_present "step 4: \`claimed-elsewhere\` is neither a stop nor a resolution" "$NT" "$S4" "$SR" 'claimed-elsewhere.*neither a stop nor a resolution'
 assert_present "step 4: on \`claimed-elsewhere\` DONE is not incremented and the next candidate is picked from the same NEXT" "$NT" "$S4" "$SR" 'claimed-elsewhere.*DONE.*same `NEXT`'
 
+echo "== review-and-merge: rebase at the gate (both copies) =="
+for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/skills/review-and-merge/SKILL.md; do
+  n=$(total_lines "$f"); M5=$(find_line "$f" 1 "$n" '^## 5\. Merge'); SR=$(find_line "$f" "$M5" "$n" '^## Safety rules')
+  assert_present "$f: reads \`mergeStateStatus\` at the gate" "$f" "$M5" "$SR" 'gh pr view <pr> --json mergeStateStatus'
+  assert_present "$f: \`BEHIND\` or \`DIRTY\` → \`git rebase origin/<base>\` in the worktree" "$f" "$M5" "$SR" '`BEHIND`.*`DIRTY`.*git rebase origin/<base>'
+  assert_present "$f: re-run verify, then \`git push --force-with-lease\`" "$f" "$M5" "$SR" 'verify.*git push --force-with-lease'
+  assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
+  assert_present "$f: \`.claude-plugin/plugin.json\` version conflict: take the base's value and re-apply the bump class" "$f" "$M5" "$SR" '\.claude-plugin/plugin\.json.*take the base.s value.*bump class'
+  assert_present "$f: the bump class is derived from merge-base vs head" "$f" "$M5" "$SR" 'bump class.*merge-base'
+  assert_present "$f: any other conflict → \`git rebase --abort\` and the unmergeable stop" "$f" "$M5" "$SR" 'git rebase --abort.*unmergeable'
+  assert_present "$f: rebase once, at the gate, never per round" "$f" "$M5" "$SR" 'once, at the gate, never per'
+  assert_order "$f: completeness gate, rebase, pre-merge check, merge command" "$f" "$M5" "$SR" \
+    completeness '^4\. \*\*Completeness gate\*\*' rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" merge '^gh pr merge <pr> '
+done
+
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"
