@@ -48,6 +48,7 @@ caller that already holds `KNOWLEDGE_CONTEXT` passes it in instead of triggering
 older than 2.39, which includes Ubuntu 22.04 under WSL), and `brew install iwe` /
 `npm i -g @iwe-org/iwe` where the prebuilt binary runs. The signature is
 `missing-dependency:iwe`. Nothing here depends on the LSP (`iwes`) or the MCP server (`iwec`).
+`python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
 `python3` on `PATH` runs `${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py` — standard library only,
 no `pip` step.
 

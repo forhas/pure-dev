@@ -67,3 +67,22 @@ jobs:
             exit 1
           fi
           echo "All ${#scripts[@]} harness(es) passed."
+
+  # The Windows proof of knowledge.py's LF output, the lock's mkdir/rename semantics, and the
+  # two-clone recipe under Git Bash. The prose harnesses are platform-neutral and already run
+  # on Ubuntu above, so only verify-knowledge-py.sh — the one harness that runs the script —
+  # needs a second pass here.
+  verify-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install iwe
+        run: npm i -g @iwe-org/iwe@0.19.1 && iwe --version
+
+      # windows-latest has `python` on PATH; `python3` may not resolve.
+      - name: Run verify-knowledge-py.sh
+        shell: bash
+        env:
+          KNOWLEDGE_PY: python
+        run: bash scripts/verify-knowledge-py.sh

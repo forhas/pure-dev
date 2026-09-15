@@ -372,8 +372,8 @@ if [ -f "$IN" ]; then
   [ -n "$PF_END" ] || PF_END=$L
   assert_present "init.md preflight, region-scoped to step 1, probes \`iwe --version\`" \
     "$IN" "$PF" "$PF_END" 'Probe `iwe --version`'
-  assert_present "init.md preflight, same region, probes \`python3 --version\` beside it" \
-    "$IN" "$PF" "$PF_END" 'and `python3 --version`'
+  assert_present "init.md preflight, same region, probes the interpreter in order starting with \`python3 --version\`" \
+    "$IN" "$PF" "$PF_END" 'python3 --version.*python --version.*py -3 --version'
   assert_has "init.md: writes \`postMergeHooks: [\"notion-dev:knowledge\"]\`" \
     "$IN" 'postMergeHooks: ["notion-dev:knowledge"]'
   assert_lacks "init.md: no leftover \`epicDocs\` reference" "$IN" 'epicDocs'
@@ -424,8 +424,8 @@ PR1=$(find_line "$README" $((PR0 + 1)) "$RL" '^## ')
 [ -n "$PR1" ] || PR1=$RL
 assert_present "README prerequisites, region-scoped to that section, list \`iwe\` as required" \
   "$README" "$PR0" "$PR1" '^- [*][*]`iwe` . 0[.]19 on `PATH`[*][*] . [*][*]required[*][*]'
-assert_present "README prerequisites, same region, list \`python3\` as required" \
-  "$README" "$PR0" "$PR1" '^- [*][*]`python3`[*][*] . [*][*]required[*][*]'
+assert_present "README prerequisites, same region, list Python 3.8+ as required" \
+  "$README" "$PR0" "$PR1" '^- [*][*]Python 3[.]8[+][*][*] . [*][*]required[*][*]'
 assert_has "README documents \`knowledge.dir\`" "$README" 'knowledge.dir'
 assert_lacks "README: no leftover \`epicDocs\` reference" "$README" 'epicDocs'
 assert_lacks "README: no leftover \"Knowledge bundles are not touched\" sentence" \

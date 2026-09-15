@@ -53,6 +53,7 @@ Dispatch the subagent with the context packet and this instruction: *answer the 
 
 - `.claude/notion-dev.config.json` exists and has `ticketSystem` configured.
 - The source named in the arg is listed in `inputSources`; if not, abort and tell the user to add it via `/notion-dev:init`.
+- `python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
 
 ---
 

@@ -9,6 +9,7 @@ is exit 2 — never an empty result standing in for a clean bundle.
 
 Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9;
 docs/superpowers/specs/2026-09-15-brief-freshness-and-parallel-tickets-design.md §3, §4, §5.
+Windows: Git Bash + `knowledge.python`.
 """
 import argparse
 import datetime
@@ -1655,6 +1656,11 @@ def cmd_lock(a):
 # ---------------------------------------------------------------------------
 
 def main():
+    # On Windows Python translates "\n" to "\r\n" on text streams; `next`'s stdout is written
+    # over the brief byte-for-byte, so a CRLF stdout would make `unchanged` undecidable.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(newline="\n")
     parser = argparse.ArgumentParser(prog="knowledge.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

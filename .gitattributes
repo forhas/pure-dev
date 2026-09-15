@@ -1,0 +1,4 @@
+# Every file here is LF: the harnesses compare fixture bytes, and knowledge.py
+# writes LF regardless of platform. Git for Windows defaults core.autocrlf=true,
+# which would check the fixtures out as CRLF and break byte-identical comparisons.
+* text=auto eol=lf

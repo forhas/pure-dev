@@ -23,6 +23,7 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 - `.claude/notion-dev.config.json` exists; load it. If missing, abort and tell the user to run `/notion-dev:init`. As in `/notion-dev:ticket`, all config reads resolve against the **primary checkout** (`$REPO_ROOT/.claude/notion-dev.config.json`), never a worktree — the worktree may lack the config when it is uncommitted, unpushed, or gitignored.
 - A PR exists for the work: **open** when `<pr-number>` was omitted (the no-arg path infers it from the current branch, and there is nothing to infer otherwise); with an explicit `<pr-number>`, `MERGED` is also acceptable — that is Phase 1's post-merge recovery path, which this gate must not block. `CLOSED`-without-merge or draft still aborts (Phase 1 step 2).
 - The PR's head branch follows the `ticket/<project.key>-<n>-*` convention, so the numeric ticket id is recoverable from it. (PRs opened by `/notion-dev:ticket` always do.)
+- `python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
 
 ---
 
