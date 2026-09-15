@@ -199,6 +199,26 @@ rm -rf "$M"
 
 echo "== migrate: a post-apply check that cannot run still restores the tree =="
 # `check` dying (exit 2: iwe missing) after the apply wrote files must leave the tree as it was.
+echo "== migrate: the plugin's .iwe copies install as LF, whatever the plugin cache carries =="
+# Measured on 0.27.0: the installed Windows plugin cache is CRLF. Copying it verbatim hands the
+# client a file its own normalising checkout rewrites on commit, so the bundle drifts from the
+# plugin copy on the very next check and capture stops writing. This case migrates against a
+# CRLF plugin root, which also exercises the post-apply check in the real-world direction.
+PR=$(mktemp -d); mkdir -p "$PR/skills/knowledge/references/iwe/schemas"
+cp "$ROOT/skills/knowledge/references/iwe/config.toml" "$PR/skills/knowledge/references/iwe/"
+cp "$ROOT"/skills/knowledge/references/iwe/schemas/*.yaml "$PR/skills/knowledge/references/iwe/schemas/"
+find "$PR" -type f -exec sed -i 's/$/\r/' {} +
+file "$PR/skills/knowledge/references/iwe/config.toml" | grep -q CRLF \
+  && ok "migrate: the fake plugin root really is CRLF" || bad "migrate: the fake plugin root is not CRLF"
+MR=$(mktemp -d); cp -r "$FX/migrate-input/." "$MR/"
+( cd "$MR" && git init -q && git -c core.autocrlf=false add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+run migrate-crlf-root 0 migrate --apply --dir "$MR/knowledge" --config "$MR/.claude/notion-dev.config.json" --plugin-root "$PR"
+file "$MR/knowledge/.iwe/config.toml" | grep -q CRLF \
+  && bad "migrate: the installed .iwe/config.toml kept the plugin cache's CRLF" \
+  || ok "migrate: the installed .iwe/config.toml is LF whatever the plugin cache carried"
+rm -rf "$PR" "$MR"
+
+
 MX=$(mktemp -d); cp -r "$FX/migrate-input/." "$MX/"
 ( cd "$MX" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 FAKE=$(mktemp -d); printf '#!/bin/sh\ncase "$*" in *"schema validate"*|*find*) exit 2;; esac\nexec %s "$@"\n' "$(command -v iwe)" > "$FAKE/iwe"; chmod +x "$FAKE/iwe"
