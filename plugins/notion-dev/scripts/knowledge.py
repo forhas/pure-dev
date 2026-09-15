@@ -875,6 +875,17 @@ def _apply_text_rewrite(result, repo_root, relpath, rewrite):
         result[relpath] = new_text.encode("utf-8")
 
 
+def _rel(*parts):
+    """Joins path parts into a repo-relative `result`/`to_delete` key, always forward-slash —
+    so it agrees with `git ls-files` output (step 5b's `tracked`) and with the other keys this
+    file builds, on every platform. `os.path.join` alone leaves Windows backslashes in the
+    joins it performs itself (even when every part passed in is already forward-slash-clean),
+    which would key an in-bundle tracked file's migrated entry twice — once here, once from
+    `_apply_text_rewrite`'s forward-slash `relpath` — with the later (forward-slash) write
+    silently clobbering the migrated content of the earlier (backslash) one."""
+    return os.path.join(*parts).replace(os.sep, "/")
+
+
 def _build_migration(bundle, repo_root, plugin_root, config_path):
     """Returns (result: {repo-relative path: new bytes}, to_delete: [repo-relative path])."""
     result = {}
@@ -885,7 +896,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
     plugin_iwe_dir = os.path.join(plugin_root, KNOWLEDGE_IWE_REF)
     for rel in IWE_FILES:
         with open(os.path.join(plugin_iwe_dir, rel), "rb") as f:
-            result[os.path.join(bundle_rel, ".iwe", rel)] = f.read()
+            result[_rel(bundle_rel, ".iwe", rel)] = f.read()
 
     # step 3: concept frontmatter migration, log.md and index.md reshape. The catalog is
     # built from the text this step just produced — every `stable` concept needs an
@@ -906,7 +917,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                     text = f.read()
                 new_text = migrate_concept_text(text, rel_to_bundle,
                                                 bundle_name=os.path.basename(bundle))
-                result[os.path.join(bundle_rel, rel_to_bundle)] = new_text.encode("utf-8")
+                result[_rel(bundle_rel, rel_to_bundle)] = new_text.encode("utf-8")
                 key = rel_to_bundle[:-3].replace(os.sep, "/")
                 if concept_frontmatter_value(new_text, "status") == "stable":
                     catalog.append((key, concept_frontmatter_value(new_text, "title") or key,
@@ -918,7 +929,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
             log_text = reshape_log(f.read())
     else:
         log_text = seed_log()
-    result[os.path.join(bundle_rel, "log.md")] = log_text.encode("utf-8")
+    result[_rel(bundle_rel, "log.md")] = log_text.encode("utf-8")
 
     index_path = os.path.join(bundle, "index.md")
     index_src = None
@@ -966,7 +977,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
             # 5(a): recompute this brief's own relative links before adding frontmatter.
             body = _rewrite_brief_links(body, abs_epics_dir, new_epic_dir_abs)
             new_body = add_epic_frontmatter(body, fn)
-            new_rel = os.path.join(bundle_rel, "epic", fn)
+            new_rel = _rel(bundle_rel, "epic", fn)
             result[new_rel] = new_body.encode("utf-8")
             old_rel = os.path.relpath(src, repo_root).replace(os.sep, "/")
             to_delete.append(old_rel)
@@ -978,7 +989,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                             concept_frontmatter_value(new_body, "title") or fn[:-3],
                             concept_frontmatter_value(new_body, "description") or ""))
 
-    result[os.path.join(bundle_rel, "index.md")] = (
+    result[_rel(bundle_rel, "index.md")] = (
         reshape_index(index_src, catalog).encode("utf-8"))
 
     # step 5(b): every other tracked *.md file that links to a moved brief's old path gets
@@ -1687,9 +1698,14 @@ def main():
     # redirected/piped stdout on Windows defaults to the locale codepage (e.g. cp1252), not
     # UTF-8, so any non-ASCII character `next` writes (an em dash, a middle dot) would be
     # silently mis-encoded — corrupting the brief and failing the next `encoding="utf-8"` read.
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(newline="\n", encoding="utf-8")
+    # stdout stays `errors="strict"` (the reconfigure default): byte fidelity is the whole
+    # point there. stderr gets `errors="backslashreplace"` instead — a finding can quote a
+    # surrogate-escaped filename (one `os.walk` handed back un-decodable on this platform),
+    # and a diagnostic stream should degrade that to `\xXX` escapes, never raise over it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(newline="\n", encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(newline="\n", encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="knowledge.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
