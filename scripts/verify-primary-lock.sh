@@ -66,11 +66,30 @@ assert_present "ticket phase 10: \`record\` runs with \`LOCK_HELD\`" "$TICKET" "
 assert_present "ticket phase 9 hooks: hook receives \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'hook receives .*LOCK_HELD'
 assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lock waits\*\*'
 
+# The record sections span epic-update, whose interactive filing gate asks File/Drop. The lock
+# goes stale in 30 minutes, so those answers are taken before the take, never under it.
+TR0=$(find_line "$TICKET" 1 "$L" '^### 8\.2 ')
+TR1=$(find_line "$TICKET" "$((TR0 + 1))" "$L" '^\*\*Closeout — zero tails'); [ -n "$TR1" ] || TR1=$L
+assert_order "ticket record section: the filing gate is resolved before the lock take" "$TICKET" "$TR0" "$TR1" \
+  AskUserQuestion 'filing gate before the lock is taken.*`AskUserQuestion`' take "${TAKE}record"
+assert_present "ticket record section: the answers reach epic-update as FILING_DECISIONS" "$TICKET" "$TR0" "$TR1" \
+  'pass the result into the invocation below as.*FILING_DECISIONS'
+
 LF=$(total_lines "$FINALIZE")
 F32=$(find_line "$FINALIZE" 1 "$LF" '^### 3\.2 '); F5=$(find_line "$FINALIZE" 1 "$LF" '^## Phase 5 ')
 assert_present "finalize 3.2: \`epic-update\` runs with \`LOCK_HELD\`" "$FINALIZE" "$F32" "$F5" 'epic-update.*LOCK_HELD'
 assert_present "finalize phase 4 hooks: hook receives \`LOCK_HELD\`" "$FINALIZE" "$F32" "$F5" 'hook receives .*LOCK_HELD'
 assert_present "finalize phase 5: \`record\` runs with \`LOCK_HELD\`" "$FINALIZE" "$F5" "$LF" 'operation `record\(<id>\)`.*LOCK_HELD'
+FR0=$(find_line "$FINALIZE" 1 "$LF" '^## Phase 3 ')
+FR1=$(find_line "$FINALIZE" "$((FR0 + 1))" "$LF" '^\*\*Closeout — zero tails'); [ -n "$FR1" ] || FR1=$LF
+assert_order "finalize record section: the filing gate is resolved before the lock take" "$FINALIZE" "$FR0" "$FR1" \
+  AskUserQuestion 'filing gate before the lock is taken.*`AskUserQuestion`' take "${TAKE}record"
+assert_present "finalize record section: the answers reach epic-update as FILING_DECISIONS" "$FINALIZE" "$FR0" "$FR1" \
+  'pass the result into the invocation below as.*FILING_DECISIONS'
+echo "== epic-update: the gate is silent under the lock =="
+EU=$ND/skills/epic-update/SKILL.md; LEU=$(total_lines "$EU")
+assert_present "epic-update: FILING_DECISIONS in context means the gate asks nothing" "$EU" 1 "$LEU" \
+  'With `FILING_DECISIONS` in context this gate asks nothing'
 
 echo "== epic-doc read takes nothing =="
 LE=$(total_lines "$ED"); R0=$(find_line "$ED" 1 "$LE" '^## `read\('); RB=$(find_line "$ED" 1 "$LE" '^## Bootstrap')
