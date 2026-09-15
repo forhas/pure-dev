@@ -394,6 +394,7 @@ lk release-orphan 0 release --run STO-71
 RL=$(mktemp -d)
 if python3 - "$PY" "$RL" <<'PYRACE'
 import importlib.util, os, shutil, sys, types
+sys.dont_write_bytecode = True   # do not leave __pycache__/ beside the shipped script
 py, root = sys.argv[1], sys.argv[2]
 spec = importlib.util.spec_from_file_location("kp", py)
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
