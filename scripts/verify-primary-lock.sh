@@ -113,6 +113,13 @@ assert_present "next-task drift: a timed-out lock take stops with the CAUSE line
 echo "== new-info.md =="
 section "new-info apply" "$NI" '^### Apply' '^### Notion epic' apply 600 ffpull
 LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
+# The lock is released between epics, so a later Apply must not assume the primary is still
+# on the branch the previous epic left it on — an intervening locked writer may check out
+# <epicBranch>, and note --apply then fails its HEAD-branch assertion.
+assert_present "new-info apply: a later epic checks the branch out again after its take" "$NI" "$A0" "$A1" \
+  'On a later epic, check the branch out again rather than assuming it survived'
+assert_present "new-info apply: the later-epic checkout is \`checkout <noteBranch>\`, never \`checkout -b\`" "$NI" "$A0" "$A1" \
+  'git -C \$REPO_ROOT checkout <noteBranch>` under `--pr`.*`checkout`, never `checkout -b`'
 assert_present "new-info apply: \`note --apply\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `note --apply <epic-id>`.*LOCK_HELD'
 assert_present "new-info apply: \`capture --fact\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `capture --fact <fact> <epic-id>`.*LOCK_HELD'
 assert_present "new-info apply: \`record --bootstrap\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `record --bootstrap <epic-id>`.*LOCK_HELD'
