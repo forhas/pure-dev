@@ -72,5 +72,11 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
     completeness '^4\. \*\*Completeness gate\*\*' rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" merge '^gh pr merge <pr> '
 done
 
+echo "== review-and-merge: notion-dev-only fork anchors =="
+NF=plugins/notion-dev/skills/review-and-merge/SKILL.md
+nNF=$(total_lines "$NF"); M5NF=$(find_line "$NF" 1 "$nNF" '^## 5\. Merge'); SRNF=$(find_line "$NF" "$M5NF" "$nNF" '^## Safety rules')
+assert_present "notion-dev fork: cites \`/notion-dev:ticket\` Phase 6.1's rule" "$NF" "$M5NF" "$SRNF" '`/notion-dev:ticket`.*Phase 6\.1'
+assert_present "notion-dev fork: \`git.mergeStrategy\` is unchanged by the rebase" "$NF" "$M5NF" "$SRNF" '`git\.mergeStrategy` is unchanged by the rebase'
+
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"
