@@ -83,5 +83,17 @@ nNF=$(total_lines "$NF"); M5NF=$(find_line "$NF" 1 "$nNF" '^## 5\. Merge'); SRNF
 assert_present "notion-dev fork: cites \`/notion-dev:ticket\` Phase 6.1's rule" "$NF" "$M5NF" "$SRNF" '`/notion-dev:ticket`.*Phase 6\.1'
 assert_present "notion-dev fork: \`git.mergeStrategy\` is unchanged by the rebase" "$NF" "$M5NF" "$SRNF" '`git\.mergeStrategy` is unchanged by the rebase'
 
+echo "== per-invocation run ids (#44) =="
+for f in plugins/notion-dev/commands/new-info.md plugins/notion-dev/commands/knowledge.md plugins/notion-dev/commands/create-task.md; do
+  n=$(total_lines "$f")
+  assert_present "$f: defines \`<run id>\` once as a per-invocation token with \`date -u +%Y%m%dT%H%M%SZ\`" "$f" 1 "$n" '<run id>.*\$\(date -u \+%Y%m%dT%H%M%SZ\)'
+  assert_absent "$f: no bare per-command label remains as the run id" "$f" 1 "$n" '`<run id>` is `(new-info|knowledge|create-task)`'
+done
+echo "== new-info --pr rebase (#46) =="
+NI=plugins/notion-dev/commands/new-info.md; LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
+assert_present "apply: on a later epic under --pr, fetch and rebase the note branch when the epic branch moved" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
+assert_present "apply: a conflicting rebase aborts, releases, and stops with the remaining epics skipped" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase --abort.*release.*skipped'
+assert_order "apply: take, re-checkout, rebase" "$NI" "$A0" "$A1" take 'lock take --run <run id> --section apply' rebase 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
+
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"

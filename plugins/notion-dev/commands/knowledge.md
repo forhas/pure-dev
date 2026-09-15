@@ -44,6 +44,10 @@ failure to write the log never fails the run.
   command reports verbatim when one fails. That checkout and pull is what makes the
   remote-equality line assertable by hand; a primary holding unpushed local commits fails it, and
   the remedy is to push or reset them, never to skip the check.
+- `<run id>` = `knowledge-$(date -u +%Y%m%dT%H%M%SZ)-<4 hex>` (e.g. `knowledge-20260915T101500Z-a3f9`;
+  the hex from `head -c2 /dev/urandom | od -An -tx1 | tr -d ' '`), generated once at the start of
+  this command and carried through every `lock take` and `lock release` of this run — so a second
+  concurrent invocation is a different holder, while this run's own re-takes stay re-entrant.
 
 ## `capture <ticket-id> <merge-sha>`
 
@@ -51,7 +55,7 @@ The post-merge write, run by hand: use it when a ticket run reported that hooks 
 when the hook returned `KNOWLEDGE: failed` and the cause has since been fixed. It is the same
 operation the hook runs, with the same four preconditions and the same write-nothing rule.
 
-First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section capture --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section capture --wait 600` (`<run id>` from the preconditions; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
 
 Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
@@ -72,7 +76,7 @@ Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <
 
 ## `migrate`
 
-First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section migrate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section migrate --wait 600` (`<run id>` from the preconditions; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
 
 Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
@@ -117,7 +121,7 @@ command never picks a survivor on the user's behalf, because which of two simila
 durable one is exactly the judgment a person is here for. A cluster the user skips is left
 untouched and named in the report.
 
-Only once every answer is in: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section curate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+Only once every answer is in: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section curate --wait 600` (`<run id>` from the preconditions; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
 
 Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
