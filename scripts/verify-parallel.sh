@@ -75,6 +75,7 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: any other conflict → \`git rebase --abort\` and the unmergeable stop" "$f" "$M5" "$SR" 'git rebase --abort.*unmergeable'
   assert_present "$f: rebase once, at the gate, never per round" "$f" "$M5" "$SR" 'once, at the gate, never per'
   assert_present "$f: the bump class is recorded before rebasing" "$f" "$M5" "$SR" 'before rebasing.*record the bump class'
+  assert_present "$f: no manifest at the merge-base means the branch introduces the plugin — no class, no re-bump" "$f" "$M5" "$SR" 'no manifest at the merge-base → this branch introduces the plugin'
   assert_present "$f: the strictly-greater re-check is unconditional after any rebase" "$f" "$M5" "$SR" 'After any rebase.*unconditionally.*strictly greater'
   assert_present "$f: the bounded re-read distinguishes \`UNKNOWN\` from \`BLOCKED\`" "$f" "$M5" "$SR" '`UNKNOWN`.*wait.*`BLOCKED`.*gate 1'
   assert_present "$f: a merge-ready status — \`CLEAN\`, \`HAS_HOOKS\`, \`UNSTABLE\` — continues rather than stopping" "$f" "$M5" "$SR" 'merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue'
