@@ -32,7 +32,7 @@ failure to write the log never fails the run.
   routes: `cargo install iwe --root ~/.local` (works wherever Rust does; required on hosts whose
   GLIBC is older than 2.39, which includes Ubuntu 22.04 under WSL), or `brew install iwe` /
   `npm i -g @iwe-org/iwe` where the prebuilt binary runs. Record `missing-dependency:iwe`.
-- `python3 --version` succeeds — the shipped script is Python 3.8+, standard library only.
+- `<knowledge.python> --version` succeeds (the interpreter `/notion-dev:init` recorded; `python3` by default) — the shipped script is Python 3.8+, standard library only.
 - `python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
 - `<epicBranch>` = `git.prTargetBranch`, falling back to `git.baseBranch` — the branch the bundle
   lives on. The tree is clean: `/notion-dev:new-info`'s precondition block's clean-tree rule

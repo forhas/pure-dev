@@ -414,7 +414,7 @@ Print a short summary:
 
   When a slot bound nothing, say so plainly and give the reason, distinguishing missing from mistyped: "Epic containers unavailable — no Checkbox property to use as the Is Epic marker, and `Is Epic` itself is a `select`. Epic grouping will use the Select tag only." versus "…no Checkbox property named `Is Epic` or otherwise available…". When a slot bound a correctly-typed property but the default name is still held by a wrong-typed column (`MARKER_NAME_TAKEN` / `PARENT_MISTYPED` from the resolution steps above — the parent one is the loose diagnostic, which is what names the column the user would clean up), report **available** and add the mistyped column as a note, not as a failure — it is a stale column the user may want to clean up, not something blocking the plugin.
 - Build-flow plugins verified: superpowers + feature-dev (required dependencies)
-- Knowledge bundle: `<knowledge.dir>/` scaffolded (or already present, left untouched) — `iwe` and `python3` available, or the install guidance from step 1 when either was missing.
+- Knowledge bundle: `<knowledge.dir>/` scaffolded (or already present, left untouched) — `iwe` and `<knowledge.python>` available, or the install guidance from step 1 when either was missing.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."
 

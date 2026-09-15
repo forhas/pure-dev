@@ -28,9 +28,16 @@ done
 assert_has "knowledge.py: forces LF on stdout and stderr" "$KPY" 'reconfigure(newline="\n")'
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
 assert_has "workflow: a windows-latest job runs verify-knowledge-py.sh under bash" "$WF" 'runs-on: windows-latest'
+assert_has "workflow: the windows-latest job's run line invokes verify-knowledge-py.sh" "$WF" 'run: bash scripts/verify-knowledge-py.sh'
+WFL=$(total_lines "$WF"); WJ0=$(find_line "$WF" 1 "$WFL" '^  verify-windows:$')
+assert_present "workflow: the windows-latest job runs under \`shell: bash\`" "$WF" "$WJ0" "$WFL" 'shell: bash'
 assert_has "workflow: the Windows job sets KNOWLEDGE_PY" "$WF" 'KNOWLEDGE_PY: python'
 assert_has "verify-knowledge-py.sh: interpreter overridable via KNOWLEDGE_PY" scripts/verify-knowledge-py.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
-assert_lacks "verify-knowledge-py.sh: no hardcoded python3 invocation remains" scripts/verify-knowledge-py.sh 'python3 "$PY"'
+KPS=scripts/verify-knowledge-py.sh
+assert_lacks "verify-knowledge-py.sh: no hardcoded python3 invocation remains" "$KPS" 'python3 "$PY"'
+assert_lacks "verify-knowledge-py.sh: no hardcoded python3 invocation of \$PYABS remains" "$KPS" 'python3 "$PYABS"'
+assert_lacks "verify-knowledge-py.sh: no hardcoded python3 invocation via \$OLDPWD remains" "$KPS" 'python3 "$OLDPWD/'
+assert_lacks "verify-knowledge-py.sh: no hardcoded python3 heredoc invocation remains" "$KPS" 'python3 -'
 assert_has "README: Git for Windows prerequisite" "$README" 'Git for Windows'
 assert_has "README: knowledge.python documented" "$README" 'knowledge.python'
 LE=$(total_lines "$ND/skills/epic-doc/SKILL.md")

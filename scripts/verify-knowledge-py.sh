@@ -183,6 +183,17 @@ echo "== migrate: a post-apply check that cannot run still restores the tree =="
 MX=$(mktemp -d); cp -r "$FX/migrate-input/." "$MX/"
 ( cd "$MX" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 FAKE=$(mktemp -d); printf '#!/bin/sh\ncase "$*" in *"schema validate"*|*find*) exit 2;; esac\nexec %s "$@"\n' "$(command -v iwe)" > "$FAKE/iwe"; chmod +x "$FAKE/iwe"
+case "$(uname -s)" in
+  MINGW*|MSYS*)
+    # knowledge.py resolves `iwe` on Windows via shutil.which, which needs a PATHEXT
+    # candidate — the extensionless shebang script above is invisible to it there. npm's
+    # real binary is `iwe.cmd`; reimplement the same schema/find-exits-2 shim as one.
+    real_cmd=$(command -v iwe.cmd 2>/dev/null || command -v iwe)
+    real_win=$(cygpath -w "$real_cmd")
+    printf '@echo off\r\n(echo %%*| findstr /C:"schema validate" >nul || echo %%*| findstr /C:"find" >nul) && exit /b 2 || "%s" %%*\r\n' \
+      "$real_win" > "$FAKE/iwe.cmd"
+    ;;
+esac
 PATH="$FAKE:$PATH" run migrate-check-dies 2 migrate --apply --dir "$MX/knowledge" --config "$MX/.claude/notion-dev.config.json" --plugin-root "$ROOT"
 diff -r -x .git "$FX/migrate-input" "$MX" >/dev/null && echo "ok: a dying post-apply check restored the tree byte-identically" \
   || { echo "FAIL: a dying post-apply check left the migration in place"; fails=$((fails+1)); }

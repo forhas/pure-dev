@@ -37,6 +37,25 @@ def die(msg):
     sys.exit(2)
 
 
+_IWE_EXE = None
+
+
+def _iwe_exe():
+    """Resolve the `iwe` binary once via shutil.which, falling back to the bare name.
+
+    Windows `CreateProcess` (what `subprocess.run` uses there with `shell=False`) appends
+    only `.exe` when resolving an extensionless command, and npm installs `iwe`, `iwe.cmd`
+    and `iwe.ps1` — never `iwe.exe` — so spawning literal `"iwe"` raises FileNotFoundError
+    even though `iwe` is on PATH. `shutil.which` honours PATHEXT and returns the `.cmd`
+    path, which `CreateProcess` launches correctly. Elsewhere (POSIX) this is a no-op:
+    `shutil.which("iwe")` already returns the same path `"iwe"` alone would resolve to.
+    """
+    global _IWE_EXE
+    if _IWE_EXE is None:
+        _IWE_EXE = shutil.which("iwe") or "iwe"
+    return _IWE_EXE
+
+
 def iwe(args, cwd, violations_exit=()):
     """Run iwe; exit 2 if the binary is missing or the call fails.
 
@@ -46,7 +65,7 @@ def iwe(args, cwd, violations_exit=()):
     empty result is a check that passes because it never ran.
     """
     try:
-        p = subprocess.run(["iwe", *args], cwd=cwd, capture_output=True, text=True)
+        p = subprocess.run([_iwe_exe(), *args], cwd=cwd, capture_output=True, text=True)
     except FileNotFoundError:
         die("iwe is not on PATH — install: cargo install iwe --root ~/.local (or brew/npm where GLIBC >= 2.39)")
     if p.returncode != 0 and p.returncode not in violations_exit:
@@ -1588,8 +1607,15 @@ def cmd_lock(a):
         try:
             os.rename(d, tmp)
         except OSError:
-            print("not held")
-            sys.exit(1)
+            # On Windows, os.rename can raise PermissionError (an OSError subclass) while
+            # another process still has a handle open inside the directory — transient, not
+            # evidence the lock isn't held. Retry once before reporting.
+            time.sleep(0.5)
+            try:
+                os.rename(d, tmp)
+            except OSError:
+                print("not held")
+                sys.exit(1)
         moved = _read_owner(tmp)
         if moved.get("run") != a.run:
             try:

@@ -140,15 +140,13 @@ under `## Open threads`.
 `metadata.stepProperty` — exactly what `record` step 2 fetches. `refresh` never reads the Notion
 epic page body and never runs `iwe`.
 
-**Derivation.** Write the current brief (loaded from `origin/<epicBranch>` by the write path's
+**Derivation.** `python3` in every `knowledge.py` line below stands for `knowledge.python` from `$REPO_ROOT/.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded). Write the current brief (loaded from `origin/<epicBranch>` by the write path's
 step 2) to a temp file, assemble the state JSON (plus `stop: { key, phase,
 cause, worktree }` on a `stop`), and run
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>
 ```
-
-`python3` in every `knowledge.py` line below stands for `knowledge.python` from `.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded).
 
 ```json
 {
