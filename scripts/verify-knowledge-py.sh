@@ -374,6 +374,43 @@ lk take-orphan 0 take --run STO-71 --section start --wait 0
 assert_has "lock: an orphaned empty owner ages out by directory mtime" "$OUT/lock-take-orphan.txt" 'stale: run: ?'
 lk release-orphan 0 release --run STO-71
 [ -z "$(ls -d "$LK"/primary.stale-* 2>/dev/null)" ] && ok "lock: no stale-break leftovers remain" || bad "lock: stale-break leftovers remain"
+# Release must not delete a successor's lock. Once this run's own lock has aged past the stale
+# threshold another process may legitimately break it and take a fresh one at the same path; a
+# release that reads the owner and then removes the directory destroys that new, valid lock.
+# The race is injected deterministically: the replacement happens inside the first owner read,
+# which both the old and the new code perform, so this discriminates the two.
+RL=$(mktemp -d)
+if python3 - "$PY" "$RL" <<'PYRACE'
+import importlib.util, os, shutil, sys, types
+py, root = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("kp", py)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = os.path.join(root, "primary")
+os.makedirs(d); m._write_owner(d, "STO-70", "record")
+orig, calls = m._read_owner, []
+def racing_read(path):
+    r = orig(path)
+    calls.append(path)
+    if len(calls) == 1:                      # between the ownership check and the removal
+        shutil.rmtree(d, ignore_errors=True) # a breaker takes our stale lock
+        os.makedirs(d); m._write_owner(d, "STO-99", "record")
+    return r
+m._read_owner = racing_read
+a = types.SimpleNamespace(op="release", root=root, run="STO-70", section=None, wait=0)
+try:
+    m.cmd_lock(a)
+except SystemExit:
+    pass
+m._read_owner = orig
+kv = m._read_owner(d) if os.path.isdir(d) else {}
+if kv.get("run") == "STO-99":
+    sys.exit(0)
+print("successor lock is", kv or "GONE")   # never sys.exit(print(...)): that exits 0
+sys.exit(1)
+PYRACE
+then ok "lock: a release cannot remove a successor's lock"; else bad "lock: a release removed a successor's lock"; fi
+rm -rf "$RL"
+
 rm -rf "$LK"
 
 # A run launched from a linked worktree must take the PRIMARY checkout's lock. Resolving the

@@ -1541,7 +1541,28 @@ def cmd_lock(a):
         if kv.get("run") != a.run:
             print("refused: " + _held_line(kv))
             sys.exit(1)
-        shutil.rmtree(d)
+        # Release by rename, then verify — the same shape the stale break above uses, and for
+        # the same reason. Once this run's own lock has aged past the stale threshold another
+        # process may legitimately break it and take a fresh one at `d`; a release that read
+        # the owner and then rmtree-d `d` would delete that new, valid lock and leave two
+        # writers on the primary checkout with no mutual exclusion. Renaming is atomic, so
+        # only one mover wins, and re-reading the owner of what was actually moved is what
+        # proves we removed our own lock rather than someone's successor.
+        tmp = d + ".release-%d-%d" % (os.getpid(), time.time_ns())
+        try:
+            os.rename(d, tmp)
+        except OSError:
+            print("not held")
+            sys.exit(1)
+        moved = _read_owner(tmp)
+        if moved.get("run") != a.run:
+            try:
+                os.rename(tmp, d)          # not ours after all: put the holder's lock back
+            except OSError:
+                shutil.rmtree(tmp, ignore_errors=True)
+            print("refused: " + _held_line(moved))
+            sys.exit(1)
+        shutil.rmtree(tmp, ignore_errors=True)
         print("released")
         sys.exit(0)
     # take
