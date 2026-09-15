@@ -33,6 +33,7 @@ assert_present "1.2 resume: non-interactive never takes over" "$TICKET" "$P12" "
 assert_present "1.2 resume: the marker is re-read after the rewrite and a stolen resume aborts" "$TICKET" "$P12" "$P13" 'no longer names this run \(`session` differs\)'
 assert_present "1.2 resume: the resume is claimed with an atomic \`mkdir\` before anything is written" "$TICKET" "$P12" "$P13" 'mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"'
 assert_present "1.2 resume: a lost \`mkdir\` claim runs none of the resume rules below" "$TICKET" "$P12" "$P13" '`mkdir` fails.*\*\*run none of the resume rules below\*\*'
+assert_present "1.2 resume: a stale \`.claim\` is retired by rename, never by an unqualified remove" "$TICKET" "$P12" "$P13" 'retire it \*\*by rename\*\*, exactly as `knowledge.py`.s stale break does.*then `mkdir` the claim'
 assert_present "2.1 claim: the marker carries a per-invocation \`session\` distinct from \`run\`" "$TICKET" "$P21" "$P3" '"run": "<KEY>-<id>", "session": "<KEY>-<id>-<YYYYMMDDTHHMMSSZ>-<4 hex>"'
 assert_present "2.1 claim: the fresh path takes the same \`mkdir\` claim before \`git worktree add\`" "$TICKET" "$P21" "$P3" 'takes it \*\*before\*\* `git worktree add`: `mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"`'
 assert_present "2.1 claim: the marker path" "$TICKET" "$P21" "$P3" '\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json'
