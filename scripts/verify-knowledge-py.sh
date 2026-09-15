@@ -270,6 +270,14 @@ assert_has "next: drift names the resolved item"   "$OUT/next-drift.err" 'drift:
 assert_has "next: drift names the missing child"   "$OUT/next-drift.err" 'drift: STO-73 missing from ## Next'
 assert_has "next: drift names the missing In progress line" "$OUT/next-drift.err" 'drift: In progress line missing'
 assert_has "next: drift counts four findings"      "$OUT/next-drift.err" 'DRIFT: 4'
+# A child the brief lists as blocked whose thread hold has since been cleared becomes
+# runnable. The region changes either way, but `read` consumes only stderr, so without a
+# finding here the caller is never told to repair and keeps excluding a runnable child.
+nx unblocked 1 "$NX/brief.md"         "$NX/state-unblocked.json"
+assert_has "next: a child whose thread hold was cleared is reported as drift" \
+  "$OUT/next-unblocked.err" 'drift: STO-22 listed as blocked, no longer held by a thread'
+assert_has "next: clearing a thread hold counts one finding" "$OUT/next-unblocked.err" 'DRIFT: 1'
+
 nx complete 1 "$NX/brief.md"          "$NX/state-complete.json"
 assert_identical "next: a resolved epic renders epic complete and Status: closed" \
   "$OUT/next-complete.md" "$NX/expected-complete.md"

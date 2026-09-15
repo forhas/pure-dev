@@ -1317,6 +1317,12 @@ def drift_findings(state, prev_items, prev_in_progress, prev_blocked, header_sta
                      % (k, "next" if k in prev_num else "blocked"))
         elif k in new_num and k in prev_ip:
             f.append("drift: %s listed as in progress, live status open" % k)
+        elif k in new_num and k in prev_bl:
+            # The inverse of the branch below: the thread that held this child was
+            # cleared, so it is runnable again. Without this the region changes but
+            # `DRIFT: 0` is printed, and `read` — which consumes only stderr — never
+            # triggers the repair, so the caller keeps excluding a runnable child.
+            f.append("drift: %s listed as blocked, no longer held by a thread" % k)
         elif k in new_bl and k not in prev_bl:
             f.append("drift: %s listed as %s, held by a thread"
                      % (k, "next" if k in prev_num else "in progress"))
