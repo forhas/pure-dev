@@ -188,7 +188,7 @@ From `$REPO_ROOT` — `cd $REPO_ROOT` first if the run is still inside the workt
 
 ### Post-merge hooks
 
-Run `git.postMergeHooks` skills in order (empty default — no-op). These run **after** cleanup, not before it: a hook such as `notion-dev:knowledge` commits and pushes from the primary checkout, and only here is the primary guaranteed to be on a freshly pulled `<baseRefName>` containing the merge commit the hook reads. Running them earlier meant committing and pushing to whatever branch the primary happened to be on — and this command in particular can be invoked from inside the worktree, so the primary's branch was never asserted at all. The hook receives `<ticket-id>`, `<merge-sha>`, the ticket body, `KNOWLEDGE_CONTEXT`, and the run's review report — nothing from Notion.
+Run `git.postMergeHooks` skills in order (empty default — no-op). These run **after** cleanup, not before it: a hook such as `notion-dev:knowledge` commits and pushes from the primary checkout, and only here is the primary guaranteed to be on a freshly pulled `<baseRefName>` containing the merge commit the hook reads. Running them earlier meant committing and pushing to whatever branch the primary happened to be on — and this command in particular can be invoked from inside the worktree, so the primary's branch was never asserted at all. The hook receives `<ticket-id>`, `<merge-sha>`, the ticket body, `KNOWLEDGE_CONTEXT`, the run's review report, and `LOCK_HELD` — nothing from Notion.
 
 Assert that before invoking anything:
 

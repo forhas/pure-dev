@@ -59,6 +59,12 @@ assert_present "ticket phase 10: \`record\` runs with \`LOCK_HELD\`" "$TICKET" "
 assert_present "ticket phase 9 hooks: hook receives \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'hook receives .*LOCK_HELD'
 assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lock waits\*\*'
 
+LF=$(total_lines "$FINALIZE")
+F32=$(find_line "$FINALIZE" 1 "$LF" '^### 3\.2 '); F5=$(find_line "$FINALIZE" 1 "$LF" '^## Phase 5 ')
+assert_present "finalize 3.2: \`epic-update\` runs with \`LOCK_HELD\`" "$FINALIZE" "$F32" "$F5" 'epic-update.*LOCK_HELD'
+assert_present "finalize phase 4 hooks: hook receives \`LOCK_HELD\`" "$FINALIZE" "$F32" "$F5" 'hook receives .*LOCK_HELD'
+assert_present "finalize phase 5: \`record\` runs with \`LOCK_HELD\`" "$FINALIZE" "$F5" "$LF" 'operation `record\(<id>\)`.*LOCK_HELD'
+
 echo "== epic-doc read takes nothing =="
 LE=$(total_lines "$ED"); R0=$(find_line "$ED" 1 "$LE" '^## `read\('); RB=$(find_line "$ED" 1 "$LE" '^## Bootstrap')
 assert_absent "epic-doc read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
