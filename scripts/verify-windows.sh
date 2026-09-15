@@ -21,6 +21,12 @@ L=$(total_lines "$INIT")
 assert_present "init: probes python3, python, py -3 in order and records PYTHON_CMD" "$INIT" 1 "$L" 'python3 --version.*python --version.*py -3 --version.*PYTHON_CMD'
 assert_present "init: detects Git Bash via uname -s (MINGW/MSYS) and names the Windows install routes" "$INIT" 1 "$L" 'uname -s.*MINGW.*MSYS.*Git for Windows.*Git Bash.*npm i -g @iwe-org/iwe.*winget install Python'
 assert_present "init: writes python: <PYTHON_CMD> into the knowledge block" "$INIT" 1 "$L" 'python: <PYTHON_CMD>'
+# The omit rules are the mechanism, not the write: a placeholder written when the probe
+# found nothing fails the schema's minLength and outlives the missing interpreter.
+assert_present "init: writes \`python: <PYTHON_CMD>\` only when the probe recorded one, omitting it when no interpreter was found" \
+  "$INIT" 1 "$L" 'python: <PYTHON_CMD>.*only when step 1.s probe actually recorded .PYTHON_CMD.*omitted when no interpreter was found'
+assert_present "init: omits it again when the recorded value equals the default \`python3\`" \
+  "$INIT" 1 "$L" 'omitted again when the recorded value equals that default .python3.'
 for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/finalize.md commands/create-task.md commands/knowledge.md skills/knowledge/SKILL.md skills/epic-doc/SKILL.md; do
   n=$(total_lines "$ND/$f")
   assert_present "$f: python3 stands for knowledge.python" "$ND/$f" 1 "$n" '`python3` in every `knowledge.py` line below stands for `knowledge.python`'
