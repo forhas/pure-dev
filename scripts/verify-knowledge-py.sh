@@ -300,9 +300,13 @@ then ok "next: client-shaped partitions every unresolved child exactly once"; el
 nx title 1 "$NX/brief-title.md" "$NX/state-basic.json"
 assert_has "next: a stale title is drift"   "$OUT/next-title.err" 'drift: STO-73 title differs from live'
 assert_has "next: a stale title is one finding" "$OUT/next-title.err" 'DRIFT: 1'
-nx order 1 "$NX/brief-order.md" "$NX/state-basic.json"
-assert_has "next: a swapped numbered order is drift" "$OUT/next-order.err" 'drift: numbered order differs from derived'
-assert_has "next: a swapped order is one finding" "$OUT/next-order.err" 'DRIFT: 1'
+nx order-drift 1 "$NX/brief-order.md" "$NX/state-basic.json"
+assert_has "next: a swapped numbered order is drift" "$OUT/next-order-drift.err" 'drift: numbered order differs from derived'
+assert_has "next: a swapped order is one finding" "$OUT/next-order-drift.err" 'DRIFT: 1'
+nx ip-title 1 "$NX/brief-ip-title.md" "$NX/state-basic.json"
+assert_has "next: a stale In progress title is drift" "$OUT/next-ip-title.err" 'drift: STO-72 title differs from live'
+assert_has "next: a stale In progress title is one finding" "$OUT/next-ip-title.err" 'DRIFT: 1'
+assert_has "next: the since date survives a title repair" "$OUT/next-ip-title.md" 'In progress: [STO-72] Backfill v2 — since 2026-09-14'
 printf 'no next heading\n' > "$OUT/next-bad.md"
 nx malformed 2 "$OUT/next-bad.md" "$NX/state-basic.json"
 nx stop-bad 2 "$NX/brief.md" "$NX/state-stop-bad.json" --reason stop STO-72
