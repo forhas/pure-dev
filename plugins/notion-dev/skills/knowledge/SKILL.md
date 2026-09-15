@@ -317,8 +317,8 @@ nothing here reads Notion.
 4. The loser is superseded exactly as `capture` step 3 supersedes — `status: deprecated`,
    `superseded_by`, one dated line — and its links are left pointing at a live successor.
 5. Index, log, check again, then commit `docs(knowledge): curate — <n> clusters resolved` by
-   pathspec and push, as `capture` step 6 does. Returns `capture`'s output block, with
-   `SUPERSEDED` naming each resolved cluster.
+   pathspec and push, as `capture` step 6 does, through the same five steps. Returns `capture`'s
+   output block, with `SUPERSEDED` naming each resolved cluster.
 
 ## `migrate [--apply]`
 

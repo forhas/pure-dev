@@ -84,6 +84,7 @@ assert_present "new-info apply: \`capture --fact\` receives \`LOCK_HELD\`" "$NI"
 echo "== knowledge.md =="
 section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600
 section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600
+section "knowledge curate"  "$KC" '^## `curate`$'  '^## Report$'   curate 600
 echo "== create-task.md =="
 section "create-task create" "$CT" '^### 3\.2 ' '^## Phase 4' create 600
 LC=$(total_lines "$CT"); C0=$(find_line "$CT" 1 "$LC" '^### 3\.2 '); C1=$(find_line "$CT" 1 "$LC" '^## Phase 4')

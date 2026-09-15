@@ -55,8 +55,8 @@ if [ -f "$NI" ]; then
     # preconditions
     assert_has "new-info does not require \`dependencies.superpowers\`" \
       "$NI" '`dependencies.superpowers` and `dependencies.featureDev` are **not** required'
-    assert_present "preconditions: fast-forward the epic branch before anything (\`pull --ff-only\`)" \
-      "$NI" 1 "$S0" 'pull --ff-only origin <epicBranch>'
+    assert_present "apply: fast-forwards the epic branch after the lock, not in preconditions (\`pull --ff-only\`)" \
+      "$NI" "$P0" "$PR" 'pull --ff-only origin <epicBranch>'
     assert_present "preconditions: a non-epic id stops the run (\`is not an epic container\`)" \
       "$NI" 1 "$S0" 'is not an epic container'
     # scope

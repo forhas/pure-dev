@@ -101,8 +101,14 @@ Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <
 
 ## `curate`
 
-Invoke the `notion-dev:knowledge` skill, operation `curate`, passing `REPO_ROOT` and
-`<epicBranch>`.
+First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section curate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+`CAUSE: primary lock held by <run> (<section>) since <time>`).
+
+Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
+(a `--ff-only` failure → release the lock and stop with the diverged-base report).
+
+Invoke the `notion-dev:knowledge` skill, operation `curate`, passing `REPO_ROOT`, `<epicBranch>`,
+and `LOCK_HELD`.
 
 Each near-duplicate cluster comes back with both bodies side by side; put it to the user with
 `AskUserQuestion` — one question per cluster, the options being each concept in the cluster and
@@ -110,6 +116,8 @@ Each near-duplicate cluster comes back with both bodies side by side; put it to 
 survivor on the user's behalf, because which of two similar facts is the durable one is exactly
 the judgment a person is here for. A cluster the user skips is left untouched and named in the
 report.
+
+Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`.
 
 ## Report
 
