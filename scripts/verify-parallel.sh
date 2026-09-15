@@ -26,7 +26,7 @@ P9=$(find_line "$TICKET" 1 "$L" '^## Phase 9 '); P9H=$(find_line "$TICKET" 1 "$L
 P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 '); FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
 echo "== ticket.md: claim, marker, ownership =="
 assert_present "1.1 ownership check: in progress with no worktree of ours aborts \`held elsewhere\`" "$TICKET" "$P11" "$P12" 'is In Progress and has no worktree here — held elsewhere'
-assert_present "1.1 ownership check: non-interactive never proceeds" "$TICKET" "$P11" "$P12" 'held elsewhere.*non-interactive mode never'
+assert_present "1.1 ownership check: non-interactive never proceeds" "$TICKET" "$P11" "$P12" 'held elsewhere.*non-interactive mode never proceeds'
 assert_present "1.2 resume: a \`running\` marker with a fresh heartbeat aborts \`held by a live session\`" "$TICKET" "$P12" "$P13" '"state": "running".*held by a live session — <phase> since <heartbeat>'
 assert_present "1.2 resume: \`stopped\`, a heartbeat older than 2 hours, or no marker resumes" "$TICKET" "$P12" "$P13" '`stopped`.*older than 2 hours.*no marker.*resume'
 assert_present "1.2 resume: non-interactive never takes over" "$TICKET" "$P12" "$P13" 'non-interactive never takes over'
@@ -36,13 +36,19 @@ assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` 
 assert_order "2.1: worktree add, then marker, then status, then refresh start" "$TICKET" "$P21" "$P3" \
   worktree 'git worktree add <worktree-path>' marker '"state": "running"' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 assert_present "marker discipline: heartbeat at every phase boundary and every review round" "$TICKET" "$P21" "$P3" 'heartbeat.*every phase boundary and every review round'
-assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every'
+assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every reviewer round'
 assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$TICKET" "$P9" "$P9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
 assert_order "phase 9: worktree removed, then marker deleted" "$TICKET" "$P9" "$P9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
 assert_present "stop path: the marker is set to \`\"state\": \"stopped\"\` with the cause" "$TICKET" "$FS" "$L" '"state": "stopped".*cause'
+# The rewrite lives in the unconditional "On any unrecoverable failure" bullet, not the
+# epic-only `stop` section below it — no bullet boundary separates the two in the file, so
+# a region tightened to "next `^- ` bullet" would still swallow the epic-only text. Proving
+# the order instead pins that the unconditional rewrite is not accidentally the epic-only one.
+assert_order "stop path: the unconditional \`stopped\` rewrite precedes the epic-only \`refresh\` stop call" "$TICKET" "$FS" "$L" \
+  stopped '"state": "stopped".*cause' refresh 'operation `refresh\(<epic-id>, stop <key> <phase> <cause> <worktree-path>\)`'
 assert_present "phase 10 report: the marker outcome line" "$TICKET" "$P10" "$FS" '^- \*\*Run marker\*\*'
 LS=$(total_lines "$SIG")
-assert_present "signature \`claimed-elsewhere\`" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \| info \| `ticket.md` \|'
+assert_absent "signatures: claimed-elsewhere is a run outcome, never a signature row" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \|'
 
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"
