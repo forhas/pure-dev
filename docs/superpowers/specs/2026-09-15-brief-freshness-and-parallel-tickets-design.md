@@ -201,10 +201,13 @@ tree, stash for the user's permitted edits.
   (atomic on Linux, macOS, WSL and Windows). Inside it one file, `owner`, three lines:
   `run: <run id>`, `section: <name>`, `since: <ISO-8601 UTC>`. The `.claude/notion-dev/`
   directory is already self-ignored.
-- **Run ids:** `<KEY>-<n>` for a ticket run, `next-task <KEY>-<n>`, `finalize <pr>`; **(PR 2, #44)**
+- **Run ids:** `<KEY>-<n>` for a ticket run, `finalize <pr>`; **(PR 2, #44)**
   commands without natural identity — `new-info`, `knowledge`, `create-task` — generate one
   per-invocation token at their start, `<command>-<YYYYMMDDTHHMMSSZ>-<4 hex>`, and carry it
   through every take and release of that run (so `new-info`'s per-epic re-take stays re-entrant).
+  `next-task` generates one too, and for a sharper reason: two loops on one epic is the workflow
+  §7 advertises, so the natural-looking `next-task <KEY>-<n>` is identical for both and `take`
+  would read the second as re-entrant, putting both in the bootstrap or drift write path at once.
   PR 1's bare labels were `new-info`, `knowledge`,
   `finalize <pr>`, `create-task`.
 - **Command:** `knowledge.py lock take --run <id> --section <name> [--wait <seconds>]`,
