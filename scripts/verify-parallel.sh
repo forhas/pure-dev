@@ -65,11 +65,16 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: re-run verify, then \`git push --force-with-lease\`" "$f" "$M5" "$SR" 'verify.*git push --force-with-lease'
   assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
   assert_present "$f: \`.claude-plugin/plugin.json\` version conflict: take the base's value and re-apply the bump class" "$f" "$M5" "$SR" '\.claude-plugin/plugin\.json.*take the base.s value.*bump class'
-  assert_present "$f: the bump class is derived from merge-base vs head" "$f" "$M5" "$SR" 'bump class.*merge-base'
+  assert_present "$f: bump class recorded before the rebase (merge-base vs head)" "$f" "$M5" "$SR" 'bump class.*merge-base'
   assert_present "$f: any other conflict → \`git rebase --abort\` and the unmergeable stop" "$f" "$M5" "$SR" 'git rebase --abort.*unmergeable'
   assert_present "$f: rebase once, at the gate, never per round" "$f" "$M5" "$SR" 'once, at the gate, never per'
+  assert_present "$f: the bump class is recorded before rebasing" "$f" "$M5" "$SR" 'before rebasing.*record the bump class'
+  assert_present "$f: the strictly-greater re-check is unconditional after any rebase" "$f" "$M5" "$SR" 'After any rebase.*unconditionally.*strictly greater'
+  assert_present "$f: the bounded re-read distinguishes \`UNKNOWN\` from \`BLOCKED\`" "$f" "$M5" "$SR" '`UNKNOWN`.*wait.*`BLOCKED`.*gate 1'
+  assert_present "$f: gate 1 is re-satisfied on the pushed head" "$f" "$M5" "$SR" 're-satisfy gate 1 on the pushed head'
   assert_order "$f: completeness gate, rebase, pre-merge check, merge command" "$f" "$M5" "$SR" \
     completeness '^4\. \*\*Completeness gate\*\*' rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" merge '^gh pr merge <pr> '
+  assert_present "$f: the re-bump commit precedes the single push, which precedes gate 1's re-satisfaction" "$f" "$M5" "$SR" 're-bump version after rebase.*git push --force-with-lease.*re-satisfy gate 1 on the pushed head'
 done
 
 echo "== review-and-merge: notion-dev-only fork anchors =="
