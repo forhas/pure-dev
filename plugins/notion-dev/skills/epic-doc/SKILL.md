@@ -195,7 +195,7 @@ from a brief whose drift refresh failed.
 once here; the others cite it.
 
 1. **Lock.** Unless the caller passed `LOCK_HELD`, take the primary lock:
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section <name> --wait <seconds>` — `LOCK_HELD` means an enclosing section already holds it. Run ids: a ticket run uses `<KEY>-<id>`, finalize `finalize <pr>`, next-task `next-task <KEY>-<n>`; every other command generates a per-invocation token at its start (its preconditions say how).
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section <name> --wait <seconds>` — `LOCK_HELD` means an enclosing section already holds it. Run ids: a ticket run uses `<KEY>-<id>`, finalize `finalize <pr>`, next-task `next-task <KEY>-<n>`; every other command generates a per-invocation token at its start (its preconditions or, for create-task, its `create` paragraph say how).
    Exit 1 → `failed`, `CAUSE: primary lock held by <run> (<section>) since <time>`; a printed
    `stale:` line → record `lock-stale:primary` per `notion-dev:issue-log` and name the old owner
    in the report. Read-only checks of the primary and `git worktree add` never take it.

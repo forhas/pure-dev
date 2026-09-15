@@ -93,7 +93,13 @@ echo "== new-info --pr rebase (#46) =="
 NI=plugins/notion-dev/commands/new-info.md; LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
 assert_present "apply: on a later epic under --pr, fetch and rebase the note branch when the epic branch moved" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
 assert_present "apply: a conflicting rebase aborts, releases, and stops with the remaining epics skipped" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase --abort.*release.*skipped'
-assert_order "apply: take, re-checkout, rebase" "$NI" "$A0" "$A1" take 'lock take --run <run id> --section apply' rebase 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
+assert_present "apply: on a later epic under --pr, the note branch is rebased only when \`origin/<epicBranch>\` is no longer an ancestor of HEAD" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT merge-base --is-ancestor origin/<epicBranch> HEAD'
+assert_present "apply: the epic branch is fetched before the ancestry check" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT fetch origin <epicBranch>'
+assert_order "apply: take, re-checkout, fetch, rebase" "$NI" "$A0" "$A1" \
+  take 'lock take --run <run id> --section apply' \
+  recheckout 'git -C \$REPO_ROOT checkout <noteBranch>` under `--pr`.*`checkout`, never `checkout -b`' \
+  fetch 'git -C \$REPO_ROOT fetch origin <epicBranch>' \
+  rebase 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
 
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"

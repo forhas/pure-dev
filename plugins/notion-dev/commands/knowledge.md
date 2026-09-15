@@ -45,7 +45,7 @@ failure to write the log never fails the run.
   remote-equality line assertable by hand; a primary holding unpushed local commits fails it, and
   the remedy is to push or reset them, never to skip the check.
 - `<run id>` = `knowledge-$(date -u +%Y%m%dT%H%M%SZ)-<4 hex>` (e.g. `knowledge-20260915T101500Z-a3f9`;
-  the hex from `head -c2 /dev/urandom | od -An -tx1 | tr -d ' '`), generated once at the start of
+  the hex from `head -c2 /dev/urandom | od -An -tx1 | tr -dc '0-9a-f'`), generated once at the start of
   this command and carried through every `lock take` and `lock release` of this run — so a second
   concurrent invocation is a different holder, while this run's own re-takes stay re-entrant.
 
