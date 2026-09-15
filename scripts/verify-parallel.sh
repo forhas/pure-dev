@@ -113,6 +113,7 @@ assert_present "apply: on a later epic under --pr, the note branch is rebased on
 assert_present "apply: the epic branch is fetched before the ancestry check" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT fetch origin <epicBranch>'
 assert_present "apply: a successful rebase re-derives the proposal and re-enters \`### Gate\` on a changed \`DIFF\`" "$NI" "$A0" "$A1" 're-enter `### Gate` only when the new `DIFF` differs from the accepted one. Applying the pre-rebase proposal'
 assert_present "apply: a rebase re-runs the live child lookup rather than keeping the pre-rebase \`CHILDREN\`" "$NI" "$A0" "$A1" '\*\*and re-run the live child lookup\*\* — do not keep the `CHILDREN` already in hand'
+assert_present "apply: the first epic re-derives when \`origin/<epicBranch>\` moved since \`read\`" "$NI" "$A0" "$A1" 'Record the sha `read` resolved the brief at; on the first Apply, when `origin/<epicBranch>` no longer names that sha, re-derive'
 assert_order "apply: take, re-checkout, fetch, rebase" "$NI" "$A0" "$A1" \
   take 'lock take --run <run id> --section apply' \
   recheckout 'git -C \$REPO_ROOT checkout <noteBranch>` under `--pr`.*`checkout`, never `checkout -b`' \
