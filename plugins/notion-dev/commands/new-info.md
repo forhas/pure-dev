@@ -66,7 +66,7 @@ Then, unless `--pr`: `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_RO
 
 **On a later epic, check the branch out again rather than assuming it survived.** The lock is released between epics, and the Read and Gate steps of the next one run without it — so any other locked writer may take the primary in that interval, and the shared write path is allowed to check out `<epicBranch>`. A later Apply that skipped the checkout because "the previous epic left it there" then runs against whatever branch that writer left behind: under `--pr` `note --apply --branch <noteBranch>` fails its HEAD-branch assertion and every remaining affected epic goes unapplied. So after each per-epic take, on the second and later epics, `git -C $REPO_ROOT checkout <noteBranch>` under `--pr` (the branch step 1 already created — `checkout`, never `checkout -b`), or `git -C $REPO_ROOT checkout <epicBranch>` on the direct path. It is a no-op when nothing intervened, which is the common case.
 
-Under `--pr`, on a later epic: `git -C $REPO_ROOT fetch origin <epicBranch>`.
+Under `--pr`, on **every** epic — and on the direct path before every later epic's comparison below — `git -C $REPO_ROOT fetch origin <epicBranch>`. Not only on a later one: `origin/<epicBranch>` is a tracking ref and is only as fresh as whatever last fetched it, so the first epic, which fetches nowhere else, would compare its recorded read sha against a ref the remote has already moved past — and pass. Every ancestry check and every recorded-sha comparison below depends on this fetch having just run.
 
 `git -C $REPO_ROOT merge-base --is-ancestor origin/<epicBranch> HEAD` — when it fails, another writer advanced the epic branch since the note branch was cut.
 
