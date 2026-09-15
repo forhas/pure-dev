@@ -112,6 +112,7 @@ assert_present "apply: a conflicting rebase aborts, releases, and stops with the
 assert_present "apply: on a later epic under --pr, the note branch is rebased only when \`origin/<epicBranch>\` is no longer an ancestor of HEAD" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT merge-base --is-ancestor origin/<epicBranch> HEAD'
 assert_present "apply: the epic branch is fetched before the ancestry check" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT fetch origin <epicBranch>'
 assert_present "apply: a successful rebase re-derives the proposal and re-enters \`### Gate\` on a changed \`DIFF\`" "$NI" "$A0" "$A1" 're-enter `### Gate` only when the new `DIFF` differs from the accepted one. Applying the pre-rebase proposal'
+assert_present "apply: a rebase re-runs the live child lookup rather than keeping the pre-rebase \`CHILDREN\`" "$NI" "$A0" "$A1" '\*\*and re-run the live child lookup\*\* — do not keep the `CHILDREN` already in hand'
 assert_order "apply: take, re-checkout, fetch, rebase" "$NI" "$A0" "$A1" \
   take 'lock take --run <run id> --section apply' \
   recheckout 'git -C \$REPO_ROOT checkout <noteBranch>` under `--pr`.*`checkout`, never `checkout -b`' \
