@@ -298,6 +298,16 @@ assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.
   '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
 assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
 
+# A header Status that disagrees with the live epic is repaired, not merely reported: with
+# `## Next` already true nothing else changes, so the rewrite has to be driven by the header
+# mismatch itself, and the exit status has to say the brief differs.
+sed 's/ Status: open / Status: closed /' "$NX/brief.md" > "$OUT/brief-header-only.md"
+nx header-only 1 "$OUT/brief-header-only.md" "$NX/state-basic.json"
+assert_has "next: a header-only mismatch is reported as drift" "$OUT/next-header-only.err" \
+  'drift: header Status closed, live open'
+assert_has "next: a header-only mismatch rewrites the stale header" "$OUT/next-header-only.md" \
+  'Status: open · Updated: 2026-09-15 after refresh'
+
 nx comma 0 "$NX/brief-comma.md" "$NX/state-comma.json"
 assert_has "next: a comma in an in-progress title keeps its since date" "$OUT/next-comma.md" \
   'In progress: [STO-72] Backfill, v2 — since 2026-09-14'

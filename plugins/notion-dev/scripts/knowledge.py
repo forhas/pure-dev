@@ -1422,9 +1422,12 @@ def cmd_next(a):
     hm = HEADER_RE.match(lines[header_idx])
     findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered)
     findings += ["drift: unparsed line in ## Next: %s" % u[:60] for u in prev_unparsed]
-    changed = lines != original
+    live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
+    # A header whose Status disagrees with the live epic is itself a change: without it a
+    # brief whose `## Next` is already true exits 0 and leaves the stale header in place,
+    # so the finding is reported on every run and repaired by none of them.
+    changed = lines != original or hm.group(2) != live_status
     if changed:
-        live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
         what = {"start": "start [%s]", "stop": "stop [%s]", "create": "create [%s]",
                 "resolve": "[%s]"}.get(reason_word)
         what = (what % reason_key) if what else ("new-info" if reason_word == "new-info" else "refresh")
