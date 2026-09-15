@@ -39,6 +39,7 @@ assert_present "1.2 resume: the marker is re-read after \`mkdir\` and before it 
 assert_present "2.1 claim: the marker carries a per-invocation \`session\` distinct from \`run\`" "$TICKET" "$P21" "$P3" '"run": "<KEY>-<id>", "session": "<KEY>-<id>-<YYYYMMDDTHHMMSSZ>-<4 hex>"'
 assert_present "2.1 claim: the fresh path takes the same \`mkdir\` claim before \`git worktree add\`" "$TICKET" "$P21" "$P3" 'takes it \*\*before\*\* `git worktree add`: `mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"`'
 assert_present "2.1 claim: the claim is released on any exit before the marker, \`claimed-elsewhere\` included" "$TICKET" "$P21" "$P3" 'equally on \*\*any\*\* exit before that, the `claimed-elsewhere` stop included'
+assert_present "2.1 claim: a lost fresh claim ends as \`OUTCOME: claimed-elsewhere\`, not 1.2's abort" "$TICKET" "$P21" "$P3" 'a lost claim is another session claiming the \*same ticket\*, so it ends as `OUTCOME: claimed-elsewhere`'
 assert_present "2.1 claim: the marker path" "$TICKET" "$P21" "$P3" '\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json'
 assert_present "2.1 claim: the marker is written with \`\"state\": \"running\"\`" "$TICKET" "$P21" "$P3" '"state": "running"'
 assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` before any status change" "$TICKET" "$P21" "$P3" 'OUTCOME: claimed-elsewhere.*before\*\* any status change'
