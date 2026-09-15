@@ -215,7 +215,7 @@ tree, stash for the user's permitted edits.
   | `/notion-dev:finalize` | `record` | Phase 3 → Phase 4 → Phase 5 `record` |
   | `/notion-dev:next-task` | `bootstrap` / `drift` | the one `record --bootstrap` or `refresh drift` |
   | `/notion-dev:new-info` | `apply` | every `note --apply` and `capture --fact` of the run |
-  | `/notion-dev:knowledge` | `capture` / `migrate` | the whole command |
+  | `/notion-dev:knowledge` | `capture` / `migrate` / `curate` | the whole command — except `curate`'s cluster questions, which are answered before the take |
   | `/notion-dev:create-task` | `create` | the one `refresh create` |
 
   Read-only checks of the primary (`git status --porcelain`, `git rev-parse`), `git worktree add`
