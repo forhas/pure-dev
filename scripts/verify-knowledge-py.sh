@@ -385,6 +385,9 @@ mkdir -p "$CV/a/knowledge/epic"; cp "$NX/brief.md" "$CV/a/knowledge/epic/STO-60-
 # A tracked setup file: the preconditions permit it to be dirty, so the converge reset must
 # not discard it. It lives outside the operation's pathspec by construction.
 mkdir -p "$CV/a/.claude"; printf '{"git":{"baseBranch":"main"}}\n' > "$CV/a/.claude/notion-dev.config.json"
+# A tracked file outside the operation's pathspec that upstream will move. The converge must
+# leave it at the FETCHED content: a soft reset would park a staged reversion of it instead.
+printf 'seed\n' > "$CV/a/unrelated.txt"
 ( cd "$CV/a" && $G add -A && $G commit -q -m seed && $G push -q origin main ) 2>/dev/null
 $G clone -q "$CV/origin.git" "$CV/b" 2>/dev/null
 B=knowledge/epic/STO-60-wallet-indexing.md
@@ -394,6 +397,10 @@ python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --toda
 cp "$CV/a/out.md" "$CV/a/$B"
 ( cd "$CV/a" && $G commit -q --only -m "docs(epic): STO-60 create STO-74" -- "$B" && $G push -q origin main ) 2>/dev/null \
   && ok "write path: A's commit and push land" || bad "write path: A's commit or push failed"
+# an unrelated upstream commit, outside the brief's pathspec, that B has not seen
+printf 'upstream v2\n' > "$CV/a/unrelated.txt"
+( cd "$CV/a" && $G commit -q --only -m "chore: unrelated" -- unrelated.txt && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: an unrelated upstream commit lands" || bad "write path: unrelated upstream commit failed"
 
 # B, stale clone: start STO-71, push rejected
 python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out.md" 2>/dev/null
@@ -404,9 +411,15 @@ if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B
 # re-derive, commit, push — never `--hard`, which would take the permitted dirt with it
 ( cd "$CV/b" && $G fetch -q origin main && n=$($G rev-list origin/main..HEAD | wc -l | tr -d ' ') && [ "$n" -eq 1 ] ) \
   && ok "write path: rev-list shows exactly one local commit before the reset" || bad "write path: rev-list count is not 1"
-( cd "$CV/b" && $G reset -q --soft origin/main && $G restore --staged --worktree -- "$B" ) 2>/dev/null
+( cd "$CV/b" && $G stash push -q -- .claude/notion-dev.config.json \
+    && $G reset -q --hard origin/main && $G stash pop -q ) 2>/dev/null
 assert_has "write path: the converge reset keeps permitted dirt outside the pathspec" \
   "$CV/b/.claude/notion-dev.config.json" '"local":"edit"'
+assert_has "write path: the converge reset takes the fetched content of files outside the pathspec" \
+  "$CV/b/unrelated.txt" 'upstream v2'
+( cd "$CV/b" && $G status --porcelain ) > "$OUT/cv-status.txt"
+assert_lacks "write path: the converge leaves no staged reversion of an upstream change" \
+  "$OUT/cv-status.txt" 'unrelated.txt'
 python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
 cp "$CV/b/out2.md" "$CV/b/$B"
 ( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \
