@@ -132,7 +132,10 @@ commits go through the write path. That removes the second and third copies of t
 reports `DRIFT: true` with one line per finding when: an unresolved child is in none of the three
 lists; a child is in the wrong list for its live status (resolved but listed; in progress but
 numbered or blocked; numbered but held by a thread); the header `Status:` disagrees with the
-live epic status; `## Next` lacks the `In progress:` line while some child is in progress. `read`
+live epic status; `## Next` lacks the `In progress:` line while some child is in progress; **(PR 2,
+#45)** a listed child's title differs from its live title, or the numbered list's order differs
+from the derived order. A re-wrapped line and a changed reason text are **not** drift: reasons are
+preserved by design, and bytes are compared as parsed items, never as raw lines. `read`
 still writes nothing — it runs before any worktree exists. Whoever writes next repairs it:
 `/notion-dev:ticket` through its Phase 2 `start`, `/notion-dev:next-task` through `refresh drift`.
 
@@ -198,7 +201,14 @@ tree, stash for the user's permitted edits.
   (atomic on Linux, macOS, WSL and Windows). Inside it one file, `owner`, three lines:
   `run: <run id>`, `section: <name>`, `since: <ISO-8601 UTC>`. The `.claude/notion-dev/`
   directory is already self-ignored.
-- **Run ids:** `<KEY>-<n>` for a ticket run, `next-task <KEY>-<n>`, `new-info`, `knowledge`,
+- **Run ids:** `<KEY>-<n>` for a ticket run, `finalize <pr>`; **(PR 2, #44)**
+  commands without natural identity — `new-info`, `knowledge`, `create-task` — generate one
+  per-invocation token at their start, `<command>-<YYYYMMDDTHHMMSSZ>-<4 hex>`, and carry it
+  through every take and release of that run (so `new-info`'s per-epic re-take stays re-entrant).
+  `next-task` generates one too, and for a sharper reason: two loops on one epic is the workflow
+  §7 advertises, so the natural-looking `next-task <KEY>-<n>` is identical for both and `take`
+  would read the second as re-entrant, putting both in the bootstrap or drift write path at once.
+  PR 1's bare labels were `new-info`, `knowledge`,
   `finalize <pr>`, `create-task`.
 - **Command:** `knowledge.py lock take --run <id> --section <name> [--wait <seconds>]`,
   `lock release --run <id>`, `lock status`. `take` exits 0 when taken or already held by the
@@ -227,8 +237,11 @@ tree, stash for the user's permitted edits.
   timeout, return `failed` with `CAUSE: primary lock held by <run> (<section>) since <time>`.
   The `record` sections of `ticket` and `finalize` pass `--wait 3600`; a timeout there is the
   flow's ordinary stop report (cleanup not run, worktree left), because cleanup cannot be skipped.
-- **Stale locks:** `take` treats an `owner` older than 30 minutes as abandoned — no section is
-  designed to hold it that long — removes it, takes the lock, and prints `stale: <old owner>`.
+- **Stale locks:** `take` treats an `owner` older than 60 minutes as abandoned — no section is
+  designed to hold it that long, and the longest wait any section passes (`--wait 3600`) is the
+  same bound, so a waiter never breaks a lock a live section may still hold; a `record` section
+  is bounded by that hour too — a post-merge hook that cannot finish inside it must not be
+  configured — removes it, takes the lock, and prints `stale: <old owner>`.
   The caller records `lock-stale:primary` per `notion-dev:issue-log` and names it in its report.
   Nothing else ever removes another run's lock.
 - **Release on every path:** success, `failed`, and the stop path all release before the run
@@ -321,7 +334,7 @@ are constants in the script, not config.
 - **Run marker:** `$REPO_ROOT/.claude/notion-dev/runs/<KEY>-<id>.json`:
 
   ```json
-  { "run": "STO-70", "worktree": "/abs/path", "branch": "ticket/STO-70-backfill",
+  { "run": "STO-70", "session": "STO-70-20260915T104200Z-9f3a", "worktree": "/abs/path", "branch": "ticket/STO-70-backfill",
     "phase": "Phase 7", "heartbeat": "2026-09-15T10:42:00Z", "state": "running",
     "cause": null }
   ```
@@ -337,7 +350,11 @@ are constants in the script, not config.
   - marker `running` and heartbeat younger than 2 hours → `held by a live session — <phase>
     since <heartbeat>`; abort. Interactive mode offers take-over (which rewrites the marker
     with this run's id); non-interactive never takes over.
-  - marker `stopped`, heartbeat older than 2 hours, or no marker → resume as today.
+  - marker `stopped`, heartbeat older than 2 hours, or no marker → resume as today, behind an
+    atomic claim: `mkdir <runs>/<KEY>-<id>.claim` (§4's primitive) before the marker is
+    rewritten, released right after the re-read. `run` names the ticket and is the same for
+    every session of it; the per-invocation `session` token (#44's form) is what the re-read
+    compares, and a rewrite-and-read on `run` alone can never distinguish two sessions.
 - **`claimed-elsewhere`:** when 2.1's `git worktree add` fails because the branch exists and
   1.2 found no worktree (the race window between 1.2 and 2.1), the run ends with the outcome
   `claimed-elsewhere` before any status change, ledger line or brief write. A stop report of
@@ -352,21 +369,43 @@ are constants in the script, not config.
   the bootstrap path already applies.
 - **Two loops on one epic** interleave with no further rule: each re-reads the brief after its
   own resolution, item 1 excludes everything in progress, and the claim settles a tie.
+- **`new-info --pr` when the epic branch moves (#46):** at each later epic's `apply` take, after
+  the re-checkout of `<noteBranch>`, `git -C $REPO_ROOT fetch origin <epicBranch>` and, when
+  `origin/<epicBranch>` is no longer an ancestor of HEAD, `git -C $REPO_ROOT rebase
+  origin/<epicBranch>` — the note commits are local and unpushed, so nothing published is
+  rewritten. A conflicting rebase → `git rebase --abort`, release, and stop: this epic and every
+  later one are reported `skipped — note branch could not be rebased onto <epicBranch>: <git's
+  message>`, and the note branch is left for a person. Merge commits are never manufactured.
 
 ## §8 Merging in parallel (PR 2)
 
 - **`review-and-merge` step 5, before the merge command:** read `mergeStateStatus`. `BEHIND` or
-  `DIRTY` → in the worktree: `git fetch origin <base>`, `git rebase origin/<base>`, re-run the
-  project's verify, `git push --force-with-lease`, re-read `mergeStateStatus`, then merge. A
-  clean rebase changes no diff and triggers no new review round; the report states the rebase
-  and the new head sha. Done once, at the gate, never per review round.
-- **The version-bump conflict resolves itself.** When the rebase's only conflicting hunk is
-  `version` in `.claude-plugin/plugin.json`: take the base's value, re-apply this PR's bump class
-  (the class Phase 6.1 recorded — patch, minor or major), continue the rebase, and re-run the
-  Phase 6.1 rule "strictly greater than base". Two minor PRs against 0.24.0 land as 0.25.0 and
-  0.26.0. Any other conflict → the existing `PR unmergeable` stop with worktree and PR left; no
-  automatic resolution of code.
+  `DIRTY`, **or `git merge-base --is-ancestor origin/<base> HEAD` fails** (GitHub reports `BEHIND`
+  only under branch protection; an unprotected base reports `CLEAN` for a head that fell behind) →
+  in the worktree: first record the **bump class** — compare the manifest at
+  `git merge-base origin/<base> HEAD` with the head's; the first differing component is the class,
+  identical manifests mean no class, a lower head version stops the run — then `git fetch origin
+  <base>`, `git rebase origin/<base>`, the version re-check and re-bump commit below, ONE verify run
+  on the rebased head (replacing `VERIFY_OUTPUT`), ONE `git push --force-with-lease` carrying both
+  the rebase and any re-bump, re-read `mergeStateStatus` with gate 1's bounded poll (`UNKNOWN` = not
+  yet recomputed, wait; `BLOCKED` → re-run the checks and thread queries; any other status stops),
+  re-satisfy gate 1 on the pushed head, then merge. A clean rebase changes no diff and triggers
+  no new review round; the report states the rebase and the new head sha. Done once, at the gate,
+  never per review round (one more rebase if the base moved during it; stop if it recurs).
+- **The version bump is re-established after any rebase.** Identical version lines merge without
+  conflict, so on a repo with a manifest the rule "head version strictly greater than the base's,
+  as semver" is re-checked unconditionally after the rebase; when it fails, the recorded bump class
+  is re-applied on the base's value as `chore: re-bump version after rebase`. When the rebase
+  *does* stop with `version` in `.claude-plugin/plugin.json` as the only conflicting hunk: take the
+  base's value, re-apply the bump class, `git add`, `git rebase --continue`, same re-check. Two
+  minor PRs against 0.24.0: the first lands 0.25.0, the second rebases clean, fails the re-check at
+  0.25.0, and re-bumps to 0.26.0. Any other conflict → `git rebase --abort` and the existing
+  `PR unmergeable` stop with worktree and PR left; no automatic resolution of code.
 - **No manifest** (a client repo) → the rebase and nothing else.
+- **Both copies change.** `review-and-merge` is a `quick-dev` skill that `notion-dev` vendors;
+  the rebase-at-gate step lands in both `plugins/quick-dev/skills/review-and-merge/SKILL.md`
+  (and its `.claude/skills/` mirror) and `plugins/notion-dev/skills/review-and-merge/SKILL.md`,
+  with `quick-dev` bumped one minor alongside `notion-dev` 0.26.0.
 - **Notion contention is under the lock** (§4): `epic-update`'s read-modify-write of the epic
   page's `## Tasks` and `## Resolution Log` runs inside the `record` section. Per-ticket writes
   touch distinct pages and need nothing.
@@ -381,7 +420,7 @@ are constants in the script, not config.
 | `partial:epic-doc` | degraded | `ticket.md`, `finalize.md`, `next-task.md`, `create-task.md` | now also a `refresh` that returned `failed` |
 | `lock-stale:primary` | unexpected | any locked section | `lock take` broke an abandoned lock; the report names the old owner |
 | `lock-timeout:primary` | degraded | any best-effort section | `lock take` timed out; the section was skipped |
-| `claimed-elsewhere` | info | `ticket.md` (PR 2) | the worktree claim lost a race; nothing written |
+| `claimed-elsewhere` | — | `ticket.md` (PR 2) | **a run outcome, not an issue-log signature** (issue-log's Kind vocabulary is closed and its grammar is `<class>:<subject>`): the worktree claim lost a race; no worktree, branch, status change, ledger line, or brief write to undo; `next-task` records the decision |
 
 ## §10 Verification
 
@@ -423,7 +462,9 @@ and hand-check the partition. Every 0.24.0 fixture reruns unchanged.
    Verify on a client: run one ticket and confirm three brief commits (`start`, `after`, and a
    `refresh` or `unchanged` on the next `next-task`), then stop a run on purpose and confirm the
    stop bullet appears and disappears on resume.
-2. **PR 2 — `notion-dev` 0.26.0**: §7, §8, §9 last row, §10 PR 2. README: running two sessions.
+2. **PR 2 — `notion-dev` 0.26.0, `quick-dev` one minor**: §7, §8, §9 last row, §10 PR 2, and the
+   three decisions filed from PR 1's review — #44 (per-invocation run ids), #45 (title and order
+   drift), #46 (`--pr` rebase). README: running two sessions.
    Verify on a client: two sessions, `/notion-dev:next-task <epic> --depth 2` in each, and confirm
    distinct picks, no `failed` brief writes, and both PRs merged with distinct versions.
 3. Both PRs follow this repo's rules: one PR per session, version bumped once, `review-and-merge`

@@ -297,6 +297,16 @@ got = sorted(num + ip + bl)
 sys.exit(0 if got == want else print("partition:", got, "wanted", want))
 PYEOF
 then ok "next: client-shaped partitions every unresolved child exactly once"; else bad "next: client-shaped partition is wrong"; fi
+nx title 1 "$NX/brief-title.md" "$NX/state-basic.json"
+assert_has "next: a stale title is drift"   "$OUT/next-title.err" 'drift: STO-73 title differs from live'
+assert_has "next: a stale title is one finding" "$OUT/next-title.err" 'DRIFT: 1'
+nx order-drift 1 "$NX/brief-order.md" "$NX/state-basic.json"
+assert_has "next: a swapped numbered order is drift" "$OUT/next-order-drift.err" 'drift: numbered order differs from derived'
+assert_has "next: a swapped order is one finding" "$OUT/next-order-drift.err" 'DRIFT: 1'
+nx ip-title 1 "$NX/brief-ip-title.md" "$NX/state-basic.json"
+assert_has "next: a stale In progress title is drift" "$OUT/next-ip-title.err" 'drift: STO-72 title differs from live'
+assert_has "next: a stale In progress title is one finding" "$OUT/next-ip-title.err" 'DRIFT: 1'
+assert_has "next: the since date survives a title repair" "$OUT/next-ip-title.md" 'In progress: [STO-72] Backfill v2 — since 2026-09-14'
 printf 'no next heading\n' > "$OUT/next-bad.md"
 nx malformed 2 "$OUT/next-bad.md" "$NX/state-basic.json"
 nx stop-bad 2 "$NX/brief.md" "$NX/state-stop-bad.json" --reason stop STO-72
@@ -344,8 +354,9 @@ assert_identical "next: a brief without a trailing newline stays byte-identical"
 
 nx order 1 "$NX/brief.md" "$NX/state-order.json"
 assert_has "next: ordering puts phase 1 before phase 2 (item 1)" "$OUT/next-order.md" '1. **[STO-80]'
-assert_has "next: ordering puts phase 2 step 1 before phase 2 step 2 (item 2)" "$OUT/next-order.md" '2. [STO-79]'
-assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 3)" "$OUT/next-order.md" '3. [STO-71]'
+assert_has "next: a phase/step tie puts the lower id first (item 2)" "$OUT/next-order.md" '2. [STO-79]'
+assert_has "next: the higher id follows its tie partner" "$OUT/next-order.md" '3. [STO-81] '
+assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 4)" "$OUT/next-order.md" '4. [STO-71]'
 
 echo "== lock: mkdir lock on the primary checkout =="
 LK=$(mktemp -d)

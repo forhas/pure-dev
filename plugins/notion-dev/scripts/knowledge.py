@@ -1207,7 +1207,7 @@ def _parse_next(body):
         else:
             logical.append(ln.strip())
 
-    items, in_progress, blocked, complete, unparsed = [], {}, [], False, []
+    items, in_progress, blocked, complete, unparsed, ip_titles = [], {}, [], False, [], {}
     for s in logical:
         if s == "epic complete":
             complete = True
@@ -1220,13 +1220,14 @@ def _parse_next(body):
         if m:
             for pm in IN_PROGRESS_ITEM_RE.finditer(m.group(1)):
                 in_progress[pm.group(1)] = pm.group(3)
+                ip_titles[pm.group(1)] = pm.group(2)
             continue
         m = BLOCKED_RE.match(s)
         if m:
             blocked = KEY_RE.findall(m.group(1))
             continue
         unparsed.append(s)
-    return items, in_progress, blocked, complete, unparsed
+    return items, in_progress, blocked, complete, unparsed, ip_titles
 
 
 def _order_key(c):
@@ -1321,7 +1322,7 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
 
 
 def drift_findings(state, prev_items, prev_in_progress, prev_blocked, header_status,
-                   inprog, blocked, numbered):
+                   inprog, blocked, numbered, prev_ip_titles):
     f = []
     live = {c["key"]: c["status_class"] for c in state["children"]}
     prev_num = {it["key"] for it in prev_items}
@@ -1350,6 +1351,15 @@ def drift_findings(state, prev_items, prev_in_progress, prev_blocked, header_sta
         elif k in new_bl and k not in prev_bl:
             f.append("drift: %s listed as %s, held by a thread"
                      % (k, "next" if k in prev_num else "in progress"))
+    live_title = {c["key"]: c["title"] for c in state["children"]}
+    prev_title = {it["key"]: it["title"] for it in prev_items}
+    prev_title.update(prev_ip_titles)
+    for k in sorted(k for k in prev_title if k in live_title and prev_title[k] != live_title[k]):
+        f.append("drift: %s title differs from live" % k)
+    prev_order = [it["key"] for it in prev_items if it["key"] in new_num]
+    new_order = [c["key"] for c in numbered if c["key"] in prev_num]
+    if prev_order != new_order:
+        f.append("drift: numbered order differs from derived")
     live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
     if header_status != live_status:
         f.append("drift: header Status %s, live %s" % (header_status, live_status))
@@ -1439,7 +1449,7 @@ def cmd_next(a):
 
     header_idx = next(i for i, ln in enumerate(lines) if HEADER_RE.match(ln))
     ns, ne = _section(lines, "## Next")
-    prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed = _parse_next(lines[ns + 1:ne])
+    prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed, prev_ip_titles = _parse_next(lines[ns + 1:ne])
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
     region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
     tail = []
@@ -1450,7 +1460,8 @@ def cmd_next(a):
     lines[ns:ne] = region + tail
 
     hm = HEADER_RE.match(lines[header_idx])
-    findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered)
+    findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered,
+                              prev_ip_titles)
     findings += ["drift: unparsed line in ## Next: %s" % u[:60] for u in prev_unparsed]
     live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
     # A header whose Status disagrees with the live epic is itself a change: without it a
@@ -1474,7 +1485,7 @@ def cmd_next(a):
 # lock — the primary-checkout lock (spec §4)
 # ---------------------------------------------------------------------------
 
-LOCK_STALE_SECONDS = 30 * 60
+LOCK_STALE_SECONDS = 60 * 60
 LOCK_POLL_SECONDS = 15
 LOCK_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -1529,7 +1540,7 @@ def _read_owner(d):
 def _owner_age(kv, d):
     """Seconds since the owner was written. A `since` that is missing or unparsable means
     the owner file is either still being written (fresh directory: wait, don't break) or an
-    orphan left behind by a crash (old directory: eligible once 30 minutes have passed) — the
+    orphan left behind by a crash (old directory: eligible once 60 minutes have passed) — the
     directory's own mtime is what tells those two apart."""
     try:
         since = datetime.datetime.strptime(kv.get("since", ""), LOCK_TIME_FMT)
