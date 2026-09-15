@@ -105,10 +105,11 @@ for f in plugins/notion-dev/commands/new-info.md plugins/notion-dev/commands/kno
 done
 echo "== new-info --pr rebase (#46) =="
 NI=plugins/notion-dev/commands/new-info.md; LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
-assert_present "apply: on a later epic under --pr, fetch and rebase the note branch when the epic branch moved" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
+assert_present "apply: a failed ancestry check rebases the note branch onto origin/<epicBranch>" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase origin/<epicBranch>'
 assert_present "apply: a conflicting rebase aborts, releases, and stops with the remaining epics skipped" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT rebase --abort.*release.*skipped'
 assert_present "apply: on a later epic under --pr, the note branch is rebased only when \`origin/<epicBranch>\` is no longer an ancestor of HEAD" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT merge-base --is-ancestor origin/<epicBranch> HEAD'
 assert_present "apply: the epic branch is fetched before the ancestry check" "$NI" "$A0" "$A1" 'git -C \$REPO_ROOT fetch origin <epicBranch>'
+assert_present "apply: a successful rebase re-derives the proposal and re-enters \`### Gate\` on a changed \`DIFF\`" "$NI" "$A0" "$A1" 're-enter `### Gate` only when the new `DIFF` differs from the accepted one. Applying the pre-rebase proposal'
 assert_order "apply: take, re-checkout, fetch, rebase" "$NI" "$A0" "$A1" \
   take 'lock take --run <run id> --section apply' \
   recheckout 'git -C \$REPO_ROOT checkout <noteBranch>` under `--pr`.*`checkout`, never `checkout -b`' \
