@@ -220,9 +220,14 @@ once here; the others cite it.
    rejection: `git -C $REPO_ROOT fetch origin <epicBranch>`, then assert
    `git rev-list origin/<epicBranch>..HEAD` names **exactly one** commit — this attempt's own.
    Anything else → `failed`, commit left in place, `CAUSE: push rejected — <git's message>`,
-   as before. One commit → `git reset --hard origin/<epicBranch>` (safe only here: step 2
-   required a clean pathspec and the rev-list proved the sole local commit is ours), re-derive
-   against the fresh files, and go back to step 3. **Three attempts.** `record` and `note --apply`
+   as before. One commit → `git -C $REPO_ROOT reset --soft origin/<epicBranch>`, then
+   `git -C $REPO_ROOT restore --staged --worktree -- <pathspec>` — re-derive
+   against the fresh files, and go back to step 3. **Never `--hard` here.** Step 2 proves the
+   *pathspec* is clean, not the tree, and the preconditions deliberately permit tracked dirt
+   outside it — the init-generated setup files and `.claude/settings.local.json` — so a hard
+   reset would discard a user's permitted edits along with this attempt's commit. The soft reset
+   drops the commit and the restore reverts exactly the files this operation wrote, which is all
+   the `rev-list` proof licenses. **Three attempts.** `record` and `note --apply`
    re-apply their diff *semantically* — the bullets they add and remove, the sentence they
    restate — to the fresh brief; `refresh` and `capture` simply re-derive. The third rejection
    is `failed` with the local commit left in place and the caller's `blocked:` closeout line, as

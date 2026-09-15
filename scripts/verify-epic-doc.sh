@@ -137,11 +137,14 @@ if [ -f "$ED" ]; then
     assert_present "write path step 2: \`git -C \$REPO_ROOT pull --ff-only origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>'
     assert_present "write path step 4: \`git push origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git push origin <epicBranch>'
     assert_present "write path step 4: \`git rev-list origin/<epicBranch>..HEAD\` names **exactly one** commit" "$ED" "$WP" "$R1" 'git rev-list origin/<epicBranch>\.\.HEAD. names \*\*exactly one\*\* commit'
-    assert_present "write path step 4: \`git reset --hard origin/<epicBranch>\` only after the rev-list proof" "$ED" "$WP" "$R1" 'git reset --hard origin/<epicBranch>'
+    assert_present "write path step 4: \`git -C \$REPO_ROOT reset --soft origin/<epicBranch>\` only after the rev-list proof" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT reset --soft origin/<epicBranch>'
+    # The converge reset must not be --hard: step 2 proves the pathspec clean, not the tree, and
+    # the preconditions permit tracked dirt outside it, which a hard reset would discard.
+    assert_present "write path step 4: the converge reset reverts only this operation's pathspec" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT restore --staged --worktree -- <pathspec>'
     assert_present "write path step 4: \`Three attempts.\`" "$ED" "$WP" "$R1" 'Three attempts\.'
     assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
     assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \
-      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' reset 'git reset --hard origin/<epicBranch>' release 'lock release --run'
+      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' reset 'reset --soft origin/<epicBranch>' release 'lock release --run'
     if [ -n "$OB" ]; then
       assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
       assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '

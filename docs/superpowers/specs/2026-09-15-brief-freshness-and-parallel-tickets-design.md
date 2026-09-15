@@ -176,7 +176,8 @@ Used by `refresh`, `record`, `record --bootstrap`, `note --apply` and `notion-de
 4. **Push, converge on rejection.** `git push origin <epicBranch>`. On a non-fast-forward
    rejection: assert `git rev-list origin/<epicBranch>..HEAD` names exactly the one commit this
    attempt made (anything else → `failed`, commit left in place, `CAUSE: push rejected — <git's
-   message>`, as today); `git fetch origin <epicBranch>`; `git reset --hard origin/<epicBranch>`;
+   message>`, as today); `git fetch origin <epicBranch>`; `git reset --soft origin/<epicBranch>`
+   then `git restore --staged --worktree -- <pathspec>`;
    go back to step 3 against the fresh files. **Three attempts.** `record` and `note --apply`
    re-apply their diff *semantically* — the bullets they add and remove, the sentence they
    restate — to the fresh brief; `refresh` and `capture` simply re-derive. The third rejection is
@@ -184,8 +185,11 @@ Used by `refresh`, `record`, `record --bootstrap`, `note --apply` and `notion-de
    Under `--branch <noteBranch>` (`/notion-dev:new-info --pr`) there is no push and no retry.
 5. **Unlock**, unless `LOCK_HELD`. Report `ATTEMPTS:`.
 
-`git reset --hard` is safe here and only here: step 2 required a clean pathspec and the
-`rev-list` assertion proved the sole local commit is this attempt's own.
+The reset is **soft, never `--hard`**: step 2 required a clean *pathspec*, not a clean tree, and
+the preconditions permit tracked dirt outside it (the init-generated setup files,
+`.claude/settings.local.json`). The `rev-list` assertion licenses discarding this attempt's
+commit and the files it wrote — nothing else — which is exactly what the soft reset plus a
+pathspec-scoped restore does.
 
 ## §4 The primary lock
 
