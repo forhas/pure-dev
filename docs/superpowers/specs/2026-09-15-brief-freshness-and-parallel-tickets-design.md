@@ -373,10 +373,11 @@ are constants in the script, not config.
   `DIRTY` → in the worktree: first record the **bump class** — compare the manifest at
   `git merge-base origin/<base> HEAD` with the head's; the first differing component is the class,
   identical manifests mean no class, a lower head version stops the run — then `git fetch origin
-  <base>`, `git rebase origin/<base>`, re-satisfy gate 1 and re-run the project's verify on the
-  rebased head (replacing `VERIFY_OUTPUT`), `git push --force-with-lease`, re-read
-  `mergeStateStatus` with gate 1's bounded poll (`UNKNOWN` = not yet recomputed, wait; `BLOCKED` →
-  re-run the checks and thread queries), then merge. A clean rebase changes no diff and triggers
+  <base>`, `git rebase origin/<base>`, the version re-check and re-bump commit below, ONE verify run
+  on the rebased head (replacing `VERIFY_OUTPUT`), ONE `git push --force-with-lease` carrying both
+  the rebase and any re-bump, re-read `mergeStateStatus` with gate 1's bounded poll (`UNKNOWN` = not
+  yet recomputed, wait; `BLOCKED` → re-run the checks and thread queries; any other status stops),
+  re-satisfy gate 1 on the pushed head, then merge. A clean rebase changes no diff and triggers
   no new review round; the report states the rebase and the new head sha. Done once, at the gate,
   never per review round (one more rebase if the base moved during it; stop if it recurs).
 - **The version bump is re-established after any rebase.** Identical version lines merge without
