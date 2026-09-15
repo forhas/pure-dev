@@ -34,6 +34,7 @@ assert_present "1.2 resume: the marker is re-read after the rewrite and a stolen
 assert_present "1.2 resume: the resume is claimed with an atomic \`mkdir\` before anything is written" "$TICKET" "$P12" "$P13" 'mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"'
 assert_present "1.2 resume: a lost \`mkdir\` claim runs none of the resume rules below" "$TICKET" "$P12" "$P13" '`mkdir` fails.*\*\*run none of the resume rules below\*\*'
 assert_present "2.1 claim: the marker carries a per-invocation \`session\` distinct from \`run\`" "$TICKET" "$P21" "$P3" '"run": "<KEY>-<id>", "session": "<KEY>-<id>-<YYYYMMDDTHHMMSSZ>-<4 hex>"'
+assert_present "2.1 claim: the fresh path takes the same \`mkdir\` claim before \`git worktree add\`" "$TICKET" "$P21" "$P3" 'takes it \*\*before\*\* `git worktree add`: `mkdir "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.claim"`'
 assert_present "2.1 claim: the marker path" "$TICKET" "$P21" "$P3" '\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json'
 assert_present "2.1 claim: the marker is written with \`\"state\": \"running\"\`" "$TICKET" "$P21" "$P3" '"state": "running"'
 assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` before any status change" "$TICKET" "$P21" "$P3" 'OUTCOME: claimed-elsewhere.*before\*\* any status change'
