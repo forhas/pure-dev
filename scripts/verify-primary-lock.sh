@@ -83,6 +83,10 @@ LN=$(total_lines "$NT"); S1=$(find_line "$NT" 1 "$LN" '^### 1\. Read the brief')
 assert_present "next-task step 1: \`refresh(<epic-id>, drift)\` on \`DRIFT: true\`" "$NT" "$S1" "$S2" '`DRIFT: true`.*operation `refresh\(<epic-id>, drift\)`'
 assert_present "next-task step 1: splices the refreshed brief into \`KNOWLEDGE_CONTEXT\` — no second retrieve" "$NT" "$S1" "$S2" 'replace the root document of .*KNOWLEDGE_CONTEXT.*no second `retrieve`'
 assert_present "next-task step 1: a failed drift refresh stops the loop" "$NT" "$S1" "$S2" 'drift refresh .*`EPIC-DOC: failed` → stop'
+# The drift path must stop on a timed-out take, as the bootstrap path does: without it the
+# run hands LOCK_HELD to a write path that holds nothing and races the real holder.
+assert_present "next-task drift: a timed-out lock take stops with the CAUSE line" "$NT" "$S1" "$S2" \
+  'lock take --run <run id> --section drift --wait 600. \(exit 1 → stop with .CAUSE: primary lock held by'
 echo "== new-info.md =="
 section "new-info apply" "$NI" '^### Apply' '^### Notion epic' apply 600 ffpull
 LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
