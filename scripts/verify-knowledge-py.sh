@@ -55,9 +55,28 @@ assert_has "broken-index names the missing bullet"    "$OUT/broken-index.txt"   
 assert_has "broken-type names the directory"          "$OUT/broken-type.txt"       'type: undeclared directory commitment'
 assert_has "broken-iwe names the drifted file"        "$OUT/broken-iwe.txt"        '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
 assert_has "broken-iwe-missing names the absent file" "$OUT/broken-iwe-missing.txt" '.iwe/schemas/okf-index.yaml: iwe: missing'
+
 assert_has "broken-log names the schema rule"         "$OUT/broken-log.txt"        'log.md: schema:'
 assert_has "broken-link-outward names the missing outside-bundle target" \
   "$OUT/broken-link-outward.txt" 'epic/STO-1-demo-epic.md: link: ../docs/nope (outside bundle, not on disk)'
+
+echo "== check: .iwe drift is content, never line endings =="
+# The two sides are checked out by different tooling and disagree in practice: a Windows
+# plugin cache carries CRLF while a repo pinning `eol=lf` carries LF. Byte-comparing them
+# reported all four files as drifted, so `check` exited non-zero and `capture` wrote nothing
+# on every merge — the failure this pair of cases exists to keep out.
+EOLB=$(mktemp -d); cp -r "$FX/valid/." "$EOLB/"
+for f in .iwe/config.toml .iwe/schemas/okf.yaml .iwe/schemas/okf-index.yaml .iwe/schemas/okf-log.yaml; do
+  [ -f "$EOLB/$f" ] && sed -i 's/$/\r/' "$EOLB/$f"
+done
+file "$EOLB/.iwe/config.toml" | grep -q CRLF && ok "check: the CRLF fixture really is CRLF" || bad "check: the CRLF fixture is not CRLF"
+run iwe-crlf 0 check --dir "$EOLB" --plugin-root "$ROOT" --extra-types commitment
+assert_lacks "check: a CRLF bundle copy of a byte-identical .iwe file is not drift" "$OUT/iwe-crlf.txt" 'iwe: differs from plugin copy'
+# The inverse must still fire: same endings, different content.
+printf '# drift\n' >> "$EOLB/.iwe/schemas/okf.yaml"
+run iwe-crlf-content 1 check --dir "$EOLB" --plugin-root "$ROOT" --extra-types commitment
+assert_has "check: real content drift is still reported under CRLF" "$OUT/iwe-crlf-content.txt" '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
+rm -rf "$EOLB"
 
 echo "== check: an outward link to an EXTENSIONLESS file resolves to the exact path first =="
 # iwe leaves `../LICENSE` as is (it only strips `.md`), so appending `.md` unconditionally

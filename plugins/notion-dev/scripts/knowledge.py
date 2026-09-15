@@ -217,10 +217,20 @@ def run_check(a):
             b = f.read()
         with open(ppath, "rb") as f:
             p = f.read()
-        if b != p:
+        # Compare the text, not the bytes: line endings are not drift. The two sides are
+        # checked out by different tooling — the bundle by the client's git, the plugin copy
+        # by whatever installed the plugin — and those disagree in practice. Measured on a
+        # Windows client: the installed 0.27.0 cache carries CRLF while the repo's own
+        # `.gitattributes` pins LF, so a byte comparison reported all four files as drifted,
+        # `check` exited non-zero, and `capture` wrote nothing on every merge — quietly, since
+        # the run itself still succeeds. `normalise_text` is the same fold `migrate` already
+        # applies to concepts for the same reason.
+        b_text = normalise_text(b.decode("utf-8", "replace"))
+        p_text = normalise_text(p.decode("utf-8", "replace"))
+        if b_text != p_text:
             diff = list(difflib.unified_diff(
-                b.decode("utf-8", "replace").splitlines(keepends=True),
-                p.decode("utf-8", "replace").splitlines(keepends=True),
+                b_text.splitlines(keepends=True),
+                p_text.splitlines(keepends=True),
             ))
             findings.append(f"{relname}: iwe: differs from plugin copy ({len(diff)} diff lines)")
 
@@ -899,11 +909,16 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
     to_delete = []
     bundle_rel = os.path.relpath(bundle, repo_root).replace(os.sep, "/")
 
-    # step 2: plugin-owned .iwe/ files, installed verbatim (overwriting)
+    # step 2: plugin-owned .iwe/ files, installed with LF (overwriting). Not verbatim: the
+    # plugin copy's line endings depend on how the plugin was installed — a Windows cache
+    # carries CRLF — and copying those into the bundle hands the client a file its own
+    # normalising checkout rewrites on commit. Writing LF makes the bundle's copy the same
+    # on every host; `check` compares the two as text, so neither side's endings matter.
     plugin_iwe_dir = os.path.join(plugin_root, KNOWLEDGE_IWE_REF)
     for rel in IWE_FILES:
         with open(os.path.join(plugin_iwe_dir, rel), "rb") as f:
-            result[_rel(bundle_rel, ".iwe", rel)] = f.read()
+            text = normalise_text(f.read().decode("utf-8"))
+        result[_rel(bundle_rel, ".iwe", rel)] = text.encode("utf-8")
 
     # step 3: concept frontmatter migration, log.md and index.md reshape. The catalog is
     # built from the text this step just produced — every `stable` concept needs an
