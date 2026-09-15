@@ -354,8 +354,7 @@ assert_identical "next: a brief without a trailing newline stays byte-identical"
 
 nx order 1 "$NX/brief.md" "$NX/state-order.json"
 assert_has "next: ordering puts phase 1 before phase 2 (item 1)" "$OUT/next-order.md" '1. **[STO-80]'
-assert_has "next: ordering puts phase 2 step 1 before phase 2 step 2 (item 2)" "$OUT/next-order.md" '2. [STO-79]'
-assert_has "next: a phase/step tie is broken by the lower id" "$OUT/next-order.md" '2. [STO-79] '
+assert_has "next: a phase/step tie puts the lower id first (item 2)" "$OUT/next-order.md" '2. [STO-79]'
 assert_has "next: the higher id follows its tie partner" "$OUT/next-order.md" '3. [STO-81] '
 assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 4)" "$OUT/next-order.md" '4. [STO-71]'
 
