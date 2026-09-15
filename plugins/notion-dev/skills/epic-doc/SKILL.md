@@ -225,8 +225,11 @@ once here; the others cite it.
    dirty — `.claude/notion-dev.config.json`, `.mcp.json`, `.claude/settings.local.json`, the
    exhaustive list the preconditions exempt and the only tracked dirt that can legally be here —
    `git -C $REPO_ROOT stash push --quiet --` those paths first; then
-   `git -C $REPO_ROOT reset --hard origin/<epicBranch>`; then `git -C $REPO_ROOT stash pop
-   --quiet` when one was pushed. Re-derive against the fresh files, and go back to step 3.
+   `git -C $REPO_ROOT reset --hard origin/<epicBranch>`; then
+   `git -C $REPO_ROOT stash pop --index --quiet` when one was pushed.
+   `--index` is not optional there: the preconditions exempt *staged* edits to those files as
+   well as unstaged ones, and a plain pop restores the bytes while silently discarding the
+   user's index selection. Re-derive against the fresh files, and go back to step 3.
    **Both halves are load-bearing.** The reset is `--hard` because every path outside this
    operation's pathspec must become the commit just fetched: a `--soft` reset moves HEAD only, so
    the index keeps the pre-fetch tree and every file an upstream commit changed sits there as a

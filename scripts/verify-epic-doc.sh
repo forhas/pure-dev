@@ -142,7 +142,7 @@ if [ -f "$ED" ]; then
     # fetched tree rather than a staged reversion of it; across a stash, so the exempt setup
     # files the preconditions permit to be dirty are not discarded with this attempt's commit.
     assert_present "write path step 4: the exempt setup files are stashed across the reset" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash push --quiet --'
-    assert_present "write path step 4: the stash is popped after the reset" "$ED" "$WP" "$R1" '`git -C \$REPO_ROOT stash pop'
+    assert_present "write path step 4: the stash is popped with --index, so staged edits keep their index state" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash pop --index --quiet'
     assert_present "write path step 4: \`Three attempts.\`" "$ED" "$WP" "$R1" 'Three attempts\.'
     assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
     assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \

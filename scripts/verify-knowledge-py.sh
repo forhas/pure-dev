@@ -451,6 +451,9 @@ printf 'seed\n' > "$CV/a/unrelated.txt"
 $G clone -q "$CV/origin.git" "$CV/b" 2>/dev/null
 B=knowledge/epic/STO-60-wallet-indexing.md
 printf '{"git":{"baseBranch":"main"},"local":"edit"}\n' > "$CV/b/.claude/notion-dev.config.json"
+# staged, not merely modified: the preconditions exempt staged edits to the setup files too,
+# so the converge must return this file to the INDEX, which is what `stash pop --index` does.
+( cd "$CV/b" && $G add .claude/notion-dev.config.json ) 2>/dev/null
 # A: create STO-74 and push
 python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
 cp "$CV/a/out.md" "$CV/a/$B"
@@ -471,7 +474,7 @@ if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B
 ( cd "$CV/b" && $G fetch -q origin main && n=$($G rev-list origin/main..HEAD | wc -l | tr -d ' ') && [ "$n" -eq 1 ] ) \
   && ok "write path: rev-list shows exactly one local commit before the reset" || bad "write path: rev-list count is not 1"
 ( cd "$CV/b" && $G stash push -q -- .claude/notion-dev.config.json \
-    && $G reset -q --hard origin/main && $G stash pop -q ) 2>/dev/null
+    && $G reset -q --hard origin/main && $G stash pop --index -q ) 2>/dev/null
 assert_has "write path: the converge reset keeps permitted dirt outside the pathspec" \
   "$CV/b/.claude/notion-dev.config.json" '"local":"edit"'
 assert_has "write path: the converge reset takes the fetched content of files outside the pathspec" \
@@ -479,6 +482,8 @@ assert_has "write path: the converge reset takes the fetched content of files ou
 ( cd "$CV/b" && $G status --porcelain ) > "$OUT/cv-status.txt"
 assert_lacks "write path: the converge leaves no staged reversion of an upstream change" \
   "$OUT/cv-status.txt" 'unrelated.txt'
+assert_has "write path: a staged exempt edit comes back staged, not merely restored" \
+  "$OUT/cv-status.txt" 'M  .claude/notion-dev.config.json'
 python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
 cp "$CV/b/out2.md" "$CV/b/$B"
 ( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \
