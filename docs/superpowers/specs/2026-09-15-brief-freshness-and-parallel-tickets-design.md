@@ -132,7 +132,10 @@ commits go through the write path. That removes the second and third copies of t
 reports `DRIFT: true` with one line per finding when: an unresolved child is in none of the three
 lists; a child is in the wrong list for its live status (resolved but listed; in progress but
 numbered or blocked; numbered but held by a thread); the header `Status:` disagrees with the
-live epic status; `## Next` lacks the `In progress:` line while some child is in progress. `read`
+live epic status; `## Next` lacks the `In progress:` line while some child is in progress; **(PR 2,
+#45)** a listed child's title differs from its live title, or the numbered list's order differs
+from the derived order. A re-wrapped line and a changed reason text are **not** drift: reasons are
+preserved by design, and bytes are compared as parsed items, never as raw lines. `read`
 still writes nothing — it runs before any worktree exists. Whoever writes next repairs it:
 `/notion-dev:ticket` through its Phase 2 `start`, `/notion-dev:next-task` through `refresh drift`.
 
@@ -198,7 +201,11 @@ tree, stash for the user's permitted edits.
   (atomic on Linux, macOS, WSL and Windows). Inside it one file, `owner`, three lines:
   `run: <run id>`, `section: <name>`, `since: <ISO-8601 UTC>`. The `.claude/notion-dev/`
   directory is already self-ignored.
-- **Run ids:** `<KEY>-<n>` for a ticket run, `next-task <KEY>-<n>`, `new-info`, `knowledge`,
+- **Run ids:** `<KEY>-<n>` for a ticket run, `next-task <KEY>-<n>`, `finalize <pr>`; **(PR 2, #44)**
+  commands without natural identity — `new-info`, `knowledge`, `create-task` — generate one
+  per-invocation token at their start, `<command>-<YYYYMMDDTHHMMSSZ>-<4 hex>`, and carry it
+  through every take and release of that run (so `new-info`'s per-epic re-take stays re-entrant).
+  PR 1's bare labels were `new-info`, `knowledge`,
   `finalize <pr>`, `create-task`.
 - **Command:** `knowledge.py lock take --run <id> --section <name> [--wait <seconds>]`,
   `lock release --run <id>`, `lock status`. `take` exits 0 when taken or already held by the
@@ -352,6 +359,13 @@ are constants in the script, not config.
   the bootstrap path already applies.
 - **Two loops on one epic** interleave with no further rule: each re-reads the brief after its
   own resolution, item 1 excludes everything in progress, and the claim settles a tie.
+- **`new-info --pr` when the epic branch moves (#46):** at each later epic's `apply` take, after
+  the re-checkout of `<noteBranch>`, `git -C $REPO_ROOT fetch origin <epicBranch>` and, when
+  `origin/<epicBranch>` is no longer an ancestor of HEAD, `git -C $REPO_ROOT rebase
+  origin/<epicBranch>` — the note commits are local and unpushed, so nothing published is
+  rewritten. A conflicting rebase → `git rebase --abort`, release, and stop: this epic and every
+  later one are reported `skipped — note branch could not be rebased onto <epicBranch>: <git's
+  message>`, and the note branch is left for a person. Merge commits are never manufactured.
 
 ## §8 Merging in parallel (PR 2)
 
@@ -367,6 +381,10 @@ are constants in the script, not config.
   0.26.0. Any other conflict → the existing `PR unmergeable` stop with worktree and PR left; no
   automatic resolution of code.
 - **No manifest** (a client repo) → the rebase and nothing else.
+- **Both copies change.** `review-and-merge` is a `quick-dev` skill that `notion-dev` vendors;
+  the rebase-at-gate step lands in both `plugins/quick-dev/skills/review-and-merge/SKILL.md`
+  (and its `.claude/skills/` mirror) and `plugins/notion-dev/skills/review-and-merge/SKILL.md`,
+  with `quick-dev` bumped one minor alongside `notion-dev` 0.26.0.
 - **Notion contention is under the lock** (§4): `epic-update`'s read-modify-write of the epic
   page's `## Tasks` and `## Resolution Log` runs inside the `record` section. Per-ticket writes
   touch distinct pages and need nothing.
@@ -423,7 +441,9 @@ and hand-check the partition. Every 0.24.0 fixture reruns unchanged.
    Verify on a client: run one ticket and confirm three brief commits (`start`, `after`, and a
    `refresh` or `unchanged` on the next `next-task`), then stop a run on purpose and confirm the
    stop bullet appears and disappears on resume.
-2. **PR 2 — `notion-dev` 0.26.0**: §7, §8, §9 last row, §10 PR 2. README: running two sessions.
+2. **PR 2 — `notion-dev` 0.26.0, `quick-dev` one minor**: §7, §8, §9 last row, §10 PR 2, and the
+   three decisions filed from PR 1's review — #44 (per-invocation run ids), #45 (title and order
+   drift), #46 (`--pr` rebase). README: running two sessions.
    Verify on a client: two sessions, `/notion-dev:next-task <epic> --depth 2` in each, and confirm
    distinct picks, no `failed` brief writes, and both PRs merged with distinct versions.
 3. Both PRs follow this repo's rules: one PR per session, version bumped once, `review-and-merge`
