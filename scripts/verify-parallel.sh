@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Parallel ticket picking — the run marker, ownership check, marker resume
+# rules, and `claimed-elsewhere`, plus (Tasks 3-5) next-task validity and the
+# `new-info --pr` epic-branch rebase.
+#
+# Spec: docs/superpowers/specs/2026-09-15-brief-freshness-and-parallel-tickets-design.md §7, §8
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+fails=0
+ok()  { printf '  PASS  %s\n' "$1"; }
+bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+
+# shellcheck source=lib/assert.sh
+. ./scripts/lib/assert.sh
+
+ND=plugins/notion-dev
+TICKET=$ND/commands/ticket.md
+NT=$ND/commands/next-task.md
+SIG=$ND/skills/issue-log/references/signatures.md
+L=$(total_lines "$TICKET")
+P11=$(find_line "$TICKET" 1 "$L" '^### 1\.1 '); P12=$(find_line "$TICKET" 1 "$L" '^### 1\.2 '); P13=$(find_line "$TICKET" 1 "$L" '^### 1\.3 ')
+P21=$(find_line "$TICKET" 1 "$L" '^### 2\.1 '); P3=$(find_line "$TICKET" 1 "$L" '^## Phase 3 ')
+P7=$(find_line "$TICKET" 1 "$L" '^## Phase 7 '); P8=$(find_line "$TICKET" 1 "$L" '^## Phase 8 ')
+P9=$(find_line "$TICKET" 1 "$L" '^## Phase 9 '); P9H=$(find_line "$TICKET" 1 "$L" '^### Post-merge hooks')
+P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 '); FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
+echo "== ticket.md: claim, marker, ownership =="
+assert_present "1.1 ownership check: in progress with no worktree of ours aborts \`held elsewhere\`" "$TICKET" "$P11" "$P12" 'is In Progress and has no worktree here — held elsewhere'
+assert_present "1.1 ownership check: non-interactive never proceeds" "$TICKET" "$P11" "$P12" 'held elsewhere.*non-interactive mode never'
+assert_present "1.2 resume: a \`running\` marker with a fresh heartbeat aborts \`held by a live session\`" "$TICKET" "$P12" "$P13" '"state": "running".*held by a live session — <phase> since <heartbeat>'
+assert_present "1.2 resume: \`stopped\`, a heartbeat older than 2 hours, or no marker resumes" "$TICKET" "$P12" "$P13" '`stopped`.*older than 2 hours.*no marker.*resume'
+assert_present "1.2 resume: non-interactive never takes over" "$TICKET" "$P12" "$P13" 'non-interactive never takes over'
+assert_present "2.1 claim: the marker path" "$TICKET" "$P21" "$P3" '\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json'
+assert_present "2.1 claim: the marker is written with \`\"state\": \"running\"\`" "$TICKET" "$P21" "$P3" '"state": "running"'
+assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` before any status change" "$TICKET" "$P21" "$P3" 'OUTCOME: claimed-elsewhere.*before'
+assert_order "2.1: worktree add, then marker, then status, then refresh start" "$TICKET" "$P21" "$P3" \
+  worktree 'git worktree add <worktree-path>' marker '"state": "running"' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
+assert_present "marker discipline: heartbeat at every phase boundary and every review round" "$TICKET" "$P21" "$P3" 'heartbeat.*every phase boundary and every review round'
+assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every'
+assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$TICKET" "$P9" "$P9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+assert_order "phase 9: worktree removed, then marker deleted" "$TICKET" "$P9" "$P9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+assert_present "stop path: the marker is set to \`\"state\": \"stopped\"\` with the cause" "$TICKET" "$FS" "$L" '"state": "stopped".*cause'
+assert_present "phase 10 report: the marker outcome line" "$TICKET" "$P10" "$FS" '^- \*\*Run marker\*\*'
+LS=$(total_lines "$SIG")
+assert_present "signature \`claimed-elsewhere\`" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \| info \| `ticket.md` \|'
+
+if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
+echo "verify-parallel: all PASS"
