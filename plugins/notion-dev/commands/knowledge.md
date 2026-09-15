@@ -101,21 +101,33 @@ Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <
 
 ## `curate`
 
-First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section curate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+**The clusters are put to the user before the lock is taken** — `new-info`'s rule applied here:
+no interactive gate is ever held under the primary lock. The lock goes stale after 30 minutes
+and deciding which of two similar facts is the durable one is exactly the judgment a person
+takes their time over, so a lock held across the questions is a live lock another run breaks;
+both writers then believe they hold it and their commits race.
+
+First, holding no lock, invoke the `notion-dev:knowledge` skill, operation `curate`, passing
+`REPO_ROOT` and `<epicBranch>`. Its check and its similarity pass read the bundle and write
+nothing, and it returns the near-duplicate clusters.
+
+Each cluster comes back with both bodies side by side; put it to the user with `AskUserQuestion`
+— one question per cluster, the options being each concept in the cluster and **Keep both**. This
+command never picks a survivor on the user's behalf, because which of two similar facts is the
+durable one is exactly the judgment a person is here for. A cluster the user skips is left
+untouched and named in the report.
+
+Only once every answer is in: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section curate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
 
 Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
 (a `--ff-only` failure → release the lock and stop with the diverged-base report).
 
-Invoke the `notion-dev:knowledge` skill, operation `curate`, passing `REPO_ROOT`, `<epicBranch>`,
-and `LOCK_HELD`.
-
-Each near-duplicate cluster comes back with both bodies side by side; put it to the user with
-`AskUserQuestion` — one question per cluster, the options being each concept in the cluster and
-**Keep both**. The answer is passed straight back to the operation; this command never picks a
-survivor on the user's behalf, because which of two similar facts is the durable one is exactly
-the judgment a person is here for. A cluster the user skips is left untouched and named in the
-report.
+Hand the answers back to the operation with `LOCK_HELD` so it supersedes the losers, commits and
+pushes. **Re-read the bundle under the lock before applying**: the pull may have landed another
+writer's curate, so a cluster whose two concepts are no longer both live, or whose bodies have
+changed since they were shown, is skipped and named in the report rather than applied to a file
+the user never saw.
 
 Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`.
 

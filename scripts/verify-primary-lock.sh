@@ -97,6 +97,12 @@ echo "== knowledge.md =="
 section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600 ffpull
 section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600 ffpull
 section "knowledge curate"  "$KC" '^## `curate`$'  '^## Report$'   curate 600 ffpull
+# No interactive gate is ever held under the primary lock: the lock goes stale in 30 minutes,
+# so questions answered under it are a live lock another run breaks while this one still writes.
+LKC=$(total_lines "$KC"); CU0=$(find_line "$KC" 1 "$LKC" '^## `curate`$')
+CU1=$(find_line "$KC" "$((CU0 + 1))" "$LKC" '^## Report$'); [ -n "$CU1" ] || CU1=$LKC
+assert_order "knowledge curate: \`AskUserQuestion\` comes before the lock take" "$KC" "$CU0" "$CU1" \
+  AskUserQuestion 'put it to the user with `AskUserQuestion`' take "${TAKE}curate"
 echo "== create-task.md =="
 section "create-task create" "$CT" '^### 3\.2 ' '^## Phase 4' create 600
 LC=$(total_lines "$CT"); C0=$(find_line "$CT" 1 "$LC" '^### 3\.2 '); C1=$(find_line "$CT" 1 "$LC" '^## Phase 4')
