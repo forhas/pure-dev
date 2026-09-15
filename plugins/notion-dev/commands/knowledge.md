@@ -50,20 +50,29 @@ The post-merge write, run by hand: use it when a ticket run reported that hooks 
 when the hook returned `KNOWLEDGE: failed` and the cause has since been fixed. It is the same
 operation the hook runs, with the same four preconditions and the same write-nothing rule.
 
+First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section capture --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+`CAUSE: primary lock held by <run> (<section>) since <time>`).
+
 Invoke the skill `notion-dev:knowledge`, operation `capture(<ticket-id>, <merge-sha>)`, passing
-`REPO_ROOT` and `<epicBranch>`. There is no session to draw on here, so the operation reads its
-inputs from `fetchTicket(<ticket-id>)` and `gh pr view <n> --json body,comments` instead — the
-ticket body and the pull request with its review comments. Everything else, including the four
-collision outcomes and the `check`-gated commit, is unchanged.
+`REPO_ROOT`, `<epicBranch>`, and `LOCK_HELD`. There is no session to draw on here, so the
+operation reads its inputs from `fetchTicket(<ticket-id>)` and `gh pr view <n> --json
+body,comments` instead — the ticket body and the pull request with its review comments.
+Everything else, including the four collision outcomes and the `check`-gated commit, is
+unchanged.
 
 Re-running a capture that already landed is safe: every candidate collides with the concept the
 first run wrote and resolves as **untouched**, so the result is `KNOWLEDGE: empty` with
 `COMMIT: none`. Report the block as it comes back.
 
+Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`.
+
 ## `migrate`
 
+First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section migrate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
+`CAUSE: primary lock held by <run> (<section>) since <time>`).
+
 Invoke the `notion-dev:knowledge` skill, operation `migrate` — `migrate --apply` when the user
-passed `--apply` — passing `REPO_ROOT`, `<epicBranch>`, and the config path.
+passed `--apply` — passing `REPO_ROOT`, `<epicBranch>`, the config path, and `LOCK_HELD`.
 
 Without `--apply`, **print the complete diff verbatim**, file by file, and stop. Nothing is
 written, nothing is staged, and the run is repeatable: reviewing that diff is the whole point of
@@ -80,6 +89,8 @@ unticked. This command deletes no client code: the checklist belongs in the body
 own migration PR, which is where each line gets ticked and where every retired check is matched
 to the `check` rule that covers it now. Say so in the report, so nobody reads the checklist as
 something that already happened.
+
+Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`.
 
 ## `curate`
 

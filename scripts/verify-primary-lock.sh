@@ -69,5 +69,35 @@ echo "== epic-doc read takes nothing =="
 LE=$(total_lines "$ED"); R0=$(find_line "$ED" 1 "$LE" '^## `read\('); RB=$(find_line "$ED" 1 "$LE" '^## Bootstrap')
 assert_absent "epic-doc read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
 
+echo "== next-task.md =="
+section "next-task bootstrap" "$NT" '^\*\*`BOOTSTRAP: true`' '^\*\*`DRIFT: true`' bootstrap 600
+section "next-task drift"     "$NT" '^\*\*`DRIFT: true`'     '^### 2\. Pick' drift 600
+LN=$(total_lines "$NT"); S1=$(find_line "$NT" 1 "$LN" '^### 1\. Read the brief'); S2=$(find_line "$NT" 1 "$LN" '^### 2\. Pick')
+assert_present "next-task step 1: \`refresh(<epic-id>, drift)\` on \`DRIFT: true\`" "$NT" "$S1" "$S2" '`DRIFT: true`.*operation `refresh\(<epic-id>, drift\)`'
+assert_present "next-task step 1: splices the refreshed brief into \`KNOWLEDGE_CONTEXT\` — no second retrieve" "$NT" "$S1" "$S2" 'replace the root document of .*KNOWLEDGE_CONTEXT.*no second `retrieve`'
+assert_present "next-task step 1: a failed drift refresh stops the loop" "$NT" "$S1" "$S2" 'drift refresh .*`EPIC-DOC: failed` → stop'
+echo "== new-info.md =="
+section "new-info apply" "$NI" '^### Apply' '^### Notion epic' apply 600
+LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
+assert_present "new-info apply: \`note --apply\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `note --apply <epic-id>`.*LOCK_HELD'
+assert_present "new-info apply: \`capture --fact\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `capture --fact <fact> <epic-id>`.*LOCK_HELD'
+echo "== knowledge.md =="
+section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600
+section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600
+echo "== create-task.md =="
+section "create-task create" "$CT" '^### 3\.2 ' '^## Phase 4' create 600
+LC=$(total_lines "$CT"); C0=$(find_line "$CT" 1 "$LC" '^### 3\.2 '); C1=$(find_line "$CT" 1 "$LC" '^## Phase 4')
+assert_present "create-task 3.2: \`refresh(<epic-id>, create <key>)\` after the page has a parent" "$CT" "$C0" "$C1" 'operation `refresh\(<epic-id>, create <key>\)`'
+assert_present "create-task 3.2: skipped under \`LOCK_HELD\` (epic-update filing)" "$CT" "$C0" "$C1" 'invoked with `LOCK_HELD`'
+echo "== knowledge skill: capture commits through the write path =="
+LK=$(total_lines "$KS")
+assert_present "knowledge capture: commits and pushes through \`## The write path\`" "$KS" 1 "$LK" 'through `## The write path`'
+assert_absent "knowledge capture: no longer states its own push (\`Then push as\`)" "$KS" 1 "$LK" 'Then push as `epic-doc record` pushes'
+echo "== signatures =="
+SIG=$ND/skills/issue-log/references/signatures.md; LS=$(total_lines "$SIG")
+assert_present "signature \`lock-stale:primary\`"   "$SIG" 1 "$LS" '^\| `lock-stale:primary` \| unexpected \|'
+assert_present "signature \`lock-timeout:primary\`" "$SIG" 1 "$LS" '^\| `lock-timeout:primary` \| degraded \|'
+assert_present "signature \`partial:epic-doc\` now covers \`refresh\` in \`next-task.md\` and \`create-task.md\`" "$SIG" 1 "$LS" '^\| `partial:epic-doc` \| degraded \| `ticket.md`, `finalize.md`, `next-task.md`, `create-task.md` \|.*refresh'
+
 if [ "$fails" -gt 0 ]; then echo "verify-primary-lock: $fails FAIL"; exit 1; fi
 echo "verify-primary-lock: all PASS"

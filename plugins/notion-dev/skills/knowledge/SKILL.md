@@ -271,10 +271,10 @@ git commit --only -m "docs(knowledge): capture <KEY>-<n>" -- <knowledge.dir>
 git commit --only -m "docs(knowledge): note <KEY>-<n> — <short fact>" -- <knowledge.dir>   # --fact form
 ```
 
-Then push as `epic-doc record` pushes — skipped under `--branch`, where the caller pushes once. A
-push git rejects leaves the local commit in place, **never forces**, and fails the same way,
-carrying git's rejection message and the commit SHA so the caller's closeout can name it as
-blocked.
+Then commit and push through `## The write path` of `notion-dev:epic-doc` — the same five steps,
+with the subjects above and the pathspec `-- <knowledge.dir>`; `capture` re-derives on a rejected
+push exactly as `refresh` does, and under `--branch` there is no push. The caller's `LOCK_HELD` is
+passed through.
 
 **Either failure of this step records `partial:knowledge-capture`** per `notion-dev:issue-log` —
 this skill's signature, never `epic-doc`'s — and returns `KNOWLEDGE: failed` with the cause on the
