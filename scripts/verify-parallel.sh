@@ -40,6 +40,8 @@ assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` 
 assert_order "2.1: worktree add, then marker, then status, then refresh start" "$TICKET" "$P21" "$P3" \
   worktree 'git worktree add <worktree-path>' marker '"state": "running"' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 assert_present "marker discipline: heartbeat at every phase boundary and every review round" "$TICKET" "$P21" "$P3" 'heartbeat.*every phase boundary and every review round'
+assert_present "marker discipline: the heartbeat is written between units of work, never inside one" "$TICKET" "$P21" "$P3" 'written between units of work and never inside one'
+assert_present "marker discipline: the 2-hour threshold bounds the longest single unit, not the run" "$TICKET" "$P21" "$P3" "2-hour threshold bounds the longest single unit"
 assert_present "phase 4: the marker is touched after every build task" "$TICKET" "$P3" "$P7" 'Touch the run marker.*after every task it completes'
 assert_present "phase 5: the marker is touched after every verify iteration" "$TICKET" "$P3" "$P7" 'Touch the run marker after every verify iteration'
 assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every reviewer round'
