@@ -370,16 +370,24 @@ are constants in the script, not config.
 ## §8 Merging in parallel (PR 2)
 
 - **`review-and-merge` step 5, before the merge command:** read `mergeStateStatus`. `BEHIND` or
-  `DIRTY` → in the worktree: `git fetch origin <base>`, `git rebase origin/<base>`, re-run the
-  project's verify, `git push --force-with-lease`, re-read `mergeStateStatus`, then merge. A
-  clean rebase changes no diff and triggers no new review round; the report states the rebase
-  and the new head sha. Done once, at the gate, never per review round.
-- **The version-bump conflict resolves itself.** When the rebase's only conflicting hunk is
-  `version` in `.claude-plugin/plugin.json`: take the base's value, re-apply this PR's bump class
-  (the class Phase 6.1 recorded — patch, minor or major), continue the rebase, and re-run the
-  Phase 6.1 rule "strictly greater than base". Two minor PRs against 0.24.0 land as 0.25.0 and
-  0.26.0. Any other conflict → the existing `PR unmergeable` stop with worktree and PR left; no
-  automatic resolution of code.
+  `DIRTY` → in the worktree: first record the **bump class** — compare the manifest at
+  `git merge-base origin/<base> HEAD` with the head's; the first differing component is the class,
+  identical manifests mean no class, a lower head version stops the run — then `git fetch origin
+  <base>`, `git rebase origin/<base>`, re-satisfy gate 1 and re-run the project's verify on the
+  rebased head (replacing `VERIFY_OUTPUT`), `git push --force-with-lease`, re-read
+  `mergeStateStatus` with gate 1's bounded poll (`UNKNOWN` = not yet recomputed, wait; `BLOCKED` →
+  re-run the checks and thread queries), then merge. A clean rebase changes no diff and triggers
+  no new review round; the report states the rebase and the new head sha. Done once, at the gate,
+  never per review round (one more rebase if the base moved during it; stop if it recurs).
+- **The version bump is re-established after any rebase.** Identical version lines merge without
+  conflict, so on a repo with a manifest the rule "head version strictly greater than the base's,
+  as semver" is re-checked unconditionally after the rebase; when it fails, the recorded bump class
+  is re-applied on the base's value as `chore: re-bump version after rebase`. When the rebase
+  *does* stop with `version` in `.claude-plugin/plugin.json` as the only conflicting hunk: take the
+  base's value, re-apply the bump class, `git add`, `git rebase --continue`, same re-check. Two
+  minor PRs against 0.24.0: the first lands 0.25.0, the second rebases clean, fails the re-check at
+  0.25.0, and re-bumps to 0.26.0. Any other conflict → `git rebase --abort` and the existing
+  `PR unmergeable` stop with worktree and PR left; no automatic resolution of code.
 - **No manifest** (a client repo) → the rebase and nothing else.
 - **Both copies change.** `review-and-merge` is a `quick-dev` skill that `notion-dev` vendors;
   the rebase-at-gate step lands in both `plugins/quick-dev/skills/review-and-merge/SKILL.md`
