@@ -56,6 +56,10 @@ section "finalize record section" "$FINALIZE" '^## Phase 3 ' '^\*\*Closeout — 
 L=$(total_lines "$TICKET")
 P2=$(find_line "$TICKET" 1 "$L" '^## Phase 2 '); P3=$(find_line "$TICKET" 1 "$L" '^## Phase 3 ')
 assert_present "ticket Phase 2: \`refresh(<epic-id>, start <key>)\` is invoked" "$TICKET" "$P2" "$P3" 'operation `refresh\(<epic-id>, start <key>\)`'
+# refresh has no missing-brief path, so the start section must not run when Phase 1.1 said
+# the brief does not exist yet — Phase 10's record is what creates it.
+assert_present "ticket Phase 2: the start section is skipped on BOOTSTRAP: true" "$TICKET" "$P2" "$P3" \
+  'start` section.*and Phase 1\.1.*did not report.*`BOOTSTRAP: true`'
 assert_order "ticket Phase 2: worktree, then status, then refresh start" "$TICKET" "$P2" "$P3" \
   worktree 'git worktree add <worktree-path>' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')

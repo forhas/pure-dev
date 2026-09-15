@@ -143,7 +143,9 @@ Mark the ticket as started — invoke `notion-dev:ticket-system`:
 
 - `updateStatus(id, "inProgress")` — the ticket now stays in "In Progress" through triage, planning, implementation, and PR review. The plugin does not flip it to a further state until Phase 8. Idempotent on resume (re-running on an existing worktree is safe).
 
-**Mark the brief — the `start` section.** When the ticket has an epic (`metadata.parentTaskProperty` non-empty), from `$REPO_ROOT`:
+**Mark the brief — the `start` section.** When the ticket has an epic (`metadata.parentTaskProperty` non-empty) **and Phase 1.1's `read` did not report `BOOTSTRAP: true`**, from `$REPO_ROOT`:
+
+`BOOTSTRAP: true` means no brief exists on `origin/<epicBranch>` yet, and `refresh` loads the current brief and has no missing-brief path of its own — so invoking it here would turn the first direct ticket run for a new epic into `EPIC-DOC: failed` and a `partial:epic-doc` record for a brief that was never supposed to exist yet. Skip the section, say so in the report, and leave it to Phase 10's `record`, which creates the brief with this ticket already resolved. Bootstrapping from here instead was considered and rejected: it would put a second brief-creation path in the flow, racing the one `record` already owns.
 
 1. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section start --wait 600` — `<run id>` is `<KEY>-<id>`. Exit 1 → record `lock-timeout:primary` per `notion-dev:issue-log`, skip this section, and say so in the report; a `stale:` line → record `lock-stale:primary`.
 2. Invoke the `notion-dev:epic-doc` skill, operation `refresh(<epic-id>, start <key>)`, passing `REPO_ROOT`, `<epicBranch>` and `LOCK_HELD`. It moves the ticket to the brief's `In progress:` line, repairs any drift 1.1's `read` reported, removes a stop bullet left by an earlier stopped run of this ticket, and commits `docs(epic): <KEY>-<n> start <key>` to `<epicBranch>` through the write path. Record its block as `EPIC_DOC_START`; `failed` → `partial:epic-doc`, never a stop.
