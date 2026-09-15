@@ -315,7 +315,6 @@ nx wrapped 1 "$NX/brief-wrapped.md" "$NX/state-basic.json"
 assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.md" \
   '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
 assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
-assert_has "next: a re-wrapped item is still not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
 
 # A header Status that disagrees with the live epic is repaired, not merely reported: with
 # `## Next` already true nothing else changes, so the rewrite has to be driven by the header
@@ -356,7 +355,9 @@ assert_identical "next: a brief without a trailing newline stays byte-identical"
 nx order 1 "$NX/brief.md" "$NX/state-order.json"
 assert_has "next: ordering puts phase 1 before phase 2 (item 1)" "$OUT/next-order.md" '1. **[STO-80]'
 assert_has "next: ordering puts phase 2 step 1 before phase 2 step 2 (item 2)" "$OUT/next-order.md" '2. [STO-79]'
-assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 3)" "$OUT/next-order.md" '3. [STO-71]'
+assert_has "next: a phase/step tie is broken by the lower id" "$OUT/next-order.md" '2. [STO-79] '
+assert_has "next: the higher id follows its tie partner" "$OUT/next-order.md" '3. [STO-81] '
+assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 4)" "$OUT/next-order.md" '4. [STO-71]'
 
 echo "== lock: mkdir lock on the primary checkout =="
 LK=$(mktemp -d)

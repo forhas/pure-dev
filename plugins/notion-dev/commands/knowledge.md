@@ -106,7 +106,7 @@ Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <
 ## `curate`
 
 **The clusters are put to the user before the lock is taken** — `new-info`'s rule applied here:
-no interactive gate is ever held under the primary lock. The lock goes stale after 30 minutes
+no interactive gate is ever held under the primary lock. The lock goes stale after 60 minutes
 and deciding which of two similar facts is the durable one is exactly the judgment a person
 takes their time over, so a lock held across the questions is a live lock another run breaks;
 both writers then believe they hold it and their commits race.

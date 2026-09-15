@@ -46,9 +46,9 @@ The review phase is also usable standalone on any open PR:
 /quick-dev:review-and-merge <pr-number>
 ```
 
-Before merging, a PR that fell behind its base is rebased once at the gate; a
-`.claude-plugin/plugin.json` version conflict is resolved by re-applying the PR's bump class on
-the base's version.
+Before merging, a PR is rebased once at the gate when it fell behind, its version re-checked and
+re-bumped when equal; a `.claude-plugin/plugin.json` version conflict is resolved by re-applying
+the PR's bump class on the base's version.
 
 ## Code reviewer (GitHub mode)
 

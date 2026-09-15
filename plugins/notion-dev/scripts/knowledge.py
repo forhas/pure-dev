@@ -1485,7 +1485,7 @@ def cmd_next(a):
 # lock — the primary-checkout lock (spec §4)
 # ---------------------------------------------------------------------------
 
-LOCK_STALE_SECONDS = 30 * 60
+LOCK_STALE_SECONDS = 60 * 60
 LOCK_POLL_SECONDS = 15
 LOCK_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -1540,7 +1540,7 @@ def _read_owner(d):
 def _owner_age(kv, d):
     """Seconds since the owner was written. A `since` that is missing or unparsable means
     the owner file is either still being written (fresh directory: wait, don't break) or an
-    orphan left behind by a crash (old directory: eligible once 30 minutes have passed) — the
+    orphan left behind by a crash (old directory: eligible once 60 minutes have passed) — the
     directory's own mtime is what tells those two apart."""
     try:
         since = datetime.datetime.strptime(kv.get("since", ""), LOCK_TIME_FMT)

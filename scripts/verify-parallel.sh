@@ -30,12 +30,15 @@ assert_present "1.1 ownership check: non-interactive never proceeds" "$TICKET" "
 assert_present "1.2 resume: a \`running\` marker with a fresh heartbeat aborts \`held by a live session\`" "$TICKET" "$P12" "$P13" '"state": "running".*held by a live session — <phase> since <heartbeat>'
 assert_present "1.2 resume: \`stopped\`, a heartbeat older than 2 hours, or no marker resumes" "$TICKET" "$P12" "$P13" '`stopped`.*older than 2 hours.*no marker.*resume'
 assert_present "1.2 resume: non-interactive never takes over" "$TICKET" "$P12" "$P13" 'non-interactive never takes over'
+assert_present "1.2 resume: the marker is re-read after the rewrite and a stolen resume aborts" "$TICKET" "$P12" "$P13" 're-read the marker.*no longer names this run'
 assert_present "2.1 claim: the marker path" "$TICKET" "$P21" "$P3" '\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json'
 assert_present "2.1 claim: the marker is written with \`\"state\": \"running\"\`" "$TICKET" "$P21" "$P3" '"state": "running"'
-assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` before any status change" "$TICKET" "$P21" "$P3" 'OUTCOME: claimed-elsewhere.*before'
+assert_present "2.1 claim: a lost race ends with \`OUTCOME: claimed-elsewhere\` before any status change" "$TICKET" "$P21" "$P3" 'OUTCOME: claimed-elsewhere.*before\*\* any status change'
 assert_order "2.1: worktree add, then marker, then status, then refresh start" "$TICKET" "$P21" "$P3" \
   worktree 'git worktree add <worktree-path>' marker '"state": "running"' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 assert_present "marker discipline: heartbeat at every phase boundary and every review round" "$TICKET" "$P21" "$P3" 'heartbeat.*every phase boundary and every review round'
+assert_present "phase 4: the marker is touched after every build task" "$TICKET" "$P3" "$P7" 'Touch the run marker.*after every task it completes'
+assert_present "phase 5: the marker is touched after every verify iteration" "$TICKET" "$P3" "$P7" 'Touch the run marker after every verify iteration'
 assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every reviewer round'
 assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$TICKET" "$P9" "$P9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
 assert_order "phase 9: worktree removed, then marker deleted" "$TICKET" "$P9" "$P9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
@@ -54,14 +57,17 @@ echo "== next-task.md: lost claims and the marker =="
 LN=$(total_lines "$NT"); S2=$(find_line "$NT" 1 "$LN" '^### 2\. Pick'); S3=$(find_line "$NT" 1 "$LN" '^### 3\. Delegate'); S4=$(find_line "$NT" 1 "$LN" '^### 4\. After the run'); SR=$(find_line "$NT" 1 "$LN" '^## Report')
 assert_present "step 2: an in-progress child with a \`running\` marker is never a candidate" "$NT" "$S2" "$S3" '`running` marker.*never a'
 assert_present "step 2: resume first reads the marker (\`stopped\` or none)" "$NT" "$S2" "$S3" 'Resume first.*marker.*`stopped`'
+assert_present "step 2: the 2-hour rule compares against date -u now" "$NT" "$S2" "$S3" 'younger than 2 hours \(compared against `date -u` now'
 assert_present "step 4: \`claimed-elsewhere\` is neither a stop nor a resolution" "$NT" "$S4" "$SR" 'claimed-elsewhere.*neither a stop nor a resolution'
 assert_present "step 4: on \`claimed-elsewhere\` DONE is not incremented and the next candidate is picked from the same NEXT" "$NT" "$S4" "$SR" 'claimed-elsewhere.*DONE.*same `NEXT`'
+assert_present "step 4: lost keys accumulate in a LOST set that resets on re-read" "$NT" "$S4" "$SR" '`LOST` set.*resets when the brief is re-read'
 
 echo "== review-and-merge: rebase at the gate (both copies) =="
 for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/skills/review-and-merge/SKILL.md; do
   n=$(total_lines "$f"); M5=$(find_line "$f" 1 "$n" '^## 5\. Merge'); SR=$(find_line "$f" "$M5" "$n" '^## Safety rules')
   assert_present "$f: reads \`mergeStateStatus\` at the gate" "$f" "$M5" "$SR" 'gh pr view <pr> --json mergeStateStatus'
   assert_present "$f: \`BEHIND\` or \`DIRTY\` → \`git rebase origin/<base>\` in the worktree" "$f" "$M5" "$SR" '`BEHIND`.*`DIRTY`.*git rebase origin/<base>'
+  assert_present "$f: the rebase also fires when the head is not a descendant of origin/<base>" "$f" "$M5" "$SR" 'merge-base --is-ancestor origin/<base> HEAD. fails'
   assert_present "$f: re-run verify, then \`git push --force-with-lease\`" "$f" "$M5" "$SR" 'verify.*git push --force-with-lease'
   assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
   assert_present "$f: \`.claude-plugin/plugin.json\` version conflict: take the base's value and re-apply the bump class" "$f" "$M5" "$SR" '\.claude-plugin/plugin\.json.*take the base.s value.*bump class'
