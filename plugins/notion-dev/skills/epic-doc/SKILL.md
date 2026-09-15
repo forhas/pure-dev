@@ -106,7 +106,7 @@ Read-only. Runs before any worktree exists, so it **writes nothing** — not the
    unresolved child's `## Blocked by` keys, `metadata.phaseProperty`, `metadata.stepProperty`
    from one `fetchTicket` each — the same fetches `record` step 2 makes), and `thread_blocked` — from the current `## Open threads`, for each bullet the keys it says it blocks or holds (`blocks STO-22, STO-23`, `holds STO-x`), never a key after `Unblocked by:`, never a key a bullet merely informs (`revisit in STO-71`), and never a stop bullet (the script adds those from the bullets themselves) — the same judgment `record` step 2 applies when it writes `Blocked:`. Then runs the derivation
    command `refresh` names with no `--reason`, and reads only its stderr: `DRIFT: 0` → `DRIFT:
-   false`; otherwise `DRIFT: true` with the `drift:` lines verbatim. `read` still writes nothing —
+   false`; otherwise `DRIFT: true` with the `drift:` lines verbatim; a listed child's title differs from its live title; the numbered order differs from the derived order. `read` still writes nothing —
    not the brief, not a lock, nothing in the primary checkout: it runs before any worktree exists.
    Whoever writes next repairs the drift — `/notion-dev:ticket` through its Phase 2 `start`,
    `/notion-dev:next-task` through `refresh drift`. `BOOTSTRAP: true` (with `SEED: <path>` or `SEED: notion`) means the brief does not exist yet — `retrieve` bootstrapped it **in memory**; the file is created later by the first `record` — a resolution's, or `/notion-dev:next-task`'s `record --bootstrap`.

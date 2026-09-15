@@ -156,6 +156,7 @@ if [ -f "$ED" ]; then
       bad "epic-doc lacks the ## Output block heading"
     fi
     assert_present "read reports \`DRIFT: true\` and writes nothing" "$ED" "$R0" "$RB" 'DRIFT: true.*writes nothing'
+    assert_present "read: title and order drift are findings" "$ED" "$R0" "$RB" 'title differs from its live title.*numbered order differs'
     assert_present "read assembles \`thread_blocked\` from \`## Open threads\`" "$ED" "$R0" "$RB" 'thread_blocked.*## Open threads'
     assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
     assert_present "record step 2 recomputes \`## Next\` through \`refresh\`'s derivation" "$ED" "$R1" "$R2" '`## Next` — recompute through `refresh`'
