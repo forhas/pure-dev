@@ -50,5 +50,12 @@ assert_present "phase 10 report: the marker outcome line" "$TICKET" "$P10" "$FS"
 LS=$(total_lines "$SIG")
 assert_absent "signatures: claimed-elsewhere is a run outcome, never a signature row" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \|'
 
+echo "== next-task.md: lost claims and the marker =="
+LN=$(total_lines "$NT"); S2=$(find_line "$NT" 1 "$LN" '^### 2\. Pick'); S3=$(find_line "$NT" 1 "$LN" '^### 3\. Delegate'); S4=$(find_line "$NT" 1 "$LN" '^### 4\. After the run'); SR=$(find_line "$NT" 1 "$LN" '^## Report')
+assert_present "step 2: an in-progress child with a \`running\` marker is never a candidate" "$NT" "$S2" "$S3" '`running` marker.*never a'
+assert_present "step 2: resume first reads the marker (\`stopped\` or none)" "$NT" "$S2" "$S3" 'Resume first.*marker.*`stopped`'
+assert_present "step 4: \`claimed-elsewhere\` is neither a stop nor a resolution" "$NT" "$S4" "$SR" 'claimed-elsewhere.*neither a stop nor a resolution'
+assert_present "step 4: on \`claimed-elsewhere\` DONE is not incremented and the next candidate is picked from the same NEXT" "$NT" "$S4" "$SR" 'claimed-elsewhere.*DONE.*same `NEXT`'
+
 if [ "$fails" -gt 0 ]; then echo "verify-parallel: $fails FAIL"; exit 1; fi
 echo "verify-parallel: all PASS"
