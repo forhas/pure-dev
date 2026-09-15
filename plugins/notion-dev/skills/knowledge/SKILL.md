@@ -100,9 +100,9 @@ Read-only. It writes nothing and runs before any worktree exists.
    are excluded by the filter. Reference expansion is the only expansion this plugin relies on;
    inclusion expansion is never requested, so a concept is never pulled in whole by another.
 4. Return `KNOWLEDGE_CONTEXT` — the retrieve output verbatim — plus the fields `epic-doc read`
-   returns, parsed from the root: `EPIC_CONTEXT`, `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN` (one
-   `listEpicChildren(<epic-id>)` call, since no concept stores a live status), `BOOTSTRAP` and
-   `SEED`.
+   returns, parsed exactly as `epic-doc` `read` parses them, including `DRIFT`: `EPIC_CONTEXT`,
+   `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN` (one `listEpicChildren(<epic-id>)` call, since no
+   concept stores a live status), `BOOTSTRAP`, `DRIFT` and `SEED`.
 5. `iwe` missing or the call failing → read the root alone with
    `git show origin/<epicBranch>:<root path>` as `EPIC_CONTEXT`, return
    `KNOWLEDGE_CONTEXT: unavailable`, and record `partial:knowledge-retrieve` per
@@ -271,10 +271,12 @@ git commit --only -m "docs(knowledge): capture <KEY>-<n>" -- <knowledge.dir>
 git commit --only -m "docs(knowledge): note <KEY>-<n> — <short fact>" -- <knowledge.dir>   # --fact form
 ```
 
-Then push as `epic-doc record` pushes — skipped under `--branch`, where the caller pushes once. A
-push git rejects leaves the local commit in place, **never forces**, and fails the same way,
-carrying git's rejection message and the commit SHA so the caller's closeout can name it as
-blocked.
+This block **is** step 3 ("Derive and commit") of `notion-dev:epic-doc`'s five steps, reached
+through `## The write path`, with the two subjects above and the pathspec `-- <knowledge.dir>`;
+steps 1 (lock), 2 (establish the base), 4 (push, converge on rejection, never `--force`) and 5
+(unlock) run around it exactly as the write path states them. `capture` re-derives on a rejected
+push exactly as `refresh` does, and under `--branch` there is no push. The caller's `LOCK_HELD` is
+passed through.
 
 **Either failure of this step records `partial:knowledge-capture`** per `notion-dev:issue-log` —
 this skill's signature, never `epic-doc`'s — and returns `KNOWLEDGE: failed` with the cause on the
@@ -315,8 +317,8 @@ nothing here reads Notion.
 4. The loser is superseded exactly as `capture` step 3 supersedes — `status: deprecated`,
    `superseded_by`, one dated line — and its links are left pointing at a live successor.
 5. Index, log, check again, then commit `docs(knowledge): curate — <n> clusters resolved` by
-   pathspec and push, as `capture` step 6 does. Returns `capture`'s output block, with
-   `SUPERSEDED` naming each resolved cluster.
+   pathspec and push, as `capture` step 6 does, through the same five steps. Returns `capture`'s
+   output block, with `SUPERSEDED` naming each resolved cluster.
 
 ## `migrate [--apply]`
 

@@ -16,6 +16,13 @@
 # references/* — and also any mirrored file git is not tracking.
 !.claude/skills/
 
+# Python bytecode. The shipped script is only ever executed, never imported by the plugin —
+# but verify-knowledge-py.sh imports it to drive the lock's release-race case, and CPython
+# writes __pycache__/ next to the source when it does. Left untracked-but-unignored that
+# artifact lands in the next `git add -A`, which is how a .pyc reached this repo once.
+__pycache__/
+*.py[cod]
+
 node_modules/
 .DS_Store
 *.log

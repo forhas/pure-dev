@@ -227,6 +227,8 @@ Invoke `notion-dev:ticket-system`:
 
 Capture the returned `{ id, url }`.
 
+Then continue at `#### Both paths — mark the brief`.
+
 #### Mission path (two-pass)
 
 **Epic creation** (mission path only; runs before Pass 0 — skip entirely when `EPIC_ID` is already set from 2.5.2's reuse match, or when `EPIC_TO_CREATE` was never set, i.e. the DB lacks epic containers or the mission collapsed): invoke `notion-dev:ticket-system` operation `createEpic({ name: EPIC_TO_CREATE.name, overview: EPIC_TO_CREATE.overview, type: EPIC_TO_CREATE.type, assignee })`. Omit `assignee` when Phase 2.75 chose "Leave unassigned". `assignee` is Phase 2.75's resolved value — this is why the call waits until here instead of running inline in 2.5.2, where `EPIC_TO_CREATE` was recorded but Phase 2.75 hadn't run yet. Record the result's **`id`** (the logical ticket id — the result shape is `{ id, key, url, pageId }`) as `EPIC_ID`, the same field 2.5.2's reuse path records. A `null` return sets **`EPIC_UNAVAILABLE_CAUSE = containers-unavailable`**, the same value 2.5.2 uses — `createEpic` returns a bare `null` when either containment property is unusable and does not say which, so no property may be named here either. Reaching this at all means containers went from usable to unusable **between 2.5.2 and now**: `findEpics()` applies the identical two-slot check, so a run that got past 2.5.2 with containers available has already been told they were. Treat this as the mid-run-change backstop it is, not a routine branch. It then degrades the same way 2.5.2 step 2 does: `EPIC_ID = undefined`, continue with Epic-select tagging only.
@@ -274,6 +276,12 @@ for task in mission.tasks:
 ```
 
 If Pass 1 fails partway, report what succeeded (with IDs/URLs) and stop before Pass 2 — leave the partial state for the user to investigate. Do not attempt rollback.
+
+#### Both paths — mark the brief
+
+**Mark the brief — the `create` section.** Record `REPO_ROOT` (the first path of `git worktree list`); read `knowledge.dir` (default `knowledge`) and `<epicBranch>` (`git.prTargetBranch`, falling back to `git.baseBranch`) from `$REPO_ROOT/.claude/notion-dev.config.json`; `git -C $REPO_ROOT fetch origin <epicBranch>`. When `parent` was set: skip, saying why, when this command was invoked with `LOCK_HELD` (it is `epic-update` filing follow-ups; the enclosing `record` recomputes `## Next` moments later), when `git -C $REPO_ROOT ls-tree -r --name-only origin/<epicBranch> -- <knowledge.dir>/epic/` lists no `<KEY>-<n>-*.md` for the epic (no brief yet — bootstrap will list this ticket), or when `git -C $REPO_ROOT status --porcelain` shows a tracked modification outside `/notion-dev:ticket`'s exempt paths. Otherwise: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section create --wait 600` (`<run id>` is `create-task`; exit 1 → skip, record `lock-timeout:primary`), invoke the `notion-dev:epic-doc` skill, operation `refresh(<epic-id>, create <key>)`, passing `REPO_ROOT`, `<epicBranch>` and `LOCK_HELD`.
+
+Then `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`. Best-effort: `failed` → `partial:epic-doc`; the report's epic line gains ` · brief: refreshed | unchanged | skipped (<why>) | failed`. For a mission, one `refresh create <key>` per created task, inside one take/release.
 
 ---
 

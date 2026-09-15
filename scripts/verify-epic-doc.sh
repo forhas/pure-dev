@@ -48,9 +48,6 @@ if [ -f "$ED" ]; then
   assert_has "epic-doc read path resolves the file by key, never slug" "$ED" '<KEY>-<n>-*.md'
   assert_has "epic-doc supports \`--bootstrap\`" "$ED" '--bootstrap'
   assert_has "epic-doc removes the seed with \`git rm\`" "$ED" 'git rm'
-  assert_count "epic-doc cites the \`docs(epic):\` prefix four times: three commit kinds and the idempotency lookup" \
-    "$ED" 1 "$L" 'docs\(epic\):' 4
-
   R0=$(find_line "$ED" 1 "$L" '^## `read\(')
   R1=$(find_line "$ED" 1 "$L" '^## `record\(')
   # `read`'s own body ends where `## Bootstrap` begins; Bootstrap legitimately
@@ -58,6 +55,12 @@ if [ -f "$ED" ]; then
   # touches git directly" checks below must not spill into it.
   RB=$(find_line "$ED" 1 "$L" '^## Bootstrap')
   [ -n "$RB" ] || RB=$R1
+  # `refresh` and `## The write path` now sit between `## Bootstrap` and
+  # `## \`record(` — the write path legitimately runs `git commit`/`git push`,
+  # so the "read never commits/pushes" checks below must end at RF, not R1,
+  # or they'd spill into the write path's own commands.
+  RF=$(find_line "$ED" 1 "$L" '^## `refresh\(<epic-id>, <reason>\)` — the derived writer$')
+  [ -n "$RF" ] || RF=$R1
   # The record region ends where `note` begins (verify-new-info.sh owns that
   # section); without a note heading it runs to end of file as before.
   R2=$(find_line "$ED" 1 "$L" '^## `note\(')
@@ -75,16 +78,16 @@ if [ -f "$ED" ]; then
       "$ED" 1 "$R0" '^\*\*Branch\.\*\* The brief lives on .* called `<epicBranch>` below'
     assert_absent "epic-doc never reads \`origin/<git.baseBranch>\` directly" \
       "$ED" 1 "$L" 'origin/<git\.baseBranch>'
-    assert_absent "read: never commits" "$ED" "$R0" "$R1" 'git commit'
-    assert_absent "read: never pushes"  "$ED" "$R0" "$R1" 'git push'
+    assert_absent "read: never commits" "$ED" "$R0" "$RF" 'git commit'
+    assert_absent "read: never pushes"  "$ED" "$R0" "$RF" 'git push'
     assert_present "record: asserts the primary is on the base branch" \
       "$ED" "$R1" "$R2" 'rev-parse --abbrev-ref HEAD'
     assert_present "record: asserts the merge commit is an ancestor" \
       "$ED" "$R1" "$R2" 'merge-base --is-ancestor'
     assert_present "record: asserts the primary equals the remote base" \
       "$ED" "$R1" "$R2" 'rev-parse origin/<baseRefName>'
-    assert_present "record: output block states its five values" \
-      "$ED" "$R1" "$R2" '^EPIC-DOC: created \| updated \| closed \| none \| failed'
+    assert_present "record: output block states its seven values" \
+      "$ED" "$R1" "$R2" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed'
     assert_present "record: output block carries \`PATH:\`" \
       "$ED" "$R1" "$R2" '^PATH: '
     assert_present "record: output block carries \`SEED:\`" \
@@ -99,6 +102,69 @@ if [ -f "$ED" ]; then
       "$ED" "$R1" "$R2" 'do not force'
   else
     bad "epic-doc: could not locate the read/record operation headings"
+  fi
+else
+  bad "epic-doc skill missing: $ED"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== epic-doc: refresh and the write path (spec 2026-09-15 §2–§3) =="
+# ---------------------------------------------------------------------------
+if [ -f "$ED" ]; then
+  L=$(total_lines "$ED")
+  R0=$(find_line "$ED" 1 "$L" '^## `read\(')
+  R1=$(find_line "$ED" 1 "$L" '^## `record\(')
+  RB=$(find_line "$ED" 1 "$L" '^## Bootstrap')
+  [ -n "$RB" ] || RB=$R1
+  R2=$(find_line "$ED" 1 "$L" '^## `note\(')
+  [ -n "$R2" ] || R2=$L
+  # RF (the `refresh` heading) is computed once, above, in the "format owner"
+  # block, and reused here — same variable, same meaning.
+  RF=$(find_line "$ED" 1 "$L" '^## `refresh\(<epic-id>, <reason>\)` — the derived writer$')
+  WP=$(find_line "$ED" 1 "$L" '^## The write path — every commit from the primary checkout$')
+  OB=$(find_line "$ED" 1 "$L" '^## Output block$')
+  [ -n "$RF" ] && ok "epic-doc defines \`refresh(<epic-id>, <reason>)\`" || bad "epic-doc lacks the refresh heading (L1)"
+  [ -n "$WP" ] && ok "epic-doc defines \`## The write path\`" || bad "epic-doc lacks the write path heading (L2)"
+  if [ -n "$RF" ] && [ -n "$WP" ] && [ -n "$R0" ] && [ -n "$R1" ]; then
+    assert_present "template carries the \`In progress:\` line" "$ED" 1 "$R0" '^In progress: \[STO-72\] Backfill v2 — since 2026-09-15$'
+    assert_present "refresh: the four reasons are \`start\`, \`stop\`, \`create\`, \`drift\`" "$ED" "$RF" "$WP" '`start <KEY>-<n>`.*`stop <KEY>-<n> <phase> <cause> <worktree-path>`.*`create <KEY>-<n>`.*`drift`'
+    assert_present "refresh: derivation is \`knowledge.py\` \`next\` with \`--brief\`, \`--state\`, \`--today\`" "$ED" "$RF" "$WP" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>'
+    assert_present "refresh: \`stop\` adds the bullet, \`start\` removes it" "$ED" "$RF" "$WP" '`stop` adds .* `start` removes'
+    assert_present "refresh: byte-identical → \`unchanged\`, no commit" "$ED" "$RF" "$WP" 'Byte-identical .* `unchanged`, no commit'
+    assert_present "refresh: the state JSON shape names \`status_class\`, \`blocked_by\`, \`thread_blocked\`" "$ED" "$RF" "$WP" '`status_class`.*`blocked_by`.*`thread_blocked`'
+    assert_present "refresh: exit-code contract (0 unchanged, 1 differs, 2 malformed)" "$ED" "$RF" "$WP" 'exit 0 = .*exit 1 = .*exit 2 = '
+    assert_present "write path step 1: \`lock take\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock take --run <run id> --section <name> --wait <seconds>.*LOCK_HELD'
+    assert_present "write path step 2: \`git -C \$REPO_ROOT pull --ff-only origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>'
+    assert_present "write path step 4: \`git push origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git push origin <epicBranch>'
+    assert_present "write path step 4: \`git rev-list origin/<epicBranch>..HEAD\` names **exactly one** commit" "$ED" "$WP" "$R1" 'git rev-list origin/<epicBranch>\.\.HEAD. names \*\*exactly one\*\* commit'
+    assert_present "write path step 4: \`git -C \$REPO_ROOT reset --hard origin/<epicBranch>\` only after the rev-list proof" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT reset --hard origin/<epicBranch>'
+    # Both halves of the converge reset. Hard, so every path outside the pathspec becomes the
+    # fetched tree rather than a staged reversion of it; across a stash, so the exempt setup
+    # files the preconditions permit to be dirty are not discarded with this attempt's commit.
+    assert_present "write path step 4: the exempt setup files are stashed across the reset, untracked ones included" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash push --include-untracked --quiet --'
+    assert_present "write path step 4: the stash is popped with --index, so staged edits keep their index state" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT stash pop --index --quiet'
+    assert_present "write path step 4: \`Three attempts.\`" "$ED" "$WP" "$R1" 'Three attempts\.'
+    assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
+    assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \
+      take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' stash 'stash push --include-untracked --quiet --' reset 'reset --hard origin/<epicBranch>' release 'lock release --run'
+    if [ -n "$OB" ]; then
+      assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
+      assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '
+      assert_present "output block carries \`DRIFT:\`" "$ED" "$OB" "$L" '^DRIFT: '
+      assert_present "output block carries \`ATTEMPTS:\`" "$ED" "$OB" "$L" '^ATTEMPTS: '
+    else
+      bad "epic-doc lacks the ## Output block heading"
+    fi
+    assert_present "read reports \`DRIFT: true\` and writes nothing" "$ED" "$R0" "$RB" 'DRIFT: true.*writes nothing'
+    assert_present "read assembles \`thread_blocked\` from \`## Open threads\`" "$ED" "$R0" "$RB" 'thread_blocked.*## Open threads'
+    assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
+    assert_present "record step 2 recomputes \`## Next\` through \`refresh\`'s derivation" "$ED" "$R1" "$R2" '`## Next` — recompute through `refresh`'
+    assert_count "record commits through the write path (cited twice on purpose: the resolution path's step 4, and the bootstrap path's)" \
+      "$ED" "$R1" "$R2" 'through `## The write path`' 2
+    assert_count "commit subjects: after, bootstrap, note, start, stop, create, refresh (lines citing \`docs(epic):\`)" \
+      "$ED" 1 "$L" 'docs\(epic\):' 8
+  else
+    bad "epic-doc: could not locate the refresh/write-path/read/record operation headings"
   fi
 else
   bad "epic-doc skill missing: $ED"

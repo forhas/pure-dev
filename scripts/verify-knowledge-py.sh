@@ -237,6 +237,286 @@ diff -r -x .git "$FX/migrate-fail" "$MF" && echo "ok: reverted apply left no byt
   || { echo "FAIL: reverted apply left stray files or directories behind"; fails=$((fails+1)); }
 rm -rf "$MF"
 
+echo "== next: renders ## Next, the header and the stop bullet deterministically =="
+NX=$FX/next
+TODAY=2026-09-15
+nx() { # name, expected-exit, brief, state, [reason args...]
+  local name=$1 want=$2 brief=$3 state=$4; shift 4
+  python3 "$PY" next --brief "$brief" --state "$state" --today "$TODAY" "$@" \
+    > "$OUT/next-$name.md" 2> "$OUT/next-$name.err"; local got=$?
+  if [ "$got" -ne "$want" ]; then
+    echo "FAIL: next-$name exited $got, wanted $want"; cat "$OUT/next-$name.err"; fails=$((fails+1))
+  else echo "ok: next-$name exit $got"; fi
+}
+nx basic    0 "$NX/brief.md"          "$NX/state-basic.json"
+assert_identical "next: a true brief re-renders byte-identical" "$OUT/next-basic.md" "$NX/brief.md"
+assert_has "next: a true brief reports DRIFT: 0" "$OUT/next-basic.err" 'DRIFT: 0'
+nx start    1 "$NX/brief.md"          "$NX/state-start.json"    --reason start STO-71
+assert_identical "next: start moves the key to In progress with today's since and keeps the other since" \
+  "$OUT/next-start.md" "$NX/expected-start.md"
+nx stop     1 "$NX/brief.md"          "$NX/state-stop.json"     --reason stop STO-72
+assert_identical "next: stop adds the thread bullet and moves the key to Blocked" \
+  "$OUT/next-stop.md" "$NX/expected-stop.md"
+nx restart  1 "$NX/expected-stop.md"  "$NX/state-basic.json"    --reason start STO-72
+assert_identical "next: start removes the stop bullet and restores In progress" \
+  "$OUT/next-restart.md" "$NX/expected-restart.md"
+nx create   1 "$NX/brief.md"          "$NX/state-create.json"   --reason create STO-74
+assert_identical "next: create appends the new child as ready" "$OUT/next-create.md" "$NX/expected-create.md"
+assert_has "next: create reports the missing key as drift" "$OUT/next-create.err" 'drift: STO-74 missing from ## Next'
+nx drift    1 "$NX/brief-drift.md"    "$NX/state-basic.json"
+assert_identical "next: drift repairs a resolved item, a missing child and the In progress line" \
+  "$OUT/next-drift.md" "$NX/expected-drift.md"
+assert_has "next: drift names the resolved item"   "$OUT/next-drift.err" 'drift: STO-70 listed, live status resolved'
+assert_has "next: drift names the missing child"   "$OUT/next-drift.err" 'drift: STO-73 missing from ## Next'
+assert_has "next: drift names the missing In progress line" "$OUT/next-drift.err" 'drift: In progress line missing'
+assert_has "next: drift counts four findings"      "$OUT/next-drift.err" 'DRIFT: 4'
+# A child the brief lists as blocked whose thread hold has since been cleared becomes
+# runnable. The region changes either way, but `read` consumes only stderr, so without a
+# finding here the caller is never told to repair and keeps excluding a runnable child.
+nx unblocked 1 "$NX/brief.md"         "$NX/state-unblocked.json"
+assert_has "next: a child whose thread hold was cleared is reported as drift" \
+  "$OUT/next-unblocked.err" 'drift: STO-22 listed as blocked, no longer held by a thread'
+assert_has "next: clearing a thread hold counts one finding" "$OUT/next-unblocked.err" 'DRIFT: 1'
+
+nx complete 1 "$NX/brief.md"          "$NX/state-complete.json"
+assert_identical "next: a resolved epic renders epic complete and Status: closed" \
+  "$OUT/next-complete.md" "$NX/expected-complete.md"
+nx rerender 0 "$OUT/next-start.md"    "$NX/state-start.json"
+assert_identical "next: re-rendering its own output is byte-identical" "$OUT/next-rerender.md" "$OUT/next-start.md"
+nx client   1 "$NX/brief.md"          "$NX/state-client-shaped.json"
+# partition invariant: every unresolved key appears in exactly one of the three lists
+if python3 - "$NX/state-client-shaped.json" "$OUT/next-client.md" <<'PYEOF'
+import json, re, sys
+state = json.load(open(sys.argv[1])); text = open(sys.argv[2], encoding="utf-8").read()
+region = text.split("\n## Next\n", 1)[1].split("\n## ", 1)[0].splitlines()
+num = [m.group(1) for ln in region for m in [re.match(r"^\d+\. (?:\*\*)?\[([A-Z0-9-]+)\]", ln)] if m]
+ip = re.findall(r"\[([A-Z0-9-]+)\] [^,]*? — since \d{4}-\d{2}-\d{2}", next((l for l in region if l.startswith("In progress: ")), ""))
+bl = re.findall(r"[A-Z][A-Z0-9]+-\d+", next((l for l in region if l.startswith("Blocked: ")), ""))
+want = sorted(c["key"] for c in state["children"] if c["status_class"] != "resolved")
+got = sorted(num + ip + bl)
+sys.exit(0 if got == want else print("partition:", got, "wanted", want))
+PYEOF
+then ok "next: client-shaped partitions every unresolved child exactly once"; else bad "next: client-shaped partition is wrong"; fi
+printf 'no next heading\n' > "$OUT/next-bad.md"
+nx malformed 2 "$OUT/next-bad.md" "$NX/state-basic.json"
+nx stop-bad 2 "$NX/brief.md" "$NX/state-stop-bad.json" --reason stop STO-72
+nx unknown-key 2 "$NX/brief.md" "$NX/state-basic.json" --reason start STO-999
+nx wrapped 1 "$NX/brief-wrapped.md" "$NX/state-basic.json"
+assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.md" \
+  '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
+assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
+
+# A header Status that disagrees with the live epic is repaired, not merely reported: with
+# `## Next` already true nothing else changes, so the rewrite has to be driven by the header
+# mismatch itself, and the exit status has to say the brief differs.
+sed 's/ Status: open / Status: closed /' "$NX/brief.md" > "$OUT/brief-header-only.md"
+nx header-only 1 "$OUT/brief-header-only.md" "$NX/state-basic.json"
+assert_has "next: a header-only mismatch is reported as drift" "$OUT/next-header-only.err" \
+  'drift: header Status closed, live open'
+assert_has "next: a header-only mismatch rewrites the stale header" "$OUT/next-header-only.md" \
+  'Status: open · Updated: 2026-09-15 after refresh'
+
+# A title containing the renderer's own ` — ` delimiter must round-trip. The combined regex
+# ended the title at the first one, so the line grew on every derivation while reporting
+# DRIFT: 0 — invisible to read-only drift detection, and committed by every later writer.
+# Item 1 specifically: it is the only item whose reason is carried over from the previous
+# brief, so it is the one that compounds. A later item re-renders its reason from live state.
+sed 's/^1\. \*\*\[STO-71\] Cache metrics\*\*/1. **[STO-71] Cache — metrics**/' \
+  "$NX/brief.md" > "$OUT/brief-emdash.md"
+nx emdash 0 "$OUT/brief-emdash.md" "$NX/state-emdash.json"
+assert_identical "next: a title containing the reason delimiter re-renders byte-identical" \
+  "$OUT/next-emdash.md" "$OUT/brief-emdash.md"
+assert_has "next: a title containing the reason delimiter is not drift" "$OUT/next-emdash.err" 'DRIFT: 0'
+
+nx comma 0 "$NX/brief-comma.md" "$NX/state-comma.json"
+assert_has "next: a comma in an in-progress title keeps its since date" "$OUT/next-comma.md" \
+  'In progress: [STO-72] Backfill, v2 — since 2026-09-14'
+assert_has "next: a comma in a title is not drift" "$OUT/next-comma.err" 'DRIFT: 0'
+
+sed '/^## Open threads$/,/^## Decisions & constraints$/{/^## Decisions & constraints$/!d}' \
+  "$NX/brief.md" > "$OUT/brief-nothreads.md"
+nx start-nothreads 1 "$OUT/brief-nothreads.md" "$NX/state-start.json" --reason start STO-71
+
+printf '%s' "$(cat "$NX/brief.md")" > "$OUT/no-nl.md"
+nx no-nl 0 "$OUT/no-nl.md" "$NX/state-basic.json"
+assert_identical "next: a brief without a trailing newline stays byte-identical" \
+  "$OUT/next-no-nl.md" "$OUT/no-nl.md"
+
+nx order 1 "$NX/brief.md" "$NX/state-order.json"
+assert_has "next: ordering puts phase 1 before phase 2 (item 1)" "$OUT/next-order.md" '1. **[STO-80]'
+assert_has "next: ordering puts phase 2 step 1 before phase 2 step 2 (item 2)" "$OUT/next-order.md" '2. [STO-79]'
+assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 3)" "$OUT/next-order.md" '3. [STO-71]'
+
+echo "== lock: mkdir lock on the primary checkout =="
+LK=$(mktemp -d)
+lk() { # name, expected-exit, args...
+  local name=$1 want=$2; shift 2
+  python3 "$PY" lock "$@" --root "$LK" > "$OUT/lock-$name.txt" 2>&1; local got=$?
+  if [ "$got" -ne "$want" ]; then
+    echo "FAIL: lock-$name exited $got, wanted $want"; cat "$OUT/lock-$name.txt"; fails=$((fails+1))
+  else echo "ok: lock-$name exit $got"; fi
+}
+lk status-free 0 status
+assert_has "lock: status reports free"                    "$OUT/lock-status-free.txt" 'free'
+lk take-a 0 take --run STO-70 --section record --wait 0
+assert_has "lock: owner file names the run"               "$LK/primary/owner" 'run: STO-70'
+assert_has "lock: owner file names the section"           "$LK/primary/owner" 'section: record'
+lk take-b 1 take --run STO-71 --section start --wait 0
+assert_has "lock: a second run is told the holder"        "$OUT/lock-take-b.txt" 'held by STO-70 (record) since'
+lk take-a-again 0 take --run STO-70 --section record --wait 0
+assert_has "lock: the holder re-enters"                   "$OUT/lock-take-a-again.txt" 'reentrant'
+lk release-b 1 release --run STO-71
+assert_has "lock: release by another run is refused"      "$OUT/lock-release-b.txt" 'held by STO-70'
+lk release-a 0 release --run STO-70
+lk status-free-2 0 status
+assert_has "lock: released reports free"                  "$OUT/lock-status-free-2.txt" 'free'
+lk release-none 1 release --run STO-70
+assert_has "lock: release when free says not held"        "$OUT/lock-release-none.txt" 'not held'
+mkdir -p "$LK/primary"
+printf 'run: STO-9\nsection: record\nsince: 2000-01-01T00:00:00Z\n' > "$LK/primary/owner"
+lk take-stale 0 take --run STO-71 --section start --wait 0
+assert_has "lock: an abandoned owner is broken and named" "$OUT/lock-take-stale.txt" 'stale: run: STO-9'
+assert_has "lock: after breaking, the new run holds it"   "$LK/primary/owner" 'run: STO-71'
+lk release-71 0 release --run STO-71
+mkdir -p "$LK/primary"; : > "$LK/primary/owner"           # empty owner, fresh directory = in creation
+lk take-creating 1 take --run STO-71 --section start --wait 0
+assert_has "lock: an owner still being written is waited on, not broken" "$OUT/lock-take-creating.txt" 'held by'
+touch -d '2000-01-01 00:00:00' "$LK/primary"              # same empty owner, but the directory is old
+lk take-orphan 0 take --run STO-71 --section start --wait 0
+assert_has "lock: an orphaned empty owner ages out by directory mtime" "$OUT/lock-take-orphan.txt" 'stale: run: ?'
+lk release-orphan 0 release --run STO-71
+[ -z "$(ls -d "$LK"/primary.stale-* 2>/dev/null)" ] && ok "lock: no stale-break leftovers remain" || bad "lock: stale-break leftovers remain"
+# Release must not delete a successor's lock. Once this run's own lock has aged past the stale
+# threshold another process may legitimately break it and take a fresh one at the same path; a
+# release that reads the owner and then removes the directory destroys that new, valid lock.
+# The race is injected deterministically: the replacement happens inside the first owner read,
+# which both the old and the new code perform, so this discriminates the two.
+RL=$(mktemp -d)
+if python3 - "$PY" "$RL" <<'PYRACE'
+import importlib.util, os, shutil, sys, types
+sys.dont_write_bytecode = True   # do not leave __pycache__/ beside the shipped script
+py, root = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("kp", py)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = os.path.join(root, "primary")
+os.makedirs(d); m._write_owner(d, "STO-70", "record")
+orig, calls = m._read_owner, []
+def racing_read(path):
+    r = orig(path)
+    calls.append(path)
+    if len(calls) == 1:                      # between the ownership check and the removal
+        shutil.rmtree(d, ignore_errors=True) # a breaker takes our stale lock
+        os.makedirs(d); m._write_owner(d, "STO-99", "record")
+    return r
+m._read_owner = racing_read
+a = types.SimpleNamespace(op="release", root=root, run="STO-70", section=None, wait=0)
+try:
+    m.cmd_lock(a)
+except SystemExit:
+    pass
+m._read_owner = orig
+kv = m._read_owner(d) if os.path.isdir(d) else {}
+if kv.get("run") == "STO-99":
+    sys.exit(0)
+print("successor lock is", kv or "GONE")   # never sys.exit(print(...)): that exits 0
+sys.exit(1)
+PYRACE
+then ok "lock: a release cannot remove a successor's lock"; else bad "lock: a release removed a successor's lock"; fi
+rm -rf "$RL"
+
+rm -rf "$LK"
+
+# A run launched from a linked worktree must take the PRIMARY checkout's lock. Resolving the
+# default from `git rev-parse --show-toplevel` gives the worktree, and two writers holding two
+# different lock directories while committing to one checkout is no mutual exclusion at all.
+# `/notion-dev:ticket`'s stop path is exactly this caller: it prefixes its git calls with
+# `-C $REPO_ROOT` because its own cwd is the worktree, and it passes no `--root`.
+WT=$(mktemp -d)
+WG="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
+( cd "$WT" && $WG init -q . && $WG commit -q --allow-empty -m base && $WG worktree add -q wt ) 2>/dev/null
+PYABS="$PWD/$PY"   # $PY is repo-relative and the take below runs from the worktree
+( cd "$WT/wt" && python3 "$PYABS" lock take --run STO-88 --section stop --wait 0 ) > "$OUT/lock-worktree.txt" 2>&1
+if [ -f "$WT/.claude/notion-dev/locks/primary/owner" ]; then
+  ok "lock: a take from a linked worktree lands on the primary checkout"
+else
+  bad "lock: a take from a linked worktree did not land on the primary checkout"
+fi
+if [ -e "$WT/wt/.claude/notion-dev" ]; then
+  bad "lock: a take from a linked worktree created a second lock inside the worktree"
+else
+  ok "lock: a take from a linked worktree creates no lock inside the worktree"
+fi
+rm -rf "$WT"
+
+echo "== write path: a rejected push converges by re-deriving against the fresh brief =="
+CV=$(mktemp -d)
+G="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
+$G init -q --bare "$CV/origin.git"
+$G clone -q "$CV/origin.git" "$CV/a" 2>/dev/null
+mkdir -p "$CV/a/knowledge/epic"; cp "$NX/brief.md" "$CV/a/knowledge/epic/STO-60-wallet-indexing.md"
+# A tracked setup file: the preconditions permit it to be dirty, so the converge reset must
+# not discard it. It lives outside the operation's pathspec by construction.
+mkdir -p "$CV/a/.claude"; printf '{"git":{"baseBranch":"main"}}\n' > "$CV/a/.claude/notion-dev.config.json"
+# A tracked file outside the operation's pathspec that upstream will move. The converge must
+# leave it at the FETCHED content: a soft reset would park a staged reversion of it instead.
+printf 'seed\n' > "$CV/a/unrelated.txt"
+( cd "$CV/a" && $G add -A && $G commit -q -m seed && $G push -q origin main ) 2>/dev/null
+$G clone -q "$CV/origin.git" "$CV/b" 2>/dev/null
+B=knowledge/epic/STO-60-wallet-indexing.md
+printf '{"git":{"baseBranch":"main"},"local":"edit"}\n' > "$CV/b/.claude/notion-dev.config.json"
+# staged, not merely modified: the preconditions exempt staged edits to the setup files too,
+# so the converge must return this file to the INDEX, which is what `stash pop --index` does.
+( cd "$CV/b" && $G add .claude/notion-dev.config.json ) 2>/dev/null
+# and an UNTRACKED exempt file: init's commit step is optional, so this is a supported state,
+# and `git stash push -- <path>` errors outright on a path git does not know.
+printf '{"mcpServers":{}}\n' > "$CV/b/.mcp.json"
+# A: create STO-74 and push
+python3 "$PY" next --brief "$CV/a/$B" --state "$NX/state-converge-a.json" --today 2026-09-14 --reason create STO-74 > "$CV/a/out.md" 2>/dev/null
+cp "$CV/a/out.md" "$CV/a/$B"
+( cd "$CV/a" && $G commit -q --only -m "docs(epic): STO-60 create STO-74" -- "$B" && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: A's commit and push land" || bad "write path: A's commit or push failed"
+# an unrelated upstream commit, outside the brief's pathspec, that B has not seen
+printf 'upstream v2\n' > "$CV/a/unrelated.txt"
+( cd "$CV/a" && $G commit -q --only -m "chore: unrelated" -- unrelated.txt && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: an unrelated upstream commit lands" || bad "write path: unrelated upstream commit failed"
+
+# B, stale clone: start STO-71, push rejected
+python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out.md" 2>/dev/null
+cp "$CV/b/out.md" "$CV/b/$B"
+( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" ) 2>/dev/null
+if ( cd "$CV/b" && $G push -q origin main ) 2>/dev/null; then bad "write path: B's stale push should be rejected"; else ok "write path: B's stale push is rejected"; fi
+# the recipe: exactly one local commit ahead, fetch, soft reset, restore the pathspec,
+# re-derive, commit, push — never `--hard`, which would take the permitted dirt with it
+( cd "$CV/b" && $G fetch -q origin main && n=$($G rev-list origin/main..HEAD | wc -l | tr -d ' ') && [ "$n" -eq 1 ] ) \
+  && ok "write path: rev-list shows exactly one local commit before the reset" || bad "write path: rev-list count is not 1"
+( cd "$CV/b" && $G stash push --include-untracked -q -- .claude/notion-dev.config.json .mcp.json \
+    && $G reset -q --hard origin/main && $G stash pop --index -q ) 2>/dev/null
+assert_has "write path: the converge reset keeps permitted dirt outside the pathspec" \
+  "$CV/b/.claude/notion-dev.config.json" '"local":"edit"'
+assert_has "write path: the converge reset takes the fetched content of files outside the pathspec" \
+  "$CV/b/unrelated.txt" 'upstream v2'
+( cd "$CV/b" && $G status --porcelain ) > "$OUT/cv-status.txt"
+assert_lacks "write path: the converge leaves no staged reversion of an upstream change" \
+  "$OUT/cv-status.txt" 'unrelated.txt'
+assert_has "write path: a staged exempt edit comes back staged, not merely restored" \
+  "$OUT/cv-status.txt" 'M  .claude/notion-dev.config.json'
+# No assertion on `.mcp.json`'s survival: a hard reset never touches an untracked path, so such
+# a check passes with or without `--include-untracked` and would be an unprovable one. What the
+# untracked file guards is the stash itself — `git stash push -- <path>` errors on a path git
+# does not know, aborting the recipe — and dropping the flag here fails the four assertions
+# below instead, which is the real consequence.
+python3 "$PY" next --brief "$CV/b/$B" --state "$NX/state-converge-b.json" --today 2026-09-15 --reason start STO-71 > "$CV/b/out2.md" 2>/dev/null
+cp "$CV/b/out2.md" "$CV/b/$B"
+( cd "$CV/b" && $G commit -q --only -m "docs(epic): STO-60 start STO-71" -- "$B" && $G push -q origin main ) 2>/dev/null \
+  && ok "write path: the re-derived commit pushes (ATTEMPTS: 2)" || bad "write path: second push failed"
+$G clone -q "$CV/origin.git" "$CV/c" 2>/dev/null
+assert_has "write path: origin carries B's start"          "$CV/c/$B" 'In progress: [STO-71] Cache metrics — since 2026-09-15, [STO-72] Backfill v2 — since 2026-09-14'
+assert_has "write path: origin still carries A's created child" "$CV/c/$B" '2. [STO-74] Dashboards — ready'
+assert_has "write path: the header names B's start"        "$CV/c/$B" 'after start [STO-71]'
+( cd "$CV/c" && $G log --format=%s ) > "$OUT/cv-log.txt"
+assert_lacks "write path: no merge commit was manufactured" "$OUT/cv-log.txt" 'Merge'
+rm -rf "$CV"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "$fails CHECK(S) FAILED"; fi
 exit $(( fails > 0 ? 1 : 0 ))

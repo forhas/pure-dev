@@ -204,6 +204,19 @@ This marker exists because shape alone is ambiguous: on a database upgraded to u
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
 - **`/notion-dev:ticket` reads its Epic's brief before planning.** A starting ticket reads the brief at `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md` — the epic's root concept in the knowledge bundle — via the `notion-dev:knowledge` skill's `retrieve`, once per run: why the epic exists, where it stands, what is waiting on whom, what is next, and any linked concepts iwe expands in. This is context: background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build. The Notion epic page is written on every resolution but no longer read. See "Knowledge bundle" below.
 
+**`## Next` is kept true by the plugin, not by hand.** Its three lists partition the epic's
+unresolved children: the numbered list (item 1 is the next ticket a session can start), an
+`In progress:` line (claimed tickets, with the date each was claimed), and `Blocked:` (held by an
+open thread). A ticket run marks the brief when it starts (`docs(epic): … start`), when it stops
+with a worktree left behind (`… stop`, which also adds an open-thread bullet naming the worktree
+and how to resume), and when it resolves (`… after`); `/notion-dev:create-task` marks a new child
+(`… create`); and any read that finds the brief apart from Notion repairs it on the next write
+(`… refresh`). Nothing polls Notion.
+
+**One writer at a time on the primary checkout.** Every section that commits from the primary
+checkout takes a directory lock at `.claude/notion-dev/locks/primary/` (self-ignored). A stuck
+lock older than 30 minutes is broken and reported. Run reports list any wait.
+
 An Epic page carries four sections:
 
 | Section | Content |
@@ -217,7 +230,7 @@ When the last unresolved child resolves and no filing has failed, the Epic's own
 
 ### Knowledge bundle
 
-Every project keeps one shared knowledge bundle in the repo, rooted at `knowledge.dir` (default `knowledge`), owned by the `notion-dev:knowledge` skill and validated by `scripts/knowledge.py` and `iwe`. It holds OKF v0.2 concepts — one fact per markdown file, frontmatter validated against a shipped schema (`type`, `title`, `description`, `status`, `sources`, and more) — under canonical type directories (`ticket/`, `decision/`, `gotcha/`, `component/`, `spec/`, `domain/`, `release/`, plus any client directories declared in `knowledge.extraTypes`), an `index.md` catalog, and an append-only `log.md`.
+Every project keeps one shared knowledge bundle in the repo, rooted at `knowledge.dir` (default `knowledge`), owned by the `notion-dev:knowledge` skill and validated by `scripts/knowledge.py` and `iwe`. It holds OKF v0.2 concepts — one fact per markdown file, frontmatter validated against a shipped schema (`type`, `title`, `description`, `status`, `sources`, and more) — under canonical type directories (`ticket/`, `decision/`, `gotcha/`, `component/`, `spec/`, `domain/`, `release/`, plus any client directories declared in `knowledge.extraTypes`), an `index.md` catalog, and an append-only `log.md`. `scripts/knowledge.py` also carries the `next` subcommand (renders a brief's `## Next` region from live state) and `lock` (takes, releases, and reports on the primary-checkout lock).
 
 **The epic brief is the epic's root concept**, at `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`. It carries the same six sections as before — `Why`, `Goal`, `Where we stand`, `Open threads`, `Decisions & constraints`, `Next` — and a soft budget of 120 lines, plus OKF frontmatter; bullets under `Decisions & constraints` and `Open threads` link to other concepts instead of restating them.
 

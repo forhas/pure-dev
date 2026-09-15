@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """knowledge.py — the mechanical checks notion-dev's knowledge skill needs and iwe lacks.
 
-Subcommands: check | touched | migrate. Exit 0 clean, 1 findings, 2 cannot run.
+Subcommands: check | touched | migrate | next | lock. Exit 0 clean, 1 findings, 2 cannot run.
 Never parses YAML: frontmatter comes from `iwe find -f json`; shape from `iwe schema validate`.
 Exit 2 is never downgraded: a check that cannot run says so and fails. An iwe call that
 exits non-zero for any reason other than reported violations, or whose JSON does not parse,
 is exit 2 — never an empty result standing in for a clean bundle.
 
-Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9.
+Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9;
+docs/superpowers/specs/2026-09-15-brief-freshness-and-parallel-tickets-design.md §3, §4, §5.
 """
 import argparse
+import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 import difflib
 import fnmatch
 
@@ -1130,6 +1134,512 @@ def cmd_migrate(a):
 
 
 # ---------------------------------------------------------------------------
+# next — render `## Next`, the header line and the stop bullet (spec §5)
+# ---------------------------------------------------------------------------
+
+KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d+")
+# One pattern per rendered form, because a single one cannot split title from reason without
+# guessing. The old combined regex ended the title at the *first* ` — `, so a child titled
+# `Cache — metrics` re-parsed as title `Cache` with the rest — closing `**` included — as its
+# reason, and `_item1_reason` then fed that back into the next render: the line grew on every
+# pass, at `DRIFT: 0`, so read-only drift detection never asked for a repair.
+# Bold (item 1) is delimited by its closing `**`, which a title cannot contain. Plain items
+# take the LAST ` — ` as the delimiter: their reason is generated (`ready`, `after <keys>`) and
+# never contains one, while a title may.
+NEXT_ITEM_BOLD_RE = re.compile(
+    r"^(\d+)\. \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*)\*\*(?: — (.*))?$")
+NEXT_ITEM_PLAIN_RE = re.compile(
+    r"^(\d+)\. \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*) — (.*)$")
+NEXT_ITEM_BARE_RE = re.compile(
+    r"^(\d+)\. \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*)$")
+
+
+def _parse_next_item(s):
+    """One numbered `## Next` line -> its item dict, or None."""
+    m = NEXT_ITEM_BOLD_RE.match(s)
+    if m:
+        return {"key": m.group(2), "title": m.group(3), "reason": m.group(4) or "", "bold": True}
+    for rx in (NEXT_ITEM_PLAIN_RE, NEXT_ITEM_BARE_RE):
+        m = rx.match(s)
+        if m:
+            return {"key": m.group(2), "title": m.group(3),
+                    "reason": m.group(4) if rx is NEXT_ITEM_PLAIN_RE else "", "bold": False}
+    return None
+IN_PROGRESS_RE = re.compile(r"^In progress: (.*)$")
+IN_PROGRESS_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})")
+BLOCKED_RE = re.compile(r"^Blocked: (.*)$")
+HEADER_RE = re.compile(r"^(Epic: .*? · Status: )(open|closed)( · Updated: )(\d{4}-\d{2}-\d{2}) after (.*)$")
+STOP_BULLET_RE = re.compile(r"^- \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] stopped at ")
+STATUS_CLASSES = ("resolved", "in_progress", "open")
+
+
+def _section(lines, heading):
+    """(start, end) of the region headed by `heading`, end exclusive; (None, None) if absent."""
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.rstrip() == heading:
+            start = i
+            break
+    if start is None:
+        return None, None
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return start, end
+
+
+def _parse_next(body):
+    """Join hard-wrapped continuation lines into logical lines, then parse each.
+
+    A non-blank line that starts with whitespace and follows a logical line is a
+    continuation of it, not a new entry — dropping it silently both loses item 1's
+    reason and manufactures spurious `missing from ## Next` drift for whatever the
+    continuation actually named.
+    """
+    logical = []
+    for ln in body:
+        if ln.strip() == "":
+            continue
+        if ln[:1] in (" ", "\t") and logical:
+            logical[-1] = logical[-1] + " " + ln.strip()
+        else:
+            logical.append(ln.strip())
+
+    items, in_progress, blocked, complete, unparsed = [], {}, [], False, []
+    for s in logical:
+        if s == "epic complete":
+            complete = True
+            continue
+        it = _parse_next_item(s)
+        if it:
+            items.append(it)
+            continue
+        m = IN_PROGRESS_RE.match(s)
+        if m:
+            for pm in IN_PROGRESS_ITEM_RE.finditer(m.group(1)):
+                in_progress[pm.group(1)] = pm.group(3)
+            continue
+        m = BLOCKED_RE.match(s)
+        if m:
+            blocked = KEY_RE.findall(m.group(1))
+            continue
+        unparsed.append(s)
+    return items, in_progress, blocked, complete, unparsed
+
+
+def _order_key(c):
+    return (c.get("phase") is None, c.get("phase") or 0,
+            c.get("step") is None, c.get("step") or 0, c["id"])
+
+
+def _validate_state(state):
+    try:
+        epic = state["epic"]
+        children = state["children"]
+        assert epic["status_class"] in STATUS_CLASSES
+        for c in children:
+            assert isinstance(c["key"], str) and KEY_RE.fullmatch(c["key"])
+            assert isinstance(c["id"], int) and isinstance(c["title"], str)
+            assert c["status_class"] in STATUS_CLASSES
+            assert isinstance(c.get("blocked_by", []), list)
+            for p in ("phase", "step"):
+                assert c.get(p) is None or isinstance(c[p], int)
+        assert isinstance(state.get("thread_blocked", []), list)
+        stop = state.get("stop")
+        if stop is not None:
+            assert isinstance(stop, dict)
+            assert isinstance(stop.get("key"), str) and KEY_RE.fullmatch(stop["key"])
+            assert isinstance(stop.get("phase"), str)
+            assert isinstance(stop.get("cause"), str)
+            assert isinstance(stop.get("worktree"), str)
+    except (KeyError, AssertionError, TypeError):
+        die("next: malformed state JSON — expected {epic:{key,status_class}, "
+            "children:[{key,id:int,title,status_class,blocked_by:[],phase:int|null,step:int|null}], "
+            "thread_blocked:[], stop?:{key,phase,cause,worktree}}")
+
+
+def derive_next(state, stopped_keys):
+    """Partition the unresolved children: (in_progress, blocked, numbered, first)."""
+    by_key = {c["key"]: c for c in state["children"]}
+
+    def resolved(k):
+        c = by_key.get(k)
+        return c is None or c["status_class"] == "resolved"
+
+    thread_blocked = set(state.get("thread_blocked", []))
+    inprog, blocked, numbered = [], [], []
+    for c in sorted((c for c in state["children"] if c["status_class"] != "resolved"), key=_order_key):
+        if c["key"] in stopped_keys:
+            blocked.append(c)
+        elif c["status_class"] == "in_progress":
+            inprog.append(c)
+        elif c["key"] in thread_blocked:
+            blocked.append(c)
+        else:
+            numbered.append(c)
+    first = next((c for c in numbered if all(resolved(k) for k in c.get("blocked_by", []))), None)
+    if first is not None:
+        numbered.remove(first)
+        numbered.insert(0, first)
+    return inprog, blocked, numbered, first, resolved
+
+
+def _item1_reason(first, prev_items, resolved):
+    prev1 = prev_items[0] if prev_items else None
+    if prev1 and prev1["key"] == first["key"] and prev1["reason"]:
+        return prev1["reason"]
+    for it in prev_items:
+        if it["key"] == first["key"] and it["reason"].startswith("after "):
+            landed = [k for k in KEY_RE.findall(it["reason"]) if resolved(k)]
+            if landed:
+                return "unblocked; " + ", ".join(landed) + " landed"
+    return "first in phase order"
+
+
+def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_in_progress, today):
+    if state["epic"]["status_class"] == "resolved":
+        return ["## Next", "epic complete"]
+    out = ["## Next"]
+    for i, c in enumerate(numbered, 1):
+        if c is first:
+            out.append("%d. **[%s] %s** — %s" % (i, c["key"], c["title"],
+                                                 _item1_reason(first, prev_items, resolved)))
+        else:
+            waits = [k for k in c.get("blocked_by", []) if not resolved(k)]
+            out.append("%d. [%s] %s — %s" % (i, c["key"], c["title"],
+                                             ("after " + ", ".join(waits)) if waits else "ready"))
+    if inprog:
+        out.append("In progress: " + ", ".join(
+            "[%s] %s — since %s" % (c["key"], c["title"], prev_in_progress.get(c["key"], today))
+            for c in sorted(inprog, key=lambda c: c["id"])))
+    if blocked:
+        out.append("Blocked: " + ", ".join(c["key"] for c in sorted(blocked, key=lambda c: c["id"]))
+                   + " (see Open threads).")
+    return out
+
+
+def drift_findings(state, prev_items, prev_in_progress, prev_blocked, header_status,
+                   inprog, blocked, numbered):
+    f = []
+    live = {c["key"]: c["status_class"] for c in state["children"]}
+    prev_num = {it["key"] for it in prev_items}
+    prev_ip = set(prev_in_progress)
+    prev_bl = set(prev_blocked)
+    new_num = {c["key"] for c in numbered}
+    new_ip = {c["key"] for c in inprog}
+    new_bl = {c["key"] for c in blocked}
+    for k in sorted(prev_num | prev_ip | prev_bl):
+        if live.get(k, "resolved") == "resolved":
+            f.append("drift: %s listed, live status resolved" % k)
+    for k in sorted(new_num | new_ip | new_bl):
+        if k not in prev_num and k not in prev_ip and k not in prev_bl:
+            f.append("drift: %s missing from ## Next" % k)
+        elif k in new_ip and k not in prev_ip:
+            f.append("drift: %s listed as %s, live status in_progress"
+                     % (k, "next" if k in prev_num else "blocked"))
+        elif k in new_num and k in prev_ip:
+            f.append("drift: %s listed as in progress, live status open" % k)
+        elif k in new_num and k in prev_bl:
+            # The inverse of the branch below: the thread that held this child was
+            # cleared, so it is runnable again. Without this the region changes but
+            # `DRIFT: 0` is printed, and `read` — which consumes only stderr — never
+            # triggers the repair, so the caller keeps excluding a runnable child.
+            f.append("drift: %s listed as blocked, no longer held by a thread" % k)
+        elif k in new_bl and k not in prev_bl:
+            f.append("drift: %s listed as %s, held by a thread"
+                     % (k, "next" if k in prev_num else "in progress"))
+    live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
+    if header_status != live_status:
+        f.append("drift: header Status %s, live %s" % (header_status, live_status))
+    if new_ip and not prev_ip:
+        f.append("drift: In progress line missing")
+    return f
+
+
+def stop_bullet(stop):
+    return ("- **[%s] stopped at %s** — %s; worktree at %s. Unblocked by: /notion-dev:ticket %s (resumes)."
+            % (stop["key"], stop["phase"], stop["cause"], stop["worktree"], stop["key"]))
+
+
+def _remove_stop_bullet(lines, ts, te, key):
+    i = ts + 1
+    while i < te:
+        m = STOP_BULLET_RE.match(lines[i])
+        if m and m.group(1) == key:
+            j = i + 1
+            while j < te and lines[j].startswith("  "):
+                j += 1
+            del lines[i:j]
+            return lines, te - (j - i)
+        i += 1
+    return lines, te
+
+
+def _append_bullet(lines, ts, te, bullet):
+    k = te
+    while k > ts + 1 and lines[k - 1].strip() == "":
+        k -= 1
+    lines.insert(k, bullet)
+    return lines, te + 1
+
+
+def cmd_next(a):
+    try:
+        with open(a.brief, encoding="utf-8", newline=None) as fh:
+            text = fh.read()
+    except OSError as e:
+        die("next: cannot read brief: %s" % e)
+    try:
+        with open(a.state, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except (OSError, ValueError) as e:
+        die("next: cannot read state: %s" % e)
+    _validate_state(state)
+    today = a.today or datetime.date.today().isoformat()
+    reason_word, reason_key = (a.reason + [None])[:2] if a.reason else (None, None)
+    if reason_word not in (None, "start", "stop", "create", "resolve", "new-info"):
+        die("next: --reason must be start|stop|create|resolve|new-info [<key>]")
+    if reason_word in ("start", "stop", "create", "resolve") and not (reason_key and KEY_RE.fullmatch(reason_key)):
+        die("next: --reason %s needs a <KEY>-<n>" % reason_word)
+    if reason_word in ("start", "create", "resolve"):
+        child_keys = {c["key"] for c in state["children"]}
+        if reason_key not in child_keys:
+            die("next: --reason %s %s: not a child in state" % (reason_word, reason_key))
+
+    lines = text.split("\n")
+    trailing_newline = text.endswith("\n")
+    if trailing_newline:
+        lines = lines[:-1]
+    original = list(lines)
+
+    header_idx = next((i for i, ln in enumerate(lines) if HEADER_RE.match(ln)), None)
+    if header_idx is None:
+        die("next: no header line (Epic: … · Status: … · Updated: …)")
+    ns, ne = _section(lines, "## Next")
+    if ns is None:
+        die("next: no `## Next` heading")
+    ts, te = _section(lines, "## Open threads")
+    if reason_word == "stop" and ts is None:
+        die("next: no `## Open threads` heading, needed for --reason stop")
+
+    if ts is not None:
+        if reason_word == "start":
+            lines, te = _remove_stop_bullet(lines, ts, te, reason_key)
+        elif reason_word == "stop":
+            stop = state.get("stop")
+            if not stop or stop.get("key") != reason_key:
+                die("next: --reason stop %s needs state.stop for that key" % reason_key)
+            lines, te = _remove_stop_bullet(lines, ts, te, reason_key)
+            lines, te = _append_bullet(lines, ts, te, stop_bullet(stop))
+        stopped = {STOP_BULLET_RE.match(ln).group(1) for ln in lines[ts + 1:te] if STOP_BULLET_RE.match(ln)}
+    else:
+        stopped = set()
+
+    header_idx = next(i for i, ln in enumerate(lines) if HEADER_RE.match(ln))
+    ns, ne = _section(lines, "## Next")
+    prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed = _parse_next(lines[ns + 1:ne])
+    inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
+    region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
+    tail = []
+    k = ne
+    while k > ns + 1 and lines[k - 1].strip() == "":
+        k -= 1
+        tail.append("")
+    lines[ns:ne] = region + tail
+
+    hm = HEADER_RE.match(lines[header_idx])
+    findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered)
+    findings += ["drift: unparsed line in ## Next: %s" % u[:60] for u in prev_unparsed]
+    live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
+    # A header whose Status disagrees with the live epic is itself a change: without it a
+    # brief whose `## Next` is already true exits 0 and leaves the stale header in place,
+    # so the finding is reported on every run and repaired by none of them.
+    changed = lines != original or hm.group(2) != live_status
+    if changed:
+        what = {"start": "start [%s]", "stop": "stop [%s]", "create": "create [%s]",
+                "resolve": "[%s]"}.get(reason_word)
+        what = (what % reason_key) if what else ("new-info" if reason_word == "new-info" else "refresh")
+        lines[header_idx] = "%s%s%s%s after %s" % (hm.group(1), live_status, hm.group(3), today, what)
+
+    sys.stdout.write("\n".join(lines) + ("\n" if trailing_newline else ""))
+    for f in findings:
+        sys.stderr.write(f + "\n")
+    sys.stderr.write("DRIFT: %d\n" % len(findings))
+    sys.exit(1 if changed else 0)
+
+
+# ---------------------------------------------------------------------------
+# lock — the primary-checkout lock (spec §4)
+# ---------------------------------------------------------------------------
+
+LOCK_STALE_SECONDS = 30 * 60
+LOCK_POLL_SECONDS = 15
+LOCK_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _primary_toplevel(start):
+    """The PRIMARY work tree's root, even when `start` is inside a linked worktree.
+
+    `git rev-parse --show-toplevel` answers with whichever worktree the caller is in,
+    so a run launched from a ticket worktree — `/notion-dev:ticket`'s stop path is one,
+    and it prefixes its git calls with `-C $REPO_ROOT` precisely because its own cwd is
+    not the primary — would resolve a lock directory of its own and take a *different*
+    lock from the one a primary-launched writer takes, while both commit, reset and push
+    the same primary checkout. `--git-common-dir` is shared by every worktree of a
+    repository and sits at `<primary>/.git`, so its parent is the primary work tree.
+    """
+    try:
+        p = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=start,
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
+    if p.returncode != 0:
+        return None
+    common = p.stdout.strip()
+    if not common:
+        return None
+    if not os.path.isabs(common):
+        common = os.path.join(start, common)
+    return os.path.dirname(os.path.normpath(common)) or None
+
+
+def _lock_dir(a):
+    root = a.root
+    if not root:
+        top = _primary_toplevel(os.getcwd()) or _git_toplevel(os.getcwd()) or os.getcwd()
+        root = os.path.join(top, ".claude", "notion-dev", "locks")
+    return os.path.join(root, "primary")
+
+
+def _read_owner(d):
+    kv = {}
+    try:
+        with open(os.path.join(d, "owner"), encoding="utf-8") as fh:
+            for ln in fh:
+                if ": " in ln:
+                    k, v = ln.rstrip("\n").split(": ", 1)
+                    kv[k] = v
+    except OSError:
+        pass
+    return kv
+
+
+def _owner_age(kv, d):
+    """Seconds since the owner was written. A `since` that is missing or unparsable means
+    the owner file is either still being written (fresh directory: wait, don't break) or an
+    orphan left behind by a crash (old directory: eligible once 30 minutes have passed) — the
+    directory's own mtime is what tells those two apart."""
+    try:
+        since = datetime.datetime.strptime(kv.get("since", ""), LOCK_TIME_FMT)
+    except ValueError:
+        try:
+            return time.time() - os.stat(d).st_mtime
+        except OSError:
+            return 0
+    return (datetime.datetime.utcnow() - since).total_seconds()
+
+
+def _held_line(kv):
+    return "held by %s (%s) since %s" % (kv.get("run", "?"), kv.get("section", "?"), kv.get("since", "?"))
+
+
+def _write_owner(d, run, section):
+    now = datetime.datetime.utcnow().strftime(LOCK_TIME_FMT)
+    with open(os.path.join(d, "owner"), "w", encoding="utf-8") as fh:
+        fh.write("run: %s\nsection: %s\nsince: %s\n" % (run, section, now))
+
+
+def cmd_lock(a):
+    d = _lock_dir(a)
+    if a.op == "status":
+        kv = _read_owner(d) if os.path.isdir(d) else {}
+        print(_held_line(kv) if kv else "free")
+        sys.exit(0)
+    if a.op == "release":
+        kv = _read_owner(d) if os.path.isdir(d) else {}
+        if not kv:
+            print("not held")
+            sys.exit(1)
+        if kv.get("run") != a.run:
+            print("refused: " + _held_line(kv))
+            sys.exit(1)
+        # Release by rename, then verify — the same shape the stale break above uses, and for
+        # the same reason. Once this run's own lock has aged past the stale threshold another
+        # process may legitimately break it and take a fresh one at `d`; a release that read
+        # the owner and then rmtree-d `d` would delete that new, valid lock and leave two
+        # writers on the primary checkout with no mutual exclusion. Renaming is atomic, so
+        # only one mover wins, and re-reading the owner of what was actually moved is what
+        # proves we removed our own lock rather than someone's successor.
+        tmp = d + ".release-%d-%d" % (os.getpid(), time.time_ns())
+        try:
+            os.rename(d, tmp)
+        except OSError:
+            print("not held")
+            sys.exit(1)
+        moved = _read_owner(tmp)
+        if moved.get("run") != a.run:
+            try:
+                os.rename(tmp, d)          # not ours after all: put the holder's lock back
+            except OSError:
+                shutil.rmtree(tmp, ignore_errors=True)
+            print("refused: " + _held_line(moved))
+            sys.exit(1)
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("released")
+        sys.exit(0)
+    # take
+    deadline = time.time() + a.wait
+    while True:
+        try:
+            os.makedirs(os.path.dirname(d), exist_ok=True)
+            os.mkdir(d)
+        except FileExistsError:
+            pass
+        else:
+            try:
+                _write_owner(d, a.run, a.section)
+            except OSError:
+                continue  # the directory vanished under a racing breaker; retry
+            print("taken")
+            sys.exit(0)
+        kv = _read_owner(d)
+        if kv.get("run") == a.run:
+            print("reentrant")
+            sys.exit(0)
+        if _owner_age(kv, d) > LOCK_STALE_SECONDS:
+            # Break by rename, then verify. Reading the owner and then rmtree-ing `d`
+            # races with another process that already broke and re-acquired this same
+            # lock in between: that read-then-delete would tear down the new, valid
+            # lock instead of the stale one it looked at. Renaming is atomic, so only
+            # one breaker can win it; re-checking the age of what we actually moved
+            # confirms we broke what we meant to.
+            tmp = d + ".stale-%d-%d" % (os.getpid(), time.time_ns())
+            try:
+                os.rename(d, tmp)          # only one breaker can win this
+            except OSError:
+                continue                   # someone else moved or removed it; loop and re-read
+            moved = _read_owner(tmp)
+            if _owner_age(moved, tmp) > LOCK_STALE_SECONDS:
+                print("stale: run: %s" % moved.get("run", "?"))
+                shutil.rmtree(tmp, ignore_errors=True)
+                continue                   # loop takes the lock with mkdir on the next pass
+            try:
+                os.rename(tmp, d)          # we grabbed a live lock: put it back and keep waiting
+            except OSError:
+                # A new lock appeared at `d` meanwhile — a third process created it while we
+                # held the live one under `tmp`. Documented residual race: accepted on one
+                # machine with a handful of sessions. The holder we just discarded loses its
+                # lock silently; its next `release` reports `refused`/`not held`.
+                shutil.rmtree(tmp, ignore_errors=True)
+        if time.time() >= deadline:
+            print(_held_line(kv))
+            sys.exit(1)
+        time.sleep(LOCK_POLL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1176,6 +1686,38 @@ def main():
                            help="warnBytes for the post-apply check "
                                 "(default: knowledge.warnBytes from --config, else 8192)")
     p_migrate.set_defaults(func=cmd_migrate)
+
+    p_next = sub.add_parser(
+        "next",
+        help="render the brief's ## Next region, header and stop bullet from live state (spec §5)",
+        description="render the brief's ## Next region, header and stop bullet from live state "
+                     "(spec §5). --state shape: "
+                     '{"epic": {"key": ..., "status_class": ...}, "children": [{"key": ..., '
+                     '"id": <int>, "title": ..., "status_class": ..., "blocked_by": [...], '
+                     '"phase": <int|null>, "step": <int|null>}], "thread_blocked": [...], '
+                     '"stop": {"key": ..., "phase": ..., "cause": ..., "worktree": ...}}. '
+                     "exit 0 = the brief was already true (unchanged); exit 1 = the rendered "
+                     "brief differs (write stdout over the brief); exit 2 = malformed brief or "
+                     "state JSON.")
+    p_next.add_argument("--brief", required=True, help="the brief to render against")
+    p_next.add_argument("--state", required=True, help="live-state JSON (spec §5 shape)")
+    p_next.add_argument("--reason", nargs="+", default=None,
+                        help="start|stop|create|resolve <KEY>-<n>, or new-info; omitted = refresh")
+    p_next.add_argument("--today", default=None, help="YYYY-MM-DD (default: today, UTC)")
+    p_next.set_defaults(func=cmd_next)
+
+    p_lock = sub.add_parser("lock", help="the primary-checkout lock (spec §4)")
+    lock_sub = p_lock.add_subparsers(dest="op", required=True)
+    p_take = lock_sub.add_parser("take")
+    p_take.add_argument("--run", required=True)
+    p_take.add_argument("--section", required=True)
+    p_take.add_argument("--wait", type=int, default=600, help="seconds to wait (default 600)")
+    p_rel = lock_sub.add_parser("release")
+    p_rel.add_argument("--run", required=True)
+    p_stat = lock_sub.add_parser("status")
+    for p in (p_take, p_rel, p_stat):
+        p.add_argument("--root", default=None, help="locks directory (default: <git toplevel>/.claude/notion-dev/locks)")
+        p.set_defaults(func=cmd_lock)
 
     args = parser.parse_args()
     args.func(args)
