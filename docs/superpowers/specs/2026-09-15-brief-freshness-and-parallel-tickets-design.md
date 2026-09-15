@@ -399,7 +399,7 @@ are constants in the script, not config.
 | `partial:epic-doc` | degraded | `ticket.md`, `finalize.md`, `next-task.md`, `create-task.md` | now also a `refresh` that returned `failed` |
 | `lock-stale:primary` | unexpected | any locked section | `lock take` broke an abandoned lock; the report names the old owner |
 | `lock-timeout:primary` | degraded | any best-effort section | `lock take` timed out; the section was skipped |
-| `claimed-elsewhere` | info | `ticket.md` (PR 2) | the worktree claim lost a race; nothing written |
+| `claimed-elsewhere` | — | `ticket.md` (PR 2) | **a run outcome, not an issue-log signature** (issue-log's Kind vocabulary is closed and its grammar is `<class>:<subject>`): the worktree claim lost a race; no worktree, branch, status change, ledger line, or brief write to undo; `next-task` records the decision |
 
 ## §10 Verification
 
