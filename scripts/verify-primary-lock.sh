@@ -71,7 +71,7 @@ assert_present "ticket phase 9 hooks: hook receives \`LOCK_HELD\`" "$TICKET" "$P
 assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lock waits\*\*'
 
 # The record sections span epic-update, whose interactive filing gate asks File/Drop. The lock
-# goes stale in 30 minutes, so those answers are taken before the take, never under it.
+# goes stale in 60 minutes, so those answers are taken before the take, never under it.
 TR0=$(find_line "$TICKET" 1 "$L" '^### 8\.2 ')
 TR1=$(find_line "$TICKET" "$((TR0 + 1))" "$L" '^\*\*Closeout — zero tails'); [ -n "$TR1" ] || TR1=$L
 assert_order "ticket record section: the filing gate is resolved before the lock take" "$TICKET" "$TR0" "$TR1" \
@@ -127,7 +127,7 @@ echo "== knowledge.md =="
 section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600 ffpull
 section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600 ffpull
 section "knowledge curate"  "$KC" '^## `curate`$'  '^## Report$'   curate 600 ffpull
-# No interactive gate is ever held under the primary lock: the lock goes stale in 30 minutes,
+# No interactive gate is ever held under the primary lock: the lock goes stale in 60 minutes,
 # so questions answered under it are a live lock another run breaks while this one still writes.
 LKC=$(total_lines "$KC"); CU0=$(find_line "$KC" 1 "$LKC" '^## `curate`$')
 CU1=$(find_line "$KC" "$((CU0 + 1))" "$LKC" '^## Report$'); [ -n "$CU1" ] || CU1=$LKC
