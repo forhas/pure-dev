@@ -88,7 +88,7 @@ echo "== create-task.md =="
 section "create-task create" "$CT" '^### 3\.2 ' '^## Phase 4' create 600
 LC=$(total_lines "$CT"); C0=$(find_line "$CT" 1 "$LC" '^### 3\.2 '); C1=$(find_line "$CT" 1 "$LC" '^## Phase 4')
 assert_present "create-task 3.2: \`refresh(<epic-id>, create <key>)\` after the page has a parent" "$CT" "$C0" "$C1" 'operation `refresh\(<epic-id>, create <key>\)`'
-assert_present "create-task 3.2: skipped under \`LOCK_HELD\` (epic-update filing)" "$CT" "$C0" "$C1" 'invoked with `LOCK_HELD`'
+assert_present "create-task 3.2: skipped under \`LOCK_HELD\` (epic-update filing)" "$CT" "$C0" "$C1" 'skip.*invoked with `LOCK_HELD`'
 echo "== knowledge skill: capture commits through the write path =="
 LK=$(total_lines "$KS")
 assert_present "knowledge capture: commits and pushes through \`## The write path\`" "$KS" 1 "$LK" 'through `## The write path`'

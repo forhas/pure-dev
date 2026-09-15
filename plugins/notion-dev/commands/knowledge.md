@@ -34,15 +34,16 @@ failure to write the log never fails the run.
   `npm i -g @iwe-org/iwe` where the prebuilt binary runs. Record `missing-dependency:iwe`.
 - `python3 --version` succeeds — the shipped script is Python 3.8+, standard library only.
 - `<epicBranch>` = `git.prTargetBranch`, falling back to `git.baseBranch` — the branch the bundle
-  lives on. The primary is on it and the tree is clean: `/notion-dev:new-info`'s precondition
-  block applied verbatim, including its two exempt dirt kinds and the
-  `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
-  it ends with, and its diverged-base report on a `--ff-only` failure — never stash or discard.
-- On `capture` only, and **after** that checkout and pull: the skill's own four precondition
-  lines, which it asserts itself and which this command reports verbatim when one fails. The
-  checkout-and-pull above is what makes the remote-equality line assertable by hand; a primary
-  holding unpushed local commits fails it, and the remedy is to push or reset them, never to skip
-  the check.
+  lives on. The tree is clean: `/notion-dev:new-info`'s precondition block's clean-tree rule
+  applied verbatim — exactly two exempt dirt kinds, the offending paths reported from
+  `git status --porcelain`, and `git stash -u` named for untracked dirt. The primary is put on
+  `<epicBranch>` below, right after the lock is taken, never here — checking out before the lock
+  would let a second run's checkout race this one's.
+- On `capture` only, and **after** the checkout and pull that section runs right after taking the
+  lock (below): the skill's own four precondition lines, which it asserts itself and which this
+  command reports verbatim when one fails. That checkout and pull is what makes the
+  remote-equality line assertable by hand; a primary holding unpushed local commits fails it, and
+  the remedy is to push or reset them, never to skip the check.
 
 ## `capture <ticket-id> <merge-sha>`
 
@@ -52,6 +53,9 @@ operation the hook runs, with the same four preconditions and the same write-not
 
 First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section capture --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
+
+Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
+(a `--ff-only` failure → release the lock and stop with the diverged-base report).
 
 Invoke the skill `notion-dev:knowledge`, operation `capture(<ticket-id>, <merge-sha>)`, passing
 `REPO_ROOT`, `<epicBranch>`, and `LOCK_HELD`. There is no session to draw on here, so the
@@ -71,13 +75,16 @@ Last: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <
 First: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock take --run <run id> --section migrate --wait 600` (`<run id>` is `knowledge`; exit 1 → stop with
 `CAUSE: primary lock held by <run> (<section>) since <time>`).
 
+Then `git -C $REPO_ROOT checkout <epicBranch> && git -C $REPO_ROOT pull --ff-only origin <epicBranch>`
+(a `--ff-only` failure → release the lock and stop with the diverged-base report).
+
 Invoke the `notion-dev:knowledge` skill, operation `migrate` — `migrate --apply` when the user
 passed `--apply` — passing `REPO_ROOT`, `<epicBranch>`, the config path, and `LOCK_HELD`.
 
-Without `--apply`, **print the complete diff verbatim**, file by file, and stop. Nothing is
-written, nothing is staged, and the run is repeatable: reviewing that diff is the whole point of
-the first pass, because it is the only place a client sees what a field-by-field rewrite of its
-own bundle will do.
+Without `--apply`, **print the complete diff verbatim**, file by file, release the lock (the
+`Last:` line below) and stop. Nothing is written, nothing is staged, and the run is repeatable:
+reviewing that diff is the whole point of the first pass, because it is the only place a client
+sees what a field-by-field rewrite of its own bundle will do.
 
 With `--apply`, print the same diff, then what the operation reports: the concepts rewritten, the
 brief's new path under `<knowledge.dir>/epic/`, the config keys added and dropped, and the
