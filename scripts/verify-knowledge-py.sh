@@ -187,11 +187,17 @@ case "$(uname -s)" in
   MINGW*|MSYS*)
     # knowledge.py resolves `iwe` on Windows via shutil.which, which needs a PATHEXT
     # candidate — the extensionless shebang script above is invisible to it there. npm's
-    # real binary is `iwe.cmd`; reimplement the same schema/find-exits-2 shim as one.
+    # real binary is `iwe.cmd`; reimplement the same schema/find-exits-2 shim as one. The
+    # substring check is delegated to a tiny Python script (run with $PYBIN, already proven
+    # resolvable) rather than batch findstr/pipe chaining, which is fragile to get right
+    # without a Windows shell to test against.
     real_cmd=$(command -v iwe.cmd 2>/dev/null || command -v iwe)
     real_win=$(cygpath -w "$real_cmd")
-    printf '@echo off\r\n(echo %%*| findstr /C:"schema validate" >nul || echo %%*| findstr /C:"find" >nul) && exit /b 2 || "%s" %%*\r\n' \
-      "$real_win" > "$FAKE/iwe.cmd"
+    fake_win=$(cygpath -w "$FAKE")
+    printf 'import sys\na = " ".join(sys.argv[1:])\nsys.exit(2 if ("schema validate" in a or "find" in a) else 0)\n' \
+      > "$FAKE/iwe_check.py"
+    printf '@echo off\r\n%s "%s\\iwe_check.py" %%*\r\nif %%errorlevel%%==2 exit /b 2\r\n"%s" %%*\r\nexit /b %%errorlevel%%\r\n' \
+      "$PYBIN" "$fake_win" "$real_win" > "$FAKE/iwe.cmd"
     ;;
 esac
 PATH="$FAKE:$PATH" run migrate-check-dies 2 migrate --apply --dir "$MX/knowledge" --config "$MX/.claude/notion-dev.config.json" --plugin-root "$ROOT"

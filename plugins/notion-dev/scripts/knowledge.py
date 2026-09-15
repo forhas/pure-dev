@@ -240,7 +240,7 @@ def run_check(a):
         for root, _dirs, files in os.walk(os.path.join(bundle, d)):
             for fn in files:
                 if fn.endswith(".md"):
-                    relf = os.path.relpath(os.path.join(root, fn), bundle)
+                    relf = os.path.relpath(os.path.join(root, fn), bundle).replace(os.sep, "/")
                     findings.append(f"{relf}: type: undeclared directory {d}")
 
     # 4. links. A reference key that climbs out of the bundle root (iwe renders those as
@@ -879,7 +879,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
     """Returns (result: {repo-relative path: new bytes}, to_delete: [repo-relative path])."""
     result = {}
     to_delete = []
-    bundle_rel = os.path.relpath(bundle, repo_root)
+    bundle_rel = os.path.relpath(bundle, repo_root).replace(os.sep, "/")
 
     # step 2: plugin-owned .iwe/ files, installed verbatim (overwriting)
     plugin_iwe_dir = os.path.join(plugin_root, KNOWLEDGE_IWE_REF)
@@ -899,7 +899,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                 if not fn.endswith(".md"):
                     continue
                 fpath = os.path.join(dirpath, fn)
-                rel_to_bundle = os.path.relpath(fpath, bundle)
+                rel_to_bundle = os.path.relpath(fpath, bundle).replace(os.sep, "/")
                 if dirpath == bundle and fn in ("log.md", "index.md"):
                     continue
                 with open(fpath, "r", encoding="utf-8-sig") as f:
@@ -956,7 +956,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
         if collisions:
             for fn in collisions:
                 print(f"{bundle_rel}/epic/{fn}: migrate: collides with "
-                      f"{os.path.relpath(os.path.join(abs_epics_dir, fn), repo_root)} — "
+                      f"{os.path.relpath(os.path.join(abs_epics_dir, fn), repo_root).replace(os.sep, '/')} — "
                       f"merge the two by hand, then re-run")
             sys.exit(1)
         for fn in briefs:
@@ -968,7 +968,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
             new_body = add_epic_frontmatter(body, fn)
             new_rel = os.path.join(bundle_rel, "epic", fn)
             result[new_rel] = new_body.encode("utf-8")
-            old_rel = os.path.relpath(src, repo_root)
+            old_rel = os.path.relpath(src, repo_root).replace(os.sep, "/")
             to_delete.append(old_rel)
             moved_briefs.append((old_rel, new_rel))
             # The brief is the bundle's root concept and `status: stable`, so it needs its
@@ -1024,7 +1024,7 @@ def _build_migration(bundle, repo_root, plugin_root, config_path):
                 "notion-dev:knowledge" if h == "knowledge-capture" else h
                 for h in git_cfg["postMergeHooks"]
             ]
-        result[os.path.relpath(config_path, repo_root)] = (
+        result[os.path.relpath(config_path, repo_root).replace(os.sep, "/")] = (
             json.dumps(new_cfg, indent=2) + "\n"
         ).encode("utf-8")
 
