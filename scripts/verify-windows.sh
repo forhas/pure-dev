@@ -36,6 +36,12 @@ KPYL=$(total_lines "$KPY")
 KI0=$(find_line "$KPY" 1 "$KPYL" '^def iwe\(args, cwd, violations_exit=\(\)\):$')
 KI1=$(find_line "$KPY" "$KI0" "$KPYL" '^def iwe_json\(')
 assert_present "knowledge.py: the iwe capture decodes the child's output as \`encoding="utf-8"\`, not the locale code page" "$KPY" "$KI0" "$KI1" 'encoding="utf-8"\)$'
+# The Windows retry must not be a blanket OSError catch: a vanished directory (a breaker
+# retired this lock as stale) and a sharing violation need opposite answers, and retrying
+# the first one can move a successor's lock aside.
+assert_has "knowledge.py: a vanished lock directory has its own handler, never the retry" "$KPY" 'except FileNotFoundError:'
+assert_has "knowledge.py: only a \`PermissionError\` retries the release rename" "$KPY" 'except PermissionError:'
+assert_present "knowledge.py: the retry re-reads the owner before renaming again" "$KPY" "$KI0" "$KPYL" '_read_owner\(d\).get\("run"\) != a.run'
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
 assert_has "workflow: a windows-latest job runs verify-knowledge-py.sh under bash" "$WF" 'runs-on: windows-latest'
 WFL=$(total_lines "$WF"); WJ0=$(find_line "$WF" 1 "$WFL" '^  verify-windows:$')

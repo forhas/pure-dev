@@ -400,6 +400,11 @@ lk take-a-again 0 take --run STO-70 --section record --wait 0
 assert_has "lock: the holder re-enters"                   "$OUT/lock-take-a-again.txt" 'reentrant'
 lk release-b 1 release --run STO-71
 assert_has "lock: release by another run is refused"      "$OUT/lock-release-b.txt" 'held by STO-70'
+# A refused release moves the directory aside to read its real owner, so it must put it back:
+# the holder's lock still stands and nothing is left parked. Deleting instead of restoring is
+# how a release by the wrong run would strip mutual exclusion from the run that does hold it.
+assert_has "lock: a refused release restores the holder's lock" "$LK/primary/owner" 'run: STO-70'
+[ -z "$(ls -d "$LK"/primary.release-* 2>/dev/null)" ] && ok "lock: a refused release leaves no parked copy" || bad "lock: a refused release left a parked copy"
 lk release-a 0 release --run STO-70
 lk status-free-2 0 status
 assert_has "lock: released reports free"                  "$OUT/lock-status-free-2.txt" 'free'

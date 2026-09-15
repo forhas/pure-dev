@@ -1624,11 +1624,23 @@ def cmd_lock(a):
         tmp = d + ".release-%d-%d" % (os.getpid(), time.time_ns())
         try:
             os.rename(d, tmp)
-        except OSError:
-            # On Windows, os.rename can raise PermissionError (an OSError subclass) while
-            # another process still has a handle open inside the directory — transient, not
-            # evidence the lock isn't held. Retry once before reporting.
+        except FileNotFoundError:
+            # Gone before we could move it: a breaker retired this run's lock as stale.
+            # Never retry that — half a second later `d` may be the breaker's own fresh
+            # lock, and moving a successor's directory aside is exactly how a release
+            # turns into two writers with no mutual exclusion.
+            print("not held")
+            sys.exit(1)
+        except PermissionError:
+            # Windows only: another process still has a handle open inside the directory
+            # (a sharing violation) — transient, not evidence the lock isn't held. Retry
+            # once, but re-read the owner first: the retry window is long enough for a
+            # breaker to retire this lock and a successor to take `d`, and the owner is
+            # what proves the directory is still ours to move.
             time.sleep(0.5)
+            if _read_owner(d).get("run") != a.run:
+                print("not held")
+                sys.exit(1)
             try:
                 os.rename(d, tmp)
             except OSError:
@@ -1638,9 +1650,13 @@ def cmd_lock(a):
         if moved.get("run") != a.run:
             try:
                 os.rename(tmp, d)          # not ours after all: put the holder's lock back
+                print("refused: " + _held_line(moved))
             except OSError:
-                shutil.rmtree(tmp, ignore_errors=True)
-            print("refused: " + _held_line(moved))
+                # `d` exists again, so someone took the lock while this one was parked.
+                # Leave the parked copy where it is and say where: deleting it would
+                # destroy a lock this run never owned, and an orphaned `.release-*`
+                # directory is inert — `take` and `status` read only `d`.
+                print("refused: " + _held_line(moved) + "; parked copy left at " + tmp)
             sys.exit(1)
         shutil.rmtree(tmp, ignore_errors=True)
         print("released")
