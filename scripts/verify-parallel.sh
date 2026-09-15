@@ -83,6 +83,7 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: the bump class is recorded before rebasing" "$f" "$M5" "$SR" 'before rebasing.*record the bump class'
   assert_present "$f: no manifest at the merge-base means the branch introduces the plugin — no class, no re-bump" "$f" "$M5" "$SR" 'no manifest at the merge-base → this branch introduces the plugin'
   assert_present "$f: the strictly-greater re-check is unconditional after any rebase" "$f" "$M5" "$SR" 'After any rebase.*unconditionally.*strictly greater'
+  assert_present "$f: with no \`BUMP_CLASS\` recorded there is nothing to re-apply and nothing to re-check" "$f" "$M5" "$SR" '`BUMP_CLASS` on the base.s value and commit `chore: re-bump version after rebase`. No class recorded — the branch made no bump, or it introduces the plugin — means there is nothing to re-apply and nothing to re-check'
   assert_present "$f: the bounded re-read distinguishes \`UNKNOWN\` from \`BLOCKED\`" "$f" "$M5" "$SR" '`UNKNOWN`.*wait.*`BLOCKED`.*gate 1'
   assert_present "$f: a merge-ready status — \`CLEAN\`, \`HAS_HOOKS\`, \`UNSTABLE\` — continues rather than stopping" "$f" "$M5" "$SR" 'merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue'
   assert_present "$f: gate 1 is re-satisfied on the pushed head" "$f" "$M5" "$SR" 're-satisfy gate 1 on the pushed head'
