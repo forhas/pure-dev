@@ -1455,10 +1455,36 @@ LOCK_POLL_SECONDS = 15
 LOCK_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
+def _primary_toplevel(start):
+    """The PRIMARY work tree's root, even when `start` is inside a linked worktree.
+
+    `git rev-parse --show-toplevel` answers with whichever worktree the caller is in,
+    so a run launched from a ticket worktree — `/notion-dev:ticket`'s stop path is one,
+    and it prefixes its git calls with `-C $REPO_ROOT` precisely because its own cwd is
+    not the primary — would resolve a lock directory of its own and take a *different*
+    lock from the one a primary-launched writer takes, while both commit, reset and push
+    the same primary checkout. `--git-common-dir` is shared by every worktree of a
+    repository and sits at `<primary>/.git`, so its parent is the primary work tree.
+    """
+    try:
+        p = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=start,
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
+    if p.returncode != 0:
+        return None
+    common = p.stdout.strip()
+    if not common:
+        return None
+    if not os.path.isabs(common):
+        common = os.path.join(start, common)
+    return os.path.dirname(os.path.normpath(common)) or None
+
+
 def _lock_dir(a):
     root = a.root
     if not root:
-        top = _git_toplevel(os.getcwd()) or os.getcwd()
+        top = _primary_toplevel(os.getcwd()) or _git_toplevel(os.getcwd()) or os.getcwd()
         root = os.path.join(top, ".claude", "notion-dev", "locks")
     return os.path.join(root, "primary")
 

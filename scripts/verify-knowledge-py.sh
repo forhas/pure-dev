@@ -376,6 +376,28 @@ lk release-orphan 0 release --run STO-71
 [ -z "$(ls -d "$LK"/primary.stale-* 2>/dev/null)" ] && ok "lock: no stale-break leftovers remain" || bad "lock: stale-break leftovers remain"
 rm -rf "$LK"
 
+# A run launched from a linked worktree must take the PRIMARY checkout's lock. Resolving the
+# default from `git rev-parse --show-toplevel` gives the worktree, and two writers holding two
+# different lock directories while committing to one checkout is no mutual exclusion at all.
+# `/notion-dev:ticket`'s stop path is exactly this caller: it prefixes its git calls with
+# `-C $REPO_ROOT` because its own cwd is the worktree, and it passes no `--root`.
+WT=$(mktemp -d)
+WG="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
+( cd "$WT" && $WG init -q . && $WG commit -q --allow-empty -m base && $WG worktree add -q wt ) 2>/dev/null
+PYABS="$PWD/$PY"   # $PY is repo-relative and the take below runs from the worktree
+( cd "$WT/wt" && python3 "$PYABS" lock take --run STO-88 --section stop --wait 0 ) > "$OUT/lock-worktree.txt" 2>&1
+if [ -f "$WT/.claude/notion-dev/locks/primary/owner" ]; then
+  ok "lock: a take from a linked worktree lands on the primary checkout"
+else
+  bad "lock: a take from a linked worktree did not land on the primary checkout"
+fi
+if [ -e "$WT/wt/.claude/notion-dev" ]; then
+  bad "lock: a take from a linked worktree created a second lock inside the worktree"
+else
+  ok "lock: a take from a linked worktree creates no lock inside the worktree"
+fi
+rm -rf "$WT"
+
 echo "== write path: a rejected push converges by re-deriving against the fresh brief =="
 CV=$(mktemp -d)
 G="git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false"
