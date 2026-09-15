@@ -100,8 +100,8 @@ Read-only. Runs before any worktree exists, so it **writes nothing** — not the
 
 1. `KNOWLEDGE_CONTEXT` supplied by the caller → use it, **no fetch of any kind — not Notion, not git.** Otherwise invoke the `notion-dev:knowledge` skill, operation `retrieve(<epic-id>, <ticket-title>?, <current-ticket-id>)` once — the id goes in the **third** argument; `read` is given no title, so the lexical seed is simply omitted, whereas passing the id where the title belongs makes `--lexical "<ticket id>"` a seed that matches nothing — this applies the epic predicate itself, exactly as `findEpics()`, `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply it; not an epic → return `null` — and take its result as `KNOWLEDGE_CONTEXT`.
 2. Return `EPIC_CONTEXT` — the root document (`KNOWLEDGE_CONTEXT`'s first fenced document, frontmatter stripped) — plus the fields already parsed from it: `NEXT` (the ordered list from `## Next`, each item's `<KEY>-<n>` and its reason text), `BLOCKED` (the `Blocked:` line's keys), `STATUS` (`open` or `closed` from the header line), `CHILDREN` (one `listEpicChildren(<epic-id>)` call inside `retrieve`, `[{ id, key, title, status, url }]`, for the caller's validation — when `<current-ticket-id>` is given, marked `(this ticket)` as `getEpicContext` does), and `BOOTSTRAP`
-   — and `DRIFT`. `read` writes the root document to a temp file, assembles the §5 state JSON
-   from `CHILDREN` and the epic's live status (`status_class` = `resolved` when the status is in
+   — and `DRIFT`. `read` writes the root document to a temp file, assembles the state JSON
+   `refresh` shows from `CHILDREN` and the epic's live status (`status_class` = `resolved` when the status is in
    the resolved set, `in_progress` when it equals `statusMap.inProgress`, else `open`; every
    unresolved child's `## Blocked by` keys, `metadata.phaseProperty`, `metadata.stepProperty`
    from one `fetchTicket` each — the same fetches `record` step 2 makes), and `thread_blocked` — from the current `## Open threads`, for each bullet the keys it says it blocks or holds (`blocks STO-22, STO-23`, `holds STO-x`), never a key after `Unblocked by:`, never a key a bullet merely informs (`revisit in STO-71`), and never a stop bullet (the script adds those from the bullets themselves) — the same judgment `record` step 2 applies when it writes `Blocked:`. Then runs the derivation
@@ -141,12 +141,29 @@ under `## Open threads`.
 epic page body and never runs `iwe`.
 
 **Derivation.** Write the current brief (loaded from `origin/<epicBranch>` by the write path's
-step 2) to a temp file, assemble the state JSON `read` describes (plus `stop: { key, phase,
+step 2) to a temp file, assemble the state JSON (plus `stop: { key, phase,
 cause, worktree }` on a `stop`), and run
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>
 ```
+
+```json
+{
+  "epic": { "key": "STO-60", "status_class": "open" },
+  "children": [
+    { "key": "STO-71", "id": 71, "title": "Cache metrics", "status_class": "open",
+      "blocked_by": ["STO-70"], "phase": 2, "step": 1 }
+  ],
+  "thread_blocked": ["STO-22"],
+  "stop": { "key": "STO-70", "phase": "Phase 7", "cause": "review loop stalled",
+            "worktree": "../btc-worktrees/btc-STO-70" }
+}
+```
+
+`status_class` is `resolved | in_progress | open` (resolved set, `statusMap.inProgress`, else); `id` is the numeric `idProperty` value as an integer; `phase` and `step` are integers or `null`; `blocked_by` lists `<KEY>-<n>` strings; `thread_blocked` is assembled as `read` states; `stop` is present only on a `stop` reason.
+
+`` exit 0 = the brief was already true (`unchanged`); exit 1 = the rendered brief differs (the ordinary success path — write stdout over the brief); exit 2 = malformed brief or JSON (`failed`, `CAUSE:` the stderr line). ``
 
 with `--reason <word> <key>` for `start`, `stop` and `create`, and no `--reason` for `drift`. Its
 stdout is the new brief in full — the `## Next` region, the header and the stop bullet rewritten,
@@ -185,7 +202,9 @@ once here; the others cite it.
 2. **Establish the base.** `git -C $REPO_ROOT fetch origin <epicBranch>`. The primary must be on
    `<epicBranch>`; the operations whose contract allows a checkout — `refresh` (all reasons) and
    `record --bootstrap` — run `git -C $REPO_ROOT checkout <epicBranch>` when the primary is clean
-   outside the exempt paths; the others assert the branch as before. Then
+   outside the exempt paths; when it is not clean, the existing branch assertion applies instead —
+   the primary must already be on `<epicBranch>` or the operation is `failed` with `CAUSE: primary
+   checkout is dirty and not on <epicBranch>`; the others assert the branch as before. Then
    `git -C $REPO_ROOT pull --ff-only origin <epicBranch>`. A `--ff-only` failure → `failed`,
    `CAUSE: <epicBranch> has diverged from origin` — never stash, never reset a diverged base.
    After this step the three ref assertions of `/notion-dev:ticket` Phase 9 hold by

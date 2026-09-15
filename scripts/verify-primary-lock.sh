@@ -27,9 +27,12 @@ KS=$ND/skills/knowledge/SKILL.md
 TAKE='knowledge\.py" lock take --run <run id> --section '
 REL='knowledge\.py" lock release --run <run id>'
 
-# section <label> <file> <start-ere> <end-ere> <section-word> <wait>
+# section <label> <file> <start-ere> <end-ere> <section-word> <wait> [ffpull]
+# The optional seventh argument, when non-empty, adds the take-then-checkout-and-pull
+# order check (F5): the region must also show the lock taken before the ff-only pull
+# that establishes the base, exactly once each.
 section() {
-  local label=$1 f=$2 s_re=$3 e_re=$4 word=$5 wait=$6
+  local label=$1 f=$2 s_re=$3 e_re=$4 word=$5 wait=$6 ffpull=${7:-}
   local L; L=$(total_lines "$f")
   local s; s=$(find_line "$f" 1 "$L" "$s_re")
   [ -n "$s" ] || { bad "$label: start anchor not found ($s_re)"; return; }
@@ -37,6 +40,10 @@ section() {
   assert_present "$label: takes the lock with \`--section $word\` and \`--wait $wait\`" "$f" "$s" "$e" "${TAKE}${word} --wait ${wait}"
   assert_present "$label: releases the lock (\`lock release\`)" "$f" "$s" "$e" "$REL"
   assert_order "$label: take before release" "$f" "$s" "$e" take "${TAKE}${word}" release "$REL"
+  if [ -n "$ffpull" ]; then
+    assert_order "$label: take, then checkout and \`pull --ff-only\`" "$f" "$s" "$e" \
+      take "${TAKE}${word}" pull 'pull --ff-only origin <epicBranch>'
+  fi
 }
 
 echo "== ticket.md =="
@@ -77,14 +84,15 @@ assert_present "next-task step 1: \`refresh(<epic-id>, drift)\` on \`DRIFT: true
 assert_present "next-task step 1: splices the refreshed brief into \`KNOWLEDGE_CONTEXT\` — no second retrieve" "$NT" "$S1" "$S2" 'replace the root document of .*KNOWLEDGE_CONTEXT.*no second `retrieve`'
 assert_present "next-task step 1: a failed drift refresh stops the loop" "$NT" "$S1" "$S2" 'drift refresh .*`EPIC-DOC: failed` → stop'
 echo "== new-info.md =="
-section "new-info apply" "$NI" '^### Apply' '^### Notion epic' apply 600
+section "new-info apply" "$NI" '^### Apply' '^### Notion epic' apply 600 ffpull
 LI=$(total_lines "$NI"); A0=$(find_line "$NI" 1 "$LI" '^### Apply'); A1=$(find_line "$NI" 1 "$LI" '^### Notion epic')
 assert_present "new-info apply: \`note --apply\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `note --apply <epic-id>`.*LOCK_HELD'
 assert_present "new-info apply: \`capture --fact\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `capture --fact <fact> <epic-id>`.*LOCK_HELD'
+assert_present "new-info apply: \`record --bootstrap\` receives \`LOCK_HELD\`" "$NI" "$A0" "$A1" 'operation `record --bootstrap <epic-id>`.*LOCK_HELD'
 echo "== knowledge.md =="
-section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600
-section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600
-section "knowledge curate"  "$KC" '^## `curate`$'  '^## Report$'   curate 600
+section "knowledge capture" "$KC" '^## `capture <ticket-id> <merge-sha>`$' '^## `migrate`$' capture 600 ffpull
+section "knowledge migrate" "$KC" '^## `migrate`$' '^## `curate`$'  migrate 600 ffpull
+section "knowledge curate"  "$KC" '^## `curate`$'  '^## Report$'   curate 600 ffpull
 echo "== create-task.md =="
 section "create-task create" "$CT" '^### 3\.2 ' '^## Phase 4' create 600
 LC=$(total_lines "$CT"); C0=$(find_line "$CT" 1 "$LC" '^### 3\.2 '); C1=$(find_line "$CT" 1 "$LC" '^## Phase 4')

@@ -131,6 +131,8 @@ if [ -f "$ED" ]; then
     assert_present "refresh: derivation is \`knowledge.py\` \`next\` with \`--brief\`, \`--state\`, \`--today\`" "$ED" "$RF" "$WP" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>'
     assert_present "refresh: \`stop\` adds the bullet, \`start\` removes it" "$ED" "$RF" "$WP" '`stop` adds .* `start` removes'
     assert_present "refresh: byte-identical → \`unchanged\`, no commit" "$ED" "$RF" "$WP" 'Byte-identical .* `unchanged`, no commit'
+    assert_present "refresh: the state JSON shape names \`status_class\`, \`blocked_by\`, \`thread_blocked\`" "$ED" "$RF" "$WP" '`status_class`.*`blocked_by`.*`thread_blocked`'
+    assert_present "refresh: exit-code contract (0 unchanged, 1 differs, 2 malformed)" "$ED" "$RF" "$WP" 'exit 0 = .*exit 1 = .*exit 2 = '
     assert_present "write path step 1: \`lock take\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock take --run <run id> --section <name> --wait <seconds>.*LOCK_HELD'
     assert_present "write path step 2: \`git -C \$REPO_ROOT pull --ff-only origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>'
     assert_present "write path step 4: \`git push origin <epicBranch>\`" "$ED" "$WP" "$R1" 'git push origin <epicBranch>'
@@ -140,10 +142,14 @@ if [ -f "$ED" ]; then
     assert_present "write path step 5: \`lock release\` unless \`LOCK_HELD\`" "$ED" "$WP" "$R1" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" lock release --run <run id>.*LOCK_HELD'
     assert_order "write path: lock, ff-pull, commit, push, converge, unlock in that order" "$ED" "$WP" "$R1" \
       take 'lock take --run' pull 'git -C \$REPO_ROOT pull --ff-only origin <epicBranch>' commit 'git commit --only' push 'git push origin <epicBranch>' revlist 'git rev-list origin/<epicBranch>\.\.HEAD' reset 'git reset --hard origin/<epicBranch>' release 'lock release --run'
-    assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
-    assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '
-    assert_present "output block carries \`DRIFT:\`" "$ED" "$OB" "$L" '^DRIFT: '
-    assert_present "output block carries \`ATTEMPTS:\`" "$ED" "$OB" "$L" '^ATTEMPTS: '
+    if [ -n "$OB" ]; then
+      assert_present "output block lists \`refreshed\` and \`unchanged\`" "$ED" "$OB" "$L" '^EPIC-DOC: created \| updated \| closed \| refreshed \| unchanged \| none \| failed$'
+      assert_present "output block carries \`IN-PROGRESS:\`" "$ED" "$OB" "$L" '^IN-PROGRESS: '
+      assert_present "output block carries \`DRIFT:\`" "$ED" "$OB" "$L" '^DRIFT: '
+      assert_present "output block carries \`ATTEMPTS:\`" "$ED" "$OB" "$L" '^ATTEMPTS: '
+    else
+      bad "epic-doc lacks the ## Output block heading"
+    fi
     assert_present "read reports \`DRIFT: true\` and writes nothing" "$ED" "$R0" "$RB" 'DRIFT: true.*writes nothing'
     assert_present "read assembles \`thread_blocked\` from \`## Open threads\`" "$ED" "$R0" "$RB" 'thread_blocked.*## Open threads'
     assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'

@@ -149,7 +149,7 @@ Mark the ticket as started — invoke `notion-dev:ticket-system`:
 2. Invoke the `notion-dev:epic-doc` skill, operation `refresh(<epic-id>, start <key>)`, passing `REPO_ROOT`, `<epicBranch>` and `LOCK_HELD`. It moves the ticket to the brief's `In progress:` line, repairs any drift 1.1's `read` reported, removes a stop bullet left by an earlier stopped run of this ticket, and commits `docs(epic): <KEY>-<n> start <key>` to `<epicBranch>` through the write path. Record its block as `EPIC_DOC_START`; `failed` → `partial:epic-doc`, never a stop.
 3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" lock release --run <run id>`.
 
-The worktree exists before this section (2.1) and the status is set before it, so the claim precedes every mirror of it. The primary is clean by precondition, which is what lets the write path check out `<epicBranch>` there.
+The worktree exists before this section (2.1) and the status is set before it, so the claim precedes every mirror of it. The primary is clean by precondition on a fresh start; on a resume inside an existing worktree it may not be, and the write path then falls back to its branch assertion.
 
 All subsequent file work happens in the worktree. Ledger writes go to `$REPO_ROOT/.claude/notion-dev/` — a sanctioned exception to the worktree-only rule, and a self-ignored directory that never appears in `git status`.
 

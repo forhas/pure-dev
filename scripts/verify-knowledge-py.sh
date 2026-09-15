@@ -298,6 +298,25 @@ assert_has "next: a wrapped item keeps its preserved reason" "$OUT/next-wrapped.
   '1. **[STO-71] Cache metrics** — unblocked; STO-70 landed.'
 assert_has "next: joining a wrapped item is not drift" "$OUT/next-wrapped.err" 'DRIFT: 0'
 
+nx comma 0 "$NX/brief-comma.md" "$NX/state-comma.json"
+assert_has "next: a comma in an in-progress title keeps its since date" "$OUT/next-comma.md" \
+  'In progress: [STO-72] Backfill, v2 — since 2026-09-14'
+assert_has "next: a comma in a title is not drift" "$OUT/next-comma.err" 'DRIFT: 0'
+
+sed '/^## Open threads$/,/^## Decisions & constraints$/{/^## Decisions & constraints$/!d}' \
+  "$NX/brief.md" > "$OUT/brief-nothreads.md"
+nx start-nothreads 1 "$OUT/brief-nothreads.md" "$NX/state-start.json" --reason start STO-71
+
+printf '%s' "$(cat "$NX/brief.md")" > "$OUT/no-nl.md"
+nx no-nl 0 "$OUT/no-nl.md" "$NX/state-basic.json"
+assert_identical "next: a brief without a trailing newline stays byte-identical" \
+  "$OUT/next-no-nl.md" "$OUT/no-nl.md"
+
+nx order 1 "$NX/brief.md" "$NX/state-order.json"
+assert_has "next: ordering puts phase 1 before phase 2 (item 1)" "$OUT/next-order.md" '1. **[STO-80]'
+assert_has "next: ordering puts phase 2 step 1 before phase 2 step 2 (item 2)" "$OUT/next-order.md" '2. [STO-79]'
+assert_has "next: ordering keeps phase 2 step 2 after step 1 (item 3)" "$OUT/next-order.md" '3. [STO-71]'
+
 echo "== lock: mkdir lock on the primary checkout =="
 LK=$(mktemp -d)
 lk() { # name, expected-exit, args...

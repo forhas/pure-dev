@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """knowledge.py — the mechanical checks notion-dev's knowledge skill needs and iwe lacks.
 
-Subcommands: check | touched | migrate. Exit 0 clean, 1 findings, 2 cannot run.
+Subcommands: check | touched | migrate | next | lock. Exit 0 clean, 1 findings, 2 cannot run.
 Never parses YAML: frontmatter comes from `iwe find -f json`; shape from `iwe schema validate`.
 Exit 2 is never downgraded: a check that cannot run says so and fails. An iwe call that
 exits non-zero for any reason other than reported violations, or whose JSON does not parse,
 is exit 2 — never an empty result standing in for a clean bundle.
 
-Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9.
+Spec: docs/superpowers/specs/2026-09-14-knowledge-bundle-design.md §2, §3, §7, §9;
+docs/superpowers/specs/2026-09-15-brief-freshness-and-parallel-tickets-design.md §3, §4, §5.
 """
 import argparse
 import datetime
@@ -1140,7 +1141,7 @@ KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d+")
 NEXT_ITEM_RE = re.compile(
     r"^(\d+)\. (\*\*)?\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?)(\*\*)?(?: — (.*))?$")
 IN_PROGRESS_RE = re.compile(r"^In progress: (.*)$")
-IN_PROGRESS_ITEM_RE = re.compile(r"^\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})$")
+IN_PROGRESS_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})")
 BLOCKED_RE = re.compile(r"^Blocked: (.*)$")
 HEADER_RE = re.compile(r"^(Epic: .*? · Status: )(open|closed)( · Updated: )(\d{4}-\d{2}-\d{2}) after (.*)$")
 STOP_BULLET_RE = re.compile(r"^- \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] stopped at ")
@@ -1193,10 +1194,8 @@ def _parse_next(body):
             continue
         m = IN_PROGRESS_RE.match(s)
         if m:
-            for part in m.group(1).split(", "):
-                pm = IN_PROGRESS_ITEM_RE.match(part.strip())
-                if pm:
-                    in_progress[pm.group(1)] = pm.group(3)
+            for pm in IN_PROGRESS_ITEM_RE.finditer(m.group(1)):
+                in_progress[pm.group(1)] = pm.group(3)
             continue
         m = BLOCKED_RE.match(s)
         if m:
@@ -1232,7 +1231,9 @@ def _validate_state(state):
             assert isinstance(stop.get("cause"), str)
             assert isinstance(stop.get("worktree"), str)
     except (KeyError, AssertionError, TypeError):
-        die("next: malformed state JSON (spec §5 shape)")
+        die("next: malformed state JSON — expected {epic:{key,status_class}, "
+            "children:[{key,id:int,title,status_class,blocked_by:[],phase:int|null,step:int|null}], "
+            "thread_blocked:[], stop?:{key,phase,cause,worktree}}")
 
 
 def derive_next(state, stopped_keys):
@@ -1390,8 +1391,8 @@ def cmd_next(a):
     if ns is None:
         die("next: no `## Next` heading")
     ts, te = _section(lines, "## Open threads")
-    if reason_word in ("start", "stop") and ts is None:
-        die("next: no `## Open threads` heading, needed for --reason %s" % reason_word)
+    if reason_word == "stop" and ts is None:
+        die("next: no `## Open threads` heading, needed for --reason stop")
 
     if ts is not None:
         if reason_word == "start":
@@ -1429,7 +1430,7 @@ def cmd_next(a):
         what = (what % reason_key) if what else ("new-info" if reason_word == "new-info" else "refresh")
         lines[header_idx] = "%s%s%s%s after %s" % (hm.group(1), live_status, hm.group(3), today, what)
 
-    sys.stdout.write("\n".join(lines) + "\n")
+    sys.stdout.write("\n".join(lines) + ("\n" if trailing_newline else ""))
     for f in findings:
         sys.stderr.write(f + "\n")
     sys.stderr.write("DRIFT: %d\n" % len(findings))
@@ -1607,7 +1608,17 @@ def main():
     p_migrate.set_defaults(func=cmd_migrate)
 
     p_next = sub.add_parser(
-        "next", help="render the brief's ## Next region, header and stop bullet from live state (spec §5)")
+        "next",
+        help="render the brief's ## Next region, header and stop bullet from live state (spec §5)",
+        description="render the brief's ## Next region, header and stop bullet from live state "
+                     "(spec §5). --state shape: "
+                     '{"epic": {"key": ..., "status_class": ...}, "children": [{"key": ..., '
+                     '"id": <int>, "title": ..., "status_class": ..., "blocked_by": [...], '
+                     '"phase": <int|null>, "step": <int|null>}], "thread_blocked": [...], '
+                     '"stop": {"key": ..., "phase": ..., "cause": ..., "worktree": ...}}. '
+                     "exit 0 = the brief was already true (unchanged); exit 1 = the rendered "
+                     "brief differs (write stdout over the brief); exit 2 = malformed brief or "
+                     "state JSON.")
     p_next.add_argument("--brief", required=True, help="the brief to render against")
     p_next.add_argument("--state", required=True, help="live-state JSON (spec §5 shape)")
     p_next.add_argument("--reason", nargs="+", default=None,
