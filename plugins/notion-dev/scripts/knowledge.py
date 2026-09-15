@@ -1683,10 +1683,13 @@ def cmd_lock(a):
 
 def main():
     # On Windows Python translates "\n" to "\r\n" on text streams; `next`'s stdout is written
-    # over the brief byte-for-byte, so a CRLF stdout would make `unchanged` undecidable.
+    # over the brief byte-for-byte, so a CRLF stdout would make `unchanged` undecidable. And a
+    # redirected/piped stdout on Windows defaults to the locale codepage (e.g. cp1252), not
+    # UTF-8, so any non-ASCII character `next` writes (an em dash, a middle dot) would be
+    # silently mis-encoded — corrupting the brief and failing the next `encoding="utf-8"` read.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(newline="\n")
+            stream.reconfigure(newline="\n", encoding="utf-8")
     parser = argparse.ArgumentParser(prog="knowledge.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

@@ -25,7 +25,7 @@ for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/
   n=$(total_lines "$ND/$f")
   assert_present "$f: python3 stands for knowledge.python" "$ND/$f" 1 "$n" '`python3` in every `knowledge.py` line below stands for `knowledge.python`'
 done
-assert_has "knowledge.py: forces LF on stdout and stderr" "$KPY" 'reconfigure(newline="\n")'
+assert_has "knowledge.py: forces LF and UTF-8 on stdout and stderr" "$KPY" 'reconfigure(newline="\n", encoding="utf-8")'
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
 assert_has "workflow: a windows-latest job runs verify-knowledge-py.sh under bash" "$WF" 'runs-on: windows-latest'
 assert_has "workflow: the windows-latest job's run line invokes verify-knowledge-py.sh" "$WF" 'run: bash scripts/verify-knowledge-py.sh'
