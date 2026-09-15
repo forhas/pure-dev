@@ -55,9 +55,28 @@ assert_has "broken-index names the missing bullet"    "$OUT/broken-index.txt"   
 assert_has "broken-type names the directory"          "$OUT/broken-type.txt"       'type: undeclared directory commitment'
 assert_has "broken-iwe names the drifted file"        "$OUT/broken-iwe.txt"        '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
 assert_has "broken-iwe-missing names the absent file" "$OUT/broken-iwe-missing.txt" '.iwe/schemas/okf-index.yaml: iwe: missing'
+
 assert_has "broken-log names the schema rule"         "$OUT/broken-log.txt"        'log.md: schema:'
 assert_has "broken-link-outward names the missing outside-bundle target" \
   "$OUT/broken-link-outward.txt" 'epic/STO-1-demo-epic.md: link: ../docs/nope (outside bundle, not on disk)'
+
+echo "== check: .iwe drift is content, never line endings =="
+# The two sides are checked out by different tooling and disagree in practice: a Windows
+# plugin cache carries CRLF while a repo pinning `eol=lf` carries LF. Byte-comparing them
+# reported all four files as drifted, so `check` exited non-zero and `capture` wrote nothing
+# on every merge — the failure this pair of cases exists to keep out.
+EOLB=$(mktemp -d); cp -r "$FX/valid/." "$EOLB/"
+for f in .iwe/config.toml .iwe/schemas/okf.yaml .iwe/schemas/okf-index.yaml .iwe/schemas/okf-log.yaml; do
+  [ -f "$EOLB/$f" ] && sed -i 's/$/\r/' "$EOLB/$f"
+done
+file "$EOLB/.iwe/config.toml" | grep -q CRLF && ok "check: the CRLF fixture really is CRLF" || bad "check: the CRLF fixture is not CRLF"
+run iwe-crlf 0 check --dir "$EOLB" --plugin-root "$ROOT" --extra-types commitment
+assert_lacks "check: a CRLF bundle copy of a byte-identical .iwe file is not drift" "$OUT/iwe-crlf.txt" 'iwe: differs from plugin copy'
+# The inverse must still fire: same endings, different content.
+printf '# drift\n' >> "$EOLB/.iwe/schemas/okf.yaml"
+run iwe-crlf-content 1 check --dir "$EOLB" --plugin-root "$ROOT" --extra-types commitment
+assert_has "check: real content drift is still reported under CRLF" "$OUT/iwe-crlf-content.txt" '.iwe/schemas/okf.yaml: iwe: differs from plugin copy'
+rm -rf "$EOLB"
 
 echo "== check: an outward link to an EXTENSIONLESS file resolves to the exact path first =="
 # iwe leaves `../LICENSE` as is (it only strips `.md`), so appending `.md` unconditionally
@@ -180,6 +199,26 @@ rm -rf "$M"
 
 echo "== migrate: a post-apply check that cannot run still restores the tree =="
 # `check` dying (exit 2: iwe missing) after the apply wrote files must leave the tree as it was.
+echo "== migrate: the plugin's .iwe copies install as LF, whatever the plugin cache carries =="
+# Measured on 0.27.0: the installed Windows plugin cache is CRLF. Copying it verbatim hands the
+# client a file its own normalising checkout rewrites on commit, so the bundle drifts from the
+# plugin copy on the very next check and capture stops writing. This case migrates against a
+# CRLF plugin root, which also exercises the post-apply check in the real-world direction.
+PR=$(mktemp -d); mkdir -p "$PR/skills/knowledge/references/iwe/schemas"
+cp "$ROOT/skills/knowledge/references/iwe/config.toml" "$PR/skills/knowledge/references/iwe/"
+cp "$ROOT"/skills/knowledge/references/iwe/schemas/*.yaml "$PR/skills/knowledge/references/iwe/schemas/"
+find "$PR" -type f -exec sed -i 's/$/\r/' {} +
+file "$PR/skills/knowledge/references/iwe/config.toml" | grep -q CRLF \
+  && ok "migrate: the fake plugin root really is CRLF" || bad "migrate: the fake plugin root is not CRLF"
+MR=$(mktemp -d); cp -r "$FX/migrate-input/." "$MR/"
+( cd "$MR" && git init -q && git -c core.autocrlf=false add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+run migrate-crlf-root 0 migrate --apply --dir "$MR/knowledge" --config "$MR/.claude/notion-dev.config.json" --plugin-root "$PR"
+file "$MR/knowledge/.iwe/config.toml" | grep -q CRLF \
+  && bad "migrate: the installed .iwe/config.toml kept the plugin cache's CRLF" \
+  || ok "migrate: the installed .iwe/config.toml is LF whatever the plugin cache carried"
+rm -rf "$PR" "$MR"
+
+
 MX=$(mktemp -d); cp -r "$FX/migrate-input/." "$MX/"
 ( cd "$MX" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
 FAKE=$(mktemp -d); printf '#!/bin/sh\ncase "$*" in *"schema validate"*|*find*) exit 2;; esac\nexec %s "$@"\n' "$(command -v iwe)" > "$FAKE/iwe"; chmod +x "$FAKE/iwe"
