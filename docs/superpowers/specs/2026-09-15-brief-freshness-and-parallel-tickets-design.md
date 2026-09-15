@@ -331,7 +331,7 @@ are constants in the script, not config.
 - **Run marker:** `$REPO_ROOT/.claude/notion-dev/runs/<KEY>-<id>.json`:
 
   ```json
-  { "run": "STO-70", "worktree": "/abs/path", "branch": "ticket/STO-70-backfill",
+  { "run": "STO-70", "session": "STO-70-20260915T104200Z-9f3a", "worktree": "/abs/path", "branch": "ticket/STO-70-backfill",
     "phase": "Phase 7", "heartbeat": "2026-09-15T10:42:00Z", "state": "running",
     "cause": null }
   ```
@@ -347,7 +347,11 @@ are constants in the script, not config.
   - marker `running` and heartbeat younger than 2 hours → `held by a live session — <phase>
     since <heartbeat>`; abort. Interactive mode offers take-over (which rewrites the marker
     with this run's id); non-interactive never takes over.
-  - marker `stopped`, heartbeat older than 2 hours, or no marker → resume as today.
+  - marker `stopped`, heartbeat older than 2 hours, or no marker → resume as today, behind an
+    atomic claim: `mkdir <runs>/<KEY>-<id>.claim` (§4's primitive) before the marker is
+    rewritten, released right after the re-read. `run` names the ticket and is the same for
+    every session of it; the per-invocation `session` token (#44's form) is what the re-read
+    compares, and a rewrite-and-read on `run` alone can never distinguish two sessions.
 - **`claimed-elsewhere`:** when 2.1's `git worktree add` fails because the branch exists and
   1.2 found no worktree (the race window between 1.2 and 2.1), the run ends with the outcome
   `claimed-elsewhere` before any status change, ledger line or brief write. A stop report of
