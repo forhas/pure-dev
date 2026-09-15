@@ -316,6 +316,18 @@ assert_has "next: a header-only mismatch is reported as drift" "$OUT/next-header
 assert_has "next: a header-only mismatch rewrites the stale header" "$OUT/next-header-only.md" \
   'Status: open · Updated: 2026-09-15 after refresh'
 
+# A title containing the renderer's own ` — ` delimiter must round-trip. The combined regex
+# ended the title at the first one, so the line grew on every derivation while reporting
+# DRIFT: 0 — invisible to read-only drift detection, and committed by every later writer.
+# Item 1 specifically: it is the only item whose reason is carried over from the previous
+# brief, so it is the one that compounds. A later item re-renders its reason from live state.
+sed 's/^1\. \*\*\[STO-71\] Cache metrics\*\*/1. **[STO-71] Cache — metrics**/' \
+  "$NX/brief.md" > "$OUT/brief-emdash.md"
+nx emdash 0 "$OUT/brief-emdash.md" "$NX/state-emdash.json"
+assert_identical "next: a title containing the reason delimiter re-renders byte-identical" \
+  "$OUT/next-emdash.md" "$OUT/brief-emdash.md"
+assert_has "next: a title containing the reason delimiter is not drift" "$OUT/next-emdash.err" 'DRIFT: 0'
+
 nx comma 0 "$NX/brief-comma.md" "$NX/state-comma.json"
 assert_has "next: a comma in an in-progress title keeps its since date" "$OUT/next-comma.md" \
   'In progress: [STO-72] Backfill, v2 — since 2026-09-14'

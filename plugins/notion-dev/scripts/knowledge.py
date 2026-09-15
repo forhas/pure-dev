@@ -1138,8 +1138,33 @@ def cmd_migrate(a):
 # ---------------------------------------------------------------------------
 
 KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d+")
-NEXT_ITEM_RE = re.compile(
-    r"^(\d+)\. (\*\*)?\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?)(\*\*)?(?: — (.*))?$")
+# One pattern per rendered form, because a single one cannot split title from reason without
+# guessing. The old combined regex ended the title at the *first* ` — `, so a child titled
+# `Cache — metrics` re-parsed as title `Cache` with the rest — closing `**` included — as its
+# reason, and `_item1_reason` then fed that back into the next render: the line grew on every
+# pass, at `DRIFT: 0`, so read-only drift detection never asked for a repair.
+# Bold (item 1) is delimited by its closing `**`, which a title cannot contain. Plain items
+# take the LAST ` — ` as the delimiter: their reason is generated (`ready`, `after <keys>`) and
+# never contains one, while a title may.
+NEXT_ITEM_BOLD_RE = re.compile(
+    r"^(\d+)\. \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*)\*\*(?: — (.*))?$")
+NEXT_ITEM_PLAIN_RE = re.compile(
+    r"^(\d+)\. \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*) — (.*)$")
+NEXT_ITEM_BARE_RE = re.compile(
+    r"^(\d+)\. \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*)$")
+
+
+def _parse_next_item(s):
+    """One numbered `## Next` line -> its item dict, or None."""
+    m = NEXT_ITEM_BOLD_RE.match(s)
+    if m:
+        return {"key": m.group(2), "title": m.group(3), "reason": m.group(4) or "", "bold": True}
+    for rx in (NEXT_ITEM_PLAIN_RE, NEXT_ITEM_BARE_RE):
+        m = rx.match(s)
+        if m:
+            return {"key": m.group(2), "title": m.group(3),
+                    "reason": m.group(4) if rx is NEXT_ITEM_PLAIN_RE else "", "bold": False}
+    return None
 IN_PROGRESS_RE = re.compile(r"^In progress: (.*)$")
 IN_PROGRESS_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})")
 BLOCKED_RE = re.compile(r"^Blocked: (.*)$")
@@ -1187,10 +1212,9 @@ def _parse_next(body):
         if s == "epic complete":
             complete = True
             continue
-        m = NEXT_ITEM_RE.match(s)
-        if m:
-            items.append({"key": m.group(3), "title": m.group(4),
-                          "reason": m.group(6) or "", "bold": bool(m.group(2))})
+        it = _parse_next_item(s)
+        if it:
+            items.append(it)
             continue
         m = IN_PROGRESS_RE.match(s)
         if m:
