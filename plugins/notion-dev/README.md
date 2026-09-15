@@ -217,6 +217,16 @@ and how to resume), and when it resolves (`… after`); `/notion-dev:create-task
 checkout takes a directory lock at `.claude/notion-dev/locks/primary/` (self-ignored). A stuck
 lock older than 30 minutes is broken and reported. Run reports list any wait.
 
+**Running two sessions on one epic.** Open a second terminal in the same checkout and run
+`/notion-dev:next-task <epic> --depth N` in each. Each session claims its ticket by creating
+the worktree, records a run marker under `.claude/notion-dev/runs/`, and moves the ticket to the
+brief's `In progress:` line; the other session's next read excludes it. A ticket already
+`In Progress` with no worktree here is reported as held elsewhere; a worktree whose marker says
+`running` with a heartbeat under two hours is held by a live session; `stopped` or stale markers
+resume. Two sessions merging into the same base rebase once at the merge gate, and a
+manifest-version conflict resolves itself (two minor bumps land as consecutive minors). Same
+machine only.
+
 An Epic page carries four sections:
 
 | Section | Content |
