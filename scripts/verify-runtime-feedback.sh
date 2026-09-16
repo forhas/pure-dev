@@ -384,31 +384,33 @@ done
 # never fire and a recovery invocation appends a duplicate entry.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
 TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
   LREAD=$(total_lines "$TSREAD")
+  LCREATE=$(total_lines "$TSCREATE")
   echo "== ticket-system — escaped brackets bind every read-back =="
 
   assert_present "ticket-system: the escaping binds every read-back, not just the title" \
-    "$TS" 1 "$L" 'bracket form this plugin writes, not just the title'
+    "$TSCREATE" 1 "$LCREATE" 'bracket form this plugin writes, not just the title'
 
   assert_present "ticket-system: this is the canonical statement the other sites cite" \
-    "$TS" 1 "$L" 'This is the$'
+    "$TSCREATE" 1 "$LCREATE" 'This is the$'
 
   assert_present "ticket-system: an unescaped Resolution Log parse defeats \`already-recorded\`" \
-    "$TS" 1 "$L" '`already-recorded`$'
+    "$TSCREATE" 1 "$LCREATE" '`already-recorded`$'
 
   assert_present "ticket-system: the consequence is a duplicated log entry, not lost work" \
-    "$TS" 1 "$L" 'entry\*\*\. Per-follow-up `PROVENANCE` dedup still prevents duplicate'
+    "$TSCREATE" 1 "$LCREATE" 'entry\*\*\. Per-follow-up `PROVENANCE` dedup still prevents duplicate'
 
   assert_count "ticket-system: an unescaped write fails with No matches found (canonical rule + the Tasks-update site)" \
-    "$TS" 1 "$L" '`validation_error: No matches found`' 2
+    "$TSCREATE" 1 "$LCREATE" '`validation_error: No matches found`' 2
 
   assert_present "ticket-system: the Resolution Log parse tolerates the escaped bracket form" \
     "$TSREAD" 1 "$LREAD" '`## Resolution Log`.*\*\*Tolerate the backslash-escaped bracket form\*\*'
 
   assert_present "ticket-system: the Tasks line update matches the escaped bracket form too" \
-    "$TS" 1 "$L" '\*\*When updating an existing line rather than'
+    "$TSCREATE" 1 "$LCREATE" '\*\*When updating an existing line rather than'
 
   # ---------------------------------------------------------------------------
   # ticket-system — a 404 on the configured database is a workspace binding
@@ -684,9 +686,11 @@ done
 # tickets — so verifying the resolved id is the only thing standing in the way.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
 TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
   LREAD=$(total_lines "$TSREAD")
+  LCREATE=$(total_lines "$TSCREATE")
   echo "== notion-dev ticket-system — id lookup =="
 
   assert_present "ticket-system: the resolved page's idProperty is verified on every path, not only the fallback" \
@@ -716,16 +720,16 @@ if [ -f "$TS" ]; then
   echo "== notion-dev ticket-system — refreshEpicTasks =="
 
   assert_present "ticket-system: refreshEpicTasks returns without writing when there is no ## Tasks section" \
-    "$TS" 1 "$L" 'If the epic page has no `## Tasks` section, warn once and return without writing one'
+    "$TSCREATE" 1 "$LCREATE" 'If the epic page has no `## Tasks` section, warn once and return without writing one'
 
   assert_present "ticket-system: upsertSection creating an absent section is the mechanism being guarded" \
-    "$TS" 1 "$L" 'which \*creates\* a section that is absent'
+    "$TSCREATE" 1 "$LCREATE" 'which \*creates\* a section that is absent'
 
   assert_present "ticket-system: refreshAcceptanceCriteria is cited as the sibling that already declines" \
-    "$TS" 1 "$L" 'already declines for the same reason'
+    "$TSCREATE" 1 "$LCREATE" 'already declines for the same reason'
 
   assert_present "ticket-system: creating the section belongs to create-task, never to a refresh" \
-    "$TS" 1 "$L" 'never to a refresh'
+    "$TSCREATE" 1 "$LCREATE" 'never to a refresh'
 
   assert_present "ticket-system: the operations table records the no-op too" \
     "$TS" 1 "$L" '\*\*No-op when the epic has no `## Tasks` section\*\*'

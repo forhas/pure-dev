@@ -66,4 +66,12 @@ TSWRITE=$ND/skills/ticket-system/references/write-ops.md
 assert_present "\`references/write-ops.md\` pins the append-only counterpart to \`upsertSection\`, so an append never clobbers a section another phase wrote" \
   "$TSWRITE" 1 "$(total_lines "$TSWRITE")" '\*\*append-only\*\* counterpart to `upsertSection`'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the creation-operations reference is present and pinned =="
+
+TSCREATE=$ND/skills/ticket-system/references/create-ops.md
+
+assert_present "\`references/create-ops.md\` pins the title-prefix detection regex's optional escape before the bracket" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '\*\*The optional backslashes are not defensive padding\.\*\*'
+
 exit $(( fails > 0 ))
