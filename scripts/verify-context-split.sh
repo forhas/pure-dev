@@ -77,12 +77,28 @@ assert_present "\`references/create-ops.md\` pins the title-prefix detection reg
 # ---------------------------------------------------------------------------
 echo "== ticket-system: every \`Logical operations\` row resolves to the Reference file that defines it, not the dispatcher =="
 
+# Region-delimit the table without a magic line number: anchor on the header
+# line, stop at the first blank line after it.
+TABLE_START=$(find_line "$TS" 1 "$(total_lines "$TS")" '^\| Operation \|')
+TABLE_END=$(awk -v s="$TABLE_START" 'NR > s && /^$/ { print NR; exit }' "$TS")
+
+# An independent count of the table's data rows, by a rule that does NOT
+# depend on the operation name being backticked: any `| `-prefixed line in
+# the region except the header and the `|---|` separator. If a row's
+# operation name loses its backticks, this count still sees it — the loop
+# below, keyed on the first backticked literal, would not — so the two are
+# compared below to catch exactly that drop.
+ROW_COUNT=$(awk -v s="$TABLE_START" -v e="$TABLE_END" \
+  'NR > s && NR < e && /^\| / && !/^\|---/ { c++ } END { print c + 0 }' "$TS")
+
 n=0
+seen=""
 while IFS= read -r row; do
   op=$(grep -o '`[A-Za-z]*`' <<<"$row" | head -1 | tr -d '`')
   ref=$(grep -o 'references/[a-z-]*\.md' <<<"$row" | head -1)
   [ -n "$op" ] || continue
   n=$((n + 1))
+  seen="$seen $op"
 
   if [ -z "$ref" ] || [ ! -f "$ND/skills/ticket-system/$ref" ]; then
     bad "\`$op\`'s \`Reference\` cell names a file that exists (got: '${ref:-<none>}')"
@@ -101,9 +117,15 @@ while IFS= read -r row; do
   fi
 
   ok "\`$op\` -> \`$ref\`: defined there, not duplicated in SKILL.md"
-done < <(grep '^| `' "$TS")
+done < <(sed -n "${TABLE_START},${TABLE_END}p" "$TS" | grep '^| `')
 
 echo "  (checked $n table rows)"
+
+if [ "$n" -eq "$ROW_COUNT" ]; then
+  ok "the backtick-keyed parse saw all $ROW_COUNT data rows in the \`Logical operations\` table"
+else
+  bad "the backtick-keyed parse saw $n of $ROW_COUNT data rows in the \`Logical operations\` table — a row lost its backticked operation name and dropped out unguarded (parsed:$seen)"
+fi
 
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the read-before-use gate on the Reference column is stated =="
