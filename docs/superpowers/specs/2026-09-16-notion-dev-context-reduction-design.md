@@ -254,7 +254,7 @@ guardrail, MCP unavailability, and the operation index.
 Five references, clustered **by operation**, not by consumer — consumers overlap on `fetchTicket`,
 `findEpics` and `getEpicContext`, so a by-consumer split would duplicate them:
 
-| file | contents | ~tok | read when |
+| file | contents | ~tok (pre-implementation estimate) | read when |
 |---|---|---|---|
 | `references/config.md` | Configuration, Property type handling, Notion page heading parsing | 3,800 | before the first Notion call |
 | `references/read-ops.md` | `fetchTicket`, `findEpics`, `getEpicContext`, `listEpicChildren` | 4,600 | before the first read |
@@ -263,7 +263,9 @@ Five references, clustered **by operation**, not by consumer — consumers overl
 | `references/styling.md` | Styling conventions — palette, zone dividers, callouts, rich content | 1,600 | before writing page content |
 
 `/notion-dev:ticket` then loads dispatcher + `config` + `read-ops` + `write-ops` + `styling` ≈
-**15,800** instead of 28,405. `/notion-dev:create-task` loads `create-ops` in place of most of
+**18,932** instead of 28,405 (the measured after-figure above; the per-file estimates in the table
+summed to 15,800 pre-implementation and every one of them landed above estimate).
+`/notion-dev:create-task` loads `create-ops` in place of most of
 `read-ops` and lands near where it is today — it was always the heavy consumer.
 
 ### How the disclosure is enforced
