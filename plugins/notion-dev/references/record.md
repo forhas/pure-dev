@@ -115,6 +115,8 @@ The cost of this ordering is stated deliberately: by the time hooks run, the wor
 
 ### Ledger outcome
 
+**This unit is replayable, so every write in it must be idempotent — and an append is not idempotent by default.** The caller reruns this whole file inline when the dispatch fails, returns zero bytes, or times out, and a dispatch can fail *after* reaching a write. So before each append below, check whether this run already recorded it and skip or overwrite rather than adding a second entry. Two sites carry the risk: this ledger line, keyed by `run_id`, and 8.3's `appendToSection(id, "Implementation", …)` **Completeness** block, which a replay would otherwise duplicate inside the ticket's `## Implementation` section. Read the target first — the last ledger line for this `run_id`, and the existing `## Implementation` body — and write only what is missing. A replay that duplicates them is worse than one that stops: the ledger's own consumers count entries, and a doubled Completeness block makes the ticket's record of done ambiguous.
+
 Append one outcome line to `$REPO_ROOT/.claude/notion-dev/ledger.jsonl` per the schema in `skills/flow-triage/references/ledger.md`:
 
 ```json
