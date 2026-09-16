@@ -74,4 +74,41 @@ TSCREATE=$ND/skills/ticket-system/references/create-ops.md
 assert_present "\`references/create-ops.md\` pins the title-prefix detection regex's optional escape before the bracket" \
   "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '\*\*The optional backslashes are not defensive padding\.\*\*'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: every \`Logical operations\` row resolves to the Reference file that defines it, not the dispatcher =="
+
+n=0
+while IFS= read -r row; do
+  op=$(grep -o '`[A-Za-z]*`' <<<"$row" | head -1 | tr -d '`')
+  ref=$(grep -o 'references/[a-z-]*\.md' <<<"$row" | head -1)
+  [ -n "$op" ] || continue
+  n=$((n + 1))
+
+  if [ -z "$ref" ] || [ ! -f "$ND/skills/ticket-system/$ref" ]; then
+    bad "\`$op\`'s \`Reference\` cell names a file that exists (got: '${ref:-<none>}')"
+    continue
+  fi
+  reffile="$ND/skills/ticket-system/$ref"
+
+  if ! grep -q "^## ${op}(" "$reffile"; then
+    bad "\`$op\`'s \`Reference\` file (\`$ref\`) actually defines \`$op\`"
+    continue
+  fi
+
+  if grep -q "^## ${op}(" "$TS"; then
+    bad "\`$op\`'s body is no longer in the dispatcher (found \`## ${op}(\` in SKILL.md)"
+    continue
+  fi
+
+  ok "\`$op\` -> \`$ref\`: defined there, not duplicated in SKILL.md"
+done < <(grep '^| `' "$TS")
+
+echo "  (checked $n table rows)"
+
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the read-before-use gate on the Reference column is stated =="
+
+assert_present "SKILL.md gates every operation behind reading its \`Reference\` file first" \
+  "$TS" 1 "$(total_lines "$TS")" 'may not perform an operation whose `Reference` file you have not read in this run'
+
 exit $(( fails > 0 ))
