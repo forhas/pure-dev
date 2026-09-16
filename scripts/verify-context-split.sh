@@ -145,4 +145,113 @@ assert_present "\`references/record.md\` defines the \`RECORD:\` output block" \
 assert_present "\`references/record.md\`'s \`RECORD:\` block carries \`EPIC-DOC-RECORD\`" \
   "$RECORD" 1 "$(total_lines "$RECORD")" '^EPIC-DOC-RECORD: '
 
+# ---------------------------------------------------------------------------
+echo "== ticket: the record unit is dispatched, and recoverable when it is not =="
+
+assert_order "Phase 8 asks, locks, leaves the worktree, then dispatches" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  "filing gate"  'Resolve the interactive filing gate before the lock is taken' \
+  "lock take"    'knowledge\.py. lock take .*--section record' \
+  "cd REPO_ROOT" 'Leave the worktree: .cd \$REPO_ROOT' \
+  "dispatch"     'Dispatch one .general-purpose. agent, synchronously'
+
+assert_present "the dispatch names \`references/record.md\` as the agent's instructions" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'instruction to read .references/record\.md. and follow it exactly'
+
+assert_present "the wait is bounded at ~15 minutes" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'Bound the wait at ~15 minutes'
+
+assert_present "a lost dispatch records \`unexpected:record-unit-not-dispatched\` and runs inline" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'Record .unexpected:record-unit-not-dispatched. per .notion-dev:issue-log.'
+
+assert_present "the fallback runs \`references/record.md\` inline rather than stopping" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'read.*references/record\.md. and run it inline yourself'
+
+assert_present "\`references/record.md\` returns a \`RECORD:\` block" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" '^RECORD:$'
+
+assert_present "\`references/record.md\` is told the lock is already held" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" 'taken the primary lock.*LOCK_HELD: true'
+
+# Region bounds for the checks below that must be anchored on Phase 8/10 —
+# computed once into variables rather than inlined as $(find_line ...) in an
+# argument list: if the heading is ever renamed, find_line returns empty, an
+# inlined empty string silently collapses the argument list, and the
+# assertion misbehaves instead of failing. Computed once, checked, and
+# reported loudly with `bad` if either anchor is gone.
+PHASE8_START=$(find_line "$TICKET" 1 "$(total_lines "$TICKET")" '^## Phase 8')
+PHASE10_START=$(find_line "$TICKET" 1 "$(total_lines "$TICKET")" '^## Phase 10')
+if [ -z "$PHASE8_START" ]; then
+  bad "ticket.md: found the \`## Phase 8\` heading, to bound the record-section checks"
+fi
+if [ -z "$PHASE10_START" ]; then
+  bad "ticket.md: found the \`## Phase 10\` heading, to bound the record-section checks"
+fi
+
+# The saving is the point: the orchestrator's own record phase must not name the
+# skills the unit was created to carry. This is what goes red if the delegation
+# is quietly unwound by a later edit.
+if [ -n "$PHASE8_START" ]; then
+  assert_absent "the orchestrator's record phase no longer invokes \`notion-dev:epic-update\`" \
+    "$TICKET" "$PHASE8_START" "$(total_lines "$TICKET")" 'notion-dev:epic-update'
+fi
+
+# ---------------------------------------------------------------------------
+echo "== ticket.md: the dispatch's return value is what Phase 10 actually consumes =="
+
+# (A) "wait for it" wording alone is satisfiable by accident; a demonstrated
+# data dependency on the dispatch's return value is the strongest proxy prose
+# can express for "the call already returned". assert_order proves the
+# dispatch instruction (asserted `synchronously` above) precedes the line
+# that reads a named field out of the `RECORD:` block the dispatch returns.
+assert_order "ticket.md: the synchronous dispatch precedes the epic-doc line's read of RECORD_REPORT's \`EPIC-DOC-RECORD\` field" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  "dispatch"           'Dispatch one .general-purpose. agent, synchronously' \
+  "epic-doc field read" 'RECORD_REPORT.*EPIC-DOC-RECORD.*field verbatim'
+
+# ---------------------------------------------------------------------------
+echo "== ticket.md: the record-section lock's failure semantics =="
+
+# (B) Never guarded before this plan: the Exit-1 stop path, the stale-lock
+# recording, and the sentence bounding what runs under the lock. All three
+# were silently dropped once by this plan's own draft prose and recovered
+# only by a line-by-line accounting.
+if [ -n "$PHASE8_START" ] && [ -n "$PHASE10_START" ]; then
+  PHASE8_END=$((PHASE10_START - 1))
+
+  assert_present "the record-section lock's Exit-1 path stops naming \`CAUSE: primary lock held by\`" \
+    "$TICKET" "$PHASE8_START" "$PHASE8_END" \
+    'Exit 1.*stop per "Failure and stop conditions" with `CAUSE: primary lock held by'
+
+  assert_present "a \`stale:\` line on the record-section lock records \`lock-stale:primary\` and names the old owner" \
+    "$TICKET" "$PHASE8_START" "$PHASE8_END" \
+    'A `stale:` line.*record `lock-stale:primary` and name the old owner in the report'
+
+  assert_present "the record section states what runs under the lock, ending at Phase 10's epic-doc step" \
+    "$TICKET" "$PHASE8_START" "$PHASE8_END" \
+    'Everything from here to the end of Phase 10.s epic-doc step.*runs with the lock held'
+else
+  bad "ticket.md: skipped the record-section lock checks (Phase 8/10 heading missing)"
+fi
+
+# ---------------------------------------------------------------------------
+echo "== ticket.md: an explicit subagent prohibition is not a dispatch failure =="
+
+# (C) The prohibition path takes the same inline route as a failed dispatch,
+# but is not a degradation and must not be logged as one. An assertion that
+# only proves the signature appears somewhere would still pass if a later
+# edit wired it to fire on the prohibition path too — the actual error worth
+# catching — so this pins the "do not record" sentence itself.
+assert_present "an explicit user prohibition on the dispatch takes the same inline path as a failed one" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'An explicit user prohibition on this dispatch takes the same inline path as a failed one'
+
+assert_present "the prohibition path states it does not record \`unexpected:record-unit-not-dispatched\`, unlike the failure path" \
+  "$TICKET" 1 "$(total_lines "$TICKET")" \
+  'do \*\*not\*\* record `unexpected:record-unit-not-dispatched`'
+
 exit $(( fails > 0 ))
