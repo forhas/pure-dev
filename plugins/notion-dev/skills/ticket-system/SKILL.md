@@ -111,68 +111,12 @@ Callers that need to *show* the id alongside the title use the `key` field (`"ST
 
 **`unique_id` prefix mismatch.** A Notion `unique_id` column carries its own prefix. When it differs from `project.key`, titles still use `project.key` — config is the source of truth for the plugin's naming, and branch names already depend on it. Log **one** warning per run: `"ID column prefix '<live>' differs from project.key '<KEY>'; titles use '<KEY>'"`. Record `prefix-mismatch:unique_id` per `notion-dev:issue-log`.
 
-## Configuration
+## Configuration, property types, page headings
 
-Config (from `.claude/notion-dev.config.json` → `ticketSystem`):
-- `databaseId` — the Notion database
-- `dataSourceId` — optional, preferred for queries when set
-- `idProperty` — property name holding the numeric ticket ID (default `"ID"`). Works with both Notion `number` and `unique_id` (auto-increment) property types.
-- `statusProperty` — property name holding the status select (default `"Status"`)
-- `typeProperty` — property name holding the ticket type (default `"Type"`). The live property may be either Select or Multi-Select; the adapter normalizes both.
-- `prProperty` — property name (URL) that `/notion-dev:ticket` writes the PR link to (default `"PR"`). When the property doesn't exist on the live DB, skip the write with a warning rather than aborting. Record `missing-property:prProperty` per `notion-dev:issue-log`.
-- `assigneeProperty` — People property that `/notion-dev:create-task` assigns new tickets to (default `"Assignee"`). When the property doesn't exist on the live DB or isn't a People type, skip the write with a warning rather than aborting. Record `missing-property:assigneeProperty` when the property is absent, or `wrong-type:assigneeProperty` when it exists but is not a People property, per `notion-dev:issue-log`.
-- `defaultAssignee` — default assignee as a Notion user id, email, or display name, resolved via `resolveAssignee` at create time. Empty string or absent → `/notion-dev:create-task` prompts interactively. `/notion-dev:init` writes it explicitly (including `""`).
-- `statusMap` — logical → Notion option name; defaults below
-- `typeMap` — logical type key → Notion option label; defaults below
-- `staticProperties` — optional dict of extra properties to set on every new ticket (e.g. `{ "Project": "BTC-Gateway" }`). Set once at creation; never modified by `updateTicket` or `upsertSection`.
-- `epicProperty` — Select property holding the Epic tag (default `"Epic"`). Used by mission-mode `createTicket`. Absence-tolerant.
-- `phaseProperty` — Select property holding the Phase tag (default `"Phase"`). Absence-tolerant.
-- `stepProperty` — Number property holding the Step position within a Phase (default `"Step"`). Absence-tolerant.
-- `creationDateProperty` — property holding the ticket's creation timestamp (default `"Creation Date"`). Tolerates two live types: a `date` property (the adapter writes the timestamp at creation) or a `created_time` property (Notion auto-populates; the adapter never writes). Absence-tolerant.
-- `parentTaskProperty` — self-referential Relation linking a ticket to its Epic container page (default `"Parent task"`). **The only relation property this plugin configures.** Blocking order between siblings is not a relation at all — it lives in the `## Blocked by` body section for the reason stated once under `setDependencies` (a design judgment — **not** that self-relations are symmetric, **not** that subtype is undetectable, and **not** that no signal predicts write behavior); `Parent task` expresses containment and nothing else. Absence-tolerant, and **type-tolerant on the same terms**: a property of this name that exists but is **not a self-referential Relation** is treated exactly as if it were absent — `fetchTicket` returns `""` for it, containment degrades to Epic-select tagging, and no operation ever writes to or filters on it. Both unusable states are **recorded**, as `missing-property:parentTaskProperty` and `wrong-type:parentTaskProperty` respectively, per `notion-dev:issue-log`. They behave identically but are separate conditions with separate remedies, and absence was already logged, so leaving the wrong-typed case silent would have made the *more* actionable failure the quieter one. `/notion-dev:init` surfaces a retyped column at configuration time as well: its resolution step detects that the default name is held by the wrong type and its Epic-containers availability summary reports it — as the *reason* the slot is unavailable when nothing correctly-typed could be bound, or as a note when a differently-named relation was bound and the slot is therefore available.
-- `epicMarkerProperty` — Checkbox property marking a page as an Epic container (default `"Is Epic"`). This is the **sole** signal that identifies a page as an epic — carrying an `epicProperty` Select value is display metadata, not identity. Set to `true` by `createEpic` (through `createTicket`'s `isEpic` argument); read against the live schema by `fetchTicket`, `findEpics`, and `createEpic` (and by `createTicket` only on its `isEpic: true` write path), each applying the same usability check; read as an already-collapsed `metadata.epicMarkerProperty` value by `getEpicContext`, `epic-update`, and `/notion-dev:ticket`'s epic guard, which inherit that check through `fetchTicket` rather than repeating it. All apply the same predicate for what counts as an epic. Absence-tolerant with a twist, and the twist is why it gets its own rule: the property is **usable** only when it is both present **and** Checkbox-typed, and the two unusable states — absent, or present but not a Checkbox — degrade **identically**. When it is unusable, epics cannot be identified at all, so `findEpics` returns `null`, every guard/validation site treats the page as not an epic rather than falling back to a structural guess, and **no operation queries the property**. Unlike `parentTaskProperty` above, both unusable states are recorded (`missing-property:epicMarkerProperty` / `wrong-type:epicMarkerProperty`). **The full contract, including which operation records which cause, is stated once under "Epic containers" → "Marker usability rule" — every reader cites it rather than restating a partial guard.**
-
-Defaults for `statusMap` when keys are missing:
-```
-inProgress  → "In Progress"
-implemented → "Implemented"
-done        → "Done"
-cancelled   → "Cancelled"
-```
-
-The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
-
-### Resolved set
-
-The **resolved set** is the collection of live Notion option names produced by `statusMap.implemented`, `statusMap.done`, and `statusMap.cancelled`. A ticket counts as resolved when its status matches any member, case-insensitively.
-
-Used by exactly two things: the epic-close check (in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3 — the same check, run from both entry points), and ticking the checkboxes in an epic's `## Tasks` section.
-
-A missing `done` or `cancelled` key falls back to its default option name. If that option does not exist on the live DB it simply never matches — a status the plugin has not been told about is not resolved, so the epic does not auto-close. Wrong in the safe direction.
-
-Defaults for `typeMap` when keys are missing:
-```
-feature     → "Feature"
-bug         → "Bug"
-improvement → "Improvement"
-research    → "Research"
-```
-
-## Property type handling
-
-The adapter normalizes the following shape differences between the canonical schema and real-world databases:
-
-- **Title** — every Notion database has exactly one property whose type is `title` (the page title). The adapter discovers it dynamically by scanning the live schema for the `title`-typed property; its **name** is not fixed — common choices are `Name`, `Title`, `Task name`, etc. Callers pass the title value as a plain string; the adapter writes it to whichever property is the title type on this DB. Never hardcode a property name for the title. The value written is the caller's bare title with the ID prefix prepended, and the value read is stripped of it — see "Title prefix" above.
-- **ID** — read/write as `number` or `unique_id` depending on the live property type. `unique_id` is read-only to the MCP; creation does not set it (Notion auto-assigns). Queries filter by numeric id regardless of type.
-- **Type** — read: if the live property is `multi_select`, take the first value; if `select`, take the value. Write: if `multi_select`, send a single-item list; if `select`, send the scalar. Empty values round-trip as `null`.
-- **PR** — read/write when `prProperty` exists on the live DB. When absent, skip writes and log a single warning per run (no abort). Record `missing-property:prProperty` per `notion-dev:issue-log`.
-- **Epic / Phase** (Select) — write as the option name string. When the configured property is absent from the live DB, skip with a one-time warning. Record `missing-property:epicProperty` when `epicProperty` is absent, or `missing-property:phaseProperty` when `phaseProperty` is absent, per `notion-dev:issue-log`. When the property exists but the option doesn't, raise a clear error telling the caller to add the option first (via `addSelectOption` or manually in Notion). Record `option-missing:<propertyName>` (substituting the real property name, e.g. `epicProperty` or `phaseProperty`) per `notion-dev:issue-log` — this is the **Kind B** case in `issue-log/SKILL.md`'s signature grammar: an Epic or Phase option value is generated from the ticket/mission, not a fixed vocabulary, so the subject stays the bare property key and the proposed option value is never appended to it. Never silently mutate the DB's option list from a write path — option creation is an explicit, user-confirmed action.
-- **Step** (Number) — write as a number. Integers and floats both accepted; adapter passes through the caller's value.
-- **Blocking dependencies** — **not a property at all.** There is no `Depends on` column in this plugin's model. Not because self-relations are symmetric (they are not), and not because subtype is undetectable (`propertyUrl` reveals it) — but because that signal reports how a column was *created* rather than what a write to it will *do*, and the two come apart on an orphaned two-way half. See `setDependencies` for the canonical statement. `setDependencies` renders the order into the ticket body as a `## Blocked by` section instead. Nothing here reads or writes a dependency relation, and a `Depends on` column present on a user's DB is left untouched.
-- **Assignee** (People) — write as a single-item list of `{ id }` user references to the `assigneeProperty` column. Read: `fetchTicket` returns the current value in `metadata.assigneeProperty` as the first person's user id when the property exists, is a `people` type, and has a value; `""` when absent, not People-typed, or unset. On a multi-assignee column only the first person is exposed — absence-tolerant, never an error. When the configured property is absent from the live DB or is not a `people` type, skip the write and log **one** warning per run (`"assigneeProperty '<name>' not found or not a People property on DB; skipping assignee write"`) — never abort. Record `missing-property:assigneeProperty` when the property is absent, or `wrong-type:assigneeProperty` when it exists but is not a People property, per `notion-dev:issue-log`. `assignee` is caller-supplied creation state, not a `staticProperty`: `updateTicket` and `upsertSection` never touch it.
-- **Creation Date** (`date` or `created_time`) — read the live property type and branch. `date`: `createTicket` writes `{ "date": { "start": "<ISO 8601 UTC timestamp, with time>" } }`. `created_time`: never written — Notion populates it, and the API rejects writes to it. Any other type, or the property absent: skip the write and log **one** warning per run (`"creationDateProperty '<name>' not found or not a date/created_time property on DB; skipping creation date write"`). Record `missing-property:creationDateProperty` when the property is absent, or `wrong-type:creationDateProperty` when it exists but is neither `date` nor `created_time`, per `notion-dev:issue-log`. Creation-only, like `staticProperties` — `updateTicket` and `upsertSection` never touch it.
-- **Parent task** (Relation, self-referential) — write as a **single-element** list of page IDs; a ticket has exactly one parent. Relation writes in Notion are replacement, not append, so writing one element is correct and no read-merge is needed. Reject a self-reference (`id == epicId`) with a clear error. When the configured property is **absent** from the live DB, skip the write and log **one** warning per run (`"parentTaskProperty '<name>' not found on DB; skipping parent write"`) — never abort. Record `missing-property:parentTaskProperty` per `notion-dev:issue-log`. When it **exists but is not a self-referential Relation**, behave **identically to absent** — skip the write with the same one-time warning, return `""` from `fetchTicket`, and never filter on it — and record `wrong-type:parentTaskProperty` per `notion-dev:issue-log`. Behaviorally identical to absent, but a separate recorded condition: absence here was already logged as `missing-property:parentTaskProperty`, so a silent wrong-type would have left the more actionable of the two failures — a column the user can fix — as the quieter one. Identical behavior does not imply a shared signature; the observable condition earns the row, exactly as it does for `assigneeProperty`, `creationDateProperty`, and `prProperty`, which each carry both.
-- **Is Epic** (Checkbox) — write as a boolean. Only `createEpic` writes it, and only `true`; no path ever writes `false` back over an existing epic. Only written when the property is **usable** (present *and* Checkbox-typed) — a wrong-typed marker is never written to, same as an absent one. Read: `fetchTicket` returns the live value in `metadata.epicMarkerProperty` when the property is usable; `false` when absent, unset, or not a Checkbox type — the same returned default in all three cases, so every downstream reader still treats "no marker property," "wrong-typed marker," and "marker is false" identically as "not an epic," and no caller's control flow changes. But because this property is the **sole** signal that identifies a page as an epic container, `fetchTicket` distinguishes the three causes before collapsing them and records the first two, per `notion-dev:issue-log` — `missing-property:epicMarkerProperty` when absent, `wrong-type:epicMarkerProperty` when present but not a Checkbox; the simply-unchecked case alone stays routine and unlogged, same as every other absence-tolerant read. **The full contract — including the prohibition on ever *querying* an unusable marker, which is what separates degradation from an MCP error — is stated once as the "Marker usability rule" under "Epic containers".** `fetchTicket` step 4a owns this recording for every path that flows through it; `findEpics` and `createEpic`, which reach the live schema without calling `fetchTicket`, record on their own per that rule's ownership split. `createTicket` never records it.
+Resolution of the configured property names, how each Notion property type is written and read
+back, and Notion page heading parsing are in **`references/config.md`**. **Read it before the
+first Notion call**; the property-type rules there are load-bearing — a value written in the wrong
+shape is accepted by the API and read back wrong.
 
 ## Project scoping guardrail
 
@@ -184,10 +128,6 @@ When `staticProperties` is configured, those same properties act as a **fetch-si
 This is a hard abort — crossing project boundaries is always a user error in a multi-project DB setup. The guardrail applies to `fetchTicket` (and therefore to every operation that reaches a page through it: `updateTicket`, `updateStatus`, `setPullRequest`, `upsertSection`, `postComment`). `createTicket` is unaffected — it sets the pinned values, it doesn't verify them.
 
 When `staticProperties` is empty or absent, the check is skipped — single-project DBs behave as before.
-
-## Notion page heading parsing
-
-When reading or updating a page, match headings by base text **ignoring trailing Notion attributes** like `{color="red"}`. Always fetch the current page state before mutating — don't rely on cached structure.
 
 ## Styling conventions
 
