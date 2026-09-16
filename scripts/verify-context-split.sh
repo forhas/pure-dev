@@ -257,7 +257,7 @@ else
   for name in $(grep -o '`\$\?[A-Z][A-Z0-9_]\{3,\}`' "$RECORD" | tr -d '`$' | sort -u); do
     case " $NOT_PAYLOAD " in *" $name "*) continue ;; esac
     checked=$((checked + 1))
-    sed -n "${DISPATCH_LINE}p" "$TICKET" | grep -q "$name" || missing="$missing $name"
+    sed -n "${DISPATCH_LINE}p" "$TICKET" | grep -qE "(^|[^A-Z0-9_])${name}([^A-Z0-9_]|\$)" || missing="$missing $name"
   done
 
   if [ -n "$missing" ]; then
