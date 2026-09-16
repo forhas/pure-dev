@@ -34,6 +34,8 @@ Otherwise, `appendToSection(id, "Implementation", …)` with a **Completeness** 
 
 For an acceptance criterion, `file` and `drop` are **scope reductions**, not deferrals of extra work — which is why they land on the ticket rather than only in the PR. Someone tracking this work must be able to see that its stated definition of done shrank.
 
+**Set `TICKET-RECORD:` from what this subsection actually wrote**, and record a partial one. The Completeness block, `refreshAcceptanceCriteria`, and the `## Merged` section below are three separate Notion writes, and any of them can fail on its own while the others land. On a partial or failed write, set `TICKET-RECORD:` to `partial: <what was not written>` or `failed: <cause>` — naming which of the three — and record it per `notion-dev:issue-log` under its existing `partial:` class as `partial:ticket-record`. This ticket record is the durable one: the PR is squashable and the terminal summary scrolls away, so a write that silently half-landed here leaves the ticket asserting a definition of done nobody verified.
+
 Append a separate `## Merged` section — do **not** replace the `## Implementation` section written in Phase 6.5 (the Completeness block appended above is the only addition made to it); the two are meant to coexist as a chronological record. This step runs **after** 8.2 deliberately: the "Deferred follow-ups" field below names actual follow-up ticket IDs, which do not exist until `epic-update` (8.2) files them. An earlier revision of this command wrote this section first and left that field promising links to tickets that were created only afterward, with nothing to ever backfill them — reordering closes that gap by writing the record once, after the data it needs exists.
 
 Invoke `notion-dev:ticket-system`, `upsertSection(id, "Merged", { ... })` with these fields (order matters — the Notion adapter renders scalars as a table and narrative/lists below it, in this order):
@@ -137,8 +139,17 @@ EPIC-REPORT: <the epic-update EPIC-UPDATE: block verbatim, or `none`>
 TICKET-RECORD: <ok | partial: <what was not written> | failed: <cause>>
 CLEANUP: <ok | partial: <which step> | failed: <cause>>
 EPIC-DOC-RECORD: <ok | skipped: <why> | failed: <cause>>
+EPIC-DOC-NEXT: <EPIC_DOC_REPORT's PATH:, its outcome, and its NEXT: line verbatim; on `failed`, its CAUSE: and the exact local commit left unpushed; or `none`>
 ISSUES: <comma-separated issue-log signatures recorded in this unit, or `none`>
 ```
 
 Every key appears on every run. A key with nothing to report takes its `ok` or `none` value, never
 absence — an omitted key is indistinguishable from a step that never ran.
+
+**`EPIC-DOC-NEXT:` is the one user-visible output of this whole unit, and it only exists because
+the unit is dispatched.** `EPIC_DOC_REPORT` itself never crosses back — the caller sees this block
+and nothing else — and its `NEXT:` line is the one place a run tells the reader what to do next.
+Losing it would make the brief's own recommendation reachable only by opening the file. The
+`failed` half is load-bearing for a different reason: the caller's closeout has to force an
+unpushed local commit into `blocked:` with its cause (see the epic-doc step above), and it cannot
+name a commit it was never told about. Carry both lines verbatim rather than summarising them.

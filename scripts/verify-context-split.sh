@@ -145,6 +145,13 @@ assert_present "\`references/record.md\` defines the \`RECORD:\` output block" \
 assert_present "\`references/record.md\`'s \`RECORD:\` block carries \`EPIC-DOC-RECORD\`" \
   "$RECORD" 1 "$(total_lines "$RECORD")" '^EPIC-DOC-RECORD: '
 
+# The brief's `PATH:` / outcome / `NEXT:` line — and, on `failed`, the `CAUSE:`
+# and the unpushed local commit — are the run's only user-visible epic-doc
+# output. `EPIC_DOC_REPORT` itself never crosses the dispatch boundary, so the
+# block needs a field to carry them or they are simply lost.
+assert_present "\`references/record.md\`'s output block carries \`EPIC-DOC-NEXT\`" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" '^EPIC-DOC-NEXT: '
+
 # ---------------------------------------------------------------------------
 echo "== ticket: the record unit is dispatched, and recoverable when it is not =="
 
@@ -280,6 +287,30 @@ else
     "$RECORD" 1 "$(total_lines "$RECORD")" \
     '`DRAFT_REPORT` is the \*\*caller.s pre-dispatch draft, not its final report\*\*'
 fi
+
+# ---------------------------------------------------------------------------
+echo "== ticket.md: every key the RECORD: block defines is consumed by Phase 10 =="
+
+# (E) A key nobody reads is a tail. `TICKET-RECORD` was defined and never
+# rendered, so a partial Completeness or `## Merged` write surfaced nowhere at
+# all — in the branch that added the zero-tails phase. Pin both consumers.
+if [ -n "$PHASE10_START" ]; then
+  assert_present "Phase 10 renders \`RECORD_REPORT\`'s \`EPIC-DOC-RECORD\` and then its \`EPIC-DOC-NEXT\` field verbatim, the one place the run says what to do next" \
+    "$TICKET" "$PHASE10_START" "$(total_lines "$TICKET")" \
+    '`RECORD_REPORT`.s `EPIC-DOC-RECORD` field verbatim.*its `EPIC-DOC-NEXT` field verbatim'
+
+  assert_present "Phase 10 renders \`RECORD_REPORT\`'s \`TICKET-RECORD\` field whenever it is not \`ok\`" \
+    "$TICKET" "$PHASE10_START" "$(total_lines "$TICKET")" \
+    '`RECORD_REPORT`.s `TICKET-RECORD` field whenever it is not `ok`'
+else
+  bad "ticket.md: skipped the RECORD: key-consumption checks (Phase 10 heading missing)"
+fi
+
+# The producing side: 8.3 must actually set the key from its three separate
+# Notion writes, or Phase 10 renders a value nothing ever varies.
+assert_present "\`references/record.md\` 8.3 sets \`TICKET-RECORD:\` from what it wrote and records \`partial:ticket-record\`" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" \
+  'Set `TICKET-RECORD:` from what this subsection actually wrote.*as `partial:ticket-record`'
 
 # ---------------------------------------------------------------------------
 echo "== ticket.md: the record-section lock's failure semantics =="
