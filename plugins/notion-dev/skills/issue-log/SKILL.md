@@ -17,7 +17,11 @@ Two layers, both mandatory.
 
 **Layer 1 — the standing rule.** Anything unexpected at runtime, including conditions nobody enumerated in advance: an MCP error, an unexpected schema shape, a value guessed at, a retry, a fallback taken, an abort, a failed precondition, a warning shown to the user. Invent a signature under the grammar below.
 
-**Layer 2 — enumerated sites.** The known degradation points carry explicit signature names, listed in `references/signatures.md`. Cite the registered name so common cases group instead of fragmenting into free-form prose.
+**Layer 2 — enumerated sites.** The known degradation points carry explicit signature names,
+listed in `references/signatures.md`. Cite the registered name so common cases group instead of
+fragmenting into free-form prose. **Read `references/signatures.md` before writing the first entry
+of this run** — not on invoking this skill. It is a lookup catalogue consulted only when something
+is actually being recorded, and a run with no degradations never needs it.
 
 Write **at the moment of the deviation**, never batched to the end of a run. A run that dies loses batched entries, and those are the runs whose record matters most.
 
