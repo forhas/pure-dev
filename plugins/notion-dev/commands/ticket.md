@@ -458,7 +458,11 @@ Touch the run marker: `phase` = "Phase 8", `heartbeat` = now.
 
 **On a failed, zero-byte, or timed-out dispatch: do not retry, and do not stop.** Record `unexpected:record-unit-not-dispatched` per `notion-dev:issue-log`, then **read `references/record.md` and run it inline yourself**, exactly as `/notion-dev:finalize`'s `MERGED` post-merge recovery path does. The work is idempotent and the fallback is the path that already exists; only this run's context saving is forfeited. Say so plainly in Phase 10's report.
 
-This is the reverse of Phase 7's reasoning, deliberately: there a lost dispatch costs the merge and has no fallback, so the skill is invoked in this context. Here it costs only the saving.
+**An explicit user prohibition on this dispatch takes the same inline path as a failed one.** Read `references/record.md` and run it yourself, in the same order, with the same `FILING_DECISIONS` and the lock already held. Unlike the failure path, this is not a degradation: do **not** record `unexpected:record-unit-not-dispatched` — that signature means a dispatch that should have worked did not, and a user who declined subagents is not a degradation to log, only a preference to honor. Say plainly in Phase 10's report that the record unit ran inline at the user's instruction, so the missing context saving is legible rather than mysterious.
+
+**Only an instruction aimed at this dispatch counts as that prohibition** — the user saying not to use subagents at all, or not for this one. A standing host- or session-level default of the shape *do not dispatch subagents unless the user asks* is already satisfied by the user invoking `/notion-dev:ticket`, and does not reach this clause. Read narrowly, or the exemption swallows the rule.
+
+This is the reverse of Phase 7's reasoning, deliberately: there a lost dispatch costs the merge and has no fallback, so the skill is invoked in this context. Here — whether the dispatch fails or the user forbids it — it costs only the saving.
 
 ---
 
