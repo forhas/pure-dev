@@ -30,6 +30,7 @@ ND=plugins/notion-dev
 NI=$ND/commands/new-info.md
 ED=$ND/skills/epic-doc/SKILL.md
 TS=$ND/skills/ticket-system/SKILL.md
+TSSTY=$ND/skills/ticket-system/references/styling.md
 SIG=$ND/skills/issue-log/references/signatures.md
 README=$ND/README.md
 MANIFEST=$ND/.claude-plugin/plugin.json
@@ -172,7 +173,7 @@ fi
 echo "== ticket-system, issue-log =="
 # ---------------------------------------------------------------------------
 assert_has "ticket-system palette has the \`Notes\` row written by \`/notion-dev:new-info\`" \
-  "$TS" '| `Notes` | `/notion-dev:new-info` |'
+  "$TSSTY" '| `Notes` | `/notion-dev:new-info` |'
 assert_has "signature registry has the \`partial:new-info\` row" "$SIG" '| `partial:new-info` |'
 
 # ---------------------------------------------------------------------------

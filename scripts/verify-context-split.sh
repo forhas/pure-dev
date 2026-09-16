@@ -42,4 +42,12 @@ TSCFG=$ND/skills/ticket-system/references/config.md
 assert_present "\`references/config.md\` pins \`databaseId\` as the Notion database config key" \
   "$TSCFG" 1 "$(total_lines "$TSCFG")" '`databaseId` — the Notion database'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the styling reference is present and pinned =="
+
+TSSTY=$ND/skills/ticket-system/references/styling.md
+
+assert_present "\`references/styling.md\` pins the zone-divider rule inserting a \`divider\` block" \
+  "$TSSTY" 1 "$(total_lines "$TSSTY")" 'insert a `divider` block'
+
 exit $(( fails > 0 ))

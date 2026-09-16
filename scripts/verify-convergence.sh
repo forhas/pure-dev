@@ -71,8 +71,8 @@ for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
   assert_has "$n records DROPPED"  "$F" 'DROPPED'
   assert_has "$n passes only FILED to epic-update" "$F" 'the `FILED` list'
 done
-assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/SKILL.md" 'Absorbed'
-assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/SKILL.md" 'Dropped'
+assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/references/styling.md" 'Absorbed'
+assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/references/styling.md" 'Dropped'
 assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/commands/ticket.md" 'NOT-IN-SCOPE'
 
 echo "== Task 6: epic-update =="
