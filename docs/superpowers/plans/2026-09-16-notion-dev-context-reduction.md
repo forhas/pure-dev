@@ -166,7 +166,7 @@ git checkout -- plugins/notion-dev/skills/issue-log/SKILL.md
 
 **Files:**
 - Create: `plugins/notion-dev/skills/ticket-system/references/config.md`
-- Modify: `plugins/notion-dev/skills/ticket-system/SKILL.md` — remove lines 114–191, add the pointer
+- Modify: `plugins/notion-dev/skills/ticket-system/SKILL.md` — remove lines 114–176 and 188–191 (NOT 177–187, `## Project scoping guardrail`, which stays), add the pointer
 - Modify: `scripts/verify-runtime-feedback.sh` — re-anchor the assertions that moved
 
 **Interfaces:**
@@ -192,14 +192,18 @@ mkdir -p references
   printf 'Read before the first Notion call of any kind. Resolution rules for the configured\n'
   printf 'property names, how each Notion property type is written and read back, and how a\n'
   printf 'Notion page heading is parsed. Referenced from `../SKILL.md`.\n\n'
-  sed -n '114,191p' SKILL.md
+  sed -n '114,176p' SKILL.md      # Configuration + Property type handling
+  sed -n '188,191p' SKILL.md      # Notion page heading parsing
+  # 177-187 is `## Project scoping guardrail` -- it STAYS in SKILL.md, do not move it
 } > references/config.md
 cd -
 ```
 
 - [ ] **Step 3: Remove the region from SKILL.md and leave the pointer**
 
-Delete lines 114–191 of `SKILL.md` and insert in their place:
+Delete lines **188–191 first, then 114–176** (highest range first, so the earlier range stays
+valid). Leave 177–187, `## Project scoping guardrail`, exactly where it is. Insert in place of
+the 114–176 range:
 
 ```markdown
 ## Configuration, property types, page headings
