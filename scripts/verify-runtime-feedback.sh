@@ -434,23 +434,6 @@ if [ -f "$TS" ]; then
     "$TS" 1 "$L" 'ticket-key prefixes are$'
 fi
 
-# ---------------------------------------------------------------------------
-# ticket-system — configuration, property types, and page-heading parsing
-# ---------------------------------------------------------------------------
-# Extracted out of SKILL.md into references/config.md so the dispatcher stays a
-# pointer. The property-type rules there are load-bearing — a value written in
-# the wrong shape is accepted by the API and read back wrong — so the reference
-# file carries its own pinned mechanism rather than relying only on SKILL.md's
-# pointer text.
-TSCFG=plugins/notion-dev/skills/ticket-system/references/config.md
-if [ -f "$TSCFG" ]; then
-  L=$(total_lines "$TSCFG")
-  echo "== ticket-system — configuration reference =="
-
-  assert_present "ticket-system: \`databaseId\` is the Notion database config key" \
-    "$TSCFG" 1 "$L" '`databaseId` — the Notion database'
-fi
-
 EU=plugins/notion-dev/skills/epic-update/SKILL.md
 if [ -f "$EU" ]; then
   L=$(total_lines "$EU")

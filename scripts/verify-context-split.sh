@@ -34,4 +34,12 @@ echo "== issue-log: the signature catalogue is read on first record =="
 assert_present "issue-log defers reading \`references/signatures.md\` to the first entry of the run" \
   "$IL" 1 60 'Read .references/signatures\.md. before writing the first entry'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the configuration reference is present and pinned =="
+
+TSCFG=$ND/skills/ticket-system/references/config.md
+
+assert_present "\`references/config.md\` pins \`databaseId\` as the Notion database config key" \
+  "$TSCFG" 1 "$(total_lines "$TSCFG")" '`databaseId` — the Notion database'
+
 exit $(( fails > 0 ))
