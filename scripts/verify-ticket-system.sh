@@ -52,7 +52,7 @@ fi
 echo
 echo "== the title-prefix regex tolerates Notion's escaped brackets =="
 
-if [ -f "$TSCREATE" ]; then
+if [ -f "$TS" ]; then
   n=$(total_lines "$TSCREATE")
   # Notion-flavored markdown escapes [ and ], so the live title is `\[PDS-1\] …`.
   # The detection regex must carry the optional backslashes; without them the
