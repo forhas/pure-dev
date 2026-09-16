@@ -31,6 +31,7 @@ NT=$ND/commands/next-task.md
 TICKET=$ND/commands/ticket.md
 FINALIZE=$ND/commands/finalize.md
 TS=$ND/skills/ticket-system/SKILL.md
+TSREAD=$ND/skills/ticket-system/references/read-ops.md
 SIG=$ND/skills/issue-log/references/signatures.md
 SCHEMA=$ND/schema/notion-dev.config.schema.json
 README=$ND/README.md
@@ -240,9 +241,9 @@ fi
 # ---------------------------------------------------------------------------
 echo "== ticket-system: getEpicContext kept as the bootstrap source =="
 # ---------------------------------------------------------------------------
-assert_has "ticket-system still defines \`## getEpicContext(\`" "$TS" '## getEpicContext('
+assert_has "ticket-system still defines \`## getEpicContext(\`" "$TSREAD" '## getEpicContext('
 assert_has "ticket-system: getEpicContext superseded by \`notion-dev:knowledge\` \`retrieve\`; only \`notion-dev:epic-doc\`'\''s Notion-source bootstrap still calls it" \
-  "$TS" 'superseded by `notion-dev:knowledge` `retrieve` for every context read; only `notion-dev:epic-doc`'\''s Notion-source bootstrap still calls it.'
+  "$TSREAD" 'superseded by `notion-dev:knowledge` `retrieve` for every context read; only `notion-dev:epic-doc`'\''s Notion-source bootstrap still calls it.'
 
 # ---------------------------------------------------------------------------
 echo "== issue-log: partial:epic-doc =="

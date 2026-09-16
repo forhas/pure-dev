@@ -383,8 +383,10 @@ done
 # finds zero entries on a populated log, so epic-update's idempotency check can
 # never fire and a recovery invocation appends a duplicate entry.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
+  LREAD=$(total_lines "$TSREAD")
   echo "== ticket-system — escaped brackets bind every read-back =="
 
   assert_present "ticket-system: the escaping binds every read-back, not just the title" \
@@ -403,7 +405,7 @@ if [ -f "$TS" ]; then
     "$TS" 1 "$L" '`validation_error: No matches found`' 2
 
   assert_present "ticket-system: the Resolution Log parse tolerates the escaped bracket form" \
-    "$TS" 1 "$L" '`## Resolution Log`.*\*\*Tolerate the backslash-escaped bracket form\*\*'
+    "$TSREAD" 1 "$LREAD" '`## Resolution Log`.*\*\*Tolerate the backslash-escaped bracket form\*\*'
 
   assert_present "ticket-system: the Tasks line update matches the escaped bracket form too" \
     "$TS" 1 "$L" '\*\*When updating an existing line rather than'
@@ -419,19 +421,19 @@ if [ -f "$TS" ]; then
   echo "== ticket-system — a 404 is a workspace binding, not a wrong id =="
 
   assert_present "ticket-system: a 404 on the configured database is ambiguous among three causes" \
-    "$TS" 1 "$L" 'is ambiguous — report$'
+    "$TSREAD" 1 "$LREAD" 'is ambiguous — report$'
 
   assert_present "ticket-system: \`notion-fetch \"self\"\` names the bound workspace without proving a mismatch" \
-    "$TS" 1 "$L" '\*\*`notion-fetch "self"` names the workspace the session is bound to; it does not prove the'
+    "$TSREAD" 1 "$LREAD" '\*\*`notion-fetch "self"` names the workspace the session is bound to; it does not prove the'
 
   assert_present "ticket-system: only a read resolving the database elsewhere confirms a mismatch" \
-    "$TS" 1 "$L" 'resolves the database elsewhere confirms a workspace mismatch'
+    "$TSREAD" 1 "$LREAD" 'resolves the database elsewhere confirms a workspace mismatch'
 
   assert_present "ticket-system: the lookup is never widened to recover from it" \
-    "$TS" 1 "$L" '\*\*Never widen the lookup to recover from it\.\*\*'
+    "$TSREAD" 1 "$LREAD" '\*\*Never widen the lookup to recover from it\.\*\*'
 
   assert_present "ticket-system: ticket-key prefixes are not globally unique" \
-    "$TS" 1 "$L" 'ticket-key prefixes are$'
+    "$TSREAD" 1 "$LREAD" 'ticket-key prefixes are$'
 fi
 
 EU=plugins/notion-dev/skills/epic-update/SKILL.md
@@ -681,24 +683,26 @@ done
 # those rows carry the same pinned staticProperties, being the same project's
 # tickets — so verifying the resolved id is the only thing standing in the way.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
+  LREAD=$(total_lines "$TSREAD")
   echo "== notion-dev ticket-system — id lookup =="
 
   assert_present "ticket-system: the resolved page's idProperty is verified on every path, not only the fallback" \
-    "$TS" 1 "$L" 'on every path, not only the fallback'
+    "$TSREAD" 1 "$LREAD" 'on every path, not only the fallback'
 
   assert_present "ticket-system: a structured filter can be silently ignored rather than rejected" \
-    "$TS" 1 "$L" 'can be \*\*silently ignored\*\*'
+    "$TSREAD" 1 "$LREAD" 'can be \*\*silently ignored\*\*'
 
   assert_present "ticket-system: an ignored filter is indistinguishable from a genuine multi-hit" \
-    "$TS" 1 "$L" 'indistinguishable at the call site from a genuine multi-hit'
+    "$TSREAD" 1 "$LREAD" 'indistinguishable at the call site from a genuine multi-hit'
 
   assert_present "ticket-system: the project-scoping guardrail does not catch it" \
-    "$TS" 1 "$L" 'step 2 does not catch it'
+    "$TSREAD" 1 "$LREAD" 'step 2 does not catch it'
 
   assert_present "ticket-system: more than one row, or has_more, is never resolved by taking the first row" \
-    "$TS" 1 "$L" 'is never resolved by taking the first row'
+    "$TSREAD" 1 "$LREAD" 'is never resolved by taking the first row'
 
   # ---------------------------------------------------------------------------
   # refreshEpicTasks never creates the section it refreshes
@@ -737,16 +741,16 @@ if [ -f "$TS" ]; then
   echo "== notion-dev ticket-system — absent MCP tool family =="
 
   assert_present "ticket-system: no registered mcp__notion__ tool is a session-level connection failure" \
-    "$TS" 1 "$L" 'that is a session-level connection failure'
+    "$TSREAD" 1 "$LREAD" 'that is a session-level connection failure'
 
   assert_present "ticket-system: the user is not sent to /notion-dev:init for it" \
-    "$TS" 1 "$L" 'do not send the user to `/notion-dev:init`'
+    "$TSREAD" 1 "$LREAD" 'do not send the user to `/notion-dev:init`'
 
   assert_present "ticket-system: one command discriminates — run the server's own launch command by hand" \
-    "$TS" 1 "$L" '\*\*One command discriminates:\*\*'
+    "$TSREAD" 1 "$LREAD" '\*\*One command discriminates:\*\*'
 
   assert_present "ticket-system: a successful hand-run proxy confines the fault to this session's MCP client" \
-    "$TS" 1 "$L" "confined to this session's MCP client connect"
+    "$TSREAD" 1 "$LREAD" "confined to this session's MCP client connect"
 fi
 
 # ---------------------------------------------------------------------------

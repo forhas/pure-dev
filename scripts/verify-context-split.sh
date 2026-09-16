@@ -50,4 +50,12 @@ TSSTY=$ND/skills/ticket-system/references/styling.md
 assert_present "\`references/styling.md\` pins the zone-divider rule inserting a \`divider\` block" \
   "$TSSTY" 1 "$(total_lines "$TSSTY")" 'insert a `divider` block'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the read-operations reference is present and pinned =="
+
+TSREAD=$ND/skills/ticket-system/references/read-ops.md
+
+assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more than one row or \`has_more: true\` is never resolved by taking the first row" \
+  "$TSREAD" 1 "$(total_lines "$TSREAD")" 'more than one row, or `has_more: true`, is never resolved by taking the first row'
+
 exit $(( fails > 0 ))
