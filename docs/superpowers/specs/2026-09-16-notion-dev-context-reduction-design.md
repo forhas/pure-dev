@@ -38,11 +38,50 @@ Forking a subagent is the wrong instrument for this goal: a fork inherits the pa
 context, which doubles the cost rather than containing it. Everything below uses fresh agents with
 self-contained prompts.
 
+## What a real client run shows — and what it means for this design
+
+A `/context` reading taken after one `/notion-dev:ticket` run in BTC-Gateway (Opus 5, 1M window):
+
+| category | tokens | % |
+|---|---|---|
+| **Messages** | **774.1k** | **77.4%** |
+| MCP tools | 37.8k | 3.8% |
+| System tools | 24.2k | 2.4% |
+| Skills (index descriptions only) | 9.9k | 1.0% |
+| Memory files | 9.1k | 0.9% |
+| System prompt | 4.6k | 0.5% |
+| Custom agents | 1.5k | 0.1% |
+| | **861.1k / 1M (86%)** | |
+
+**The instruction load measured above is a subset of Messages** — a `SKILL.md` body enters the
+conversation as message content when the Skill tool loads it. So ~165k of the 774k is instructions
+and **~609k is the variable axis**: tool output, diffs, reviewer comments, file reads, verification
+output. The variable axis outweighs the instruction axis roughly 4 : 1.
+
+This design therefore saves **~48.4k of 861k, or 5.6% of the window.** It is worth doing and it is
+not sufficient. The next round of work is on the variable axis, and it needs its own measurement —
+`/context` reports one number for Messages and no breakdown.
+
+**This re-ranks the three changes.** Change 1 delegates a *phase*, so the subagent's tool output —
+Notion writes, `git` cleanup, `knowledge.py` — also stays out of the orchestrator. It is the only
+one of the three that touches both axes. Changes 2 and 3 are instruction-axis only.
+
+Two findings from the same reading that are **not** actionable in this repo, recorded so they are
+not re-derived:
+
+- `mcp__notion__notion-query-data-sources` costs **30.7k of tool schema by itself** — larger than
+  Change 1. It is not droppable: `ticket-system` documents three measured client runs where the
+  alternatives silently returned wrong rows for numeric-ID equality, and the schema is the Notion
+  MCP's own. The only lever is client-side — that session had ~14 MCP servers connected, and
+  trimming the ones a ticket run never touches is BTC-Gateway config, not plugin design.
+- The `Skills` category (9.9k) is the skill *index* — one description line per skill. It is not
+  where skill bodies are counted.
+
 ## Non-goals
 
-- **The variable axis.** Reviewer comments, diffs, fix edits across review rounds, and
-  `VERIFY_OUTPUT` are untouched by this design. On a run that compacts, that half may well be the
-  larger one. It is not measured here and is explicitly out of scope; see *Open question* below.
+- **Fixing the variable axis.** Reviewer comments, diffs, fix edits across review rounds, and
+  `VERIFY_OUTPUT` are untouched by this design. Per the measurement above they are the larger half,
+  and they are deliberately deferred to a follow-up with its own measurement — see *Next round*.
 - **Delegating Phase 7.** `review-and-merge` is the largest single file (35,302) and moving it
   behind one dispatch is the largest theoretical win. It is rejected: the skill's own text records
   measured dispatch failures on client hosts — zero-byte returns, never-returns, runs stopped only
@@ -248,14 +287,16 @@ densely cross-referenced document that exists in three copies (`plugins/quick-de
 
 ## Result
 
-| change | ~tokens |
-|---|---|
-| 1 — delegate Phases 8–10 | 30,200 |
-| 2 — split `ticket-system` | 12,600 |
-| 3 — `signatures.md` on first record | 5,671 |
-| **total** | **~48,400** |
+| change | ~tokens | axis |
+|---|---|---|
+| 1 — delegate Phases 8–10 | 30,200 | instructions **and** tool output |
+| 2 — split `ticket-system` | 12,600 | instructions |
+| 3 — `signatures.md` on first record | 5,671 | instructions |
+| **total** | **~48,400** | |
 
-Orchestrator instruction load **~165,000 → ~117,000**, a 29% reduction.
+Orchestrator instruction load **~165,000 → ~117,000**, a 29% reduction on that axis — but **5.6% of
+the 861k measured window**, since instructions are only ~21% of Messages. Change 1 additionally
+removes its phase's tool output, which the table does not attempt to size.
 
 ## Verification
 
@@ -295,9 +336,26 @@ One pull request, per `CLAUDE.md`'s convergence policy. `plugins/notion-dev` man
 once: **minor** — Change 1 is a new capability. Nothing under `.claude/skills/` is touched, and no
 `quick-dev` file changes, so the mirror is unaffected.
 
-## Open question
+## Next round — the variable axis
 
-This design addresses only the instruction axis. Before treating ~117,000 as the answer, we want a
-`/context` reading or a compaction point from a real client run, to size the variable axis —
-reviewer comments, diffs, fix edits across review rounds, `VERIFY_OUTPUT`. If that half dominates,
-the next round of work is there, not here.
+The BTC-Gateway reading establishes that ~609k of the window is tool output, not instructions, but
+`/context` gives no breakdown of it. Before designing anything there, bucket that 774k by source:
+which tool produced it, how many calls, how many tokens each.
+
+`scripts/analysis/bucket-context.py` (throwaway analysis, not part of either plugin) reads a session
+transcript and reports chars and approximate tokens per bucket — `result:<tool>`, `call:<tool>`,
+assistant text, thinking — plus the list of `Skill` invocations, which is the direct measurement of
+the instruction axis this design estimated statically. Run it against the BTC-Gateway session:
+
+```bash
+python3 scripts/analysis/bucket-context.py ~/.claude/projects/*BTC*/<session>.jsonl
+```
+
+The hypothesis it is meant to confirm or kill: **the review loop dominates.** Phase 7 applies fixes
+across N rounds, and each round reads source files, edits them, re-runs `verify.steps`, and reads
+reviewer comments — all in the orchestrator, all retained. A secondary hypothesis worth checking in
+the same output: `FLOW=feature-dev` runs should be markedly heavier than `FLOW=superpowers` ones,
+because `subagent-driven-development` delegates each build task while `feature-dev:feature-dev`
+implements in the main loop.
+
+Neither hypothesis is acted on in this design. They are what the next measurement decides.
