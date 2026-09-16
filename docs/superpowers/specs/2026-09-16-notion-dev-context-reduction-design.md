@@ -53,29 +53,50 @@ A `/context` reading taken after one `/notion-dev:ticket` run in BTC-Gateway (Op
 | Custom agents | 1.5k | 0.1% |
 | | **861.1k / 1M (86%)** | |
 
-**The instruction load measured above is a subset of Messages** — a `SKILL.md` body enters the
-conversation as message content when the Skill tool loads it. So ~165k of the 774k is instructions
-and **~609k is the variable axis**: tool output, diffs, reviewer comments, file reads, verification
-output. The variable axis outweighs the instruction axis roughly 4 : 1.
+`/context` gives one number for Messages and no breakdown, so the same run's transcript
+(`a51dfabf-0b70-4c21-9981-69c809503f0e.jsonl`, `isSidechain` false throughout — orchestrator only)
+was bucketed by source with `scripts/analysis/bucket-context.py`. **657k tokens of context-bearing
+content**, top buckets:
 
-This design therefore saves **~48.4k of 861k, or 5.6% of the window.** It is worth doing and it is
-not sufficient. The next round of work is on the variable axis, and it needs its own measurement —
-`/context` reports one number for Messages and no breakdown.
+| bucket | n | ~tokens | % | owner |
+|---|---|---|---|---|
+| `user text` — skill bodies + command expansion + reminders | 66 | 173,313 | 26.4% | **this design** |
+| `hook:PreToolUse:Agent` — `context-mode` plugin | 37 | 78,277 | 11.9% | client config |
+| `result:Bash` | 213 | 56,679 | 8.6% | the work |
+| `hook:PreToolUse:Bash` — `context-mode` plugin | 292 | 56,174 | 8.5% | client config |
+| `call:Agent` — subagent prompts written | 37 | 47,302 | 7.2% | cost of delegation |
+| `attach:prompt_snapshot` — compaction | 2 | 44,400 | 6.8% | harness |
+| `call:Bash` | 213 | 37,830 | 5.8% | the work |
+| `call:Write` | 8 | 34,417 | 5.2% | the work |
+| `attach:deferred_tools_record` | 1 | 23,613 | 3.6% | client config |
+| `attach:output_style` | 322 | 12,638 | 1.9% | harness |
+| `result:Agent` — everything 37 subagents returned | 37 | 10,471 | 1.6% | — |
 
-**This re-ranks the three changes.** Change 1 delegates a *phase*, so the subagent's tool output —
-Notion writes, `git` cleanup, `knowledge.py` — also stays out of the orchestrator. It is the only
-one of the three that touches both axes. Changes 2 and 3 are instruction-axis only.
+Three conclusions.
 
-Two findings from the same reading that are **not** actionable in this repo, recorded so they are
-not re-derived:
+**1. The instruction axis is the largest single bucket, and the static estimate above was right.**
+`user text` (173,313) is where `SKILL.md` bodies and the `/notion-dev:ticket` expansion land — within
+5% of the 165k estimated by summing the files. This design targets ~48.4k of it, **7.4% of the
+run**.
 
-- `mcp__notion__notion-query-data-sources` costs **30.7k of tool schema by itself** — larger than
-  Change 1. It is not droppable: `ticket-system` documents three measured client runs where the
-  alternatives silently returned wrong rows for numeric-ID equality, and the schema is the Notion
-  MCP's own. The only lever is client-side — that session had ~14 MCP servers connected, and
-  trimming the ones a ticket run never touches is BTC-Gateway config, not plugin design.
-- The `Skills` category (9.9k) is the skill *index* — one description line per skill. It is not
-  where skill bodies are counted.
+**2. The largest non-work consumer is a client plugin, not notion-dev.** `context-mode`'s
+`PreToolUse` hooks fired **329 times** for **~140k tokens (21.3%)** — a reminder to use
+context-saving tools, injected before every Bash call and every Agent dispatch, the Agent one
+averaging 2,100 tokens per dispatch. Removing or scoping that plugin in the client is one config
+change worth ~3× this entire design, and it costs notion-dev nothing. Recorded here because it is
+the first thing to do and the last thing this repo can do anything about. `attach:deferred_tools_record`
+(23.6k) is the same kind of item: ~14 MCP servers connected, most untouched by a ticket run.
+
+**3. Delegation works, and it is not free.** 37 subagents returned **10,471 tokens in total** —
+their tool output is genuinely contained, which is the direct evidence for Change 1. But writing
+their prompts cost **47,302**, ~1,280 tokens per dispatch. Change 1's prompt carries
+`REVIEW_REPORT`, `COMPLETENESS_REPORT` and `FILING_DECISIONS`, so **budget 3–6k against its ~30k
+saving**; it remains strongly net positive, and the plan must not assume the dispatch is free.
+
+One earlier finding stands, and is not actionable here:
+`mcp__notion__notion-query-data-sources` costs 30.7k of tool schema by itself and is not droppable —
+`ticket-system` documents three measured client runs where the alternatives silently returned wrong
+rows for numeric-ID equality, and the schema is the Notion MCP's own.
 
 ## Non-goals
 
@@ -294,9 +315,13 @@ densely cross-referenced document that exists in three copies (`plugins/quick-de
 | 3 — `signatures.md` on first record | 5,671 | instructions |
 | **total** | **~48,400** | |
 
-Orchestrator instruction load **~165,000 → ~117,000**, a 29% reduction on that axis — but **5.6% of
-the 861k measured window**, since instructions are only ~21% of Messages. Change 1 additionally
-removes its phase's tool output, which the table does not attempt to size.
+Orchestrator instruction load **~165,000 → ~117,000**, a 29% reduction on that axis and **7.4% of
+the measured 657k run**. Change 1 additionally removes its phase's tool output and pays 3–6k for its
+dispatch prompt; both are excluded from the table.
+
+For scale, the client-side actions that are not this repo's to make — removing or scoping
+`context-mode` (~140k) and trimming unused MCP servers (~24k) — are together **~3.4×** this design.
+They should be done first; they are independent of it and cost nothing here.
 
 ## Verification
 
@@ -336,26 +361,29 @@ One pull request, per `CLAUDE.md`'s convergence policy. `plugins/notion-dev` man
 once: **minor** — Change 1 is a new capability. Nothing under `.claude/skills/` is touched, and no
 `quick-dev` file changes, so the mirror is unaffected.
 
-## Next round — the variable axis
+## Order of work
 
-The BTC-Gateway reading establishes that ~609k of the window is tool output, not instructions, but
-`/context` gives no breakdown of it. Before designing anything there, bucket that 774k by source:
-which tool produced it, how many calls, how many tokens each.
+1. **Client config, first and outside this repo** — remove or scope `context-mode` in BTC-Gateway
+   (~140k) and disconnect MCP servers a ticket run never touches (~24k). Independent of everything
+   below, and larger than all of it.
+2. **This design** — changes 1–3, ~48.4k.
+3. **Re-measure** with `scripts/analysis/bucket-context.py` on a fresh run, and decide whether a
+   further round is warranted from the new buckets rather than from a hypothesis.
 
-`scripts/analysis/bucket-context.py` (throwaway analysis, not part of either plugin) reads a session
-transcript and reports chars and approximate tokens per bucket — `result:<tool>`, `call:<tool>`,
-assistant text, thinking — plus the list of `Skill` invocations, which is the direct measurement of
-the instruction axis this design estimated statically. Run it against the BTC-Gateway session:
+An earlier draft of this spec predicted that the Phase 7 review loop would dominate the variable
+axis. The measurement does not support it: `result:Bash` and `call:Bash` together are 94.5k (14.4%)
+across 213 calls spanning the whole run, not a review-loop concentration. That prediction is
+recorded as refuted so it is not re-derived.
+
+## Re-running the measurement
 
 ```bash
-python3 scripts/analysis/bucket-context.py ~/.claude/projects/*BTC*/<session>.jsonl
+python3 scripts/analysis/bucket-context.py <path-to-session>.jsonl
 ```
 
-The hypothesis it is meant to confirm or kill: **the review loop dominates.** Phase 7 applies fixes
-across N rounds, and each round reads source files, edits them, re-runs `verify.steps`, and reads
-reviewer comments — all in the orchestrator, all retained. A secondary hypothesis worth checking in
-the same output: `FLOW=feature-dev` runs should be markedly heavier than `FLOW=superpowers` ones,
-because `subagent-driven-development` delegates each build task while `feature-dev:feature-dev`
-implements in the main loop.
-
-Neither hypothesis is acted on in this design. They are what the next measurement decides.
+Transcripts live in `~/.claude/projects/<escaped-cwd>/<session-uuid>.jsonl`; from WSL, a
+Windows-side client is reachable at `/mnt/c/Users/<user>/.claude/projects/...`. The script counts
+assistant turns, user turns and `attachment` records (where hook output and listings land), excludes
+transcript bookkeeping, and reports whether any subagent (`isSidechain`) records are mixed in — a
+transcript carrying them is not an orchestrator-only measurement and its buckets must not be read as
+one.
