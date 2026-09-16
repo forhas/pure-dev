@@ -1,6 +1,6 @@
 # /notion-dev:ticket — the record unit (Phases 8-10)
 
-Read by the agent dispatched from `../ticket.md` Phase 8, or by the orchestrator
+Read by the agent dispatched from `../commands/ticket.md` Phase 8, or by the orchestrator
 itself on the inline-recovery path when that dispatch fails.
 
 The caller has already resolved the interactive filing gate (`FILING_DECISIONS`),

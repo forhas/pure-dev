@@ -32,7 +32,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # The two flows that own a worktree and clean it up.
 TICKET=plugins/notion-dev/commands/ticket.md
-RECORD=plugins/notion-dev/commands/references/record.md
+RECORD=plugins/notion-dev/references/record.md
 FINALIZE=plugins/notion-dev/commands/finalize.md
 DEVELOP=plugins/quick-dev/skills/develop/SKILL.md
 

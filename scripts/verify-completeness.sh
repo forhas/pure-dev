@@ -153,7 +153,7 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # which moved into references/record.md with the rest of the record unit (Task 8).
   RC=$C; rn=$n
   if [ "$C" = "$ND/commands/ticket.md" ]; then
-    RC=$ND/commands/references/record.md; rn=${RC#plugins/}
+    RC=$ND/references/record.md; rn=${RC#plugins/}
   fi
   assert_has "$rn ticks the acceptance criteria"   "$RC" 'refreshAcceptanceCriteria(id, verdicts)'
   assert_has "$rn appends (never upserts) the Completeness block" \
@@ -175,7 +175,7 @@ for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/refe
 done
 # ticket.md's ledger append moved into references/record.md with the rest of the
 # record unit (Task 8).
-assert_has "record.md writes completeness counts"   "$ND/commands/references/record.md" 'completeness_criteria'
+assert_has "record.md writes completeness counts"   "$ND/references/record.md" 'completeness_criteria'
 assert_has "finalize.md writes completeness counts" "$ND/commands/finalize.md"    'completeness_criteria'
 assert_has "develop writes completeness counts"     "$QD/skills/develop/SKILL.md" 'completeness_criteria'
 assert_has "develop's ledger site distinguishes a real completeness 0 from the null case" "$QD/skills/develop/SKILL.md" 'a check that ran and found nothing, not one that never ran'
@@ -183,11 +183,11 @@ assert_has "develop's ledger site distinguishes a real completeness 0 from the n
 # and 3 without a criteria file, so CLAIMS/CAVEATS/TRIAGE can carry real findings.
 # ticket.md's 8.3 (the paragraph this pins) moved into references/record.md with the
 # rest of the record unit (Task 8); finalize.md carries its own copy unmoved.
-for C in $ND/commands/references/record.md $ND/commands/finalize.md; do
+for C in $ND/references/record.md $ND/commands/finalize.md; do
   n=${C#plugins/}
   assert_has "$n records claims/caveats even with no criteria file" "$C" 'An unset `CRITERIA_FILE` is not that case'
 done
-assert_has "record.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/commands/references/record.md"   'a check that ran and found nothing, not one that never ran'
+assert_has "record.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/references/record.md"   'a check that ran and found nothing, not one that never ran'
 assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/commands/finalize.md" 'a check that ran and found nothing, not one that never ran'
 
 echo "== Task 6b: the spec documents what the implementation does =="

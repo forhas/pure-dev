@@ -145,7 +145,7 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # rest of the record unit (Task 8). finalize.md carries its own copy unmoved.
   RCMD=$CMD; rn=$n
   if [ "$CMD" = "$ND/commands/ticket.md" ]; then
-    RCMD=$ND/commands/references/record.md; rn=${RCMD#plugins/}
+    RCMD=$ND/references/record.md; rn=${RCMD#plugins/}
   fi
   # The terminal summary scrolls away. The ticket's `## Merged` record is the
   # shared durable one, and the Completeness record covers acceptance criteria

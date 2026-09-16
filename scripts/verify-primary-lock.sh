@@ -16,7 +16,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
-RECORD=$ND/commands/references/record.md
+RECORD=$ND/references/record.md
 FINALIZE=$ND/commands/finalize.md
 NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md

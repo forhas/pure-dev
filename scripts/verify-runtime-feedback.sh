@@ -455,7 +455,7 @@ fi
 echo "== worktree provisioning =="
 
 T=plugins/notion-dev/commands/ticket.md
-R=plugins/notion-dev/commands/references/record.md
+R=plugins/notion-dev/references/record.md
 if [ -f "$T" ]; then
   L=$(total_lines "$T")
 
