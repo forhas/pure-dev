@@ -214,6 +214,74 @@ assert_order "ticket.md: the synchronous dispatch precedes the epic-doc line's r
   "epic-doc field read" 'RECORD_REPORT.*EPIC-DOC-RECORD.*field verbatim'
 
 # ---------------------------------------------------------------------------
+echo "== ticket.md: the dispatch prompt supplies everything references/record.md consumes =="
+
+# (D) The gap that let two defects ship: nothing compared the dispatch prompt's
+# payload list against what the dispatched unit actually reads. `record.md` was
+# given a `DRAFT_REPORT` that could not exist, and never given
+# `PLAN_REVIEW_REPORT` — whose absence makes the unit write `null` into four
+# ledger metrics that reserve `null` for "no review signal", i.e. a silent
+# falsehood rather than a visible failure.
+#
+# Mechanical and fail-closed: every backticked ALL-CAPS name `record.md` cites
+# must appear in the dispatch prompt's list, unless it is declared below as a
+# name the unit produces or reads out of another block rather than receiving.
+# A new payload name added to `record.md` is caught by default.
+DISPATCH_LINE=$(find_line "$TICKET" 1 "$(total_lines "$TICKET")" 'Dispatch one .general-purpose. agent, synchronously')
+if [ -z "$DISPATCH_LINE" ]; then
+  bad "ticket.md: found the dispatch sentence, to check its payload list against \`references/record.md\`"
+else
+  # Declared non-payload names. Each is either produced inside the unit or a
+  # field name of a block the unit is given, NOT something the caller passes.
+  # This is not an allowlist that only grants permission: every entry is
+  # re-checked below to still occur in record.md, so a stale one goes red.
+  NOT_PAYLOAD="ABSORBED ALREADY_FILED BLOCKED CAVEATS CLAIMS DROPPED EPIC_DOC_REPORT EPIC_REPORT FAILED FILED MERGED NONE PROVENANCE TRIAGE VERDICTS"
+
+  for name in $NOT_PAYLOAD; do
+    if ! grep -q "\`\$\?${name}\`" "$RECORD"; then
+      bad "the declared non-payload name \`$name\` is still cited in \`references/record.md\` (stale declaration — re-check whether it is now a payload name)"
+    fi
+  done
+
+  missing=""
+  checked=0
+  for name in $(grep -o '`\$\?[A-Z][A-Z0-9_]\{3,\}`' "$RECORD" | tr -d '`$' | sort -u); do
+    case " $NOT_PAYLOAD " in *" $name "*) continue ;; esac
+    checked=$((checked + 1))
+    sed -n "${DISPATCH_LINE}p" "$TICKET" | grep -q "$name" || missing="$missing $name"
+  done
+
+  if [ -n "$missing" ]; then
+    bad "every name \`references/record.md\` consumes is carried by the dispatch prompt (missing:$missing)"
+  else
+    ok "all $checked payload names \`references/record.md\` consumes are carried by the dispatch prompt"
+  fi
+
+  # Two inputs the sweep above cannot see: `<merge-commit>` is placeholder-shaped,
+  # and the ticket body has no name at all. Both are hard requirements of the
+  # unit — the merge SHA gates Phase 9's `merge-base --is-ancestor` assertion and
+  # fills 8.3's `Merge commit` field; the body is half the post-merge hook contract.
+  assert_present "the dispatch prompt carries \`<merge-commit>\`, which the unit hard-gates on" \
+    "$TICKET" "$DISPATCH_LINE" "$DISPATCH_LINE" \
+    '`<merge-commit>` \(the SHA `notion-dev:review-and-merge` returned\)'
+
+  assert_present "the dispatch prompt carries the ticket body, half the post-merge hook contract" \
+    "$TICKET" "$DISPATCH_LINE" "$DISPATCH_LINE" \
+    'the ticket id, the ticket body, PR number and URL'
+
+  # The `DRAFT_REPORT` the unit is handed is the caller's *pre-dispatch* draft.
+  # A "full draft report" here would be unbuildable: its own lines read the
+  # dispatch's return value. This is the sentence that makes it buildable.
+  assert_present "Phase 8 composes the pre-dispatch draft as every Phase 10 line that does not read \`RECORD_REPORT\`" \
+    "$TICKET" "$PHASE8_START" "$(total_lines "$TICKET")" \
+    'Phase 10.s summary list below, minus every line that reads `RECORD_REPORT`'
+
+  assert_present "\`references/record.md\` states that it composes nothing and that \`DRAFT_REPORT\` is the caller's pre-dispatch draft" \
+    "$RECORD" 1 "$(total_lines "$RECORD")" \
+    '`DRAFT_REPORT` is the \*\*caller.s pre-dispatch draft, not its final report\*\*'
+fi
+
+# ---------------------------------------------------------------------------
 echo "== ticket.md: the record-section lock's failure semantics =="
 
 # (B) Never guarded before this plan: the Exit-1 stop path, the stale-lock
