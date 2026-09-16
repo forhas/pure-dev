@@ -29,7 +29,6 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 ND=plugins/notion-dev
 NI=$ND/commands/new-info.md
 ED=$ND/skills/epic-doc/SKILL.md
-TS=$ND/skills/ticket-system/SKILL.md
 TSSTY=$ND/skills/ticket-system/references/styling.md
 SIG=$ND/skills/issue-log/references/signatures.md
 README=$ND/README.md

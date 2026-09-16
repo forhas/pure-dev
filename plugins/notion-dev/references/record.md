@@ -1,7 +1,9 @@
 # /notion-dev:ticket — the record unit (Phases 8-10)
 
-Read by the agent dispatched from `../commands/ticket.md` Phase 8, or by the orchestrator
-itself on the inline-recovery path when that dispatch fails.
+Read before recording the merge. Phase 8's ticket and epic writes, Phase 9's cleanup and
+post-merge hooks, and Phase 10's ledger, issue-log sweep and epic-doc record. Referenced from
+`../commands/ticket.md` — by the agent it dispatches at Phase 8, or by the orchestrator itself
+on the inline-recovery path when that dispatch fails or the user declines it.
 
 The caller has already resolved the interactive filing gate (`FILING_DECISIONS`),
 taken the primary lock (`LOCK_HELD: true`), and left the worktree (`cd $REPO_ROOT`).
@@ -13,6 +15,8 @@ lock — the caller does that after this unit returns.
 `updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.
 
 The invocations below pass `LOCK_HELD` so none of them takes it again.
+
+### 8.2 Update the epic
 
 Invoke the `notion-dev:epic-update` skill via the Skill tool with args `<id>`, plus `--non-interactive` when set. Pass `REVIEW_REPORT` (Phase 7), `$REPO_ROOT` and `LOCK_HELD` as context. Pass **only the `FILED` list** from `REVIEW_REPORT` (Phase 7 states the contract in full). `ABSORBED` items are already merged, `DROPPED` items are already decided, and `BLOCKED` items are externally impossible for anyone — filing any of them recreates the unbounded ticket growth this split exists to stop.
 

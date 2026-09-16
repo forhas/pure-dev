@@ -140,6 +140,11 @@ assert_present "\`references/record.md\` opens by stating the caller already too
   "$RECORD" 1 "$(total_lines "$RECORD")" 'already resolved the interactive filing gate'
 assert_present "\`references/record.md\` tells the reader not to take the lock, ask the user, or release the lock" \
   "$RECORD" 1 "$(total_lines "$RECORD")" 'Do not take the lock again, do not ask the user anything, and do not release the'
+# The move dropped this heading while four cross-references inside the same
+# file kept citing "8.2" as a locatable unit.
+assert_present "\`references/record.md\` carries the \`### 8.2 Update the epic\` heading its own cross-references locate" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" '^### 8\.2 Update the epic$'
+
 assert_present "\`references/record.md\` defines the \`RECORD:\` output block" \
   "$RECORD" 1 "$(total_lines "$RECORD")" '^RECORD:$'
 assert_present "\`references/record.md\`'s \`RECORD:\` block carries \`EPIC-DOC-RECORD\`" \
@@ -177,9 +182,6 @@ assert_present "a lost dispatch records \`unexpected:record-unit-not-dispatched\
 assert_present "the fallback runs \`\${CLAUDE_PLUGIN_ROOT}/references/record.md\` inline rather than stopping" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
   '\*\*read .\${CLAUDE_PLUGIN_ROOT}/references/record\.md. and run it inline yourself\*\*'
-
-assert_present "\`references/record.md\` returns a \`RECORD:\` block" \
-  "$RECORD" 1 "$(total_lines "$RECORD")" '^RECORD:$'
 
 assert_present "\`references/record.md\` is told the lock is already held" \
   "$RECORD" 1 "$(total_lines "$RECORD")" 'taken the primary lock.*LOCK_HELD: true'
