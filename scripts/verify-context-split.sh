@@ -58,4 +58,12 @@ TSREAD=$ND/skills/ticket-system/references/read-ops.md
 assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more than one row or \`has_more: true\` is never resolved by taking the first row" \
   "$TSREAD" 1 "$(total_lines "$TSREAD")" 'more than one row, or `has_more: true`, is never resolved by taking the first row'
 
+# ---------------------------------------------------------------------------
+echo "== ticket-system: the write-operations reference is present and pinned =="
+
+TSWRITE=$ND/skills/ticket-system/references/write-ops.md
+
+assert_present "\`references/write-ops.md\` pins the append-only counterpart to \`upsertSection\`, so an append never clobbers a section another phase wrote" \
+  "$TSWRITE" 1 "$(total_lines "$TSWRITE")" '\*\*append-only\*\* counterpart to `upsertSection`'
+
 exit $(( fails > 0 ))

@@ -28,8 +28,9 @@ assert_has   "spec status names its plan"  "$SPEC" '../plans/2026-08-28-complete
 
 echo "== Task 1: ticket-system write path =="
 TS=$ND/skills/ticket-system/SKILL.md
+TSWRITE=$ND/skills/ticket-system/references/write-ops.md
 assert_has "ticket-system tables refreshAcceptanceCriteria" "$TS" '| `refreshAcceptanceCriteria` |'
-assert_has "refreshAcceptanceCriteria has its own section"  "$TS" '## refreshAcceptanceCriteria(id, verdicts)'
+assert_has "refreshAcceptanceCriteria has its own section"  "$TSWRITE" '## refreshAcceptanceCriteria(id, verdicts)'
 assert_has "it renders from the criteria file"              "$TS" 'never from the verifier'
 assert_has "it owns the Acceptance Criteria format"         "$TS" 'single owner of the `Acceptance Criteria` section'
 
