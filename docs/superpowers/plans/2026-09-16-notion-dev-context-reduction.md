@@ -2,13 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cut ~48.4k tokens of instruction text out of the `/notion-dev:ticket` orchestrator's context by delegating Phases 8–10 to a subagent and splitting two oversized skills behind progressive disclosure.
+**Goal:** Cut ~31.7k tokens of instruction text out of the `/notion-dev:ticket` orchestrator's context by delegating Phases 8–10 to a subagent and splitting two oversized skills behind progressive disclosure.
 
-**Architecture:** Three independent changes to markdown instruction files. Nothing here executes. (1) `/notion-dev:ticket` Phases 8–10 move into `commands/references/record.md` and are run by one dispatched `general-purpose` agent, with inline recovery when the dispatch fails. (2) `skills/ticket-system/SKILL.md` becomes a ~4k dispatcher plus five operation-clustered references, read on demand. (3) `issue-log`'s `signatures.md` is read on first record rather than up front.
+**Architecture:** Three independent changes to markdown instruction files. Nothing here executes. (1) `/notion-dev:ticket` Phases 8–10 move into `references/record.md` and are run by one dispatched `general-purpose` agent, with inline recovery when the dispatch fails. (2) `skills/ticket-system/SKILL.md` becomes a ~4k dispatcher plus five operation-clustered references, read on demand. (3) `issue-log`'s `signatures.md` is read on first record rather than up front.
 
 **Tech Stack:** Markdown instruction files; `bash` verification harnesses under `scripts/verify-*.sh` using only `scripts/lib/assert.sh`.
 
 **Spec:** `docs/superpowers/specs/2026-09-16-notion-dev-context-reduction-design.md`
+
+**Correction (2026-09-16, post-implementation):** this plan was written against the spec's
+original **~48.4k** estimate, which was wrong. It counted `knowledge` (6,521) and `epic-doc`
+(4,345) as leaving the orchestrator when Phases 1 and 2 already load both — a skill loads whole,
+so delegating a later phase that uses it saves nothing — and it over-estimated the prose Change 1
+and Change 2 would actually shed. The measured figure is **~31.7k**, ~4.8% of the 657k client run
+rather than 7.4%. The spec's Result table and Change 1–3 sections carry the corrected numbers and
+the reasoning; the task list below is unaffected, since no task's work depended on the estimate.
+`references/record.md` also sits at the plugin root rather than under `commands/`, where every
+`.md` registers as a slash command.
 
 ## Global Constraints
 
@@ -33,7 +43,7 @@
 - `plugins/notion-dev/skills/ticket-system/references/read-ops.md` — `fetchTicket`, `findEpics`, `getEpicContext`, `listEpicChildren`
 - `plugins/notion-dev/skills/ticket-system/references/write-ops.md` — `updateTicket`, `updateStatus`, `setPullRequest`, `postComment`, `upsertSection`, `refreshAcceptanceCriteria`, `appendToSection`
 - `plugins/notion-dev/skills/ticket-system/references/create-ops.md` — title prefix, epic containers, `resolveAssignee`, `createTicket`, `setDependencies`, `getSelectOptions`, `addSelectOption`, `createEpic`, `setParent`, `refreshEpicTasks`
-- `plugins/notion-dev/commands/references/record.md` — `/notion-dev:ticket` Phases 8, 9 and 10's record step
+- `plugins/notion-dev/references/record.md` — `/notion-dev:ticket` Phases 8, 9 and 10's record step
 - `scripts/verify-context-split.sh` — standing invariants for all three changes
 
 **Modified:**
@@ -101,7 +111,7 @@ ND=plugins/notion-dev
 IL=$ND/skills/issue-log/SKILL.md
 TS=$ND/skills/ticket-system/SKILL.md
 TICKET=$ND/commands/ticket.md
-RECORD=$ND/commands/references/record.md
+RECORD=$ND/references/record.md
 
 # ---------------------------------------------------------------------------
 echo "== issue-log: the signature catalogue is read on first record =="
@@ -636,18 +646,18 @@ git checkout -- plugins/notion-dev/skills/ticket-system/SKILL.md
 
 ---
 
-## Task 8: extract Phases 8–10 into `commands/references/record.md`
+## Task 8: extract Phases 8–10 into `references/record.md`
 
 Pure move, no behaviour change yet. Task 9 adds the dispatch.
 
 **Files:**
-- Create: `plugins/notion-dev/commands/references/record.md`
+- Create: `plugins/notion-dev/references/record.md`
 - Modify: `plugins/notion-dev/commands/ticket.md` — Phases 8, 9, and Phase 10's `record` step
 - Modify: `scripts/verify-post-merge-ordering.sh`, `scripts/verify-knowledge.sh`, `scripts/verify-epic-doc.sh`, `scripts/verify-primary-lock.sh` (any assertion whose region covers `ticket.md` lines 443–596)
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks — independent of the `ticket-system` split.
-- Produces: `commands/references/record.md`, whose contents Task 9's dispatch prompt names by path.
+- Produces: `references/record.md`, whose contents Task 9's dispatch prompt names by path.
 
 - [ ] **Step 1: Find every assertion anchored inside the region**
 
@@ -722,7 +732,7 @@ for h in scripts/verify-*.sh; do "$h" >/dev/null 2>&1 || echo "FAILED: $h"; done
 
 ```bash
 git add plugins/notion-dev/commands scripts/verify-*.sh
-git commit -m "refactor(notion-dev): move ticket Phases 8-10 into commands/references/record.md"
+git commit -m "refactor(notion-dev): move ticket Phases 8-10 into references/record.md"
 ```
 
 - [ ] **Step 7: Mutation-test one re-anchored assertion**
@@ -738,7 +748,7 @@ Break a line in `references/record.md` that a re-anchored assertion pins, confir
 - Modify: `plugins/notion-dev/skills/issue-log/references/signatures.md` — register the new signature
 
 **Interfaces:**
-- Consumes: `commands/references/record.md` and its `RECORD:` output block from Task 8.
+- Consumes: `references/record.md` and its `RECORD:` output block from Task 8.
 - Produces: `RECORD_REPORT`, read by Phase 10's report. Task 10 asserts the dispatch site's three required elements.
 
 - [ ] **Step 1: Register the failure signature**
@@ -746,7 +756,7 @@ Break a line in `references/record.md` that a re-anchored assertion pins, confir
 Add a row to `plugins/notion-dev/skills/issue-log/references/signatures.md`, matching the existing table's column shape:
 
 ```markdown
-| `unexpected:record-unit-not-dispatched` | unexpected | `/notion-dev:ticket` | the Phase 8 record unit could not be dispatched, returned zero bytes, or exceeded the ~15-minute bound. The orchestrator ran `commands/references/record.md` inline instead, so the work is done and only the context saving was lost — never a verdict about the record itself | once/run |
+| `unexpected:record-unit-not-dispatched` | unexpected | `/notion-dev:ticket` | the Phase 8 record unit could not be dispatched, returned zero bytes, or exceeded the ~15-minute bound. The orchestrator ran `references/record.md` inline instead, so the work is done and only the context saving was lost — never a verdict about the record itself | once/run |
 ```
 
 - [ ] **Step 2: Replace Phase 8's placeholder with the dispatch**
@@ -920,7 +930,7 @@ Current base is `0.27.1`. Set `0.28.0` — Task 9 adds a capability. Confirm str
 
 - [ ] **Step 2: Update the README**
 
-The skills tree comment for `ticket-system` gains its references; add `commands/references/record.md`. Keep it to the structure block — this change alters no user-facing command surface.
+The skills tree comment for `ticket-system` gains its references; add `references/record.md`. Keep it to the structure block — this change alters no user-facing command surface.
 
 - [ ] **Step 3: Measure the result against the spec's claim**
 
@@ -954,7 +964,7 @@ git commit -m "chore(notion-dev): 0.28.0 — context split"
 git push -u origin docs/notion-dev-context-reduction
 ```
 
-PR body must state: the measured before/after instruction load; that Change 1 pays 3–6k for its dispatch prompt against ~30k saved; that the client-side `context-mode` and MCP-trimming items (~164k, ~3.4× this PR) are **not** in scope and are the user's to do; and the two rejected options with the measurements that killed them, so a reviewer does not re-raise them.
+PR body must state: the measured before/after instruction load; that Change 1 pays 3–6k for its dispatch prompt against ~16.6k saved; that the client-side `context-mode` and MCP-trimming items (~164k, ~5.2× this PR) are **not** in scope and are the user's to do; and the two rejected options with the measurements that killed them, so a reviewer does not re-raise them.
 
 - [ ] **Step 6: Drive it to merge**
 

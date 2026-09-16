@@ -76,8 +76,19 @@ Three conclusions.
 
 **1. The instruction axis is the largest single bucket, and the static estimate above was right.**
 `user text` (173,313) is where `SKILL.md` bodies and the `/notion-dev:ticket` expansion land — within
-5% of the 165k estimated by summing the files. This design targets ~48.4k of it, **7.4% of the
-run**.
+5% of the 165k estimated by summing the files. This design targets **~31.7k** of it, **~4.8% of
+the run**.
+
+**The ~48.4k first written here was wrong, and the way it was wrong is the reusable lesson.** It
+was computed from what the *delegated unit uses* rather than from what the *orchestrator stops
+loading*, and those differ whenever an earlier phase already loaded the same skill: a skill enters
+the context whole at its first invocation, so moving a later phase that happens to use
+`knowledge` (Phase 1 already invoked it) or `epic-doc` (Phase 2 already invoked it) saves nothing
+at all — 10,866 of the claimed 30,200. The rest was optimism about the prose: `ticket.md` shed
+4,853 rather than 7,561, because the dispatch instruction, its payload list and the whole
+inline-fallback path stay in the orchestrator; and every one of Change 2's five files landed above
+its per-file estimate. Estimate the next one from the orchestrator's own file list before and
+after, never from the size of what was moved.
 
 **2. The largest non-work consumer is a client plugin, not notion-dev.** `context-mode`'s
 `PreToolUse` hooks fired **329 times** for **~140k tokens (21.3%)** — a reminder to use
@@ -90,8 +101,11 @@ the first thing to do and the last thing this repo can do anything about. `attac
 **3. Delegation works, and it is not free.** 37 subagents returned **10,471 tokens in total** —
 their tool output is genuinely contained, which is the direct evidence for Change 1. But writing
 their prompts cost **47,302**, ~1,280 tokens per dispatch. Change 1's prompt carries
-`REVIEW_REPORT`, `COMPLETENESS_REPORT` and `FILING_DECISIONS`, so **budget 3–6k against its ~30k
-saving**; it remains strongly net positive, and the plan must not assume the dispatch is free.
+`REVIEW_REPORT`, `COMPLETENESS_REPORT`, `FILING_DECISIONS` and — once the unit's real inputs were
+accounted for — `PLAN_REVIEW_REPORT`, `KNOWLEDGE_CONTEXT`, the ticket body and the caller's
+pre-dispatch draft, so **budget 6k as a floor against its ~16,641 saving**; it remains net
+positive, but by a narrower margin than the first draft of this section assumed, and the plan must
+not assume the dispatch is free.
 
 One earlier finding stands, and is not actionable here:
 `mcp__notion__notion-query-data-sources` costs 30.7k of tool schema by itself and is not droppable —
@@ -125,7 +139,7 @@ already architected for phase-level delegation; it simply is not using it.
 
 ## Change 1 — delegate Phases 8–10 (the record unit)
 
-**~30,200 tokens.** The largest single win, and the one with a pre-existing degradation path.
+**~16,600 tokens.** The largest single win, and the one with a pre-existing degradation path.
 
 ### Why this unit
 
@@ -144,12 +158,16 @@ returns zero bytes or never returns, the orchestrator runs the recovery inline, 
 | | ~tokens |
 |---|---|
 | `epic-update/SKILL.md` | 11,788 |
-| `knowledge/SKILL.md` | 6,521 |
-| `epic-doc` `record` + `note` write paths | 4,345 |
-| `ticket.md` Phases 8–10 prose → `commands/references/record.md` | 7,561 |
-| **subtotal** | **~30,200** |
+| `ticket.md` Phases 8–10 prose → `references/record.md` | 4,853 |
+| **subtotal** | **~16,641** |
 
-`epic-doc`'s read path stays in the orchestrator — Phase 1 needs it.
+`epic-update` is the only skill this change actually unloads: it is invoked nowhere else in the
+run. **`knowledge` (6,521) and `epic-doc` (4,345) are not savings and an earlier draft of this
+table wrongly counted them.** Phase 1 invokes `knowledge` `retrieve` and Phase 2 invokes
+`epic-doc` `refresh`, and a skill loads **whole** — there is no partial load of a write path — so
+both files are already in the orchestrator's context before Phase 8 is reached, whoever runs it.
+`ticket.md`'s own line is the measured 4,853, not the estimated 7,561: Phase 8's dispatch
+instruction, its payload list and the entire inline-fallback path stay behind.
 
 ### The delegation boundary
 
@@ -224,7 +242,7 @@ already exists.
 
 ## Change 2 — split `ticket-system`
 
-**~12,600 tokens** on the `/notion-dev:ticket` path.
+**~9,473 tokens** on the `/notion-dev:ticket` path (measured after the split; the ~12,600 first estimated here assumed a ~4,000-token dispatcher and five smaller references, and every one of the six landed above its estimate).
 
 `skills/ticket-system/SKILL.md` is 28,405 tokens documenting 19 operations plus a write-path styling
 block. `/notion-dev:ticket` calls nine of them and never creates a ticket or an epic.
@@ -271,7 +289,13 @@ calls an unplanned operation.
 
 ## Change 3 — `issue-log`'s `signatures.md` read on first record
 
-**~5,671 tokens** on a clean run.
+**~5,610 tokens on a clean run — and the saving is conditional, not flat.**
+`signatures.md` (5,763 on this branch, 5,671 on `main` plus a new registry row) is skipped only
+on a run that records **nothing**, while `issue-log` entries are written throughout Phases 1–7 in
+the orchestrator itself. Any run logging a single degradation pays the file in full, and pays it
+**+92 against `main`**, on top of the +61 `issue-log/SKILL.md` grew to state the deferral. So the
+range is **−153 in the worst case to +5,610 in the best**, not a flat +5,671; it is a bet that
+most runs are clean, and it is the only change here whose sign depends on the run.
 
 `references/signatures.md` is a lookup table of enumerated degradation signatures. It is consulted
 only when something is actually being recorded. Today it is loaded with the skill.
@@ -310,17 +334,17 @@ densely cross-referenced document that exists in three copies (`plugins/quick-de
 
 | change | ~tokens | axis |
 |---|---|---|
-| 1 — delegate Phases 8–10 | 30,200 | instructions **and** tool output |
-| 2 — split `ticket-system` | 12,600 | instructions |
-| 3 — `signatures.md` on first record | 5,671 | instructions |
-| **total** | **~48,400** | |
+| 1 — delegate Phases 8–10 | 16,641 | instructions **and** tool output |
+| 2 — split `ticket-system` | 9,473 | instructions |
+| 3 — `signatures.md` on first record | 5,610 | instructions, **clean runs only** (see Change 3) |
+| **total** | **~31,724** | |
 
-Orchestrator instruction load **~165,000 → ~117,000**, a 29% reduction on that axis and **7.4% of
-the measured 657k run**. Change 1 additionally removes its phase's tool output and pays 3–6k for its
+Orchestrator instruction load **~165,000 → ~133,000**, a 19% reduction on that axis and **~4.8% of
+the measured 657k run** — and ~26,100 / ~3.9% on a run that logs anything. Change 1 additionally removes its phase's tool output and pays 3–6k for its
 dispatch prompt; both are excluded from the table.
 
 For scale, the client-side actions that are not this repo's to make — removing or scoping
-`context-mode` (~140k) and trimming unused MCP servers (~24k) — are together **~3.4×** this design.
+`context-mode` (~140k) and trimming unused MCP servers (~24k) — are together **~5.2×** this design.
 They should be done first; they are independent of it and cost nothing here.
 
 ## Verification
@@ -366,7 +390,7 @@ once: **minor** — Change 1 is a new capability. Nothing under `.claude/skills/
 1. **Client config, first and outside this repo** — remove or scope `context-mode` in BTC-Gateway
    (~140k) and disconnect MCP servers a ticket run never touches (~24k). Independent of everything
    below, and larger than all of it.
-2. **This design** — changes 1–3, ~48.4k.
+2. **This design** — changes 1–3, ~31.7k.
 3. **Re-measure** with `scripts/analysis/bucket-context.py` on a fresh run, and decide whether a
    further round is warranted from the new buckets rather than from a hypothesis.
 
