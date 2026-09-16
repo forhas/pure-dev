@@ -28,28 +28,35 @@ KS=$ND/skills/knowledge/SKILL.md
 TAKE='knowledge\.py" lock take --run <run id> --section '
 REL='knowledge\.py" lock release --run <run id>'
 
-# section <label> <file> <start-ere> <end-ere> <section-word> <wait> [ffpull]
+# section <label> <file> <start-ere> <end-ere> <section-word> <wait> [ffpull] [run-token]
 # The optional seventh argument, when non-empty, adds the take-then-checkout-and-pull
 # order check (F5): the region must also show the lock taken before the ff-only pull
 # that establishes the base, exactly once each.
+# The optional eighth argument overrides the `--run` token (default `<run id>`):
+# ticket.md's Phase 8 dispatch (Task 9) spells the run id out as `<KEY>-<id>`
+# inline in the take command itself, rather than via the generic placeholder.
 section() {
-  local label=$1 f=$2 s_re=$3 e_re=$4 word=$5 wait=$6 ffpull=${7:-}
+  local label=$1 f=$2 s_re=$3 e_re=$4 word=$5 wait=$6 ffpull=${7:-} run_token=${8:-'<run id>'}
+  local take="knowledge\\.py\" lock take --run ${run_token} --section "
   local L; L=$(total_lines "$f")
   local s; s=$(find_line "$f" 1 "$L" "$s_re")
   [ -n "$s" ] || { bad "$label: start anchor not found ($s_re)"; return; }
   local e; e=$(find_line "$f" "$((s + 1))" "$L" "$e_re"); [ -n "$e" ] || e=$L
-  assert_present "$label: takes the lock with \`--section $word\` and \`--wait $wait\`" "$f" "$s" "$e" "${TAKE}${word} --wait ${wait}"
+  assert_present "$label: takes the lock with \`--section $word\` and \`--wait $wait\`" "$f" "$s" "$e" "${take}${word} --wait ${wait}"
   assert_present "$label: releases the lock (\`lock release\`)" "$f" "$s" "$e" "$REL"
-  assert_order "$label: take before release" "$f" "$s" "$e" take "${TAKE}${word}" release "$REL"
+  assert_order "$label: take before release" "$f" "$s" "$e" take "${take}${word}" release "$REL"
   if [ -n "$ffpull" ]; then
     assert_order "$label: take, then checkout and \`pull --ff-only\`" "$f" "$s" "$e" \
-      take "${TAKE}${word}" pull 'pull --ff-only origin <epicBranch>'
+      take "${take}${word}" pull 'pull --ff-only origin <epicBranch>'
   fi
 }
 
 echo "== ticket.md =="
 section "ticket Phase 2 start"   "$TICKET" '^## Phase 2 '  '^## Phase 3 '            start  600
-section "ticket record section"  "$TICKET" '^### 8\.2 '    '^\*\*Closeout — zero tails' record 3600
+# Task 9 replaced the `### 8.2` heading with flowing Phase 8 dispatch prose that
+# spells the run id inline as `<KEY>-<id>` rather than the generic `<run id>`
+# placeholder, so this call starts at the phase heading and overrides the token.
+section "ticket record section"  "$TICKET" '^## Phase 8 '  '^\*\*Closeout — zero tails' record 3600 '' '<KEY>-<id>'
 section "ticket stop path"       "$TICKET" '^## Failure and stop conditions' '^## [^F]' stop 600
 echo "== finalize.md =="
 section "finalize record section" "$FINALIZE" '^## Phase 3 ' '^\*\*Closeout — zero tails' record 3600
@@ -77,12 +84,17 @@ assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lo
 
 # The record sections span epic-update, whose interactive filing gate asks File/Drop. The lock
 # goes stale in 60 minutes, so those answers are taken before the take, never under it.
-TR0=$(find_line "$TICKET" 1 "$L" '^### 8\.2 ')
+#
+# Task 9: `epic-update` is no longer invoked directly from ticket.md (it moved into the
+# dispatched references/record.md), so the filing gate here only carries its answers
+# forward as `FILING_DECISIONS` for that later dispatch — it no longer "passes into the
+# invocation below". The take command also spells the run id inline as `<KEY>-<id>`.
+TR0=$(find_line "$TICKET" 1 "$L" '^## Phase 8 ')
 TR1=$(find_line "$TICKET" "$((TR0 + 1))" "$L" '^\*\*Closeout — zero tails'); [ -n "$TR1" ] || TR1=$L
 assert_order "ticket record section: the filing gate is resolved before the lock take" "$TICKET" "$TR0" "$TR1" \
-  AskUserQuestion 'filing gate before the lock is taken.*`AskUserQuestion`' take "${TAKE}record"
-assert_present "ticket record section: the answers reach epic-update as FILING_DECISIONS" "$TICKET" "$TR0" "$TR1" \
-  'pass the result into the invocation below as.*FILING_DECISIONS'
+  AskUserQuestion 'filing gate before the lock is taken.*`AskUserQuestion`' take 'knowledge\.py" lock take --run <KEY>-<id> --section record'
+assert_present "ticket record section: the answers carry forward as FILING_DECISIONS" "$TICKET" "$TR0" "$TR1" \
+  'carry the answers forward as .FILING_DECISIONS.'
 
 LF=$(total_lines "$FINALIZE")
 F32=$(find_line "$FINALIZE" 1 "$LF" '^### 3\.2 '); F5=$(find_line "$FINALIZE" 1 "$LF" '^## Phase 5 ')

@@ -217,12 +217,14 @@ if [ -f "$TICKET" ]; then
   # The three-way order this used to prove — `record` before the workspace pass
   # before the summary — now spans two files (the `record` anchor lives in
   # record.md; `assert_order` cannot span files). What remains checkable in
-  # ticket.md is that Phase 8's delegation to references/record.md is wired in
-  # before Phase 10's workspace pass and summary; record.md's own `record` content
-  # is covered by the assertions above and by verify-context-split.sh.
-  assert_order "ticket Phase 10 order: the record delegation precedes the workspace pass before the summary" \
+  # ticket.md is that Phase 8's dispatch to references/record.md (Task 9 replaced
+  # the placeholder delegation sentence with the actual synchronous dispatch) is
+  # wired in before Phase 10's workspace pass and summary; record.md's own
+  # `record` content is covered by the assertions above and by
+  # verify-context-split.sh.
+  assert_order "ticket Phase 10 order: the record dispatch precedes the workspace pass before the summary" \
     "$TICKET" "$P8" "$PF" \
-    "delegate" 'record, cleanup and .epic-doc record. steps are in \*\*.references/record\.md.\*\*' \
+    "dispatch" '\*\*Dispatch one .general-purpose. agent, synchronously\*\*' \
     "closeout" 'invoke the \*\*workspace pass\*\* of the .notion-dev:session-closeout' \
     "summary"  '^Print a summary covering:'
   assert_present "ticket.md reports the epic doc line" \

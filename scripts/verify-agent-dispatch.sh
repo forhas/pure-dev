@@ -189,12 +189,21 @@ assert_present "develop: the review seats never substitute the same way" \
 
 TK=plugins/notion-dev/commands/ticket.md
 L=$(total_lines "$TK")
+TKP4=$(find_line "$TK" 1 "$L" '^## Phase 4 '); TKP5=$(find_line "$TK" 1 "$L" '^## Phase 5 ')
 # The call site, not just the skill. `plan-review/SKILL.md` Step 2 already states that
 # invoking it *is* the request for its agent — and only a run that invokes the skill can
 # read that. A run that decides at this step not to invoke never sees it, so the mandate
 # has to be pinned here too, or deleting it leaves every harness green.
+#
+# Scoped to Phase 4 (never the whole file): Phase 8's record-unit dispatch (Task 9)
+# borrows this exact standing-rule sentence for its own, unrelated, mandatory
+# synchronous dispatch — a second, legitimate site for the same argument pattern
+# applied to a different agent, not a duplicate of this one. Region-scoping is what
+# `assert_present`'s A1 uniqueness rule needs here; `assert_count 2` would be the
+# wrong tool, since the two sites are not "the same mechanism cited twice", they are
+# two different mechanisms that happen to share phrasing.
 assert_present "ticket: reaching the plan-review step is itself the request for that agent" \
-  "$TK" 1 "$L" 'Reaching this step is itself the request for that agent'
+  "$TK" "$TKP4" "$TKP5" 'Reaching this step is itself the request for that agent'
 assert_present "ticket: a standing no-subagents rule is already satisfied by reaching the step" \
   "$TK" 1 "$L" 'already satisfied by reaching here'
 assert_present "ticket: reviewing the plan yourself is never the substitute" \
