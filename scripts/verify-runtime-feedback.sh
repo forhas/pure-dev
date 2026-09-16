@@ -455,14 +455,22 @@ fi
 echo "== worktree provisioning =="
 
 T=plugins/notion-dev/commands/ticket.md
+R=plugins/notion-dev/commands/references/record.md
 if [ -f "$T" ]; then
   L=$(total_lines "$T")
 
-  assert_present "ticket.md: the submodule refusal is named as a cause of the --force retry" \
-    "$T" 1 "$L" 'retry with `git worktree remove --force <worktree-path>`.*working trees containing submodules cannot be moved or removed'
+  # Phase 9's cleanup step (git worktree remove --force, the submodule refusal) moved
+  # into references/record.md with the rest of the record unit (Task 8).
+  if [ -f "$R" ]; then
+    LR=$(total_lines "$R")
+    assert_present "record.md: the submodule refusal is named as a cause of the --force retry" \
+      "$R" 1 "$LR" 'retry with `git worktree remove --force <worktree-path>`.*working trees containing submodules cannot be moved or removed'
 
-  assert_present "ticket.md: the submodule refusal is deterministic, not an anomaly" \
-    "$T" 1 "$L" '\*\*deterministic, not an anomaly\*\*'
+    assert_present "record.md: the submodule refusal is deterministic, not an anomaly" \
+      "$R" 1 "$LR" '\*\*deterministic, not an anomaly\*\*'
+  else
+    bad "missing: $R"
+  fi
 
   assert_present "ticket.md: gitignored local files are not carried into the worktree" \
     "$T" 1 "$L" '\*\*Gitignored local files are not carried into the worktree'
@@ -476,8 +484,12 @@ if [ -f "$T" ]; then
   assert_present "ticket.md: the exemption list is exhaustive" \
     "$T" 1 "$L" 'Exactly two kinds of dirt are exempt, and the list is exhaustive'
 
-  assert_present "ticket.md: a failed pull is diagnosed against the primary checkout's status" \
-    "$T" 1 "$L" '\*\*A failed pull must be diagnosed, not merely reported'
+  if [ -f "$R" ]; then
+    assert_present "record.md: a failed pull is diagnosed against the primary checkout's status" \
+      "$R" 1 "$(total_lines "$R")" '\*\*A failed pull must be diagnosed, not merely reported'
+  else
+    bad "missing: $R"
+  fi
 
   assert_present "ticket.md: the primary checkout is asserted unchanged after each build task" \
     "$T" 1 "$L" '\*\*Assert the primary checkout is unchanged after each build task\.\*\*'

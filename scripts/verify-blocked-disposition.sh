@@ -131,11 +131,6 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # never-file rule itself, which each command states exactly once.
   assert_has_n "$n never files a BLOCKED item" "$CMD" 'A `BLOCKED` item filed as a ticket is strictly worse than a forgotten one' 1
   assert_has "$n reports each as a blocked: line"      "$CMD" 'blocked: <item> — <external cause>; unblocked by <what>'
-  # The terminal summary scrolls away. The ticket's `## Merged` record is the
-  # shared durable one, and the Completeness record covers acceptance criteria
-  # only — so an ordinary review finding's block has no other home.
-  assert_has "$n writes a Blocked field into the Merged record" "$CMD" '- **Blocked** — items from `REVIEW_REPORT`'"'"'s `BLOCKED` list'
-  assert_has "$n records triage_blocked in the ledger" "$CMD" '"triage_blocked":N'
   # Both artifact writes are best-effort, so a skipped one and a completed one
   # are indistinguishable afterwards unless the caller checks. STO-77 filed
   # three tickets, wrote zero packets and no persisted report, and said nothing.
@@ -144,17 +139,30 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # both entry points are re-runnable, so a stale report from an earlier run of
   # the SAME ticket satisfies it while this run's write failed.
   assert_has "$n checks this run's write, not mere presence" "$CMD" "confirm **this run's** write landed"
-  assert_has "$n asserts packets written vs filed"     "$CMD" '`unexpected:followup-packet-missing`'
+
+  # For ticket.md, the Merged-record write, the ledger append and the packet-count
+  # assertion all live in 8.2/8.3, which moved into references/record.md with the
+  # rest of the record unit (Task 8). finalize.md carries its own copy unmoved.
+  RCMD=$CMD; rn=$n
+  if [ "$CMD" = "$ND/commands/ticket.md" ]; then
+    RCMD=$ND/commands/references/record.md; rn=${RCMD#plugins/}
+  fi
+  # The terminal summary scrolls away. The ticket's `## Merged` record is the
+  # shared durable one, and the Completeness record covers acceptance criteria
+  # only — so an ordinary review finding's block has no other home.
+  assert_has "$rn writes a Blocked field into the Merged record" "$RCMD" '- **Blocked** — items from `REVIEW_REPORT`'"'"'s `BLOCKED` list'
+  assert_has "$rn records triage_blocked in the ledger" "$RCMD" '"triage_blocked":N'
+  assert_has "$rn asserts packets written vs filed"     "$RCMD" '`unexpected:followup-packet-missing`'
   # `<KEY>` is the PROJECT key, shared by every ticket in the repo, so a
   # `followup-<KEY>-*.md` glob counts the whole project's packets and fires a
   # false mismatch on nearly every run. The producer's path carries `<id>`.
-  assert_has "$n scopes the packet glob to this ticket's id" "$CMD" 'Scope it to `followup-<KEY>-<id>-*.md`'
-  assert_has "$n states the producer's real packet path" "$CMD" 'writes one `followup-<KEY>-<id>-<n>.md` context packet'
+  assert_has "$rn scopes the packet glob to this ticket's id" "$RCMD" 'Scope it to `followup-<KEY>-<id>-*.md`'
+  assert_has "$rn states the producer's real packet path" "$RCMD" 'writes one `followup-<KEY>-<id>-<n>.md` context packet'
   # epic-update step 1a retries a historical FAILED item by REUSING the packet the
   # original attempt wrote, and reports it in this invocation's FILED. Asserting
   # the packet was created by this run would flag that successful retry as a
   # missing packet. Assert existence at the recorded identity, not authorship.
-  assert_has "$n accepts a packet reused by a successful retry" "$CMD" 'that is the producer'"'"'s contract working, not a missing packet'
+  assert_has "$rn accepts a packet reused by a successful retry" "$RCMD" 'that is the producer'"'"'s contract working, not a missing packet'
 done
 assert_has "notion-dev/skills/issue-log registers review-report-not-persisted" \
   "$ND/skills/issue-log/references/signatures.md" '| `unexpected:review-report-not-persisted` |'

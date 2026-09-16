@@ -133,4 +133,16 @@ echo "== ticket-system: the read-before-use gate on the Reference column is stat
 assert_present "SKILL.md gates every operation behind reading its \`Reference\` file first" \
   "$TS" 1 "$(total_lines "$TS")" 'may not perform an operation whose `Reference` file you have not read in this run'
 
+# ---------------------------------------------------------------------------
+echo "== ticket.md: the record unit (Phases 8-10) is present and pinned in references/record.md =="
+
+assert_present "\`references/record.md\` opens by stating the caller already took the lock and resolved the filing gate" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" 'already resolved the interactive filing gate'
+assert_present "\`references/record.md\` tells the reader not to take the lock, ask the user, or release the lock" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" 'Do not take the lock again, do not ask the user anything, and do not release the'
+assert_present "\`references/record.md\` defines the \`RECORD:\` output block" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" '^RECORD:$'
+assert_present "\`references/record.md\`'s \`RECORD:\` block carries \`EPIC-DOC-RECORD\`" \
+  "$RECORD" 1 "$(total_lines "$RECORD")" '^EPIC-DOC-RECORD: '
+
 exit $(( fails > 0 ))

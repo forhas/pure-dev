@@ -16,6 +16,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
+RECORD=$ND/commands/references/record.md
 FINALIZE=$ND/commands/finalize.md
 NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md
@@ -64,10 +65,14 @@ assert_order "ticket Phase 2: worktree, then status, then refresh start" "$TICKE
   worktree 'git worktree add <worktree-path>' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
 assert_present "ticket stop path: \`refresh(<epic-id>, stop <key> <phase> <cause> <worktree-path>)\`" "$TICKET" "$FS" "$L" 'operation `refresh\(<epic-id>, stop <key> <phase> <cause> <worktree-path>\)`'
-P82=$(find_line "$TICKET" 1 "$L" '^### 8\.2 '); P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 ')
-assert_present "ticket 8.2: \`epic-update\` runs with \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'epic-update.*LOCK_HELD'
-assert_present "ticket phase 10: \`record\` runs with \`LOCK_HELD\`" "$TICKET" "$P10" "$L" 'operation `record\(<id>\)`.*LOCK_HELD'
-assert_present "ticket phase 9 hooks: hook receives \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'hook receives .*LOCK_HELD'
+P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 ')
+LR=$(total_lines "$RECORD")
+# The epic-update invocation, the epic-doc `record` invocation and the post-merge hook
+# paragraph all moved into references/record.md with the rest of Phase 8-10's record unit
+# (Task 8); `ticket.md` itself no longer carries any of the three LOCK_HELD grants.
+assert_present "record.md: \`epic-update\` runs with \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'epic-update.*LOCK_HELD'
+assert_present "record.md: \`record\` runs with \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'operation `record\(<id>\)`.*LOCK_HELD'
+assert_present "record.md: hook receives \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'hook receives .*LOCK_HELD'
 assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lock waits\*\*'
 
 # The record sections span epic-update, whose interactive filing gate asks File/Drop. The lock
