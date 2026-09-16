@@ -144,6 +144,8 @@ RECORD:
 EPIC-REPORT: <the epic-update EPIC-UPDATE: block verbatim, or `none`>
 TICKET-RECORD: <ok | partial: <what was not written> | failed: <cause>>
 CLEANUP: <ok | partial: <which step> | failed: <cause>>
+CLEANUP-STEPS: <one `<step>=<ok|skipped: <why>|failed: <cause>>` per cleanup step attempted, comma-separated, in the order run; or `none`>
+HOOKS: <one `<hook>=<ok|skipped: <why>|failed: <cause>>` per configured `git.postMergeHooks` entry, comma-separated; the failed assertion and the observed branch and HEAD on any non-`ok`; or `none` when the repo configures no hooks>
 EPIC-DOC-RECORD: <ok | skipped: <why> | failed: <cause>>
 EPIC-DOC-NEXT: <EPIC_DOC_REPORT's PATH:, its outcome, and its NEXT: line verbatim; on `failed`, its CAUSE: and the exact local commit left unpushed; or `none`>
 ISSUES: <comma-separated issue-log signatures recorded in this unit, or `none`>
