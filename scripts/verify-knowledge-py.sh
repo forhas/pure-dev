@@ -455,6 +455,26 @@ lk take-stale 0 take --run STO-71 --section start --wait 0
 assert_has "lock: an abandoned owner is broken and named" "$OUT/lock-take-stale.txt" 'stale: run: STO-9'
 assert_has "lock: after breaking, the new run holds it"   "$LK/primary/owner" 'run: STO-71'
 lk release-71 0 release --run STO-71
+
+# The stale threshold itself, pinned from both sides. The year-2000 owner above is broken by
+# any threshold at all, so it says nothing about which one ships — and the value is
+# load-bearing in three places that all assume 60 minutes: the `record` section's `--wait 3600`
+# bound, `ticket.md`'s "bounded by the hour" note, and the two rationale comments in
+# `scripts/verify-primary-lock.sh`. A `record` waiter passes `--wait 3600`, so a threshold below
+# that lets a waiter break a lock a live `record` section still holds — the exact regression
+# PR #47 raised the constant to prevent, and which reverting it would otherwise ship silently.
+# The pair discriminates: 45 minutes must still be held (the threshold is above 30), 75 minutes
+# must break (it is at or below 60). Timestamps come from $PYBIN rather than `date -d` so the
+# fixture reads the same clock and format `knowledge.py` writes.
+stamp() { $PYBIN -c "import datetime,sys;print((datetime.datetime.utcnow()-datetime.timedelta(minutes=int(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
+mkdir -p "$LK/primary"
+printf 'run: STO-8\nsection: record\nsince: %s\n' "$(stamp 45)" > "$LK/primary/owner"
+lk take-under-threshold 1 take --run STO-72 --section start --wait 0
+assert_has "lock: a 45-minute-old owner is still held, not broken" "$OUT/lock-take-under-threshold.txt" 'held by STO-8 (record) since'
+printf 'run: STO-8\nsection: record\nsince: %s\n' "$(stamp 75)" > "$LK/primary/owner"
+lk take-over-threshold 0 take --run STO-72 --section start --wait 0
+assert_has "lock: a 75-minute-old owner is past the threshold and broken" "$OUT/lock-take-over-threshold.txt" 'stale: run: STO-8'
+lk release-72 0 release --run STO-72
 mkdir -p "$LK/primary"; : > "$LK/primary/owner"           # empty owner, fresh directory = in creation
 lk take-creating 1 take --run STO-71 --section start --wait 0
 assert_has "lock: an owner still being written is waited on, not broken" "$OUT/lock-take-creating.txt" 'held by'
