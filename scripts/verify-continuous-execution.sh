@@ -39,6 +39,7 @@ TK=$ND/commands/ticket.md
 NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md
 CT=$ND/commands/create-task.md
+FIN=$ND/commands/finalize.md
 DEV=$QD/skills/develop/SKILL.md
 SIG=$ND/skills/issue-log/references/signatures.md
 NDREADME=$ND/README.md
@@ -49,7 +50,7 @@ echo "== the rule, at every non-interactive entry point =="
 # ---------------------------------------------------------------------------
 # One phrasing, three orchestrators. Keyed on the mechanism — the two halves of
 # what the mode means, and the shape of the failure — never on a whole sentence.
-for f in "$TK" "$NT" "$DEV"; do
+for f in "$TK" "$NT" "$FIN" "$DEV"; do
   assert_has "$f: non-interactive mode is never hand back, not only never ask" \
     "$f" 'non-interactive mode is *never hand back*, not only *never ask*'
   assert_has "$f: names the \`Next: <the thing you were about to do>\` stopping shape" \
@@ -76,6 +77,13 @@ assert_has "$DEV: only the stop conditions this skill names explicitly end the r
   "$DEV" 'The only things that end a non-interactive run are the stop conditions this skill names explicitly'
 assert_has "$TK: \`PLAN-REVIEW: blocked\` stays one of those stop conditions" \
   "$TK" '`PLAN-REVIEW: blocked` (4.2b)'
+
+# finalize's exposed boundary is its own: a long delegation that ends with a
+# merged PR reads like a finish line while three phases of work still follow it.
+assert_has "$FIN: \`notion-dev:review-and-merge\` returning is the most exposed boundary" \
+  "$FIN" 'most exposed boundary is `notion-dev:review-and-merge` returning at the end of Phase 2'
+assert_has "$FIN: stopping there leaves the PR merged with none of the rest done" \
+  "$FIN" 'a run that stops there leaves the PR merged with none of them done'
 
 # ---------------------------------------------------------------------------
 echo "== writing-plans' Execution Handoff is suppressed at both call sites =="
