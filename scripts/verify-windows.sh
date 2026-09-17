@@ -43,9 +43,15 @@ assert_has "knowledge.py: a vanished lock directory has its own handler, never t
 assert_has "knowledge.py: only a \`PermissionError\` retries the release rename" "$KPY" 'except PermissionError:'
 assert_present "knowledge.py: the retry re-reads the owner before renaming again" "$KPY" "$KI0" "$KPYL" '_read_owner\(d\).get\("run"\) != a.run'
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
-assert_has "workflow: a windows-latest job runs verify-knowledge-py.sh under bash" "$WF" 'runs-on: windows-latest'
+assert_has "workflow: a windows-latest job runs the harnesses under bash" "$WF" 'runs-on: windows-latest'
 WFL=$(total_lines "$WF"); WJ0=$(find_line "$WF" 1 "$WFL" '^  verify-windows:$')
-assert_present "workflow: the windows-latest job's run line invokes verify-knowledge-py.sh" "$WF" "$WJ0" "$WFL" 'run: bash scripts/verify-knowledge-py.sh'
+# The Windows leg runs the WHOLE suite, discovered by glob, not one named harness. Pinning the
+# glob rather than a filename is what keeps a new scripts/verify-*.sh covered on Windows the
+# day it is added: a job listing harnesses by name silently leaves each new one Ubuntu-only,
+# which is exactly the gap this job had while it invoked verify-knowledge-py.sh alone.
+assert_present "workflow: the windows-latest job discovers the harnesses with scripts/verify-*.sh" "$WF" "$WJ0" "$WFL" 'scripts=\(scripts/verify-[*][.]sh\)'
+assert_present "workflow: the windows-latest job runs each discovered harness with bash" "$WF" "$WJ0" "$WFL" 'if bash "\$s"; then'
+assert_present "workflow: the windows-latest job fails when any harness fails" "$WF" "$WJ0" "$WFL" 'harness\(es\) failed'
 assert_present "workflow: the windows-latest job runs under \`shell: bash\`" "$WF" "$WJ0" "$WFL" 'shell: bash'
 assert_has "workflow: the Windows job sets KNOWLEDGE_PY" "$WF" 'KNOWLEDGE_PY: python'
 assert_has "verify-knowledge-py.sh: interpreter overridable via KNOWLEDGE_PY" scripts/verify-knowledge-py.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
