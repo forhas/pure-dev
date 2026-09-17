@@ -186,6 +186,24 @@ assert_present "develop: execution subagents buy throughput, not independence" \
   "$DEV" 1 "$L" 'buy context hygiene and throughput, not independence'
 assert_present "develop: the review seats never substitute the same way" \
   "$DEV" 1 "$L" 'The review seats never substitute this way'
+# The plan-review CALL SITE, not just the skill — the same gap #34 closed in notion-dev's
+# ticket.md 4.2(b). `../plan-review/SKILL.md` Step 2 states that invoking it *is* the request
+# for its agent, and only a run that invokes the skill can read that: a run that decides at
+# step 3 not to invoke never sees it. Pinned here, or deleting the mandate leaves every
+# harness green while a session carrying a standing no-subagents default skips the seat and
+# self-reviews.
+assert_present "develop: reaching step 3 is itself the request for plan-review's agent" \
+  "$DEV" 1 "$L" 'Reaching this step is itself the request for that agent'
+assert_present "develop: a standing no-subagents rule is satisfied by the user invoking the skill" \
+  "$DEV" 1 "$L" 'already satisfied by the user invoking'
+assert_present "develop: reviewing the plan yourself is never the substitute" \
+  "$DEV" 1 "$L" '\*\*Never review the plan yourself instead\.\*\*'
+assert_present "develop: a forbidden dispatch emits \`PLAN-REVIEW: degraded\` and reports the plan unreviewed" \
+  "$DEV" 1 "$L" 'emits `PLAN-REVIEW: degraded`, and the final report must say plainly that the plan went unreviewed'
+# Without the narrow reading, the step-5 exemption swallows the rule: a host- or session-level
+# default reads as "explicitly disallowed" and the whole flow self-executes.
+assert_present "develop: \"explicitly disallowed\" is an instruction aimed at this dispatch, not a general default" \
+  "$DEV" 1 "$L" '\*\*"Explicitly disallowed" means an instruction aimed at this dispatch'
 
 TK=plugins/notion-dev/commands/ticket.md
 L=$(total_lines "$TK")
