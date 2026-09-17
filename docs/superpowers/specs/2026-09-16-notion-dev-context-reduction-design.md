@@ -76,7 +76,7 @@ Three conclusions.
 
 **1. The instruction axis is the largest single bucket, and the static estimate above was right.**
 `user text` (173,313) is where `SKILL.md` bodies and the `/notion-dev:ticket` expansion land — within
-5% of the 165k estimated by summing the files. This design targets **~31.7k** of it, **~4.8% of
+5% of the 165k estimated by summing the files. This design targets **~29.8k** of it, **~4.5% of
 the run**.
 
 **The ~48.4k first written here was wrong, and the way it was wrong is the reusable lesson.** It
@@ -85,7 +85,7 @@ loading*, and those differ whenever an earlier phase already loaded the same ski
 the context whole at its first invocation, so moving a later phase that happens to use
 `knowledge` (Phase 1 already invoked it) or `epic-doc` (Phase 2 already invoked it) saves nothing
 at all — 10,866 of the claimed 30,200. The rest was optimism about the prose: `ticket.md` shed
-4,853 rather than 7,561, because the dispatch instruction, its payload list and the whole
+2,955 rather than 7,561, because the dispatch instruction, its payload list and the whole
 inline-fallback path stay in the orchestrator; and every one of Change 2's five files landed above
 its per-file estimate. Estimate the next one from the orchestrator's own file list before and
 after, never from the size of what was moved.
@@ -103,7 +103,7 @@ their tool output is genuinely contained, which is the direct evidence for Chang
 their prompts cost **47,302**, ~1,280 tokens per dispatch. Change 1's prompt carries
 `REVIEW_REPORT`, `COMPLETENESS_REPORT`, `FILING_DECISIONS` and — once the unit's real inputs were
 accounted for — `PLAN_REVIEW_REPORT`, `KNOWLEDGE_CONTEXT`, the ticket body and the caller's
-pre-dispatch draft, so **budget 6k as a floor against its ~16,641 saving**; it remains net
+pre-dispatch draft, so **budget 6k as a floor against its ~14,743 saving**; it remains net
 positive, but by a narrower margin than the first draft of this section assumed, and the plan must
 not assume the dispatch is free.
 
@@ -116,7 +116,7 @@ rows for numeric-ID equality, and the schema is the Notion MCP's own.
 
 - **Fixing the variable axis.** Reviewer comments, diffs, fix edits across review rounds, and
   `VERIFY_OUTPUT` are untouched by this design. Per the measurement above they are the larger half,
-  and they are deliberately deferred to a follow-up with its own measurement — see *Next round*.
+  and they are deliberately deferred to a follow-up with its own measurement — see *Order of work*, step 3.
 - **Delegating Phase 7.** `review-and-merge` is the largest single file (35,302) and moving it
   behind one dispatch is the largest theoretical win. It is rejected: the skill's own text records
   measured dispatch failures on client hosts — zero-byte returns, never-returns, runs stopped only
@@ -158,15 +158,15 @@ returns zero bytes or never returns, the orchestrator runs the recovery inline, 
 | | ~tokens |
 |---|---|
 | `epic-update/SKILL.md` | 11,788 |
-| `ticket.md` Phases 8–10 prose → `references/record.md` | 4,853 |
-| **subtotal** | **~16,641** |
+| `ticket.md` Phases 8–10 prose → `references/record.md` | 2,955 |
+| **subtotal** | **~14,743** |
 
 `epic-update` is the only skill this change actually unloads: it is invoked nowhere else in the
 run. **`knowledge` (6,521) and `epic-doc` (4,345) are not savings and an earlier draft of this
 table wrongly counted them.** Phase 1 invokes `knowledge` `retrieve` and Phase 2 invokes
 `epic-doc` `refresh`, and a skill loads **whole** — there is no partial load of a write path — so
 both files are already in the orchestrator's context before Phase 8 is reached, whoever runs it.
-`ticket.md`'s own line is the measured 4,853, not the estimated 7,561: Phase 8's dispatch
+`ticket.md`'s own line is the measured 2,955, not the estimated 7,561: Phase 8's dispatch
 instruction, its payload list and the entire inline-fallback path stay behind.
 
 ### The delegation boundary
@@ -212,7 +212,7 @@ Self-contained; it inherits nothing. It carries:
 - `REVIEW_REPORT`, `COMPLETENESS_REPORT`, `COMPLETION_CLOSEOUT`, `CRITERIA_FILE` (path), the run id
 - `FILING_DECISIONS` and `LOCK_HELD: true`
 - `--non-interactive` when the run has it
-- an instruction to read `commands/references/record.md` — the moved Phases 8–10 prose — and follow
+- an instruction to read `references/record.md` — the moved Phases 8–10 prose — and follow
   it exactly, invoking `notion-dev:epic-update`, `notion-dev:knowledge` and `notion-dev:epic-doc`
   itself
 
@@ -230,7 +230,7 @@ no check written against a delivered result can ever fire.
 
 On a failed, zero-byte, or timed-out dispatch: **do not retry, and do not stop.** Record
 `unexpected:record-unit-not-dispatched` per `notion-dev:issue-log`, then run the recovery inline —
-the orchestrator reads `commands/references/record.md` itself and executes it, exactly as
+the orchestrator reads `references/record.md` itself and executes it, exactly as
 `/notion-dev:finalize`'s `MERGED` path would. The context saving is forfeited for that run; nothing
 else is. Say so in the final report.
 
@@ -336,12 +336,12 @@ densely cross-referenced document that exists in three copies (`plugins/quick-de
 
 | change | ~tokens | axis |
 |---|---|---|
-| 1 — delegate Phases 8–10 | 16,641 | instructions **and** tool output |
+| 1 — delegate Phases 8–10 | 14,743 | instructions **and** tool output |
 | 2 — split `ticket-system` | 9,473 | instructions |
 | 3 — `signatures.md` on first record | 5,610 | instructions, **clean runs only** (see Change 3) |
-| **total** | **~31,724** | |
+| **total** | **~29,776** | |
 
-Orchestrator instruction load **~165,000 → ~133,000**, a 19% reduction on that axis and **~4.8% of
+Orchestrator instruction load **~165,000 → ~133,000**, a 19% reduction on that axis and **~4.5% of
 the measured 657k run** — and ~26,100 / ~3.9% on a run that logs anything. Change 1 additionally removes its phase's tool output and pays 3–6k for its
 dispatch prompt; both are excluded from the table.
 
@@ -363,7 +363,7 @@ moved, or renamed without its index entry.
 
 **Change 1 — the delegation has both paths.** The dispatch site names the bounded wait, names
 `unexpected:record-unit-not-dispatched`, and names the inline-recovery fallback; the moved prose
-exists at `commands/references/record.md` and the orchestrator's Phase 8 no longer names
+exists at `references/record.md` and the orchestrator's Phase 8 no longer names
 `epic-update`, `knowledge`, or `epic-doc`'s write operations. The interactive gate and the lock
 take precede the dispatch in document order — `assert_order`.
 
@@ -392,7 +392,7 @@ once: **minor** — Change 1 is a new capability. Nothing under `.claude/skills/
 1. **Client config, first and outside this repo** — remove or scope `context-mode` in BTC-Gateway
    (~140k) and disconnect MCP servers a ticket run never touches (~24k). Independent of everything
    below, and larger than all of it.
-2. **This design** — changes 1–3, ~31.7k.
+2. **This design** — changes 1–3, ~29.8k.
 3. **Re-measure** with `scripts/analysis/bucket-context.py` on a fresh run, and decide whether a
    further round is warranted from the new buckets rather than from a hypothesis.
 
