@@ -68,10 +68,17 @@ jobs:
           fi
           echo "All ${#scripts[@]} harness(es) passed."
 
-  # The Windows proof of knowledge.py's LF output, the lock's mkdir/rename semantics, and the
-  # two-clone recipe under Git Bash. The prose harnesses are platform-neutral and already run
-  # on Ubuntu above, so only verify-knowledge-py.sh — the one harness that runs the script —
-  # needs a second pass here.
+  # The Windows leg of CLAUDE.md's "Both platforms, always": every shipped plugin instruction
+  # must work unchanged from WSL 2 Ubuntu and from a Windows-native Claude Code session, which
+  # runs through Git Bash. This job is what makes that a checked claim rather than a stated one.
+  #
+  # It runs the WHOLE suite, not just verify-knowledge-py.sh. That harness is the only one that
+  # executes knowledge.py, so it was long the only one thought to need a second pass — the rest
+  # were called platform-neutral. That was an assumption nothing tested, and "platform-neutral"
+  # is precisely the kind of claim this repo does not take on trust: a harness reaching for a
+  # GNU-only flag, or tripping over a path or a line ending, would pass on Ubuntu and go
+  # unnoticed. Discovery is shared with the Ubuntu job for the same reason it exists there — a
+  # new scripts/verify-*.sh is picked up without editing this file.
   verify-windows:
     runs-on: windows-latest
     steps:
@@ -80,9 +87,35 @@ jobs:
       - name: Install iwe
         run: npm i -g @iwe-org/iwe@0.19.1 && iwe --version
 
-      # windows-latest has `python` on PATH; `python3` may not resolve.
-      - name: Run verify-knowledge-py.sh
+      # windows-latest has `python` on PATH; `python3` may not resolve. This is the same
+      # substitution the plugin makes at runtime through the `knowledge.python` config key,
+      # so the harness exercises the path a Windows client actually takes.
+      - name: Run every verification harness
         shell: bash
         env:
           KNOWLEDGE_PY: python
-        run: bash scripts/verify-knowledge-py.sh
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          scripts=(scripts/verify-*.sh)
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No verification harnesses found — expected at least one."
+            exit 1
+          fi
+          failed=0
+          for s in "${scripts[@]}"; do
+            echo "::group::$s"
+            if bash "$s"; then
+              echo "$s: OK"
+            else
+              echo "$s: FAILED"
+              failed=$((failed + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo
+          if [ "$failed" -gt 0 ]; then
+            echo "$failed harness(es) failed."
+            exit 1
+          fi
+          echo "All ${#scripts[@]} harness(es) passed."

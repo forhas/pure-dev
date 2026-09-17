@@ -47,6 +47,42 @@ Harness rules, learned the hard way:
 Prefer the standing-invariant model (`verify-mirror.sh`) over change-scoped harnesses with version
 floors (`verify-completeness.sh`, `verify-convergence.sh`) — floors rot, invariants do not.
 
+## Both platforms, always
+
+Every shipped plugin instruction must work **unchanged** from **WSL 2 Ubuntu** and from a
+**Windows-native Claude Code session**. Neither is the primary; a command that works on one
+and not the other is broken, not partially done.
+
+**On Windows that means Git Bash**, not PowerShell. Claude Code's Bash tool shells through
+Git for Windows there, whatever terminal the session was launched from — so a plugin command
+never executes as PowerShell, and a user running Claude Code from a PowerShell window is
+already covered. `plugins/notion-dev/commands/init.md` probes for it (`uname -s` starting
+`MINGW` or `MSYS`) and names the Windows install routes; `plugins/notion-dev/README.md` states
+it as a prerequisite. Do not write PowerShell, and do not add a second command form for it.
+
+What this rules out, each of which has cost a real client run:
+
+- **GNU-only flags.** `date -d`, `readlink -f`, `stat -c`, `grep -P`, `sed -i`, `sort -V`,
+  `base64 -w`. `scripts/lib/assert.sh` compares versions with awk rather than `sort -V` for
+  exactly this reason, and says so where it does it. Where a value must be computed, prefer a
+  tool the plugin already requires — `verify-knowledge-py.sh` stamps lock fixtures with
+  `$PYBIN` rather than `date -d`, so it reads the same clock and format `knowledge.py` writes.
+- **Assuming `python3`.** Windows installs provide `python`, not `python3`. Every
+  `knowledge.py` invocation goes through the `knowledge.python` config key that
+  `/notion-dev:init` records; the literal `python3` in the instructions stands for that key,
+  and each command that uses it says so.
+- **Platform line endings.** Anything generated must be LF on both. `knowledge.py` forces LF
+  and UTF-8 on stdout and stderr; the repo-wide `.gitattributes` (`* text=auto eol=lf`) keeps
+  Git for Windows' `core.autocrlf=true` from checking fixtures out as CRLF and breaking
+  byte-identical comparisons.
+- **Locale-dependent decoding.** Decode child output as `encoding="utf-8"`, never the
+  Windows code page.
+
+Both legs run in CI on every pull request — `ubuntu-latest` and `windows-latest`, each running
+the whole `scripts/verify-*.sh` suite. `scripts/verify-windows.sh` is where a platform
+behaviour gets pinned as an assertion; new platform-sensitive behaviour belongs there, because
+a claim that something works on Windows is worth exactly what re-checks it.
+
 ## The `.claude/skills/` mirror
 
 Every directory under `.claude/skills/` is one of two kinds, and `scripts/verify-mirror.sh`
