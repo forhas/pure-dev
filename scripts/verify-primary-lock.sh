@@ -16,6 +16,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
+RECORD=$ND/references/record.md
 FINALIZE=$ND/commands/finalize.md
 NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md
@@ -48,7 +49,10 @@ section() {
 
 echo "== ticket.md =="
 section "ticket Phase 2 start"   "$TICKET" '^## Phase 2 '  '^## Phase 3 '            start  600
-section "ticket record section"  "$TICKET" '^### 8\.2 '    '^\*\*Closeout — zero tails' record 3600
+# Task 9 folded the `### 8.2` heading into flowing Phase 8 dispatch prose (nothing
+# under it literally "updates the epic" any more — that now happens inside the
+# dispatched unit), so this section starts at the phase heading instead.
+section "ticket record section"  "$TICKET" '^## Phase 8 '  '^\*\*Closeout — zero tails' record 3600
 section "ticket stop path"       "$TICKET" '^## Failure and stop conditions' '^## [^F]' stop 600
 echo "== finalize.md =="
 section "finalize record section" "$FINALIZE" '^## Phase 3 ' '^\*\*Closeout — zero tails' record 3600
@@ -64,20 +68,29 @@ assert_order "ticket Phase 2: worktree, then status, then refresh start" "$TICKE
   worktree 'git worktree add <worktree-path>' status 'updateStatus\(id, "inProgress"\)' refresh 'operation `refresh\(<epic-id>, start <key>\)`'
 FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
 assert_present "ticket stop path: \`refresh(<epic-id>, stop <key> <phase> <cause> <worktree-path>)\`" "$TICKET" "$FS" "$L" 'operation `refresh\(<epic-id>, stop <key> <phase> <cause> <worktree-path>\)`'
-P82=$(find_line "$TICKET" 1 "$L" '^### 8\.2 '); P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 ')
-assert_present "ticket 8.2: \`epic-update\` runs with \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'epic-update.*LOCK_HELD'
-assert_present "ticket phase 10: \`record\` runs with \`LOCK_HELD\`" "$TICKET" "$P10" "$L" 'operation `record\(<id>\)`.*LOCK_HELD'
-assert_present "ticket phase 9 hooks: hook receives \`LOCK_HELD\`" "$TICKET" "$P82" "$P10" 'hook receives .*LOCK_HELD'
+P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 ')
+LR=$(total_lines "$RECORD")
+# The epic-update invocation, the epic-doc `record` invocation and the post-merge hook
+# paragraph all moved into references/record.md with the rest of Phase 8-10's record unit
+# (Task 8); `ticket.md` itself no longer carries any of the three LOCK_HELD grants.
+assert_present "record.md: \`epic-update\` runs with \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'epic-update.*LOCK_HELD'
+assert_present "record.md: \`record\` runs with \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'operation `record\(<id>\)`.*LOCK_HELD'
+assert_present "record.md: hook receives \`LOCK_HELD\`" "$RECORD" 1 "$LR" 'hook receives .*LOCK_HELD'
 assert_present "ticket report names lock waits" "$TICKET" "$P10" "$L" '^- \*\*Lock waits\*\*'
 
 # The record sections span epic-update, whose interactive filing gate asks File/Drop. The lock
 # goes stale in 60 minutes, so those answers are taken before the take, never under it.
-TR0=$(find_line "$TICKET" 1 "$L" '^### 8\.2 ')
+#
+# Task 9: `epic-update` is no longer invoked directly from ticket.md (it moved into the
+# dispatched references/record.md, per Task 8), so the filing gate here only carries its
+# answers forward as `FILING_DECISIONS` for that later dispatch — it no longer "passes
+# into the invocation below", since there is no invocation below any more.
+TR0=$(find_line "$TICKET" 1 "$L" '^## Phase 8 ')
 TR1=$(find_line "$TICKET" "$((TR0 + 1))" "$L" '^\*\*Closeout — zero tails'); [ -n "$TR1" ] || TR1=$L
 assert_order "ticket record section: the filing gate is resolved before the lock take" "$TICKET" "$TR0" "$TR1" \
   AskUserQuestion 'filing gate before the lock is taken.*`AskUserQuestion`' take "${TAKE}record"
-assert_present "ticket record section: the answers reach epic-update as FILING_DECISIONS" "$TICKET" "$TR0" "$TR1" \
-  'pass the result into the invocation below as.*FILING_DECISIONS'
+assert_present "ticket record section: the answers carry forward as FILING_DECISIONS" "$TICKET" "$TR0" "$TR1" \
+  'carry the answers forward as .FILING_DECISIONS.'
 
 LF=$(total_lines "$FINALIZE")
 F32=$(find_line "$FINALIZE" 1 "$LF" '^### 3\.2 '); F5=$(find_line "$FINALIZE" 1 "$LF" '^## Phase 5 ')

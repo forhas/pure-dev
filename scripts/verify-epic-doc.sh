@@ -29,8 +29,10 @@ ND=plugins/notion-dev
 ED=$ND/skills/epic-doc/SKILL.md
 NT=$ND/commands/next-task.md
 TICKET=$ND/commands/ticket.md
+RECORD=$ND/references/record.md
 FINALIZE=$ND/commands/finalize.md
 TS=$ND/skills/ticket-system/SKILL.md
+TSREAD=$ND/skills/ticket-system/references/read-ops.md
 SIG=$ND/skills/issue-log/references/signatures.md
 SCHEMA=$ND/schema/notion-dev.config.schema.json
 README=$ND/README.md
@@ -184,6 +186,7 @@ if [ -f "$TICKET" ]; then
   L=$(total_lines "$TICKET")
   P1=$(find_line "$TICKET" 1 "$L" '^## Phase 1 ')
   P2=$(find_line "$TICKET" 1 "$L" '^## Phase 2 ')
+  P8=$(find_line "$TICKET" 1 "$L" '^## Phase 8 ')
   P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 ')
   PF=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
 
@@ -194,19 +197,38 @@ if [ -f "$TICKET" ]; then
   assert_present "ticket.md 1.1 reads the brief via \`notion-dev:knowledge\` \`retrieve(\`" \
     "$TICKET" "$P1" "$P2" 'notion-dev:knowledge. skill, operation .retrieve\(metadata\.parentTaskProperty, <title>, <id>\)'
   assert_lacks "ticket.md no longer calls getEpicContext" "$TICKET" 'getEpicContext('
-  assert_present "ticket.md records after the draft, before the closeout" \
-    "$TICKET" "$P10" "$PF" '^\*\*Epic doc — record the resolution\.\*\*'
-  assert_order "ticket Phase 10 order: \`record\` before the workspace pass before the summary" \
-    "$TICKET" "$P10" "$PF" \
-    "record"   'notion-dev:epic-doc. skill, operation .record\(<id>\)' \
+
+  # The `record` step itself (the `epic-doc` `record(<id>)` invocation and its
+  # `partial:epic-doc` cite) moved into references/record.md with the rest of Phase
+  # 8-10's record unit (Task 8); ticket.md's own Phase 10 now opens with the lock
+  # release, not this paragraph.
+  if [ -f "$RECORD" ]; then
+    LR=$(total_lines "$RECORD")
+    assert_present "record.md records after the draft, before the closeout" \
+      "$RECORD" 1 "$LR" '^\*\*Epic doc — record the resolution\.\*\*'
+    assert_present "record.md cites \`partial:epic-doc\`" \
+      "$RECORD" 1 "$LR" 'record `partial:epic-doc` per `notion-dev:issue-log`'
+    assert_count "record.md still invokes epic-update exactly once" \
+      "$RECORD" 1 "$LR" 'Invoke the `notion-dev:epic-update` skill' 1
+  else
+    bad "missing: $RECORD"
+  fi
+
+  # The three-way order this used to prove — `record` before the workspace pass
+  # before the summary — now spans two files (the `record` anchor lives in
+  # record.md; `assert_order` cannot span files). What remains checkable in
+  # ticket.md is that Phase 8's dispatch to references/record.md (Task 9 replaced
+  # the placeholder delegation sentence with the actual synchronous dispatch) is
+  # wired in before Phase 10's workspace pass and summary; record.md's own
+  # `record` content is covered by the assertions above and by
+  # verify-context-split.sh.
+  assert_order "ticket Phase 10 order: the record dispatch precedes the workspace pass before the summary" \
+    "$TICKET" "$P8" "$PF" \
+    "dispatch" '\*\*Dispatch one .general-purpose. agent, synchronously\*\*' \
     "closeout" 'invoke the \*\*workspace pass\*\* of the .notion-dev:session-closeout' \
     "summary"  '^Print a summary covering:'
-  assert_present "ticket.md cites \`partial:epic-doc\`" \
-    "$TICKET" "$P10" "$PF" 'record `partial:epic-doc` per `notion-dev:issue-log`'
   assert_present "ticket.md reports the epic doc line" \
     "$TICKET" "$P10" "$PF" '^- \*\*Epic doc\*\*'
-  assert_count "ticket.md still invokes epic-update exactly once" \
-    "$TICKET" 1 "$L" 'Invoke the `notion-dev:epic-update` skill' 1
 else
   bad "missing: $TICKET"
 fi
@@ -240,9 +262,9 @@ fi
 # ---------------------------------------------------------------------------
 echo "== ticket-system: getEpicContext kept as the bootstrap source =="
 # ---------------------------------------------------------------------------
-assert_has "ticket-system still defines \`## getEpicContext(\`" "$TS" '## getEpicContext('
+assert_has "ticket-system still defines \`## getEpicContext(\`" "$TSREAD" '## getEpicContext('
 assert_has "ticket-system: getEpicContext superseded by \`notion-dev:knowledge\` \`retrieve\`; only \`notion-dev:epic-doc\`'\''s Notion-source bootstrap still calls it" \
-  "$TS" 'superseded by `notion-dev:knowledge` `retrieve` for every context read; only `notion-dev:epic-doc`'\''s Notion-source bootstrap still calls it.'
+  "$TSREAD" 'superseded by `notion-dev:knowledge` `retrieve` for every context read; only `notion-dev:epic-doc`'\''s Notion-source bootstrap still calls it.'
 
 # ---------------------------------------------------------------------------
 echo "== issue-log: partial:epic-doc =="

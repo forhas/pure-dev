@@ -24,6 +24,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 TICKET=plugins/notion-dev/commands/ticket.md
 FINALIZE=plugins/notion-dev/commands/finalize.md
 
@@ -52,20 +53,20 @@ echo
 echo "== the title-prefix regex tolerates Notion's escaped brackets =="
 
 if [ -f "$TS" ]; then
-  n=$(total_lines "$TS")
+  n=$(total_lines "$TSCREATE")
   # Notion-flavored markdown escapes [ and ], so the live title is `\[PDS-1\] …`.
   # The detection regex must carry the optional backslashes; without them the
   # strip silently fails and the id lands in the branch slug twice.
-  assert_present "$TS: the detection regex carries the optional escape before the bracket" \
-    "$TS" 1 "$n" '^\^\\\\[?]\\\[\\s[*]<KEY>-'
-  assert_present "$TS: says why the optional backslashes are there" \
-    "$TS" 1 "$n" '^[*][*]The optional backslashes are not defensive padding[.][*][*]'
-  assert_present "$TS: cites the live escaped form" \
-    "$TS" 1 "$n" 'arrives as$'
-  assert_present "$TS: names the double-prefix consequence" \
-    "$TS" 1 "$n" 'accumulating .[[]PDS-1[]] [[]PDS-1[]]'
-  assert_present "$TS: the escapes are stripped from the title body too" \
-    "$TS" 1 "$n" '^Strip the escapes from the captured title as well'
+  assert_present "$TSCREATE: the detection regex carries the optional escape before the bracket" \
+    "$TSCREATE" 1 "$n" '^\^\\\\[?]\\\[\\s[*]<KEY>-'
+  assert_present "$TSCREATE: says why the optional backslashes are there" \
+    "$TSCREATE" 1 "$n" '^[*][*]The optional backslashes are not defensive padding[.][*][*]'
+  assert_present "$TSCREATE: cites the live escaped form" \
+    "$TSCREATE" 1 "$n" 'arrives as$'
+  assert_present "$TSCREATE: names the double-prefix consequence" \
+    "$TSCREATE" 1 "$n" 'accumulating .[[]PDS-1[]] [[]PDS-1[]]'
+  assert_present "$TSCREATE: the escapes are stripped from the title body too" \
+    "$TSCREATE" 1 "$n" '^Strip the escapes from the captured title as well'
 fi
 
 echo

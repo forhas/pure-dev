@@ -383,30 +383,34 @@ done
 # finds zero entries on a populated log, so epic-update's idempotency check can
 # never fire and a recovery invocation appends a duplicate entry.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
+  LREAD=$(total_lines "$TSREAD")
+  LCREATE=$(total_lines "$TSCREATE")
   echo "== ticket-system — escaped brackets bind every read-back =="
 
   assert_present "ticket-system: the escaping binds every read-back, not just the title" \
-    "$TS" 1 "$L" 'bracket form this plugin writes, not just the title'
+    "$TSCREATE" 1 "$LCREATE" 'bracket form this plugin writes, not just the title'
 
   assert_present "ticket-system: this is the canonical statement the other sites cite" \
-    "$TS" 1 "$L" 'This is the$'
+    "$TSCREATE" 1 "$LCREATE" 'This is the$'
 
   assert_present "ticket-system: an unescaped Resolution Log parse defeats \`already-recorded\`" \
-    "$TS" 1 "$L" '`already-recorded`$'
+    "$TSCREATE" 1 "$LCREATE" '`already-recorded`$'
 
   assert_present "ticket-system: the consequence is a duplicated log entry, not lost work" \
-    "$TS" 1 "$L" 'entry\*\*\. Per-follow-up `PROVENANCE` dedup still prevents duplicate'
+    "$TSCREATE" 1 "$LCREATE" 'entry\*\*\. Per-follow-up `PROVENANCE` dedup still prevents duplicate'
 
   assert_count "ticket-system: an unescaped write fails with No matches found (canonical rule + the Tasks-update site)" \
-    "$TS" 1 "$L" '`validation_error: No matches found`' 2
+    "$TSCREATE" 1 "$LCREATE" '`validation_error: No matches found`' 2
 
   assert_present "ticket-system: the Resolution Log parse tolerates the escaped bracket form" \
-    "$TS" 1 "$L" '`## Resolution Log`.*\*\*Tolerate the backslash-escaped bracket form\*\*'
+    "$TSREAD" 1 "$LREAD" '`## Resolution Log`.*\*\*Tolerate the backslash-escaped bracket form\*\*'
 
   assert_present "ticket-system: the Tasks line update matches the escaped bracket form too" \
-    "$TS" 1 "$L" '\*\*When updating an existing line rather than'
+    "$TSCREATE" 1 "$LCREATE" '\*\*When updating an existing line rather than'
 
   # ---------------------------------------------------------------------------
   # ticket-system — a 404 on the configured database is a workspace binding
@@ -419,19 +423,19 @@ if [ -f "$TS" ]; then
   echo "== ticket-system — a 404 is a workspace binding, not a wrong id =="
 
   assert_present "ticket-system: a 404 on the configured database is ambiguous among three causes" \
-    "$TS" 1 "$L" 'is ambiguous — report$'
+    "$TSREAD" 1 "$LREAD" 'is ambiguous — report$'
 
   assert_present "ticket-system: \`notion-fetch \"self\"\` names the bound workspace without proving a mismatch" \
-    "$TS" 1 "$L" '\*\*`notion-fetch "self"` names the workspace the session is bound to; it does not prove the'
+    "$TSREAD" 1 "$LREAD" '\*\*`notion-fetch "self"` names the workspace the session is bound to; it does not prove the'
 
   assert_present "ticket-system: only a read resolving the database elsewhere confirms a mismatch" \
-    "$TS" 1 "$L" 'resolves the database elsewhere confirms a workspace mismatch'
+    "$TSREAD" 1 "$LREAD" 'resolves the database elsewhere confirms a workspace mismatch'
 
   assert_present "ticket-system: the lookup is never widened to recover from it" \
-    "$TS" 1 "$L" '\*\*Never widen the lookup to recover from it\.\*\*'
+    "$TSREAD" 1 "$LREAD" '\*\*Never widen the lookup to recover from it\.\*\*'
 
   assert_present "ticket-system: ticket-key prefixes are not globally unique" \
-    "$TS" 1 "$L" 'ticket-key prefixes are$'
+    "$TSREAD" 1 "$LREAD" 'ticket-key prefixes are$'
 fi
 
 EU=plugins/notion-dev/skills/epic-update/SKILL.md
@@ -451,14 +455,22 @@ fi
 echo "== worktree provisioning =="
 
 T=plugins/notion-dev/commands/ticket.md
+R=plugins/notion-dev/references/record.md
 if [ -f "$T" ]; then
   L=$(total_lines "$T")
 
-  assert_present "ticket.md: the submodule refusal is named as a cause of the --force retry" \
-    "$T" 1 "$L" 'retry with `git worktree remove --force <worktree-path>`.*working trees containing submodules cannot be moved or removed'
+  # Phase 9's cleanup step (git worktree remove --force, the submodule refusal) moved
+  # into references/record.md with the rest of the record unit (Task 8).
+  if [ -f "$R" ]; then
+    LR=$(total_lines "$R")
+    assert_present "record.md: the submodule refusal is named as a cause of the --force retry" \
+      "$R" 1 "$LR" 'retry with `git worktree remove --force <worktree-path>`.*working trees containing submodules cannot be moved or removed'
 
-  assert_present "ticket.md: the submodule refusal is deterministic, not an anomaly" \
-    "$T" 1 "$L" '\*\*deterministic, not an anomaly\*\*'
+    assert_present "record.md: the submodule refusal is deterministic, not an anomaly" \
+      "$R" 1 "$LR" '\*\*deterministic, not an anomaly\*\*'
+  else
+    bad "missing: $R"
+  fi
 
   assert_present "ticket.md: gitignored local files are not carried into the worktree" \
     "$T" 1 "$L" '\*\*Gitignored local files are not carried into the worktree'
@@ -472,8 +484,12 @@ if [ -f "$T" ]; then
   assert_present "ticket.md: the exemption list is exhaustive" \
     "$T" 1 "$L" 'Exactly two kinds of dirt are exempt, and the list is exhaustive'
 
-  assert_present "ticket.md: a failed pull is diagnosed against the primary checkout's status" \
-    "$T" 1 "$L" '\*\*A failed pull must be diagnosed, not merely reported'
+  if [ -f "$R" ]; then
+    assert_present "record.md: a failed pull is diagnosed against the primary checkout's status" \
+      "$R" 1 "$(total_lines "$R")" '\*\*A failed pull must be diagnosed, not merely reported'
+  else
+    bad "missing: $R"
+  fi
 
   assert_present "ticket.md: the primary checkout is asserted unchanged after each build task" \
     "$T" 1 "$L" '\*\*Assert the primary checkout is unchanged after each build task\.\*\*'
@@ -681,24 +697,28 @@ done
 # those rows carry the same pinned staticProperties, being the same project's
 # tickets — so verifying the resolved id is the only thing standing in the way.
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
+  LREAD=$(total_lines "$TSREAD")
+  LCREATE=$(total_lines "$TSCREATE")
   echo "== notion-dev ticket-system — id lookup =="
 
   assert_present "ticket-system: the resolved page's idProperty is verified on every path, not only the fallback" \
-    "$TS" 1 "$L" 'on every path, not only the fallback'
+    "$TSREAD" 1 "$LREAD" 'on every path, not only the fallback'
 
   assert_present "ticket-system: a structured filter can be silently ignored rather than rejected" \
-    "$TS" 1 "$L" 'can be \*\*silently ignored\*\*'
+    "$TSREAD" 1 "$LREAD" 'can be \*\*silently ignored\*\*'
 
   assert_present "ticket-system: an ignored filter is indistinguishable from a genuine multi-hit" \
-    "$TS" 1 "$L" 'indistinguishable at the call site from a genuine multi-hit'
+    "$TSREAD" 1 "$LREAD" 'indistinguishable at the call site from a genuine multi-hit'
 
   assert_present "ticket-system: the project-scoping guardrail does not catch it" \
-    "$TS" 1 "$L" 'step 2 does not catch it'
+    "$TSREAD" 1 "$LREAD" 'step 2 does not catch it'
 
   assert_present "ticket-system: more than one row, or has_more, is never resolved by taking the first row" \
-    "$TS" 1 "$L" 'is never resolved by taking the first row'
+    "$TSREAD" 1 "$LREAD" 'is never resolved by taking the first row'
 
   # ---------------------------------------------------------------------------
   # refreshEpicTasks never creates the section it refreshes
@@ -712,16 +732,16 @@ if [ -f "$TS" ]; then
   echo "== notion-dev ticket-system — refreshEpicTasks =="
 
   assert_present "ticket-system: refreshEpicTasks returns without writing when there is no ## Tasks section" \
-    "$TS" 1 "$L" 'If the epic page has no `## Tasks` section, warn once and return without writing one'
+    "$TSCREATE" 1 "$LCREATE" 'If the epic page has no `## Tasks` section, warn once and return without writing one'
 
   assert_present "ticket-system: upsertSection creating an absent section is the mechanism being guarded" \
-    "$TS" 1 "$L" 'which \*creates\* a section that is absent'
+    "$TSCREATE" 1 "$LCREATE" 'which \*creates\* a section that is absent'
 
   assert_present "ticket-system: refreshAcceptanceCriteria is cited as the sibling that already declines" \
-    "$TS" 1 "$L" 'already declines for the same reason'
+    "$TSCREATE" 1 "$LCREATE" 'already declines for the same reason'
 
   assert_present "ticket-system: creating the section belongs to create-task, never to a refresh" \
-    "$TS" 1 "$L" 'never to a refresh'
+    "$TSCREATE" 1 "$LCREATE" 'never to a refresh'
 
   assert_present "ticket-system: the operations table records the no-op too" \
     "$TS" 1 "$L" '\*\*No-op when the epic has no `## Tasks` section\*\*'
@@ -737,16 +757,16 @@ if [ -f "$TS" ]; then
   echo "== notion-dev ticket-system — absent MCP tool family =="
 
   assert_present "ticket-system: no registered mcp__notion__ tool is a session-level connection failure" \
-    "$TS" 1 "$L" 'that is a session-level connection failure'
+    "$TSREAD" 1 "$LREAD" 'that is a session-level connection failure'
 
   assert_present "ticket-system: the user is not sent to /notion-dev:init for it" \
-    "$TS" 1 "$L" 'do not send the user to `/notion-dev:init`'
+    "$TSREAD" 1 "$LREAD" 'do not send the user to `/notion-dev:init`'
 
   assert_present "ticket-system: one command discriminates — run the server's own launch command by hand" \
-    "$TS" 1 "$L" '\*\*One command discriminates:\*\*'
+    "$TSREAD" 1 "$LREAD" '\*\*One command discriminates:\*\*'
 
   assert_present "ticket-system: a successful hand-run proxy confines the fault to this session's MCP client" \
-    "$TS" 1 "$L" "confined to this session's MCP client connect"
+    "$TSREAD" 1 "$LREAD" "confined to this session's MCP client connect"
 fi
 
 # ---------------------------------------------------------------------------

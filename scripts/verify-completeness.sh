@@ -28,8 +28,9 @@ assert_has   "spec status names its plan"  "$SPEC" '../plans/2026-08-28-complete
 
 echo "== Task 1: ticket-system write path =="
 TS=$ND/skills/ticket-system/SKILL.md
+TSWRITE=$ND/skills/ticket-system/references/write-ops.md
 assert_has "ticket-system tables refreshAcceptanceCriteria" "$TS" '| `refreshAcceptanceCriteria` |'
-assert_has "refreshAcceptanceCriteria has its own section"  "$TS" '## refreshAcceptanceCriteria(id, verdicts)'
+assert_has "refreshAcceptanceCriteria has its own section"  "$TSWRITE" '## refreshAcceptanceCriteria(id, verdicts)'
 assert_has "it renders from the criteria file"              "$TS" 'never from the verifier'
 assert_has "it owns the Acceptance Criteria format"         "$TS" 'single owner of the `Acceptance Criteria` section'
 
@@ -143,13 +144,20 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
   n=${C#plugins/}
   assert_has "$n writes a criteria file"          "$C" 'criteria-<KEY>-<id>.md'
   assert_has "$n passes --criteria-file"          "$C" '--criteria-file'
-  assert_has "$n ticks the acceptance criteria"   "$C" 'refreshAcceptanceCriteria(id, verdicts)'
-  assert_has "$n appends (never upserts) the Completeness block" \
-    "$C" '`appendToSection(id, "Implementation", …)` with a **Completeness** block — never `upsertSection`'
   assert_has "$n reports unmet criteria"          "$C" 'acceptance criteria were not met'
   # C1: `refreshAcceptanceCriteria` renders `- [x]`, so a re-run sees ticked boxes.
   # Stripping only `- [ ]` would embed the old marker and accumulate one per run.
   assert_has "$n strips ticked and bare-bullet markers too" "$C" 'or a bare `- ` bullet'
+
+  # For ticket.md, the tick call and the Completeness-block append are both in 8.3,
+  # which moved into references/record.md with the rest of the record unit (Task 8).
+  RC=$C; rn=$n
+  if [ "$C" = "$ND/commands/ticket.md" ]; then
+    RC=$ND/references/record.md; rn=${RC#plugins/}
+  fi
+  assert_has "$rn ticks the acceptance criteria"   "$RC" 'refreshAcceptanceCriteria(id, verdicts)'
+  assert_has "$rn appends (never upserts) the Completeness block" \
+    "$RC" '`appendToSection(id, "Implementation", …)` with a **Completeness** block — never `upsertSection`'
 done
 assert_lacks "quick-dev's review-and-merge drops the resume case the flow does not have" \
   "$QD/skills/review-and-merge/SKILL.md" 'resumed after its criteria file went missing'
@@ -165,17 +173,21 @@ for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/refe
   assert_has "$n documents completeness_unverified" "$L" 'completeness_unverified'
   assert_has "$n distinguishes a real completeness 0 from the null case" "$L" 'a check that ran and found nothing, not one that never ran'
 done
-assert_has "ticket.md writes completeness counts"   "$ND/commands/ticket.md"      'completeness_criteria'
+# ticket.md's ledger append moved into references/record.md with the rest of the
+# record unit (Task 8).
+assert_has "record.md writes completeness counts"   "$ND/references/record.md" 'completeness_criteria'
 assert_has "finalize.md writes completeness counts" "$ND/commands/finalize.md"    'completeness_criteria'
 assert_has "develop writes completeness counts"     "$QD/skills/develop/SKILL.md" 'completeness_criteria'
 assert_has "develop's ledger site distinguishes a real completeness 0 from the null case" "$QD/skills/develop/SKILL.md" 'a check that ran and found nothing, not one that never ran'
 # An unset CRITERIA_FILE must NOT skip the whole record: the gate still runs charges 2
 # and 3 without a criteria file, so CLAIMS/CAVEATS/TRIAGE can carry real findings.
-for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
+# ticket.md's 8.3 (the paragraph this pins) moved into references/record.md with the
+# rest of the record unit (Task 8); finalize.md carries its own copy unmoved.
+for C in $ND/references/record.md $ND/commands/finalize.md; do
   n=${C#plugins/}
   assert_has "$n records claims/caveats even with no criteria file" "$C" 'An unset `CRITERIA_FILE` is not that case'
 done
-assert_has "ticket.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/commands/ticket.md"   'a check that ran and found nothing, not one that never ran'
+assert_has "record.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/references/record.md"   'a check that ran and found nothing, not one that never ran'
 assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/commands/finalize.md" 'a check that ran and found nothing, not one that never ran'
 
 echo "== Task 6b: the spec documents what the implementation does =="

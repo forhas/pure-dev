@@ -32,6 +32,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # The two flows that own a worktree and clean it up.
 TICKET=plugins/notion-dev/commands/ticket.md
+RECORD=plugins/notion-dev/references/record.md
 FINALIZE=plugins/notion-dev/commands/finalize.md
 DEVELOP=plugins/quick-dev/skills/develop/SKILL.md
 
@@ -125,8 +126,10 @@ check_cleanup() {
 }
 
 echo "== cleanup step ordering =="
-check_cleanup "ticket.md Phase 9" "$TICKET" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>' 'rmdir .*dirname <worktree-path>'
-TICKET_CLEAN_END=$CLEAN_END
+# Phase 9 moved into references/record.md with the rest of the dispatched record unit
+# (Task 8); ticket.md itself no longer carries a cleanup section.
+check_cleanup "record.md Phase 9" "$RECORD" '^## Phase 9 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<branch>' 'rmdir .*dirname <worktree-path>'
+RECORD_CLEAN_END=$CLEAN_END
 check_cleanup "finalize.md Phase 4" "$FINALIZE" '^## Phase 4 .*[Cc]lean' '^### ' '<baseRefName>' '<worktree-path>' '<headRefName>' 'rmdir .*dirname <worktree-path>'
 FINALIZE_CLEAN_END=$CLEAN_END
 check_cleanup "develop Phase 5" "$DEVELOP" '^## Phase 5 .*[Cc]lean' '^## Phase 6' '"[$]MAIN"' '"[$]WORKTREE"' '"[$]BRANCH"' 'rmdir .*dirname "[$]WORKTREE"'
@@ -204,7 +207,7 @@ check_hooks() {
 
 echo
 echo "== post-merge hooks run after cleanup =="
-if [ -n "$TICKET_CLEAN_END" ]; then check_hooks "ticket.md" "$TICKET" "$TICKET_CLEAN_END"; fi
+if [ -n "$RECORD_CLEAN_END" ]; then check_hooks "record.md" "$RECORD" "$RECORD_CLEAN_END"; fi
 if [ -n "$FINALIZE_CLEAN_END" ]; then check_hooks "finalize.md" "$FINALIZE" "$FINALIZE_CLEAN_END"; fi
 
 # ----------------------------------------------------- 5. no --delete-branch
@@ -365,7 +368,7 @@ else
   echo "If a failure above is a deliberate change to that contract, change the"
   echo "assertion with it — in the same commit, with the reasoning. If it is not,"
   echo "the ordering has regressed; see:"
-  echo "  $TICKET (Phase 9)"
+  echo "  $RECORD (Phase 9)"
   echo "  $FINALIZE (Phase 4)"
   echo "  $DEVELOP (Phase 5)"
 fi

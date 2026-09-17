@@ -32,6 +32,7 @@ KS=$ND/skills/knowledge/SKILL.md
 KC=$ND/commands/knowledge.md
 ED=$ND/skills/epic-doc/SKILL.md
 TK=$ND/commands/ticket.md
+RK=$ND/references/record.md
 NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md
 IN=$ND/commands/init.md
@@ -307,9 +308,6 @@ if [ -f "$TK" ]; then
   L=$(total_lines "$TK")
   S11=$(find_line "$TK" 1 "$L" '^### 1\.1 ')
   S12=$(find_line "$TK" 1 "$L" '^### 1\.2 ')
-  P9=$(find_line "$TK" 1 "$L" '^## Phase 9 ')
-  P10=$(find_line "$TK" 1 "$L" '^## Phase 10 ')
-  PH0=$(find_line "$TK" 1 "$L" '^### Post-merge hooks$')
 
   if [ -n "$S11" ] && [ -n "$S12" ]; then
     assert_present "ticket.md 1.1: invokes \`notion-dev:knowledge\`, operation \`retrieve(metadata.parentTaskProperty, <title>, <id>)\`" \
@@ -324,11 +322,19 @@ if [ -f "$TK" ]; then
   assert_has "ticket.md: carries \`KNOWLEDGE_CONTEXT\`" "$TK" 'KNOWLEDGE_CONTEXT'
   assert_lacks "ticket.md: no leftover \`getEpicContext(\` call" "$TK" 'getEpicContext('
 
-  if [ -n "$PH0" ] && [ -n "$P10" ]; then
-    assert_count "ticket.md Phase 9 hook paragraph names \`notion-dev:knowledge\` (cited twice on purpose: the hook name, and the ordering rationale's example)" \
-      "$TK" "$PH0" "$P10" 'notion-dev:knowledge' 2
+  # Phase 9 (including the post-merge-hooks paragraph) moved into
+  # references/record.md with the rest of the record unit (Task 8).
+  if [ -f "$RK" ]; then
+    LR=$(total_lines "$RK")
+    PH0=$(find_line "$RK" 1 "$LR" '^### Post-merge hooks$')
+    if [ -n "$PH0" ]; then
+      assert_count "record.md Phase 9 hook paragraph names \`notion-dev:knowledge\` (cited twice on purpose: the hook name, and the ordering rationale's example)" \
+        "$RK" "$PH0" "$LR" 'notion-dev:knowledge' 2
+    else
+      bad "record.md: could not locate the Phase 9 post-merge-hooks paragraph"
+    fi
   else
-    bad "ticket.md: could not locate the Phase 9 post-merge-hooks paragraph"
+    bad "missing: $RK"
   fi
 else
   bad "missing: $TK"

@@ -16,14 +16,17 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
+RECORD=$ND/references/record.md
 NT=$ND/commands/next-task.md
 SIG=$ND/skills/issue-log/references/signatures.md
 L=$(total_lines "$TICKET")
 P11=$(find_line "$TICKET" 1 "$L" '^### 1\.1 '); P12=$(find_line "$TICKET" 1 "$L" '^### 1\.2 '); P13=$(find_line "$TICKET" 1 "$L" '^### 1\.3 ')
 P21=$(find_line "$TICKET" 1 "$L" '^### 2\.1 '); P3=$(find_line "$TICKET" 1 "$L" '^## Phase 3 ')
 P7=$(find_line "$TICKET" 1 "$L" '^## Phase 7 '); P8=$(find_line "$TICKET" 1 "$L" '^## Phase 8 ')
-P9=$(find_line "$TICKET" 1 "$L" '^## Phase 9 '); P9H=$(find_line "$TICKET" 1 "$L" '^### Post-merge hooks')
 P10=$(find_line "$TICKET" 1 "$L" '^## Phase 10 '); FS=$(find_line "$TICKET" 1 "$L" '^## Failure and stop conditions')
+# Phase 9 moved into references/record.md with the rest of the record unit (Task 8).
+LR=$(total_lines "$RECORD")
+RP9=$(find_line "$RECORD" 1 "$LR" '^## Phase 9 '); RP9H=$(find_line "$RECORD" 1 "$LR" '^### Post-merge hooks')
 echo "== ticket.md: claim, marker, ownership =="
 assert_present "1.1 ownership check: in progress with no worktree of ours aborts \`held elsewhere\`" "$TICKET" "$P11" "$P12" 'is In Progress and has no worktree here — held elsewhere'
 assert_present "1.1 ownership check: non-interactive never proceeds" "$TICKET" "$P11" "$P12" 'held elsewhere.*non-interactive mode never proceeds'
@@ -51,8 +54,8 @@ assert_present "marker discipline: the 2-hour threshold bounds the longest singl
 assert_present "phase 4: the marker is touched after every build task" "$TICKET" "$P3" "$P7" 'Touch the run marker.*after every task it completes'
 assert_present "phase 5: the marker is touched after every verify iteration" "$TICKET" "$P3" "$P7" 'Touch the run marker after every verify iteration'
 assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every reviewer round'
-assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$TICKET" "$P9" "$P9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
-assert_order "phase 9: worktree removed, then marker deleted" "$TICKET" "$P9" "$P9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$RECORD" "$RP9" "$RP9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+assert_order "phase 9: worktree removed, then marker deleted" "$RECORD" "$RP9" "$RP9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
 assert_present "stop path: the marker is set to \`\"state\": \"stopped\"\` with the cause" "$TICKET" "$FS" "$L" '"state": "stopped".*cause'
 # The rewrite lives in the unconditional "On any unrecoverable failure" bullet, not the
 # epic-only `stop` section below it — no bullet boundary separates the two in the file, so

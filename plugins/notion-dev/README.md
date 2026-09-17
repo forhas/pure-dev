@@ -292,8 +292,10 @@ No v1 refactor required to adopt phase 2.
 │   ├── plugin.json           # plugin manifest
 │   └── marketplace.json      # self-contained single-plugin marketplace
 ├── commands/                 # slash commands (init, create-task, ticket, finalize, next-task, new-info, knowledge)
+├── references/               # command reference files — deliberately NOT under commands/, where every .md registers as a slash command
+│   └── record.md             # /notion-dev:ticket's Phases 8-10 (record unit), dispatched to a subagent or read inline on recovery
 ├── skills/
-│   ├── ticket-system/        # Notion ticket operations (single SKILL.md)
+│   ├── ticket-system/        # Notion ticket operations: SKILL.md dispatcher + references/ (config, read-ops, write-ops, styling, create-ops)
 │   ├── input-source/         # input adapters (SKILL.md + prompt.md + existing-ticket.md + notion-page.md)
 │   ├── ticket-interviewer/   # depth-calibrated requirements interview (used by create-task)
 │   ├── task-breakdown/       # single-vs-mission split analysis (used by create-task)

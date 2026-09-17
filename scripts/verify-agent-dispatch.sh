@@ -193,8 +193,15 @@ L=$(total_lines "$TK")
 # invoking it *is* the request for its agent — and only a run that invokes the skill can
 # read that. A run that decides at this step not to invoke never sees it, so the mandate
 # has to be pinned here too, or deleting it leaves every harness green.
-assert_present "ticket: reaching the plan-review step is itself the request for that agent" \
-  "$TK" 1 "$L" 'Reaching this step is itself the request for that agent'
+#
+# Cited twice on purpose (`assert_count`, not a region-scoped `assert_present`): Phase
+# 8's record-unit dispatch (Task 9) makes the identical mandate argument for its own,
+# unrelated agent — reaching that step is that dispatch's request too, for the same
+# reason (a standing no-subagents default must not silently skip it). Two genuine sites
+# for one mechanism, re-checked in both directions: this goes red if either drops the
+# sentence, or if a third copy appears unaccounted for.
+assert_count "ticket: 'reaching this step is itself the request for that agent' is cited for both mandatory dispatches (plan-review, the record-unit)" \
+  "$TK" 1 "$L" 'Reaching this step is itself the request for that agent' 2
 assert_present "ticket: a standing no-subagents rule is already satisfied by reaching the step" \
   "$TK" 1 "$L" 'already satisfied by reaching here'
 assert_present "ticket: reviewing the plan yourself is never the substitute" \
@@ -204,8 +211,12 @@ assert_present "ticket: a self-review is the absence of the check, reported as t
 assert_present "ticket: a forbidden dispatch emits \`PLAN-REVIEW: degraded\` and reports the plan unreviewed" \
   "$TK" 1 "$L" 'emits `PLAN-REVIEW: degraded`, and the final report must say plainly that the plan went unreviewed'
 
-assert_present "ticket: the execution delegation is the one substitutable dispatch" \
-  "$TK" 1 "$L" 'is the one place in this command that may substitute'
+# Was "is the one place in this command that may substitute" — Task 9's Phase 8
+# record-unit dispatch made that a false uniqueness claim (there are now two such
+# places), so 4.2's sentence was rewritten to name the class and cross-reference
+# Phase 8 instead of counting members. Retitled and repointed to match.
+assert_present "ticket: this delegation may substitute, naming the record-unit dispatch as the same class rather than counting members" \
+  "$TK" 1 "$L" 'this delegation may substitute — as may Phase 8.s record-unit dispatch, the same class for the same reason'
 assert_present "ticket: the substitution carve-out reaches only a prohibition aimed at this dispatch" \
   "$TK" 1 "$L" 'means an instruction aimed at this dispatch'
 assert_present "ticket: execution subagents buy throughput, not independence" \
