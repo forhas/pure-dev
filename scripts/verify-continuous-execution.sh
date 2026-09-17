@@ -40,6 +40,8 @@ NT=$ND/commands/next-task.md
 NI=$ND/commands/new-info.md
 CT=$ND/commands/create-task.md
 FIN=$ND/commands/finalize.md
+RM=$QD/skills/review-and-merge/SKILL.md
+NRM=$ND/skills/review-and-merge/SKILL.md
 DEV=$QD/skills/develop/SKILL.md
 SIG=$ND/skills/issue-log/references/signatures.md
 NDREADME=$ND/README.md
@@ -50,7 +52,7 @@ echo "== the rule, at every non-interactive entry point =="
 # ---------------------------------------------------------------------------
 # One phrasing, three orchestrators. Keyed on the mechanism — the two halves of
 # what the mode means, and the shape of the failure — never on a whole sentence.
-for f in "$TK" "$NT" "$FIN" "$DEV"; do
+for f in "$TK" "$NT" "$FIN" "$DEV" "$RM" "$NRM"; do
   assert_has "$f: non-interactive mode is never hand back, not only never ask" \
     "$f" 'non-interactive mode is *never hand back*, not only *never ask*'
   assert_has "$f: names the \`Next: <the thing you were about to do>\` stopping shape" \
@@ -73,8 +75,20 @@ assert_has "$CT: a stopping line naming what comes next is not a question" \
 # unqualified "never stop" would swallow the real stop conditions.
 assert_has "$TK: only the stop conditions this command names explicitly end the run" \
   "$TK" 'The only things that end a non-interactive run are the stop conditions this command names explicitly'
-assert_has "$DEV: only the stop conditions this skill names explicitly end the run" \
-  "$DEV" 'The only things that end a non-interactive run are the stop conditions this skill names explicitly'
+for f in "$DEV" "$RM" "$NRM"; do
+  assert_has "$f: only the stop conditions this skill names explicitly end the run" \
+    "$f" 'The only things that end a non-interactive run are the stop conditions this skill names explicitly'
+done
+
+# review-and-merge is mostly waiting, so every return reads like a stopping
+# point. Name the shape rather than the general rule, or the next editor reads
+# the general rule as already covered by the "never pause" sentence above it.
+for f in "$RM" "$NRM"; do
+  assert_has "$f: the skill is unusually exposed because it is mostly waiting" \
+    "$f" 'This skill is unusually exposed, because it is mostly waiting'
+  assert_has "$f: stopping before the sweep or the gates leaves a PR reviewed and not merged" \
+    "$f" 'leaves a pull request that is reviewed and not merged with nobody watching'
+done
 assert_has "$TK: \`PLAN-REVIEW: blocked\` stays one of those stop conditions" \
   "$TK" '`PLAN-REVIEW: blocked` (4.2b)'
 
