@@ -163,7 +163,14 @@ echo "== READMEs and release =="
 assert_has "notion-dev README: \`--non-interactive\` means two things, not one" \
   "$NDREADME" '`--non-interactive` means two things, not one'
 assert_has "notion-dev README names \`unexpected:run-ended-mid-phase\`" \
-  "$NDREADME" 'recorded as `unexpected:run-ended-mid-phase`'
+  "$NDREADME" '`unexpected:run-ended-mid-phase`'
+# The detection is `/notion-dev:ticket`-only — it is the one command with a run
+# marker and a resume path. An unqualified promise here would claim it for
+# finalize, new-info, create-task and next-task, none of which can emit it.
+assert_has "notion-dev README scopes the detection to \`/notion-dev:ticket\` only" \
+  "$NDREADME" 'In `/notion-dev:ticket` only'
+assert_has "notion-dev README: the other commands get the rule and not the detection" \
+  "$NDREADME" 'The other commands get the rule and not the detection'
 assert_has "quick-dev README: the flag also never hands the turn back" \
   "$QDREADME" 'It also never hands the turn back'
 

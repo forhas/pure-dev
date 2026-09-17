@@ -128,9 +128,12 @@ Then:
 `--non-interactive` means two things, not one: the run never **asks** you anything, and it never
 **hands back**. It does not stop between phases to announce what it is about to do next, so one
 invocation carries the work through to its final report or to one of the stop conditions the
-command names. A run that ends mid-phase anyway is recorded as `unexpected:run-ended-mid-phase`
-in the [runtime issue log](#runtime-issue-log) by the next resume — the ending run cannot observe
-its own ending, so the resume is the only place that condition is visible.
+command names. **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway is recorded as
+`unexpected:run-ended-mid-phase` in the [runtime issue log](#runtime-issue-log) by the next
+resume — the ending run cannot observe its own ending, so a resume is the only place that
+condition is visible, and `/notion-dev:ticket` is the one command with a run marker and a resume
+path to observe it from. The other commands get the rule and not the detection: a mid-phase end
+there is visible only on screen.
 
 Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 
