@@ -109,17 +109,27 @@ assert_has "develop: the offer ends the turn, not the absence of an answer" \
 # ---------------------------------------------------------------------------
 echo "== a mid-phase end is recorded on the next resume =="
 # ---------------------------------------------------------------------------
-assert_has "ticket.md 1.2: a marker still reading \`running\` on resume is a mid-phase end" \
-  "$TK" 'A marker still reading `running` at this point is a mid-phase end'
+assert_has "ticket.md 1.2: a protected re-read still saying \`running\` is a mid-phase end" \
+  "$TK" 'A marker whose protected re-read still read `running` is a mid-phase end'
+# The condition is only observable in the values captured BEFORE the resume claim
+# rewrites the marker: afterwards every marker reads `running` with a fresh
+# heartbeat, so the test matches every resume and its stale-heartbeat qualifier
+# can never be true. Pin both the capture and the reason.
+assert_has "ticket.md 1.2: \`state\`, \`phase\` and \`heartbeat\` are captured before the rewrite" \
+  "$TK" 'capture `state`, `phase` and `heartbeat` from that re-read, and test the captured values here'
+assert_has "ticket.md 1.2: testing the marker as it stands at that line matches everything" \
+  "$TK" 'Testing the marker as it stands at this line instead reports nothing while appearing to match everything'
 assert_has "ticket.md 1.2: it records \`unexpected:run-ended-mid-phase\`" \
   "$TK" 'Record `unexpected:run-ended-mid-phase` per `notion-dev:issue-log`'
-assert_has "ticket.md 1.2: the marker's own \`phase\` is carried as \`Where\`" \
-  "$TK" "carrying the marker's own \`phase\` as \`Where\`"
+assert_has "ticket.md 1.2: the captured \`phase\` is carried as \`Where\`" \
+  "$TK" 'carrying the **captured** `phase` as `Where`'
 # The two non-conditions matter as much as the condition: a missing marker is a
 # pre-marker worktree and `stopped` is a clean stop. Without them the entry
 # fires on ordinary resumes and stops being worth reading.
-assert_has "ticket.md 1.2: a missing marker is not the condition, and neither is \`stopped\`" \
-  "$TK" 'is not this condition (a worktree from before markers existed), and neither is `stopped`'
+assert_has "ticket.md 1.2: a missing marker is not the condition, and neither is a captured \`stopped\`" \
+  "$TK" 'is not this condition (a worktree from before markers existed), and neither is a captured `stopped`'
+assert_has "signature registry: the condition lives in the protected re-read" \
+  "$SIG" 'in the protected re-read taken before the resume claim rewrote it'
 assert_has "signature registry carries the \`unexpected:run-ended-mid-phase\` row" \
   "$SIG" '| `unexpected:run-ended-mid-phase` |'
 assert_has "signature registry: the one signature no run can record about itself" \
