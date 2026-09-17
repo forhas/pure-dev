@@ -23,6 +23,12 @@
 - **Full suite** before every commit touching a harness or a guarded file: `for h in scripts/verify-*.sh; do "$h" || echo "FAILED: $h"; done`.
 - **Pinned literals** (one line each, verbatim):
 
+  > **Superseded where the repository disagrees.** This plan is the historical argument for
+  > PR #47 (merged as `013ff23`); the shipped files and `scripts/verify-*.sh` are the
+  > authority. Three literals below were reversed during implementation and review and are
+  > corrected in place, each marked **superseded** with what replaced it. Do not replay a
+  > superseded literal — one of them is now affirmatively forbidden by the verify suite.
+
 | id | file | literal |
 |---|---|---|
 | L1 | ticket.md 1.1 | `[<key>] is In Progress and has no worktree here — held elsewhere` |
@@ -39,7 +45,7 @@
 | L12 | knowledge.py / fixtures | `drift: <KEY> title differs from live` and `drift: numbered order differs from derived` |
 | L13 | new-info.md, knowledge.md, create-task.md | `<run id>` token definition containing `$(date -u +%Y%m%dT%H%M%SZ)` |
 | L14 | new-info.md apply | `git -C $REPO_ROOT rebase origin/<epicBranch>` and `git -C $REPO_ROOT rebase --abort` |
-| L15 | signatures.md | row `| \`claimed-elsewhere\` | info | \`ticket.md\` |` |
+| L15 | signatures.md | **superseded** — no row. `claimed-elsewhere` is a *run outcome*, not an issue-log signature: issue-log's Kind vocabulary is closed, spec §9 was amended, and `scripts/verify-parallel.sh` now asserts the row is **absent**. Adding it turns the suite red. |
 
 ---
 
@@ -55,7 +61,7 @@
 | `plugins/notion-dev/commands/next-task.md` | modify — marker validity rules, `claimed-elsewhere` handling |
 | `plugins/quick-dev/skills/review-and-merge/SKILL.md`, `.claude/skills/review-and-merge/SKILL.md`, `plugins/notion-dev/skills/review-and-merge/SKILL.md` | modify — rebase at the gate, manifest-version conflict rule |
 | `plugins/notion-dev/commands/new-info.md`, `knowledge.md`, `create-task.md` | modify — per-invocation run id (#44); new-info `--pr` rebase (#46) |
-| `plugins/notion-dev/skills/issue-log/references/signatures.md` | modify — `claimed-elsewhere` row |
+| `plugins/notion-dev/skills/issue-log/references/signatures.md` | **superseded** — not modified; see L15 |
 | `scripts/verify-parallel.sh` | new — every mechanism above except the script's |
 | `plugins/notion-dev/README.md`, both `plugin.json` | modify — running two sessions; versions |
 
@@ -169,7 +175,8 @@ assert_order "phase 9: worktree removed, then marker deleted" "$TICKET" "$P9" "$
 assert_present "stop path: the marker is set to \`\"state\": \"stopped\"\` with the cause" "$TICKET" "$FS" "$L" '"state": "stopped".*cause'
 assert_present "phase 10 report: the marker outcome line" "$TICKET" "$P10" "$FS" '^- \*\*Run marker\*\*'
 LS=$(total_lines "$SIG")
-assert_present "signature \`claimed-elsewhere\`" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \| info \| `ticket.md` \|'
+# SUPERSEDED (see L15): the row was never added. What ships asserts its absence:
+assert_absent "signatures: claimed-elsewhere is a run outcome, never a signature row" "$SIG" 1 "$LS" '^\| `claimed-elsewhere` \|'
 ```
 
 - [ ] **Step 2: See it fail** — `./scripts/verify-parallel.sh | grep -c FAIL` → non-zero; `./scripts/verify-assertions.sh` passes on the new file.
@@ -185,7 +192,7 @@ assert_present "signature \`claimed-elsewhere\`" "$SIG" 1 "$LS" '^\| `claimed-el
 ```
 If the worktree already exists, read the run marker `$REPO_ROOT/.claude/notion-dev/runs/<KEY>-<id>.json` (2.1 defines it) before anything else:
 - marker `"state": "running"` and `heartbeat` younger than 2 hours → abort with `held by a live session — <phase> since <heartbeat>`. Interactive mode offers take-over via `AskUserQuestion` (rewrite the marker's `run`, `phase` and `heartbeat` for this run, then continue below); non-interactive never takes over.
-- marker `stopped`, a heartbeat older than 2 hours, or no marker at all (a worktree from before markers existed) → resume: rewrite the marker as `running` for this run and continue with the resume rules below.
+- marker `stopped`, a heartbeat older than 2 hours, or no marker at all (a worktree from before markers existed) → resume. **Superseded:** a plain rewrite-and-read is not enough — two sessions that each write and then read their own write both see themselves and both proceed into one worktree. What ships (`plugins/notion-dev/commands/ticket.md` 1.2) claims the resume atomically first: `mkdir` the `<KEY>-<id>.claim` directory (parent created with `mkdir -p`, never the claim itself), retire a claim older than the same 2-hour threshold **by rename**, re-read the marker inside the claim before rewriting it, rewrite it as `running` with a fresh per-invocation `session`, re-read, then `rmdir`. A lost claim aborts with the 1.2 `held by a live session` message and runs **none** of the resume rules.
 
 If the worktree already exists and the marker allows a resume:
 ```
@@ -213,7 +220,7 @@ Keep L3, L4 (`OUTCOME: claimed-elsewhere` with `before` on the same line), `"sta
 
 - [ ] **Step 7: Phase 9 step 1 and the stop path** — in step 1, after `git worktree remove <worktree-path>` (and its `--force` retry sentence), append: `` Then `rm -f "$REPO_ROOT/.claude/notion-dev/runs/<KEY>-<id>.json"` — the claim is gone with the worktree. `` In the failure-and-stop bullet, after the `refresh stop` sentence, add: `` Also rewrite the run marker with `"state": "stopped"` and `cause` set to the one-clause cause (the same clause `refresh stop` carried), leaving `worktree` and `branch` in place — 1.2 and `/notion-dev:next-task` read `stopped` as resumable. `` Add a Phase 10 bullet `- **Run marker** — deleted (normal) | left \`stopped\` with the cause (stop path). Omit on \`claimed-elsewhere\`.`
 
-- [ ] **Step 8: signatures** — add after `lock-timeout:primary`: `| \`claimed-elsewhere\` | info | \`ticket.md\` | the worktree claim lost a race; nothing was written, next-task picks another ticket |` (match the table's column count; if the table has a frequency column, fill it `once/run`).
+- [ ] **Step 8: signatures** — **superseded; do not perform.** This step originally added a `claimed-elsewhere` row after `lock-timeout:primary`. The ruling reversed during implementation (see L15): `claimed-elsewhere` is a run outcome, issue-log's Kind vocabulary is closed, spec §9 was amended, and `scripts/verify-parallel.sh:68` now asserts the row is **absent**. `signatures.md` is not modified by this plan.
 
 - [ ] **Step 9: Run, mutation-prove, commit** — `./scripts/verify-parallel.sh ./scripts/verify-primary-lock.sh ./scripts/verify-post-merge-ordering.sh ./scripts/verify-epic-doc.sh ./scripts/verify-assertions.sh`, full suite; commit `feat(ticket): run marker, ownership check, marker resume rules, claimed-elsewhere`; then one sed per new assertion → FAIL → restore.
 
@@ -281,7 +288,7 @@ done
 ```
 **Rebase at the gate.** Read `gh pr view <pr> --json mergeStateStatus`. `BEHIND` or `DIRTY` → in the worktree: `git fetch origin <base>` then `git rebase origin/<base>`; re-run the project's verify on the rebased head; `git push --force-with-lease`; re-read `mergeStateStatus` (it must now be `CLEAN`, `UNSTABLE` only if an optional check is pending, or `BLOCKED` only by a gate below — anything else stops). A clean rebase changes no diff, so it triggers no new review round; the final report states that the rebase happened and the new head sha. This runs **once, at the gate, never per round** — a base that moves during review rounds is caught here, not chased.
 
-One conflict class resolves itself: when the rebase stops with the **only** conflicting hunk being `version` in `.claude-plugin/plugin.json`, take the base's value and re-apply this PR's bump class on top — the bump class is derived, not recorded: compare the manifest at `git merge-base origin/<base> HEAD` with the head's manifest and the first differing component (major, minor, patch) is the class; re-apply it to the base's version, `git add .claude-plugin/plugin.json`, `git rebase --continue`, and re-check that the head's version is strictly greater than the base's (`develop`'s version rule). Two minor PRs against 0.24.0 land as 0.25.0 and 0.26.0. Any other conflict → `git rebase --abort` and the existing unmergeable stop, worktree and PR left for a person; no automatic resolution of code. A repo without a manifest gets the rebase and nothing else.
+One conflict class resolves itself: when the rebase stops with the **only** conflicting hunk being `version` in `.claude-plugin/plugin.json`, take the base's value and re-apply this PR's bump class on top, `git add .claude-plugin/plugin.json`, `git rebase --continue`, and re-check that the head's version is strictly greater than the base's (`develop`'s version rule). **Superseded:** the class is **recorded before the rebase, not derived after it** — `review-and-merge/SKILL.md` compares the manifest at `git merge-base origin/<base> HEAD` with the head's and stores the first differing component as `BUMP_CLASS` *before* `git rebase` runs, then re-applies it once the rebase has landed. Deriving it afterwards reads a merge-base that the rebase has already moved. Spec §8 was amended to match; this line was not. Two minor PRs against 0.24.0 land as 0.25.0 and 0.26.0. Any other conflict → `git rebase --abort` and the existing unmergeable stop, worktree and PR left for a person; no automatic resolution of code. A repo without a manifest gets the rebase and nothing else.
 ```
 
 Then sync the mirror: `cp -r plugins/quick-dev/skills/review-and-merge/. .claude/skills/review-and-merge/` and run `./scripts/verify-mirror.sh`.

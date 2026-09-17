@@ -455,6 +455,43 @@ lk take-stale 0 take --run STO-71 --section start --wait 0
 assert_has "lock: an abandoned owner is broken and named" "$OUT/lock-take-stale.txt" 'stale: run: STO-9'
 assert_has "lock: after breaking, the new run holds it"   "$LK/primary/owner" 'run: STO-71'
 lk release-71 0 release --run STO-71
+
+# The stale threshold itself, pinned from both sides. The year-2000 owner above is broken by
+# any threshold at all, so it says nothing about which one ships — and the value is
+# load-bearing in three places that all assume 60 minutes: the `record` section's `--wait 3600`
+# bound, `ticket.md`'s "bounded by the hour" note, and the two rationale comments in
+# `scripts/verify-primary-lock.sh`. A `record` waiter passes `--wait 3600`, so a threshold below
+# that lets a waiter break a lock a live `record` section still holds — the exact regression
+# PR #47 raised the constant to prevent, and which reverting it would otherwise ship silently.
+# The pair straddles the boundary itself: 59 minutes must still be held, 61 must break, so the
+# threshold is pinned to (59, 61] and **every** sub-hour value fails — 50 minutes included,
+# which a looser 45/75 pair would have let through while still breaking a live `record`
+# section's lock 10 minutes inside its own `--wait 3600` budget. The one-minute margin is far
+# wider than the sub-second gap between stamping and evaluation, and elapsed time only ages
+# the owner, so drift can never flip the 61-minute case. Timestamps come from $PYBIN rather
+# than `date -d` so the fixture reads the same clock and format `knowledge.py` writes.
+stamp() { $PYBIN -c "import datetime,sys;print((datetime.datetime.utcnow()-datetime.timedelta(minutes=int(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
+mkdir -p "$LK/primary"
+printf 'run: STO-8\nsection: record\nsince: %s\n' "$(stamp 59)" > "$LK/primary/owner"
+lk take-under-threshold 1 take --run STO-72 --section start --wait 0
+assert_has "lock: a 59-minute-old owner is still held, not broken" "$OUT/lock-take-under-threshold.txt" 'held by STO-8 (record) since'
+printf 'run: STO-8\nsection: record\nsince: %s\n' "$(stamp 61)" > "$LK/primary/owner"
+lk take-over-threshold 0 take --run STO-72 --section start --wait 0
+assert_has "lock: a 61-minute-old owner is past the threshold and broken" "$OUT/lock-take-over-threshold.txt" 'stale: run: STO-8'
+lk release-72 0 release --run STO-72
+# The pair above proves the constant is WIRED IN — that `take` actually consults it on the path
+# a waiter walks — but second-level values slip between 59 and 61 minutes: `3599` keeps both
+# cases green while still breaking a lock one second inside a live `record` section's own
+# `--wait 3600`. Closing that needs the exact value, and pinning it directly is the other fix
+# issue #49 itself offered. It is not a substitute for the behavioural pair and the pair is not
+# a substitute for it: this one alone would pass if `take` stopped reading the constant, and the
+# pair alone cannot see a one-second shortfall. A second-precision fixture could, but only with
+# a clock seam in shipped code — `knowledge.py` has none, and without one the gap between
+# stamping the owner and evaluating its age (Python startup, ~1s cold on Windows CI) is the same
+# order as the margin being tested, so the assertion would be flaky rather than strict.
+KPY=plugins/notion-dev/scripts/knowledge.py
+assert_present "lock: LOCK_STALE_SECONDS is exactly one hour" \
+  "$KPY" 1 "$(total_lines "$KPY")" '^LOCK_STALE_SECONDS = 60 \* 60$'
 mkdir -p "$LK/primary"; : > "$LK/primary/owner"           # empty owner, fresh directory = in creation
 lk take-creating 1 take --run STO-71 --section start --wait 0
 assert_has "lock: an owner still being written is waited on, not broken" "$OUT/lock-take-creating.txt" 'held by'
