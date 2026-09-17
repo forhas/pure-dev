@@ -479,6 +479,19 @@ printf 'run: STO-8\nsection: record\nsince: %s\n' "$(stamp 61)" > "$LK/primary/o
 lk take-over-threshold 0 take --run STO-72 --section start --wait 0
 assert_has "lock: a 61-minute-old owner is past the threshold and broken" "$OUT/lock-take-over-threshold.txt" 'stale: run: STO-8'
 lk release-72 0 release --run STO-72
+# The pair above proves the constant is WIRED IN — that `take` actually consults it on the path
+# a waiter walks — but second-level values slip between 59 and 61 minutes: `3599` keeps both
+# cases green while still breaking a lock one second inside a live `record` section's own
+# `--wait 3600`. Closing that needs the exact value, and pinning it directly is the other fix
+# issue #49 itself offered. It is not a substitute for the behavioural pair and the pair is not
+# a substitute for it: this one alone would pass if `take` stopped reading the constant, and the
+# pair alone cannot see a one-second shortfall. A second-precision fixture could, but only with
+# a clock seam in shipped code — `knowledge.py` has none, and without one the gap between
+# stamping the owner and evaluating its age (Python startup, ~1s cold on Windows CI) is the same
+# order as the margin being tested, so the assertion would be flaky rather than strict.
+KPY=plugins/notion-dev/scripts/knowledge.py
+assert_present "lock: LOCK_STALE_SECONDS is exactly one hour" \
+  "$KPY" 1 "$(total_lines "$KPY")" '^LOCK_STALE_SECONDS = 60 \* 60$'
 mkdir -p "$LK/primary"; : > "$LK/primary/owner"           # empty owner, fresh directory = in creation
 lk take-creating 1 take --run STO-71 --section start --wait 0
 assert_has "lock: an owner still being written is waited on, not broken" "$OUT/lock-take-creating.txt" 'held by'
