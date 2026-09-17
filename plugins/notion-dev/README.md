@@ -125,6 +125,13 @@ Then:
 | `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). |
 | `/notion-dev:knowledge capture <ticket-id> <merge-sha> \| migrate [--apply] \| curate` | Person-invoked knowledge-bundle maintenance. `capture` re-runs by hand the post-merge write a ticket run skipped or failed; `migrate` moves an existing client bundle onto the plugin's schema (prints the diff, `--apply` to write, then a removal checklist); `curate` walks near-duplicate concepts and supersedes the losers, one `AskUserQuestion` per cluster. Reading the bundle happens automatically inside `/notion-dev:ticket`, not through this command. |
 
+`--non-interactive` means two things, not one: the run never **asks** you anything, and it never
+**hands back**. It does not stop between phases to announce what it is about to do next, so one
+invocation carries the work through to its final report or to one of the stop conditions the
+command names. A run that ends mid-phase anyway is recorded as `unexpected:run-ended-mid-phase`
+in the [runtime issue log](#runtime-issue-log) by the next resume — the ending run cannot observe
+its own ending, so the resume is the only place that condition is visible.
+
 Ticket titles are prefixed with their ticket ID — `[STO-67] Large-Wallet Stale-Index Incident`. The prefix is applied and stripped automatically; you never type it, and branch names are unaffected.
 
 ## Configuration

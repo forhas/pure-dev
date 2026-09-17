@@ -19,6 +19,8 @@ Flag parsing:
 - Everything after a `|` is optional guidance, appended to the guidance of every delegated run.
 - Whatever remains is `<epic-id>`; empty → fail with usage.
 
+**Continuous execution — non-interactive mode is *never hand back*, not only *never ask*.** Do not end your turn between steps, between delegated `/notion-dev:ticket` runs, or after any skill or subagent returns. A message that ends with `Next: <the thing you were about to do>` and then stops is the exact failure this rule names, and the self-answer rule above does not reach it: no question was asked, so nothing was left unanswered — the run simply handed back, and in a non-interactive run nobody is watching to type "continue". Announcing what comes next is fine; announcing it *instead of doing it* is the defect. This binds the `--depth` loop in particular: a delegated run returning is the cue to re-read the brief and start the next ticket, never the cue to report and stop. The only things that end a non-interactive run are the stop conditions this command names explicitly and its final report.
+
 **Standing rule — runtime issues.** Anything unexpected at runtime is recorded via `notion-dev:issue-log` at the moment it happens; that skill is authoritative for what counts. A failure to write the log never fails the run.
 
 ## Preconditions
