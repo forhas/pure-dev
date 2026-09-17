@@ -428,10 +428,16 @@ RL=$(total_lines "$README")
 PR0=$(find_line "$README" 1 "$RL" '^## Prerequisites$')
 PR1=$(find_line "$README" $((PR0 + 1)) "$RL" '^## ')
 [ -n "$PR1" ] || PR1=$RL
+# `.*`, not `.`, where the README's prose punctuation sits: those positions hold multi-byte
+# UTF-8 (`\xe2\x89\xa5` and the em dash `\xe2\x80\x94`). A single `.` matches one CHARACTER under a
+# UTF-8 locale and one BYTE under the C locale Git Bash runs with, so `.` passed on Ubuntu and
+# failed on Windows against identical bytes — the first defect the full-suite Windows CI leg
+# caught. Matching the mechanism (`iwe`, the version floor, `PATH`, `required`) and skipping the
+# punctuation is also what CLAUDE.md asks for: assert the invariant, not the prose.
 assert_present "README prerequisites, region-scoped to that section, list \`iwe\` as required" \
-  "$README" "$PR0" "$PR1" '^- [*][*]`iwe` . 0[.]19 on `PATH`[*][*] . [*][*]required[*][*]'
+  "$README" "$PR0" "$PR1" '^- [*][*]`iwe` .* 0[.]19 on `PATH`[*][*] .* [*][*]required[*][*]'
 assert_present "README prerequisites, same region, list Python 3.8+ as required" \
-  "$README" "$PR0" "$PR1" '^- [*][*]Python 3[.]8[+][*][*] . [*][*]required[*][*]'
+  "$README" "$PR0" "$PR1" '^- [*][*]Python 3[.]8[+][*][*] .* [*][*]required[*][*]'
 assert_has "README documents \`knowledge.dir\`" "$README" 'knowledge.dir'
 assert_lacks "README: no leftover \`epicDocs\` reference" "$README" 'epicDocs'
 assert_lacks "README: no leftover \"Knowledge bundles are not touched\" sentence" \
