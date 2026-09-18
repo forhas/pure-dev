@@ -12,7 +12,7 @@ Args: `<information> [--epic <id>]… [--non-interactive] [--pr]`
 
 Flag parsing:
 - `--epic <id>` (repeatable, or `--epic=<id>`): remove each and record `EPICS`. Each accepts every form `/notion-dev:ticket` accepts for a ticket id: the Notion page id, a dashed UUID, the page URL, or the logical key (`STO-60`).
-- `--non-interactive`: never pause; apply every `affected` proposal and comment on every `AC-IMPACT` ticket, logging each decision for the report.
+- `--non-interactive`: never pause; apply every `affected` proposal and comment on every `AC-IMPACT` ticket, logging each decision for the report. **Never hand back, either** — do not end your turn between epics, between steps, or after a delegated skill returns. A message ending with `Next: <the thing you were about to do>` and then stopping is not a question, so the self-answer rule does not reach it; in a non-interactive run nobody is watching to type "continue". Announcing what comes next is fine; announcing it *instead of doing it* is the defect. Only this command's explicit stop conditions and its final report end the run.
 - `--pr`: land through one pull request instead of direct commits (see `## \`--pr\`` below).
 - Whatever remains is `<information>`, the fact, verbatim; empty → fail with usage. Derive `<short fact>`: the fact truncated to 60 characters at a word boundary — it names the commit subjects, the PR title, and the Notion entries.
 

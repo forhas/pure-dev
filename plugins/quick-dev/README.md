@@ -36,7 +36,7 @@ One-command feature development for Claude Code. `/develop <description>` takes 
 ```
 
 - **Default (interactive)**: the triage confirmation and the chosen build flow's natural checkpoints are kept — clarifying questions, architecture or design approval. Everything after implementation (PR, review loop, merge, cleanup) runs unattended.
-- **`--non-interactive`**: fully autonomous; every judgment call — including accepting the triage recommendation and the build flow's own checkpoints — is made automatically and reported in the final summary.
+- **`--non-interactive`**: fully autonomous; every judgment call — including accepting the triage recommendation and the build flow's own checkpoints — is made automatically and reported in the final summary. It also never hands the turn back: the run does not stop between phases to say what it is about to do next, so a single invocation carries the feature from description to merged PR.
 - **`--flow=<flow>`**: bypass the triage heuristic and force `feature-dev` or `superpowers`; the override is still recorded in the ledger.
 - **The run states its definition of done before it starts.** Triage derives 3-6 observable acceptance criteria from your feature description before any code exists — with a coverage map naming every sentence of the request and which criterion covers it — and the PR body freezes them before review. At merge, the completeness gate checks each one, and anything not met becomes an `absorb` / `file` / `drop` item rather than a silent omission. Locally, unmet criteria land as `Unmet:` trailers on the squash commit, so `git log --grep '^Unmet:'` shows where a definition of done shrank.
 

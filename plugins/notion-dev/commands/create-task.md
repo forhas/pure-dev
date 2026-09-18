@@ -18,7 +18,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 | Flag | Effect |
 |---|---|
-| `--non-interactive` | Never pause for user input; see the phase table below. |
+| `--non-interactive` | Never pause for user input; see the phase table below. **And never hand back**: do not end your turn between phases or after a delegated skill or subagent returns. A message ending with `Next: <the thing you were about to do>` and then stopping is not a question, so the self-answer rule never reaches it, and in a non-interactive run nobody is watching to type "continue". Announcing what comes next is fine; announcing it *instead of doing it* is the defect. Only this command's explicit stop conditions and its Phase 4 report end the run. |
 | `--context-file=<path>` | Path to a markdown context packet. Seeds the interviewer, and is the proxy respondent's evidence base. Valid with or without `--non-interactive`. |
 | `--epic=<name>` | Skip Phase 2.6's matching; use this Epic select value verbatim. |
 | `--parent=<id>` | Epic page ticket id for the `parentTaskProperty` relation. Normally passed with `--epic`. Flows into Phase 3.2's `createTicket({ …, parent })` argument — **not** through `setParent`, which no path in this plugin calls — so the relation is written in the same create call as the page (see `createTicket` steps 1a and 2 in `notion-dev:ticket-system`), never as a follow-up update. **Taken on trust** — unlike `--epic`/`--parent` pairs resolved internally via `findEpics()`, an explicitly supplied `--parent` gets no epic-structure check (there is no way to guard it without also blocking the legitimate case of attaching a brand-new epic's first child); the caller is responsible for passing the id of an actual epic. |
