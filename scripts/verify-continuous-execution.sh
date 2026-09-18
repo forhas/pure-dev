@@ -73,8 +73,10 @@ assert_has "$CT: a stopping line naming what comes next is not a question" \
 
 # The rule is worthless if it does not say what DOES end the run — an
 # unqualified "never stop" would swallow the real stop conditions.
-assert_has "$TK: only the stop conditions this command names explicitly end the run" \
-  "$TK" 'The only things that end a non-interactive run are the stop conditions this command names explicitly'
+for f in "$TK" "$FIN"; do
+  assert_has "$f: only the stop conditions this command names explicitly end the run" \
+    "$f" 'The only things that end a non-interactive run are the stop conditions this command names explicitly'
+done
 for f in "$DEV" "$RM" "$NRM"; do
   assert_has "$f: only the stop conditions this skill names explicitly end the run" \
     "$f" 'The only things that end a non-interactive run are the stop conditions this skill names explicitly'
