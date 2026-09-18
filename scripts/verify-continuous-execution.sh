@@ -91,6 +91,16 @@ for f in "$RM" "$NRM"; do
 done
 assert_has "$TK: \`PLAN-REVIEW: blocked\` stays one of those stop conditions" \
   "$TK" '`PLAN-REVIEW: blocked` (4.2b)'
+assert_has "$TK: the epic guard and the \`held elsewhere\` ownership check are among those stops" \
+  "$TK" 'the epic guard and the `held elsewhere` ownership check, both of which non-interactive mode must obey'
+
+# Every enumerated stop list must say it is not closed. Written as exhaustive it
+# conflicts with any stop it forgot — a rule against handing back then reads as
+# a licence to continue past a hard abort.
+for f in "$TK" "$FIN" "$DEV"; do
+  assert_has "$f: the enumerated stop list is illustrative, never exhaustive" \
+    "$f" '**This list is illustrative, never exhaustive**'
+done
 
 # finalize's exposed boundary is its own: a long delegation that ends with a
 # merged PR reads like a finish line while three phases of work still follow it.
@@ -123,10 +133,15 @@ assert_has "develop: writing the plan file completes the step — go straight to
 # Both call sites must say WHY self-answering cannot recover it: the offer ends
 # the turn, not the missing answer. Drop that and the next editor "simplifies"
 # the suppression back out on the grounds that non-interactive already answers.
-assert_has "ticket.md: the offer ends the turn, not the absence of an answer" \
-  "$TK" 'what ends the turn is the offer, not the absence of an answer'
-assert_has "develop: the offer ends the turn, not the absence of an answer" \
-  "$DEV" 'what ends the turn is the offer, not the absence of an answer'
+for f in "$TK" "$DEV"; do
+  assert_has "$f: the offer ends the turn, not the absence of an answer" \
+    "$f" 'what ends the turn is the offer, not the absence of an answer'
+  # ...and therefore the self-answer rule CANNOT recover it. ticket.md stated
+  # only the first half and drew the opposite conclusion from it, which read as
+  # licence to keep the handoff and self-answer it.
+  assert_has "$f: a self-answer rule cannot recover the handoff" \
+    "$f" 'so a self-answer rule cannot recover it'
+done
 
 # ---------------------------------------------------------------------------
 echo "== a mid-phase end is recorded on the next resume =="
