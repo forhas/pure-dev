@@ -38,7 +38,16 @@ case "$sid" in
   *[!A-Za-z0-9._-]*) exit 0 ;;
 esac
 
-printf 'export NOTION_DEV_SESSION_ID=%s\n' "$sid" >> "$CLAUDE_ENV_FILE" 2>/dev/null
+# Single-quote every value written here. The harness SOURCES this file, so an
+# unquoted value is shell input: a path with a space truncates the variable at
+# the space, and a `;` or a `&` would execute. The id is already restricted to
+# safe characters above; the path below cannot be, because a real checkout path
+# legitimately contains spaces — Windows user profiles routinely do.
+shquote() {  # wrap in single quotes, escaping any single quote within
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+printf 'export NOTION_DEV_SESSION_ID=%s\n' "$(shquote "$sid")" >> "$CLAUDE_ENV_FILE" 2>/dev/null
 
 # Also capture the primary checkout, NOW, while it is still resolvable.
 #
@@ -62,7 +71,14 @@ start=${CLAUDE_PROJECT_DIR:-}
 primary=$(git -C "$start" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)
 [ -n "$primary" ] || exit 0
 [ -d "$primary" ] || exit 0
-case "$primary" in *[\'\"\$\`]*) exit 0 ;; esac
+# A newline is the one thing quoting cannot carry through a line-oriented file,
+# and no character class rejection is needed beyond it: `shquote` makes every
+# other byte literal, including the spaces a real Windows checkout path has.
+# Counted, not matched: `case $x in *"$(printf '\n')"*)` looks like the test and
+# is not one — command substitution strips the trailing newline, so the pattern
+# is `**`, every path matches, and nothing is ever written. It shipped that way
+# for one commit and the round-trip test caught it.
+[ "$(printf '%s' "$primary" | wc -l | tr -d ' ')" = "0" ] || exit 0
 
-printf 'export NOTION_DEV_PRIMARY_ROOT=%s\n' "$primary" >> "$CLAUDE_ENV_FILE" 2>/dev/null
+printf 'export NOTION_DEV_PRIMARY_ROOT=%s\n' "$(shquote "$primary")" >> "$CLAUDE_ENV_FILE" 2>/dev/null
 exit 0

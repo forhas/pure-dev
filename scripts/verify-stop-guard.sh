@@ -246,13 +246,35 @@ expect_silent "...and with no captured root either, it fails open rather than gu
 if git -C "$REPO" worktree add -q "$T/wt-early" -b early 2>/dev/null; then
   printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"SessionStart"}' "$T/wt-early" \
     | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$T/wt-early" bash "$SENV_ABS" >/dev/null 2>&1
-  if grep -q "^export NOTION_DEV_PRIMARY_ROOT=$REPO\$" "$EF_EARLY" 2>/dev/null; then
+  got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
+  if [ "$got" = "$REPO" ]; then
     ok "session-env.sh resolves the primary checkout from inside a worktree"
   else
-    bad "session-env.sh did not capture the primary root (file: $(cat "$EF_EARLY" 2>/dev/null))"
+    bad "session-env.sh did not capture the primary root (sourced: [$got], file: $(cat "$EF_EARLY" 2>/dev/null))"
   fi
 else
   bad "could not create the early-worktree fixture"
+fi
+
+# Everything session-env.sh writes is SOURCED by the harness, so a value with
+# a space truncates the variable and one with a `;` or `&` executes. Windows
+# user profiles routinely contain spaces, so this is the ordinary case, not the
+# adversarial one. Round-trip it: write, source, compare.
+if git init -q "$T/space-src" 2>/dev/null && git -C "$T/space-src" commit -q --allow-empty -m i 2>/dev/null; then
+  SPREPO=$T/space-src
+  # move it to a path containing a space, so `git worktree list` reports one
+  mv "$SPREPO" "$T/space repo" 2>/dev/null && SPREPO="$T/space repo"
+  : > "$EF_EARLY"
+  printf '{"session_id":"s-1","cwd":"%s","hook_event_name":"SessionStart"}' "$SPREPO" \
+    | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$SPREPO" bash "$SENV_ABS" >/dev/null 2>&1
+  got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
+  if [ "$got" = "$SPREPO" ]; then
+    ok "primary root containing a space survives being sourced back"
+  else
+    bad "primary root did not round-trip: wrote [$(cat "$EF_EARLY" 2>/dev/null)], sourced [$got]"
+  fi
+else
+  bad "could not create the spaced-path fixture"
 fi
 
 # A checkout path with a space in it: `git worktree list --porcelain` emits the
@@ -278,11 +300,14 @@ echo "== session-env.sh publishes the id the marker records =="
 EF=$T/env-file
 senv() { printf '%s' "$1" | CLAUDE_ENV_FILE="$EF" bash "$SENV_ABS" >/dev/null 2>&1; }
 
+# Source it back rather than grepping a literal line: what matters is the value
+# the harness ends up with, and every value here is shell-quoted.
 : > "$EF"; senv '{"session_id":"abc-123","hook_event_name":"SessionStart"}'
-if grep -q '^export NOTION_DEV_SESSION_ID=abc-123$' "$EF" 2>/dev/null; then
+got=$( . "$EF" 2>/dev/null; printf '%s' "${NOTION_DEV_SESSION_ID:-}" )
+if [ "$got" = "abc-123" ]; then
   ok "session-env.sh exports the session id to \$CLAUDE_ENV_FILE"
 else
-  bad "session-env.sh did not export the session id (file: $(cat "$EF" 2>/dev/null))"
+  bad "session-env.sh did not export the session id (sourced: [$got], file: $(cat "$EF" 2>/dev/null))"
 fi
 
 : > "$EF"; senv '{"hook_event_name":"SessionStart"}'
