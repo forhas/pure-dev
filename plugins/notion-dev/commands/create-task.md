@@ -1,6 +1,6 @@
 ---
 description: Produce a well-formed ticket from a prompt or an existing source. Runs a depth-calibrated interview (via notion-dev:ticket-interviewer) when needed, then writes the result to the configured ticket system.
-argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [--provenance=<marker>] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
+argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [--provenance=<marker>] [--no-proxy] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
 ---
 
 # /notion-dev:create-task
@@ -14,7 +14,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 **Parsing rule.** Only treat a leading `<token>:` as a source selector when `<token>` exactly matches a known source name (`prompt`, `existing-ticket`, `notion-page`). Otherwise — including when the argument merely happens to contain a colon (e.g. `Add rate limiting: 100 req/min`) — default to `prompt` and treat the **entire** argument as raw text. Never infer a source from an arbitrary word before a colon.
 
-**Flags.** Six optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
+**Flags.** Eight optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
 
 | Flag | Effect |
 |---|---|
@@ -25,6 +25,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 | `--assignee=<id>` | Skip Phase 2.75's resolution; use this Notion user id. |
 | `--title=<text>` | Pin the ticket's final title to this exact string (see Phase 2.1). The interviewer still elaborates the body, but does not get to rewrite the title. |
 | `--provenance=<marker>` | Pin this exact marker line into the created ticket's `## Context` section (see Phase 2.1). The marker is folded into `body` before Phase 3.2's single write — never appended in a separate call afterward — so the ticket and its provenance marker come into existence in the same atomic operation, or neither does. |
+| `--no-proxy` | Answer Phase 2.1's interview from `--context-file`'s packet directly, in this agent, instead of dispatching a proxy-respondent subagent. Only for a caller that is itself a dispatched unit — see the proxy-respondent section below. |
 
 `--epic`, `--parent`, `--assignee`, `--title`, and `--provenance` are what let `/notion-dev:ticket` and `/notion-dev:finalize` file a review follow-up as a sibling under the resolving ticket's epic with no prompting. `--title` and `--provenance` together are what let a caller dedup its own follow-ups reliably: `--title` derives a title, passes it here, and knows that string is exactly what ends up stored; `--provenance` derives a marker and knows it is written into `## Context` as part of ticket creation itself, not as a follow-up step a crash between the two could skip.
 
@@ -32,7 +33,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 | Phase | Interactive | Non-interactive |
 |---|---|---|
-| 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) |
+| 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) — **unless `--no-proxy`**, which answers them in this agent from `--context-file`'s packet |
 | 2.1 title | Interviewer's returned `title` is used as-is, unless `--title` is supplied — then that exact string always wins, in either mode | Same rule: `--title`, when supplied, overrides the interviewer's returned `title`; otherwise the interviewer's value is used |
 | 2.1 provenance | Interviewer's returned `body`'s `## Context` section is used as-is, unless `--provenance` is supplied — then the marker is force-inserted into `## Context` verbatim before Phase 3.2 writes, in either mode | Same rule: `--provenance`, when supplied, is folded into `## Context` before Phase 3.2's creation call; otherwise the interviewer's `## Context` is used unchanged |
 | 2.2 confirm | `create` / `revise` / `cancel` | Auto-`create` |
@@ -45,7 +46,13 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 This is deliberate. When `/notion-dev:ticket` or `/notion-dev:finalize` files a deferred review item, the main loop is the agent that *wrote* that item during review. Having it answer its own interview restates its own assumptions and produces a ticket that looks elaborated but carries no new information. A fresh agent, handed the ticket, the merge diff, and the review thread, has to actually read them.
 
-Dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
+**`--no-proxy` — the one caller that must not dispatch one.** The reasoning above is about *who wrote the finding*, and it holds only for a caller that wrote it. A **dispatched flow unit** — `/notion-dev:ticket` Phase 8's record unit reading `references/record.md`, which reaches this command through `notion-dev:epic-update` step 2 — did not write the finding: it received `REVIEW_REPORT` and the packet second-hand from a run it has no access to. It is already the fresh reader this section exists to install, so a proxy respondent buys it nothing and costs it the run.
+
+**Costs it the run, measured twice in one client session.** A dispatched agent has no way to be *waiting*: its caller sees it either return its contract block or stop. On notion-dev 0.29.0 the record unit dispatched two proxy respondents, ended with state `completed` and prose reading "I'm waiting on the two proxy respondents", and emitted no `RECORD:` block at all. Phase 8 read that correctly as a dispatch failure, recorded `unexpected:record-unit-not-dispatched`, and ran the whole unit inline — and the proxies then delivered, ~25 minutes later, after the run had published its final report. Both of their answers carried load-bearing facts the inline bodies lacked. Nothing was lost only because a person was still reading.
+
+So: **a dispatched flow unit passes `--no-proxy`**, and this command then answers the interviewer's questions itself, from the packet, under exactly the discipline above — ground every answer in the packet, and reply `unknown — needs human input` rather than inventing detail. Nothing else about the interview changes. The orchestrator's own inline paths do **not** pass it, and keep the proxy respondent, because there the main loop *is* the review author and the original reasoning applies unchanged. There are two, and they reach this command differently: `/notion-dev:ticket`'s Phase 8 recovery runs `references/record.md` itself in the main loop, and `/notion-dev:finalize` never reads that file at all — it carries its own `## Phase 3 — Record` and invokes `notion-dev:epic-update` directly, in its main loop, on **every** finalize path rather than only the `MERGED` recovery one. Neither passes `NO_PROXY`, so `epic-update` omits `--no-proxy` and the proxy respondent runs, which is the intended behaviour for both.
+
+**Unless `--no-proxy` was supplied** (below), dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
 
 **Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 
@@ -83,7 +90,7 @@ When `--provenance` was supplied, apply the same discipline to `## Context`: aft
 
 No `confidence`-branching lives in this command — depth calibration is fully owned by the skill.
 
-In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user. Everything else about the interview is unchanged.
+In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user — **unless `--no-proxy` was supplied**, in which case answer them in this agent from `--context-file`'s packet, under that section's discipline. Everything else about the interview is unchanged in either case.
 
 ### 2.2 Confirm
 
