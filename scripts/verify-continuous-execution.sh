@@ -184,6 +184,13 @@ assert_has "$TK: the rule is enforced by a \`Stop\` hook, because prose alone di
   "$TK" 'This rule is enforced by a `Stop` hook, because as prose alone it did not hold'
 assert_has "$TK: names \`hooks/stop-guard.sh\` as the enforcement" \
   "$TK" '`hooks/stop-guard.sh` blocks the stop'
+# The guard is only live while the marker is. Deleting it with the worktree
+# left every later step unguarded — the same class of defect as the rule being
+# prose: enforcement present, and not covering the window.
+assert_has "$TK: the marker is deleted last, immediately before the summary" \
+  "$TK" 'Delete the run marker — last, immediately before printing the summary below'
+assert_has "$TK: not in Phase 9 cleanup, which is where it used to happen" \
+  "$TK" '**Not in Phase 9 cleanup, which is where it used to happen**'
 assert_has "$TK: \`/notion-dev:finalize\` writes no marker, so the guard does not cover it" \
   "$TK" '`/notion-dev:finalize` writes no run marker, so the guard does not cover it at all'
 assert_has "$TK: the run marker carries \`non_interactive\`" \
