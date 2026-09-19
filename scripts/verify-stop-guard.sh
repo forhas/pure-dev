@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# notion-dev's Stop guard — behavioural, not prose.
+#
+# The rule "a --non-interactive run never hands back" shipped as prose in 0.28.1
+# and did not hold: a client run on that version stopped at the end of Phase 7
+# and then quoted the rule it had broken. 0.29.0 moves the enforcement into a
+# `Stop` hook, and a hook is code — so this harness RUNS it against fixtures
+# rather than grepping the document that describes it.
+#
+# The two directions that matter are equally important and pull opposite ways:
+# it must block a live non-interactive run, and it must fail open on everything
+# else. A guard that blocks too eagerly wedges a session, which is worse than
+# the stop it prevents — so most of the cases below assert silence.
+#
+# Run from anywhere: ./scripts/verify-stop-guard.sh
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+fails=0
+ok()  { printf '  PASS  %s\n' "$1"; }
+bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+
+# shellcheck source=lib/assert.sh
+. ./scripts/lib/assert.sh
+
+HOOKS=plugins/notion-dev/hooks/hooks.json
+GUARD=plugins/notion-dev/hooks/stop-guard.sh
+GUARD_ABS=$PWD/$GUARD
+
+# ---------------------------------------------------------------------------
+echo "== the hook is registered and runnable =="
+# ---------------------------------------------------------------------------
+if [ -f "$HOOKS" ]; then
+  assert_has "hooks.json registers a \`Stop\` hook"                "$HOOKS" '"Stop"'
+  assert_has "hooks.json runs the guard via \`\${CLAUDE_PLUGIN_ROOT}\`" \
+    "$HOOKS" '${CLAUDE_PLUGIN_ROOT}/hooks/stop-guard.sh'
+  assert_has "hooks.json declares the hook \`type\` as \`command\`"  "$HOOKS" '"type": "command"'
+else
+  bad "hooks.json is missing ($HOOKS)"
+fi
+
+T=$(mktemp -d)
+trap 'rm -rf "$T"' EXIT
+
+if [ -f "$GUARD" ]; then
+  bash -n "$GUARD" 2>/dev/null && ok "stop-guard.sh parses" || bad "stop-guard.sh does not parse"
+  # Assert against the CODE, with whole-line comments stripped. The guard's own
+  # header explains why it avoids these tools, so grepping the file as written
+  # fails on the sentences that document the rule — a check that goes red for
+  # being explained is one that gets deleted rather than fixed.
+  CODE=$T/guard-code.sh
+  sed 's/^[[:space:]]*#.*$//' "$GUARD" > "$CODE"
+  # Both platforms. This runs on EVERY stop in every session, so it may not take
+  # a dependency the plugin does not already guarantee, and the GNU-only flags
+  # CLAUDE.md names would break the Windows leg silently.
+  assert_lacks "guard code does not use \`date -d\`"     "$CODE" 'date -d'
+  assert_lacks "guard code does not use \`stat -c\`"     "$CODE" 'stat -c'
+  assert_lacks "guard code does not use \`readlink -f\`" "$CODE" 'readlink -f'
+  assert_lacks "guard code does not use \`grep -P\`"     "$CODE" 'grep -P'
+  assert_lacks "guard code does not shell out to \`jq\`" "$CODE" 'jq '
+  # An ERR trap reads as the way to fail open and is the opposite — it fired on
+  # the first `cat` of a counter file that did not exist yet and allowed every
+  # stop, including the one the guard exists to block. Measured before release.
+  assert_lacks "guard code sets no ERR trap" "$CODE" 'trap '
+  # Freshness is judged from the marker's mtime, never by parsing its timestamp:
+  # there is no portable date arithmetic across both platforms without one of
+  # the banned tools above.
+  assert_has "guard judges freshness by file mtime (\`-mmin\`)" "$CODE" '-mmin'
+else
+  bad "stop-guard.sh is missing ($GUARD)"
+  echo; echo "$fails CHECK(S) FAILED"; exit 1
+fi
+
+# ---------------------------------------------------------------------------
+echo "== behaviour: blocks a live non-interactive run, allows everything else =="
+# ---------------------------------------------------------------------------
+git init -q "$T/primary" 2>/dev/null
+git -C "$T/primary" commit -q --allow-empty -m init 2>/dev/null
+REPO=$T/primary
+RUNS=$REPO/.claude/notion-dev/runs
+mkdir -p "$RUNS"
+M=$RUNS/STO-355.json
+
+marker() { # state, non_interactive-literal-or-empty
+  if [ -n "${2:-}" ]; then
+    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s",\n "non_interactive": %s\n}\n' "$1" "$2" > "$M"
+  else
+    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s"\n}\n' "$1" > "$M"
+  fi
+}
+
+guard() { # cwd -> stdout; asserts exit 0 every time
+  local cwd=${1:-$REPO} out rc
+  out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$cwd" \
+        | CLAUDE_PROJECT_DIR="$cwd" bash "$GUARD_ABS" 2>/dev/null)
+  rc=$?
+  [ "$rc" -eq 0 ] || bad "guard exited $rc (a non-zero exit is a hook error, not a decision)"
+  printf '%s' "$out"
+}
+
+blocks()  { case "$1" in *'"decision":"block"'*) return 0 ;; *) return 1 ;; esac; }
+silent()  { [ -z "$1" ]; }
+reset()   { rm -f "$RUNS"/.stop-guard-*; }
+
+expect_silent() { # label, output
+  if silent "$2"; then ok "$1"; else bad "$1 (guard spoke: ${2:0:70})"; fi
+}
+expect_block() { # label, output
+  if blocks "$2"; then ok "$1"; else bad "$1 (no block: ${2:0:70})"; fi
+}
+
+rm -f "$M"
+expect_silent "no run marker at all: silent" "$(guard)"
+
+marker running true
+reset
+expect_block  "live non-interactive run: blocked"                  "$(guard)"
+out=$(guard); expect_block "second stop in the same session: blocked" "$out"
+out=$(guard); expect_block "third stop: blocked"                      "$out"
+out=$(guard)
+case "$out" in
+  *'"systemMessage"'*) ok "fourth stop: allowed, with the guard saying it gave up" ;;
+  *) bad "fourth stop: expected a systemMessage and no block, got: ${out:0:70}" ;;
+esac
+case "$out" in *'"decision":"block"'*) bad "fourth stop still blocked — the cap does not bound" ;; esac
+
+# The block message has to be actionable: a bare refusal to stop tells the run
+# nothing about where to pick up, which is the whole content of the decision.
+reset
+out=$(guard)
+case "$out" in *STO-355*)   ok "block names the run" ;;      *) bad "block does not name the run" ;; esac
+case "$out" in *"Phase 8"*) ok "block names the phase to resume at" ;; *) bad "block does not name the phase" ;; esac
+
+# --- every allow-path, one per line of the guard's own conditions ------------
+reset; marker running ""
+expect_silent "marker without \`non_interactive\`: silent (pre-0.29.0 marker, treated as interactive)" "$(guard)"
+
+reset; marker running false
+expect_silent "interactive run (\`non_interactive: false\`): silent — it ends a turn to ask" "$(guard)"
+
+reset; marker stopped true
+expect_silent "\`state: stopped\`: silent — a named stop wrote its own cause" "$(guard)"
+
+reset; marker running true; touch -t 202601010000 "$M"
+expect_silent "stale marker: silent — an abandoned run cannot block a later session" "$(guard)"
+
+reset; printf 'not json at all\n' > "$M"
+expect_silent "unparseable marker: silent" "$(guard)"
+
+reset; rm -rf "$REPO/.claude"
+expect_silent "no runs directory: silent" "$(guard)"
+
+reset
+out=$(printf '' | CLAUDE_PROJECT_DIR="$REPO" bash "$GUARD_ABS" 2>/dev/null)
+expect_silent "empty stdin: silent" "$out"
+
+# --- the run lives in a worktree; the marker lives in the primary checkout ---
+mkdir -p "$RUNS"; marker running true; reset
+if git -C "$REPO" worktree add -q "$T/wt" -b feat 2>/dev/null; then
+  expect_block "called from inside the worktree: resolves the primary checkout and blocks" "$(guard "$T/wt")"
+else
+  bad "could not create a worktree fixture"
+fi
+
+echo
+if [ "$fails" -eq 0 ]; then
+  echo "ALL CHECKS PASSED"
+else
+  echo "$fails CHECK(S) FAILED"
+  echo
+  echo "This harness runs plugins/notion-dev/hooks/stop-guard.sh against fixtures."
+  echo "It pins both directions: the guard blocks a live --non-interactive run,"
+  echo "and stays silent on every other state. A failure in the silent direction"
+  echo "is the serious one — that guard can wedge a session."
+fi
+exit $(( fails > 0 ? 1 : 0 ))

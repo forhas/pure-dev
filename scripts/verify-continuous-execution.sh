@@ -175,6 +175,29 @@ assert_has "signature registry: the one signature no run can record about itself
   "$SIG" 'the one signature no run can record about itself'
 
 # ---------------------------------------------------------------------------
+echo "== the rule names the mechanism that enforces it =="
+# ---------------------------------------------------------------------------
+# Prose shipped alone in 0.28.1 and did not hold. The document must point at the
+# hook, or the next editor reads the paragraph as the enforcement and the guard
+# looks like belt-and-braces it is safe to drop.
+assert_has "$TK: the rule is enforced by a \`Stop\` hook, because prose alone did not hold" \
+  "$TK" 'This rule is enforced by a `Stop` hook, because as prose alone it did not hold'
+assert_has "$TK: names \`hooks/stop-guard.sh\` as the enforcement" \
+  "$TK" '`hooks/stop-guard.sh` blocks the stop'
+assert_has "$TK: \`/notion-dev:finalize\` writes no marker, so the guard does not cover it" \
+  "$TK" '`/notion-dev:finalize` writes no run marker, so the guard does not cover it at all'
+assert_has "$TK: the run marker carries \`non_interactive\`" \
+  "$TK" '"non_interactive": <true|false>'
+assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\`" \
+  "$TK" "and this invocation's \`non_interactive\`"
+assert_has "notion-dev README documents the \`Stop\` hook" \
+  "$NDREADME" 'enforced by a `Stop` hook this plugin ships'
+assert_has "notion-dev README states the block bound" \
+  "$NDREADME" 'at most **3 blocks per run per'
+assert_has "notion-dev README states the staleness bound" \
+  "$NDREADME" '**30 minutes** stale'
+
+# ---------------------------------------------------------------------------
 echo "== READMEs and release =="
 # ---------------------------------------------------------------------------
 assert_has "notion-dev README: \`--non-interactive\` means two things, not one" \

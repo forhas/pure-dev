@@ -65,5 +65,21 @@ assert_has "README: knowledge.python documented" "$README" 'knowledge.python'
 LE=$(total_lines "$ND/skills/epic-doc/SKILL.md")
 assert_present "epic-doc: Windows rename note on the lock" "$ND/skills/epic-doc/SKILL.md" 1 "$LE" 'On Windows.*renaming the lock directory can fail while another process holds a handle'
 
+# The Stop guard runs on EVERY stop in every session, on both platforms, and a
+# hook that errors on one of them is a hook nobody sees fail. Its behaviour is
+# exercised by verify-stop-guard.sh; what belongs here is the platform contract.
+GUARD=$ND/hooks/stop-guard.sh
+GUARDCODE=$(mktemp)
+sed 's/^[[:space:]]*#.*$//' "$GUARD" > "$GUARDCODE"
+assert_has  "stop-guard: runs under \`#!/usr/bin/env bash\`, not a Windows shell" "$GUARD" '#!/usr/bin/env bash'
+assert_lacks "stop-guard: no \`date -d\` (GNU-only date arithmetic)"   "$GUARDCODE" 'date -d'
+assert_lacks "stop-guard: no \`stat -c\`"                              "$GUARDCODE" 'stat -c'
+assert_lacks "stop-guard: no \`readlink -f\`"                          "$GUARDCODE" 'readlink -f'
+assert_has  "stop-guard: freshness from file mtime via \`-mmin\`, never a parsed timestamp" "$GUARDCODE" '-mmin'
+assert_lacks "stop-guard: takes no \`jq\` dependency"                  "$GUARDCODE" 'jq '
+assert_has  "hooks.json: the command is invoked through \`bash\` so Windows does not pick the interpreter" \
+  "$ND/hooks/hooks.json" '"command": "bash '
+rm -f "$GUARDCODE"
+
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

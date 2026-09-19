@@ -128,7 +128,22 @@ Then:
 `--non-interactive` means two things, not one: the run never **asks** you anything, and it never
 **hands back**. It does not stop between phases to announce what it is about to do next, so one
 invocation carries the work through to its final report or to one of the stop conditions the
-command names. **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway is recorded as
+command names.
+
+**The second half is enforced by a `Stop` hook this plugin ships** (`hooks/stop-guard.sh`), not
+by instructions alone. 0.28.1 shipped it as instructions and a run stopped mid-`Phase 8` anyway,
+then quoted the rule it had just broken when asked why — ending a turn is the *absence* of an
+action, so only the harness can gate it. The guard blocks the stop while the project has a live
+`--non-interactive` run marker, and names the phase to resume at.
+
+It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
+session**, and it ignores a marker whose file is more than **30 minutes** stale, so an abandoned
+run cannot block a later one. It fails open on anything unexpected. It never fires on an
+interactive run — those end a turn to ask, which is correct — and it does not cover
+`/notion-dev:finalize`, which writes no run marker.
+
+**In `/notion-dev:ticket` only**, a run that ends mid-phase anyway — past the guard's bounds, or
+under it — is recorded as
 `unexpected:run-ended-mid-phase` in the [runtime issue log](#runtime-issue-log) by the next
 resume — the ending run cannot observe its own ending, so a resume is the only place that
 condition is visible, and `/notion-dev:ticket` is the one command with a run marker and a resume
