@@ -4,6 +4,15 @@ Read before the first create. Title prefixing, `resolveAssignee`, `createTicket`
 `setDependencies`, `getSelectOptions`, `addSelectOption`, epic containers, `createEpic`,
 `setParent`, `refreshEpicTasks`. Referenced from `../SKILL.md`.
 
+**Two operations here query the data source, and the call contract for that lives in
+`read-ops.md` under "Calling `mcp__notion__notion-query-data-sources`" — read it before the
+first such query.** `createTicket`'s max-plus-one next-id lookup (a Number-typed `idProperty`
+only) and `setDependencies` resolving a title reference both reach the tool **without** going
+through `fetchTicket`, so neither picks the contract up on the way. It is not read-path
+trivia: the shape that silently returns an empty result set under HTTP 200 would make
+max-plus-one compute `1` on a populated database, and a title lookup report a dependency as
+unresolvable.
+
 `/notion-dev:ticket` never reaches this file — it creates no ticket and no epic.
 `/notion-dev:create-task` is its principal consumer.
 

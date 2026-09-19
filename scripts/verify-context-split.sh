@@ -58,6 +58,74 @@ TSREAD=$ND/skills/ticket-system/references/read-ops.md
 assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more than one row or \`has_more: true\` is never resolved by taking the first row" \
   "$TSREAD" 1 "$(total_lines "$TSREAD")" 'more than one row, or `has_more: true`, is never resolved by taking the first row'
 
+# The query-call contract. 5 of 13 data-source calls in a measured client ticket were the run
+# rediscovering this, and the two worst failures do not look like failures: a `?` placeholder
+# returns 200 with an empty result set, and a `SELECT *` probe re-reads a schema config already
+# holds. Each trap is pinned on its own line, and it has to be: this section IS hard-wrapped, so
+# a regex spanning two lines never matches — the trap CLAUDE.md names. Several anchors below are
+# half a sentence for that reason, not by preference.
+TSRL=$(total_lines "$TSREAD")
+# Sweep round: the contract scoped itself to read-ops while create-ops queries the data source too,
+# via two paths that never go through fetchTicket and so inherit nothing.
+assert_present "read-ops: the contract governs every data-source query in the skill, not only the operations below it" \
+  "$TSREAD" 1 "$TSRL" '\*\*Every data-source query in this skill uses this one call shape'
+# Completeness gate: the file uses two wordings for the same act, and the blanket clause named one
+# — so `listEpicChildren` step 3, which says "Query the DB", was never covered.
+assert_present "read-ops: the blanket clause no longer names only \`query the database\`" \
+  "$TSREAD" 1 "$TSRL" 'that says "query the database" \*\*or$'
+assert_present "read-ops: the blanket clause reaches the \`Query the DB\` wording too" \
+  "$TSREAD" 1 "$TSRL" '^"Query the DB"\*\* means this call'
+assert_present "read-ops: the third query site names the call shape at its own step" \
+  "$TSREAD" 1 "$TSRL" '^3\. Query the DB — in the call shape this file opens with —'
+TSCREATE=$ND/skills/ticket-system/references/create-ops.md
+assert_present "create-ops: sends its two query paths to read-ops for the call contract before their first query" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'call contract for that lives in$'
+assert_present "create-ops: names \`createTicket\` max-plus-one as one of the two query paths" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '`createTicket`.s max-plus-one next-id lookup'
+assert_present "create-ops: names \`setDependencies\` resolving a title reference as the other" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '`setDependencies` resolving a title reference'
+assert_present "create-ops: says neither path picks up the contract on the way, so it must be read here" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'so neither picks the contract up on the way'
+assert_present "read-ops: the call shape passes \`data_source_urls\` as an array of collection URLs" \
+  "$TSREAD" 1 "$TSRL" '^ *"data_source_urls": \["collection://<dataSourceId>"\],$'
+assert_present "read-ops: the arguments are wrapped in \`data\`, with the quoted collection URL as the table name" \
+  "$TSREAD" 1 "$TSRL" 'The arguments are wrapped in `data`, and the table name is the quoted collection URL'
+assert_present "read-ops: names the third rejected shape, the \`data_sources\` JSON string, beside the other two" \
+  "$TSREAD" 1 "$TSRL" '`data_source_url` \+ `query_type` \+ `sql_query`; a `data_sources` JSON \*string\*'
+assert_present "read-ops: the rejected shapes all return one \`Invalid input\` message that names no field" \
+  "$TSREAD" 1 "$TSRL" 'Invalid input`, which names no field'
+assert_present "read-ops: \`params\` placeholders return an empty result set with no error, so inline the literal" \
+  "$TSREAD" 1 "$TSRL" 'Never use `params` with `\?` placeholders. Inline the literal value instead'
+assert_present "read-ops: column names come from the config, never from a \`SELECT \*\` probe" \
+  "$TSREAD" 1 "$TSRL" 'Column names come from `\.claude/notion-dev\.config\.json`, never from a `SELECT \*` probe'
+assert_present "read-ops: there is no bare \`name\` column and guessing one is a hard 400" \
+  "$TSREAD" 1 "$TSRL" 'There is no bare `name` column\*\*, and guessing one is a hard `400`'
+# Codex round 1, both P-level. The id column is a namespace plus the CONFIGURED name, so a
+# hardcoded "userDefined:ID" breaks every database init bound to a different property; and the
+# pre-existing ambiguous-lookup recovery still prescribed the `params` form this file now forbids.
+assert_present "read-ops: the id column takes a \`userDefined:<idProperty>\` prefix" \
+  "$TSREAD" 1 "$TSRL" 'takes a `userDefined:` prefix, `"userDefined:<idProperty>"`'
+assert_present "read-ops: the SQL template itself selects and filters on that configured id column" \
+  "$TSREAD" 1 "$TSRL" '^ *"query": "SELECT .*userDefined:<idProperty>.*WHERE .*userDefined:<idProperty>'
+assert_present "read-ops: hardcoding \`userDefined:ID\` is named as the defect" \
+  "$TSREAD" 1 "$TSRL" 'Hardcoding `"userDefined:ID"`$'
+assert_present "read-ops: the prefix is a namespace, not a fixed column name" \
+  "$TSREAD" 1 "$TSRL" 'That prefix is a namespace, not a fixed column name'
+assert_present "read-ops: the ambiguous-lookup recovery inlines the id as a literal, not as a bound parameter" \
+  "$TSREAD" 1 "$TSRL" 're-issue the lookup in SQL mode \*\*with the id inlined as a literal\*\*'
+assert_present "read-ops: says three-for-three established SQL mode, not the parameter binding" \
+  "$TSREAD" 1 "$TSRL" 'established is that \*\*SQL mode\*\* beats'
+# Codex round 2: the contract invented a `ticketSystem.titleProperty`. There is none — the title
+# is the one column discovered from the live schema, and a guessed name is the same hard 400.
+assert_present "read-ops: states there is no \`ticketSystem.titleProperty\` and exactly one title-typed property exists" \
+  "$TSREAD" 1 "$TSRL" '`ticketSystem.titleProperty`: every Notion database has exactly one `title`-typed property'
+assert_present "read-ops: names the free title column and the three names in use" \
+  "$TSREAD" 1 "$TSRL" 'the adapter discovers it by scanning the live schema'
+assert_present "read-ops: a lookup that only resolves a page omits the title column rather than guessing" \
+  "$TSREAD" 1 "$TSRL" 'select it only in queries that actually need the title'
+assert_absent "read-ops: never cites \`ticketSystem.titleProperty\` as a configured name" \
+  "$TSREAD" 1 "$TSRL" 'name — `ticketSystem\.titleProperty`'
+
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the write-operations reference is present and pinned =="
 
