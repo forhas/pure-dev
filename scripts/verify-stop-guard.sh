@@ -83,6 +83,13 @@ if [ -f "$GUARD" ]; then
   # at long phase boundaries — the ones where stops actually happen.
   assert_has "guard's staleness threshold matches ticket.md's 2-hour rule" "$CODE" 'STALE_MINUTES=120'
   assert_has "guard blocks only after the increment is persisted" "$CODE" '[ "$persisted" = "$blocks" ] || allow'
+  # The marker check is structural, not a parse, and the limit is recorded at
+  # the line rather than left for a reader to discover. Pin the disclosure:
+  # dropping it is how a known residual turns into a surprise.
+  assert_has "guard records that its marker check is structural, not a parse" \
+    "$GUARD" 'This is a STRUCTURAL check, not a parse'
+  assert_has "guard records what bounds that residual" \
+    "$GUARD" 'at most MAX_BLOCKS refusals before the guard gives up'
 else
   bad "stop-guard.sh is missing ($GUARD)"
   echo; echo "$fails CHECK(S) FAILED"; exit 1

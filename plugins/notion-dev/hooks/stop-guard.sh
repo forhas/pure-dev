@@ -155,6 +155,17 @@ for marker in "$runs"/*.json; do
   # still contains `"non_interactive":true` and a `"claude_session"` — enough
   # for the greps below to accept it and block on a marker that is not a
   # marker, which contradicts the fail-open handling of an unparseable one.
+  #
+  # This is a STRUCTURAL check, not a parse, and the difference is deliberate.
+  # A marker that is brace-delimited, carries every key, and is still invalid
+  # JSON — a missing comma between two fields, say — passes here and can
+  # produce a block. Parsing JSON properly in shell is not a small change, and
+  # this hook may not take a `jq` or python dependency: it runs on every stop
+  # in every session. The residual is bounded rather than argued away: the
+  # worst such a marker can do is spend the block cap, at most MAX_BLOCKS
+  # refusals before the guard gives up and allows the stop, and the realistic
+  # corruption from an in-place rewrite is a truncated file, which the brace
+  # test does catch. Raised as a review finding and dropped on that basis.
   case "$body" in
     '{'*'}') : ;;
     *) continue ;;
