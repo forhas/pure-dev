@@ -188,6 +188,12 @@ assert_has "$TK: \`/notion-dev:finalize\` writes no marker, so the guard does no
   "$TK" '`/notion-dev:finalize` writes no run marker, so the guard does not cover it at all'
 assert_has "$TK: the run marker carries \`non_interactive\`" \
   "$TK" '"non_interactive": <true|false>'
+# Without an owning session the guard blocks whoever stops first, which in a
+# checkout running two tickets is the guard doing the wedging it exists to stop.
+assert_has "$TK: the run marker carries \`claude_session\`, the harness session id" \
+  "$TK" '"claude_session": "<$CLAUDE_CODE_SESSION_ID>"'
+assert_has "$TK: the guard blocks only the session that owns this run" \
+  "$TK" 'the guard blocks **only the session that owns this run**'
 assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\`" \
   "$TK" "and this invocation's \`non_interactive\`"
 assert_has "notion-dev README documents the \`Stop\` hook" \

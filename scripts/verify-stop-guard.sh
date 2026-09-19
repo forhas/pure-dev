@@ -81,17 +81,18 @@ RUNS=$REPO/.claude/notion-dev/runs
 mkdir -p "$RUNS"
 M=$RUNS/STO-355.json
 
-marker() { # state, non_interactive-literal-or-empty
+marker() { # state, non_interactive-literal-or-empty, [owning-session, default sess-1]
+  local owner=${3:-sess-1}
   if [ -n "${2:-}" ]; then
-    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s",\n "non_interactive": %s\n}\n' "$1" "$2" > "$M"
+    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s",\n "non_interactive": %s,\n "claude_session": "%s"\n}\n' "$1" "$2" "$owner" > "$M"
   else
-    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s"\n}\n' "$1" > "$M"
+    printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s",\n "claude_session": "%s"\n}\n' "$1" "$owner" > "$M"
   fi
 }
 
-guard() { # cwd -> stdout; asserts exit 0 every time
-  local cwd=${1:-$REPO} out rc
-  out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$cwd" \
+guard() { # [cwd], [session_id] -> stdout; asserts exit 0 every time
+  local cwd=${1:-$REPO} sid=${2:-sess-1} out rc
+  out=$(printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop"}' "$sid" "$cwd" \
         | CLAUDE_PROJECT_DIR="$cwd" bash "$GUARD_ABS" 2>/dev/null)
   rc=$?
   [ "$rc" -eq 0 ] || bad "guard exited $rc (a non-zero exit is a hook error, not a decision)"
@@ -146,6 +147,22 @@ expect_silent "stale marker: silent — an abandoned run cannot block a later se
 
 reset; printf 'not json at all\n' > "$M"
 expect_silent "unparseable marker: silent" "$(guard)"
+
+# A checkout can hold two runs at once, or an interactive session beside a
+# non-interactive one. A marker that belongs to somebody else must never block
+# the session that is stopping — that would be the guard doing the wedging.
+reset; marker running true sess-1
+expect_silent "another session's marker: silent — never blocks a session that does not own the run" \
+  "$(guard "$REPO" sess-2)"
+expect_block  "the owning session: still blocked" "$(guard "$REPO" sess-1)"
+
+reset
+printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "running",\n "non_interactive": true\n}\n' > "$M"
+expect_silent "marker with no \`claude_session\`: silent — an unattributable marker blocks nobody" "$(guard)"
+
+reset; marker running true sess-1
+expect_silent "hook input carrying no \`session_id\`: silent — nothing to match against" \
+  "$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$REPO" | CLAUDE_PROJECT_DIR="$REPO" bash "$GUARD_ABS" 2>/dev/null)"
 
 reset; rm -rf "$REPO/.claude"
 expect_silent "no runs directory: silent" "$(guard)"

@@ -51,11 +51,14 @@ flat=$(printf '%s' "$input" | tr -d '\n\r' 2>/dev/null)
 
 field() { printf '%s' "$2" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" 2>/dev/null; }
 
-session=$(field session_id "$flat")
+# Two forms, and they are not interchangeable. The RAW id is what a marker is
+# matched against; the sanitised one is only ever a filename component.
+session_raw=$(field session_id "$flat")
+session=$(printf '%s' "$session_raw" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
 [ -n "$session" ] || session="unknown-session"
-# Strip anything that is not filename-safe: the session id reaches a path below.
-session=$(printf '%s' "$session" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
-[ -n "$session" ] || session="unknown-session"
+# With no id there is nothing to match a marker against, and blocking on an
+# unmatched marker is the cross-session failure below. Allow.
+[ -n "$session_raw" ] || allow
 
 dir=${CLAUDE_PROJECT_DIR:-}
 [ -n "$dir" ] || dir=$(field cwd "$flat")
@@ -89,6 +92,23 @@ for marker in "$runs"/*.json; do
   # blocking that would break the flow this guard is meant to protect. Only an
   # explicit true qualifies, so a marker written by an older version is ignored.
   printf '%s' "$body" | grep -q '"non_interactive"[[:space:]]*:[[:space:]]*true' || continue
+  # THE MARKER MUST BELONG TO THE SESSION THAT IS STOPPING. A checkout can hold
+  # several runs at once — parallel tickets on one machine are a supported
+  # scenario — and it can hold an interactive session alongside a
+  # non-interactive one. Without this test the first fresh marker blocks
+  # whoever happens to stop, so an unrelated session is refused its stop up to
+  # three times and told to continue another run's ticket from another run's
+  # phase. That is the wedge this guard exists to avoid, built into the guard.
+  # `claude_session` is Claude Code's own session id, which `## 2.1` records
+  # from $CLAUDE_CODE_SESSION_ID; it is not the marker's `session` field, which
+  # is the plugin's own run token and means something else.
+  marker_session=$(field claude_session "$body")
+  # Absent means the marker cannot be attributed — a pre-0.29.0 marker, or a
+  # host that does not set the variable. Never block on an unattributable
+  # marker: a guard that cannot tell whose run it is has no business refusing
+  # anyone's stop.
+  [ -n "$marker_session" ] || continue
+  [ "$marker_session" = "$session_raw" ] || continue
   live_run=$(field run "$body")
   live_phase=$(field phase "$body")
   [ -n "$live_run" ] || live_run=$(basename "$marker" .json)

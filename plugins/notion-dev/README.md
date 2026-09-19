@@ -138,9 +138,11 @@ action, so only the harness can gate it. The guard blocks the stop while the pro
 
 It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
 session**, and it ignores a marker whose file is more than **30 minutes** stale, so an abandoned
-run cannot block a later one. It fails open on anything unexpected. It never fires on an
-interactive run — those end a turn to ask, which is correct — and it does not cover
-`/notion-dev:finalize`, which writes no run marker.
+run cannot block a later one. It fails open on anything unexpected, and it blocks **only the session that
+owns the run** — a second parallel ticket, or an interactive session in the same checkout, is
+never refused its stop. It never fires on an interactive run at all, since those end a turn to
+ask, which is correct; and it does not cover `/notion-dev:finalize`, which writes no run
+marker.
 
 **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway — past the guard's bounds, or
 under it — is recorded as
