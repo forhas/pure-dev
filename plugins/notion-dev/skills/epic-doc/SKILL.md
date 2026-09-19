@@ -167,7 +167,16 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" next --brief <tmp brief> --
 
 with `--reason <word> <key>` for `start`, `stop` and `create`, and no `--reason` for `drift`. Its
 stdout is the new brief in full — the `## Next` region, the header and the stop bullet rewritten,
-every other byte preserved; its stderr lists the drift it repaired. The script partitions the
+every other byte preserved; its stderr lists the drift it repaired.
+
+**Never diff the rendered brief against the old one to see what changed — that stderr listing is
+the change list.** It names every repair the script made, which is the whole of what `refresh`
+rewrites, so a diff adds nothing; on Windows it adds nothing loudly. Git for Windows checks the
+brief out with CRLF (`core.autocrlf=true`) while `knowledge.py` forces LF on its stdout, so a
+line-based `diff` of the two reports **every** line as changed regardless of the repair: measured
+in a client run as `1,137c1,137` — both copies of a 137-line brief, ~5k tokens, to report a
+two-line drift, and misleading as well as wasteful. Write stdout over the brief and report the
+`drift:` lines; on the `read` path, which writes nothing, discard stdout rather than diffing it. The script partitions the
 unresolved children, orders the numbered list by phase, step, then numeric id, puts the first
 child whose every `## Blocked by` key is resolved at item 1 with its reason preserved when item 1
 did not change (else `unblocked; <dep> landed` or `first in phase order`), writes `In progress:`
