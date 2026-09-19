@@ -54,6 +54,20 @@ fi
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 
+# Fixture commits must not depend on the machine's git identity. A CI runner has
+# none, so `git commit` fails there and every fixture built on one silently does
+# not exist — which is how a harness green on a laptop goes red on both CI legs.
+export GIT_AUTHOR_NAME=pure-dev-test GIT_AUTHOR_EMAIL=test@example.invalid
+export GIT_COMMITTER_NAME=pure-dev-test GIT_COMMITTER_EMAIL=test@example.invalid
+
+# Two paths naming one directory are not always the same string: Git for
+# Windows reports `C:/Users/...` from `git worktree list` while the shell holds
+# `/c/Users/...`. Compare what they RESOLVE to, never the spelling.
+same_dir() {
+  [ -d "${1:-}" ] && [ -d "${2:-}" ] || return 1
+  [ "$(cd "$1" 2>/dev/null && pwd -P)" = "$(cd "$2" 2>/dev/null && pwd -P)" ]
+}
+
 if [ -f "$GUARD" ]; then
   bash -n "$GUARD" 2>/dev/null && ok "stop-guard.sh parses" || bad "stop-guard.sh does not parse"
   # Assert against the CODE, with whole-line comments stripped. The guard's own
@@ -296,7 +310,7 @@ if git -C "$REPO" worktree add -q "$T/wt-early" -b early 2>/dev/null; then
   printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"SessionStart"}' "$T/wt-early" \
     | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$T/wt-early" bash "$SENV_ABS" >/dev/null 2>&1
   got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
-  if [ "$got" = "$REPO" ]; then
+  if same_dir "$got" "$REPO"; then
     ok "session-env.sh resolves the primary checkout from inside a worktree"
   else
     bad "session-env.sh did not capture the primary root (sourced: [$got], file: $(cat "$EF_EARLY" 2>/dev/null))"
@@ -309,15 +323,14 @@ fi
 # a space truncates the variable and one with a `;` or `&` executes. Windows
 # user profiles routinely contain spaces, so this is the ordinary case, not the
 # adversarial one. Round-trip it: write, source, compare.
-if git init -q "$T/space-src" 2>/dev/null && git -C "$T/space-src" commit -q --allow-empty -m i 2>/dev/null; then
-  SPREPO=$T/space-src
-  # move it to a path containing a space, so `git worktree list` reports one
-  mv "$SPREPO" "$T/space repo" 2>/dev/null && SPREPO="$T/space repo"
+SPREPO="$T/space repo"
+mkdir -p "$SPREPO"
+if git init -q "$SPREPO" 2>/dev/null; then
   : > "$EF_EARLY"
   printf '{"session_id":"s-1","cwd":"%s","hook_event_name":"SessionStart"}' "$SPREPO" \
     | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$SPREPO" bash "$SENV_ABS" >/dev/null 2>&1
   got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
-  if [ "$got" = "$SPREPO" ]; then
+  if same_dir "$got" "$SPREPO"; then
     ok "primary root containing a space survives being sourced back"
   else
     bad "primary root did not round-trip: wrote [$(cat "$EF_EARLY" 2>/dev/null)], sourced [$got]"
