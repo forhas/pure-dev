@@ -194,8 +194,15 @@ assert_has "$TK: the run marker carries \`claude_session\`, the harness session 
   "$TK" '"claude_session": "<$CLAUDE_CODE_SESSION_ID>"'
 assert_has "$TK: the guard blocks only the session that owns this run" \
   "$TK" 'the guard blocks **only the session that owns this run**'
-assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\`" \
-  "$TK" "and this invocation's \`non_interactive\`"
+assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\` and \`claude_session\`" \
+  "$TK" "and this invocation's \`non_interactive\` and \`claude_session\`"
+# Omitting either on a rewrite path is silent and disables the guard for the
+# whole resumed run, so both rewrite sites are pinned, not just the prose that
+# says they should be.
+assert_has "$TK: omitting \`claude_session\` on resume is called out as silent" \
+  "$TK" '`claude_session` is not optional here and its omission is silent'
+assert_has "$TK: the take-over branch rewrites \`claude_session\` and \`non_interactive\` too" \
+  "$TK" 'rewriting `session`, `phase`, `heartbeat`, **`claude_session` and `non_interactive`**'
 assert_has "notion-dev README documents the \`Stop\` hook" \
   "$NDREADME" 'enforced by a `Stop` hook this plugin ships'
 assert_has "notion-dev README states the block bound" \
