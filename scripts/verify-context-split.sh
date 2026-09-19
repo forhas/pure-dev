@@ -82,7 +82,7 @@ assert_present "read-ops: there is no bare \`name\` column and guessing one is a
 # hardcoded "userDefined:ID" breaks every database init bound to a different property; and the
 # pre-existing ambiguous-lookup recovery still prescribed the `params` form this file now forbids.
 assert_present "read-ops: the id column takes a \`userDefined:<idProperty>\` prefix" \
-  "$TSREAD" 1 "$TSRL" 'the id column takes a `userDefined:` prefix, `"userDefined:<idProperty>"`'
+  "$TSREAD" 1 "$TSRL" 'takes a `userDefined:` prefix, `"userDefined:<idProperty>"`'
 assert_present "read-ops: the SQL template itself selects and filters on that configured id column" \
   "$TSREAD" 1 "$TSRL" '^ *"query": "SELECT .*userDefined:<idProperty>.*WHERE .*userDefined:<idProperty>'
 assert_present "read-ops: hardcoding \`userDefined:ID\` is named as the defect" \
@@ -101,6 +101,8 @@ assert_present "read-ops: names the free title column and the three names in use
   "$TSREAD" 1 "$TSRL" 'the adapter discovers it by scanning the live schema'
 assert_present "read-ops: a lookup that only resolves a page omits the title column rather than guessing" \
   "$TSREAD" 1 "$TSRL" 'select it only in queries that actually need the title'
+assert_absent "read-ops: never cites \`ticketSystem.titleProperty\` as a configured name" \
+  "$TSREAD" 1 "$TSRL" 'name — `ticketSystem\.titleProperty`'
 
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the write-operations reference is present and pinned =="

@@ -48,8 +48,9 @@ Four things about it, each of which cost that run a round trip:
   forbids — that probe was re-reading columns the config already names.
 - **There is no bare `name` column**, and guessing one is a hard `400`
   (`Failed to execute query: no such column: name`). Every property is queried under its own
-  **configured** name — `ticketSystem.titleProperty`, `statusProperty` and the rest — with one
-  exception: **the id column takes a `userDefined:` prefix, `"userDefined:<idProperty>"`.**
+  **configured** name — `statusProperty`, `phaseProperty` and the rest — with two exceptions: the
+  title, which has no configured key at all (see the bullet above), and **the id column, which
+  takes a `userDefined:` prefix, `"userDefined:<idProperty>"`.**
   That prefix is a namespace, not a fixed column name: on a database whose `idProperty` is the
   default `ID` it reads `"userDefined:ID"`, and on one where `/notion-dev:init` bound
   `idProperty` to something else it takes that name instead. **Hardcoding `"userDefined:ID"`
