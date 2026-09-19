@@ -38,8 +38,25 @@
 #     can only ever block the session that created it, so an abandoned run
 #     blocks nobody but itself, whatever the threshold. The cap still bounds
 #     it either way.
-#   * count — at most MAX_BLOCKS per run per session. A run that means to stop
-#     stops on the fourth try, with the guard saying so rather than going quiet.
+#   * count — at most MAX_BLOCKS per MARKER per session. A run that means to
+#     stop stops on the fourth try, with the guard saying so rather than going
+#     quiet.
+#
+#     Per marker, not per run, and the distinction is real rather than
+#     pedantic: the counter is keyed by the marker's filename, so a run that
+#     spends its cap in Phase 1 against `preflight-<session>.json` gets a
+#     fresh cap when Phase 2.1 writes `<KEY>-<id>.json`. Up to 2 x MAX_BLOCKS
+#     across a run, in two disjoint windows.
+#
+#     Carrying the count across the handover was considered and rejected. It
+#     would have `ticket.md` renaming a file whose name is this hook's private
+#     business — including the sanitised session id — which is a worse
+#     coupling than the bound is worth. And the reset is arguably the correct
+#     behaviour: three refusals in Phase 1 are about a run that kept trying to
+#     hand back before it had a worktree, and they say nothing about whether a
+#     stop at Phase 8 should be refused. What the cap has to guarantee is that
+#     the guard always lets go, and 2 x MAX_BLOCKS terminates exactly as
+#     MAX_BLOCKS does.
 #
 # `stop_hook_active` is deliberately not consulted: it is true precisely when a
 # previous block sent the run back, which is when this guard most wants to block

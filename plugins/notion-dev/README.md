@@ -143,8 +143,9 @@ the ticket worktree and Phase 9 deletes it mid-run — after which nothing deriv
 session started can still find the markers. Both halves are needed — without the
 `SessionStart` half every marker records an empty owner and the guard skips all of them.
 
-It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
-session**, and it ignores a marker more than **2 hours** stale — the same threshold
+It is bounded in both directions so it can never wedge a session: at most **3 blocks per marker per
+session** — so up to six across a run that spends the cap in Phase 1 and again later, in two
+disjoint windows, because the two marker shapes below count separately — and it ignores a marker more than **2 hours** stale — the same threshold
 `/notion-dev:ticket` already uses, and for the same reason: a heartbeat is written *between*
 units of work, never inside one, so the window has to exceed the longest single build task,
 verify command or reviewer round. A shorter window looks safer and is not: a Phase 7 review loop

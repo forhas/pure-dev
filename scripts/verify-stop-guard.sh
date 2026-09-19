@@ -120,6 +120,13 @@ if [ -f "$GUARD" ]; then
   # evidence. The sweep must name the one shape it is allowed to delete.
   assert_has "guard sweeps only the \`preflight-\` marker shape" \
     "$CODE" 'for stray in "$runs"/preflight-*.json'
+  # The counter is keyed by the marker filename, so the two shapes count
+  # separately and a run can spend the cap twice. Stating "per run" would be
+  # a bound the code does not have.
+  assert_has "guard's header states the cap is per MARKER, not per run" \
+    "$GUARD" 'at most MAX_BLOCKS per MARKER per session'
+  assert_has "guard's header records why the count is not carried across the handover" \
+    "$GUARD" 'Carrying the count across the handover was considered and rejected'
 else
   bad "stop-guard.sh is missing ($GUARD)"
   echo; echo "$fails CHECK(S) FAILED"; exit 1
