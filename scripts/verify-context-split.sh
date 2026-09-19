@@ -78,6 +78,21 @@ assert_present "read-ops: column names come from the config, never from a \`SELE
   "$TSREAD" 1 "$TSRL" 'Column names come from `\.claude/notion-dev\.config\.json`, never from a `SELECT \*` probe'
 assert_present "read-ops: there is no bare \`name\` column and guessing one is a hard 400" \
   "$TSREAD" 1 "$TSRL" 'There is no bare `name` column\*\*, and guessing one is a hard `400`'
+# Codex round 1, both P-level. The id column is a namespace plus the CONFIGURED name, so a
+# hardcoded "userDefined:ID" breaks every database init bound to a different property; and the
+# pre-existing ambiguous-lookup recovery still prescribed the `params` form this file now forbids.
+assert_present "read-ops: the id column takes a \`userDefined:<idProperty>\` prefix" \
+  "$TSREAD" 1 "$TSRL" 'the id column takes a `userDefined:` prefix, `"userDefined:<idProperty>"`'
+assert_present "read-ops: the SQL template itself selects and filters on that configured id column" \
+  "$TSREAD" 1 "$TSRL" '^ *"query": "SELECT .*userDefined:<idProperty>.*WHERE .*userDefined:<idProperty>'
+assert_present "read-ops: hardcoding \`userDefined:ID\` is named as the defect" \
+  "$TSREAD" 1 "$TSRL" 'Hardcoding `"userDefined:ID"`$'
+assert_present "read-ops: the prefix is a namespace, not a fixed column name" \
+  "$TSREAD" 1 "$TSRL" 'That prefix is a namespace, not a fixed column name'
+assert_present "read-ops: the ambiguous-lookup recovery inlines the id as a literal, not as a bound parameter" \
+  "$TSREAD" 1 "$TSRL" 're-issue the lookup in SQL mode \*\*with the id inlined as a literal\*\*'
+assert_present "read-ops: says three-for-three established SQL mode, not the parameter binding" \
+  "$TSREAD" 1 "$TSRL" 'established is that \*\*SQL mode\*\* beats'
 
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the write-operations reference is present and pinned =="

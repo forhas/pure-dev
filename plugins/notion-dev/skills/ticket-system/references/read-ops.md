@@ -13,7 +13,7 @@ rediscovering this contract, and two of the five failed in ways that do not look
 mcp__notion__notion-query-data-sources({
   "data": {
     "data_source_urls": ["collection://<dataSourceId>"],
-    "query": "SELECT \"userDefined:ID\" AS id, \"<titleProperty>\" AS title, \"<statusProperty>\" AS status FROM \"collection://<dataSourceId>\" WHERE \"userDefined:ID\" = 142"
+    "query": "SELECT \"userDefined:<idProperty>\" AS id, \"<titleProperty>\" AS title, \"<statusProperty>\" AS status FROM \"collection://<dataSourceId>\" WHERE \"userDefined:<idProperty>\" = 142"
   }
 })
 ```
@@ -38,10 +38,17 @@ Four things about it, each of which cost that run a round trip:
   schema for. The client run ran that probe twice, the second time only because a compaction had
   dropped the first one's answer.
 - **There is no bare `name` column**, and guessing one is a hard `400`
-  (`Failed to execute query: no such column: name`). The title lives under the live property name
-  — `"Task name"` on the client DB — and the id column is the literal string `"userDefined:ID"`,
-  not `idProperty`'s configured name; see `../SKILL.md` for why that prefix exists and why this
-  tool returns the bare integer where `notion-fetch` returns `"userDefined:ID": "PDS-1"`.
+  (`Failed to execute query: no such column: name`). Every property is queried under its own
+  **configured** name — `ticketSystem.titleProperty`, `statusProperty` and the rest — with one
+  exception: **the id column takes a `userDefined:` prefix, `"userDefined:<idProperty>"`.**
+  That prefix is a namespace, not a fixed column name: on a database whose `idProperty` is the
+  default `ID` it reads `"userDefined:ID"`, and on one where `/notion-dev:init` bound
+  `idProperty` to something else it takes that name instead. **Hardcoding `"userDefined:ID"`
+  queries a column that does not exist on such a database**, and the logical-key lookup fails
+  before the page is ever fetched. No other property observed on a live database needed the
+  prefix; if the prefixed form is rejected, retry once with the bare configured name and record
+  the fallback per `notion-dev:issue-log`. See `../SKILL.md` for why the prefix exists and why
+  this tool returns the bare integer where `notion-fetch` returns `"userDefined:ID": "PDS-1"`.
 
 `dataSourceId` is `ticketSystem.dataSourceId` when configured, otherwise derive the collection URL
 from `ticketSystem.databaseId`. Everything else in this file that says "query the database" means
@@ -57,7 +64,7 @@ this call.
    - If `id` is a Notion page id (32 hex chars with or without dashes), a dashed UUID, or a Notion page URL: **fetch the page directly** with `mcp__notion__notion-fetch` — skip the database query entirely.
    - Otherwise treat `id` as a logical key: normalize it to numeric, then query the database (or data source if configured) for the page where `idProperty` equals the numeric id — use `mcp__notion__notion-query-data-sources` **in the call shape under "Calling `mcp__notion__notion-query-data-sources`" above — inline the numeric id as a literal, never as a `?` placeholder, which returns an empty result set with no error** — with an exact filter on `idProperty` (semantic `notion-search` is not reliable for numeric-ID equality, and `notion-fetch` only fetches by URL/ID; fall back to a DB-scoped `notion-search` only if the query tool is unavailable, verifying the hit's `idProperty` value before trusting it). When `idProperty` is a `unique_id` column, filter by its numeric component — ignore the textual prefix. Load the resolved page content with `mcp__notion__notion-fetch`.
 
-     **Verify the resolved page's `idProperty` equals the id you asked for — on every path, not only the fallback.** The verify-before-trusting clause above reads as if it belonged to the `notion-search` fallback alone; it does not. A structured filter can be **silently ignored** rather than rejected: measured in a client on three separate runs, a `rows`-mode `number_equals` filter on the id column returned the same five unrelated rows of the same database with `has_more: true` and no error, while the same lookup issued in **SQL mode with a bound parameter** returned exactly the one intended row each time. An ignored filter is indistinguishable at the call site from a genuine multi-hit, and the project-scoping guardrail in step 2 does not catch it — those rows carry the same pinned `staticProperties`, because they are the same project's tickets. So: **more than one row, or `has_more: true`, is never resolved by taking the first row** — re-issue the lookup in SQL mode with a bound parameter, and confirm the resolved page's `idProperty` before anything downstream uses it. Prefer SQL mode with a bound parameter wherever it is available; three for three is a reproducible defect, not an incident. Worth knowing when reading a filter that did not bite: a column named `ID` is exposed by the MCP as `userDefined:ID`, a reserved-name remap that the rows-mode filter path may not be applying.
+     **Verify the resolved page's `idProperty` equals the id you asked for — on every path, not only the fallback.** The verify-before-trusting clause above reads as if it belonged to the `notion-search` fallback alone; it does not. A structured filter can be **silently ignored** rather than rejected: measured in a client on three separate runs, a `rows`-mode `number_equals` filter on the id column returned the same five unrelated rows of the same database with `has_more: true` and no error, while the same lookup issued in **SQL mode with a bound parameter** returned exactly the one intended row each time. An ignored filter is indistinguishable at the call site from a genuine multi-hit, and the project-scoping guardrail in step 2 does not catch it — those rows carry the same pinned `staticProperties`, because they are the same project's tickets. So: **more than one row, or `has_more: true`, is never resolved by taking the first row** — re-issue the lookup in SQL mode **with the id inlined as a literal**, and confirm the resolved page's `idProperty` before anything downstream uses it. Prefer SQL mode wherever it is available; **this clause said "with a bound parameter" until 0.31.1, and that form is now known to be unsafe** — per the call contract at the top of this file, `?` plus `params` returns an empty result set under HTTP 200, so the documented recovery for an ambiguous lookup could itself report the ticket as missing. What three-for-three actually established is that **SQL mode** beats the structured filter, not that the parameter binding did any of the work; three for three is a reproducible defect, not an incident. Worth knowing when reading a filter that did not bite: a column named `ID` is exposed by the MCP as `userDefined:ID`, a reserved-name remap that the rows-mode filter path may not be applying.
 2. **Apply the project scoping guardrail** (see section above) — abort here if any pinned `staticProperties` mismatch the live page. Fail before any further work.
 
    **A `404 object_not_found` on the configured `databaseId`/`dataSourceId` is ambiguous — report
