@@ -89,7 +89,7 @@ if [ -f "$GUARD" ]; then
   assert_has "guard records that its marker check is structural, not a parse" \
     "$GUARD" 'This is a STRUCTURAL check, not a parse'
   assert_has "guard records what bounds that residual" \
-    "$GUARD" 'at most MAX_BLOCKS refusals before the guard gives up'
+    "$GUARD" 'is spend the block cap, at most MAX_BLOCKS'
 else
   bad "stop-guard.sh is missing ($GUARD)"
   echo; echo "$fails CHECK(S) FAILED"; exit 1
