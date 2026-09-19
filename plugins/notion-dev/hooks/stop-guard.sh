@@ -147,13 +147,24 @@ runs="$root/.claude/notion-dev/runs"
 # Sweep spent preflight markers first. They are the one marker shape that is
 # disposable by construction — a placeholder for a `<KEY>-<id>.json` that does
 # not exist yet, retired by Phase 2.1 the moment the real one is written — so a
-# spent one is litter, not evidence. Two ways to be spent: stale, or no longer
-# `running`. The second matters because the filename carries a per-invocation
+# spent one is litter, not evidence. Two ways to be spent: stale, or explicitly
+# `stopped`. The second matters because the filename carries a per-invocation
 # token, so a session that runs several tickets writes a different one each
 # time and nothing else would ever remove the stopped ones; and unlike a
 # `<KEY>-<id>.json` marker, a `stopped` preflight marker has no readers at all
 # — `## 1.2`'s resume protocol and `/notion-dev:next-task` both look up the
 # `<KEY>-<id>` name and neither knows this shape exists.
+#
+# DELETE ON AN EXPLICIT `stopped`, NEVER ON A MISSING `running`. The two read
+# alike on a whole marker and are opposites on a torn one, and this hook runs
+# in every session while another session may be rewriting its marker in place.
+# Inside that truncate-and-write window the file contains neither value, so
+# "not running" would delete a live run's marker — and the writer would then
+# finish through an unlinked descriptor, leaving that run with no marker and
+# no stop protection at all, permanently and silently. Requiring the positive
+# token, and requiring the object to be brace-delimited first, makes a partial
+# write unsweepable by construction: the same structural test the marker loop
+# below already applies before believing a marker, for the same reason.
 #
 # Only this shape, ever. A real run marker is never deleted by this hook: its
 # `stopped` state is what tells `## 1.2` the run is resumable, and its `cause`
@@ -163,8 +174,10 @@ for stray in "$runs"/preflight-*.json; do
   if ! find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q .; then
     rm -f "$stray" 2>/dev/null; continue
   fi
-  tr -d '\n\r' < "$stray" 2>/dev/null | grep -q '"state"[[:space:]]*:[[:space:]]*"running"' \
-    || rm -f "$stray" 2>/dev/null
+  stray_body=$(tr -d '\n\r' < "$stray" 2>/dev/null) || continue
+  case "$stray_body" in '{'*'}') : ;; *) continue ;; esac
+  printf '%s' "$stray_body" | grep -q '"state"[[:space:]]*:[[:space:]]*"stopped"' \
+    && rm -f "$stray" 2>/dev/null
 done
 
 # Prune counters whose RUN is over — never by the counter's own age. Age alone

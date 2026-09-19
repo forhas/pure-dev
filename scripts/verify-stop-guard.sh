@@ -120,6 +120,15 @@ if [ -f "$GUARD" ]; then
   # evidence. The sweep must name the one shape it is allowed to delete.
   assert_has "guard sweeps only the \`preflight-\` marker shape" \
     "$CODE" 'for stray in "$runs"/preflight-*.json'
+  # An explicit `stopped` and a missing `running` read alike on a whole marker
+  # and are opposites on a torn one. This hook runs while another session may
+  # be rewriting its marker in place, so it must require the positive token.
+  assert_has "guard sweeps on an explicit \`stopped\` token" \
+    "$CODE" '"state"[[:space:]]*:[[:space:]]*"stopped"'
+  assert_has "guard requires the swept marker to be brace-delimited first" \
+    "$CODE" "case \"\$stray_body\" in '{'*'}')"
+  assert_has "guard's header records why a missing \`running\` is not enough" \
+    "$GUARD" 'DELETE ON AN EXPLICIT `stopped`, NEVER ON A MISSING `running`'
   # The counter is keyed by the marker filename, so the two shapes count
   # separately and a run can spend the cap twice. Stating "per run" would be
   # a bound the code does not have.
@@ -430,6 +439,17 @@ guard >/dev/null
 [ -f "$M" ] && ok "a \`stopped\` RUN marker is NOT swept — 1.2 reads that state as resumable" \
             || bad "the guard deleted a stopped run marker"
 rm -f "$M"
+# A marker caught mid-rewrite contains neither `running` nor `stopped`. Swept
+# on "not running", it would be unlinked under a LIVE run whose writer then
+# finishes through a dead descriptor — that run left with no marker and no
+# stop protection, permanently and silently. Parallel tickets share a checkout
+# by design, so this is a reachable interleaving, not a thought experiment.
+reset
+printf '{\n "run": "STO-355",\n "session": "%s",\n "phase": "Phase 1",\n "state": "runn' "$INV1" > "$PFM"
+guard >/dev/null
+[ -f "$PFM" ] && ok "a preflight marker caught mid-rewrite is NOT swept — absent \`running\` is not \`stopped\`" \
+              || bad "the sweep deleted a torn marker; a live run would lose its marker under it"
+rm -f "$PFM"; reset
 
 # THE REGRESSION THIS SHAPE INTRODUCES, and the reason the counter is keyed by
 # the marker's FILENAME rather than its `run` field. Before 1.1 resolves the
