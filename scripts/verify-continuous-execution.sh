@@ -191,6 +191,12 @@ assert_has "$TK: the marker is deleted last, immediately before the summary" \
   "$TK" 'Delete the run marker — last, immediately before printing the summary below'
 assert_has "$TK: not in Phase 9 cleanup, which is where it used to happen" \
   "$TK" '**Not in Phase 9 cleanup, which is where it used to happen**'
+# 2.1's marker-discipline sentence is the OPERATIONAL one a run follows. It
+# named Phase 9 step 1 and would have reinstated the gap by itself while
+# Phase 10 said otherwise — two instructions, one of them stale, is how the
+# whole enforcement comes back off.
+assert_has "$TK: 2.1's marker discipline agrees — deleted in Phase 10, never in Phase 9" \
+  "$TK" 'delete the file in Phase 10, last, immediately before printing the summary — never in Phase 9 cleanup'
 assert_has "$TK: \`/notion-dev:finalize\` writes no marker, so the guard does not cover it" \
   "$TK" '`/notion-dev:finalize` writes no run marker, so the guard does not cover it at all'
 assert_has "$TK: the run marker carries \`non_interactive\`" \
