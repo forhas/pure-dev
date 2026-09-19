@@ -468,6 +468,11 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
     "$TK" "$PRE" "$P11" 'Write the preflight run marker — first, before any probe below can abort'
   assert_present "ticket.md preconditions: keyed by \`\$NOTION_DEV_SESSION_ID\` at \`runs/preflight-<session>.json\`" \
     "$TK" "$PRE" "$P11" 'runs/preflight-<session>\.json`, where `<session>` is `\$NOTION_DEV_SESSION_ID`'
+  # Sanitising the FIELD as well as the filename makes the marker inert, and
+  # invisibly so: a session id is a UUID, so the substitution changes nothing
+  # on one and the mismatch never shows up in testing.
+  assert_present "ticket.md preconditions: \`claude_session\` carries the id verbatim; only the filename is sanitised" \
+    "$TK" "$PRE" "$P11" '`claude_session` carries the id verbatim; only the filename is sanitised'
   assert_present "ticket.md preconditions: an empty \`\$NOTION_DEV_SESSION_ID\` writes no file at all" \
     "$TK" "$PRE" "$P11" 'When `\$NOTION_DEV_SESSION_ID` is empty, write no file at all'
   # Retirement is the half that can turn a documented hard abort into a session
