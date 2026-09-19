@@ -525,11 +525,12 @@ TKL=$(total_lines "$TK")
 PRE=$(find_line "$TK" 1 "$TKL" '^## Preconditions$')
 P11=$(find_line "$TK" 1 "$TKL" '^### 1\.1 ')
 P12=$(find_line "$TK" 1 "$TKL" '^### 1\.2 ')
+P13=$(find_line "$TK" 1 "$TKL" '^### 1\.3 ')
 P21=$(find_line "$TK" 1 "$TKL" '^### 2\.1 ')
 P22=$(find_line "$TK" 1 "$TKL" '^## Phase 3 — Triage$')
 STOPS=$(find_line "$TK" 1 "$TKL" '^## Failure and stop conditions$')
 
-if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P22" ] && [ -n "$STOPS" ]; then
+if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P13" ] && [ -n "$P21" ] && [ -n "$P22" ] && [ -n "$STOPS" ]; then
   assert_present "ticket.md preconditions: the preflight marker is written before any probe can abort" \
     "$TK" "$PRE" "$P11" 'Write the preflight run marker — first, before any probe below can abort'
   # This marker is now the earliest write in the command, so the self-ignoring
@@ -583,6 +584,19 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
     "$TK" "$P12" "$P21" '2\.1 never runs on a take-over, so this branch is the only place the handover can happen'
   assert_present "ticket.md 1.2: every abort in the section writes \`\"state\": \"stopped\"\` into the preflight marker" \
     "$TK" "$P12" "$P21" 'Every abort in this section stops before 2\.1.s marker exists, so every one of them writes `"state": "stopped"` with its cause into the preflight marker'
+  # The three additions a whole-suite deletion sweep found unpinned. Each is a
+  # stop path or a field the guard acts on, so an edit that loses one is
+  # silent: the enforcement stays present and stops covering that case.
+  assert_present "ticket.md 1.3: both stops there write \`\"state\": \"stopped\"\` into the preflight marker" \
+    "$TK" "$P13" "$P21" 'Both stops below write `"state": "stopped"` with their cause into that marker before stopping'
+  assert_present "ticket.md 2.1: \`claimed-elsewhere\` writes \`\"state\": \"stopped\"\` into the preflight marker" \
+    "$TK" "$P21" "$P22" 'claimed-elsewhere.*write `"state": "stopped"` with that cause into the preflight marker'
+  # The guard acts only on a marker carrying all five keys and reads two of
+  # them into its message, so the documented body is part of the contract.
+  assert_present "ticket.md preconditions: the marker body carries \`non_interactive\` and \`claude_session\`" \
+    "$TK" "$PRE" "$P11" '"state": "running", "non_interactive": true, "claude_session": "<\$NOTION_DEV_SESSION_ID>"'
+  assert_present "ticket.md preconditions: the marker body's \`session\` is the per-invocation token" \
+    "$TK" "$PRE" "$P11" '"session": "<invocation>", "phase": "Phase 1 — preconditions"'
 
   # "Failure and stop conditions" is the rule every later stop inherits. Left
   # naming one shape, it silently exempts every stop that happens in Phase 1.
@@ -591,7 +605,7 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
   assert_present "ticket.md stop conditions: the two shapes are never both live" \
     "$TK" "$STOPS" "$TKL" 'The two shapes are never both live'
 else
-  bad "ticket.md: could not anchor the regions (pre=$PRE 1.1=$P11 1.2=$P12 2.1=$P21 p3=$P22 stops=$STOPS)"
+  bad "ticket.md: could not anchor the regions (pre=$PRE 1.1=$P11 1.2=$P12 1.3=$P13 2.1=$P21 p3=$P22 stops=$STOPS)"
 fi
 
 # The 1.1 stops are the ones that fire before the `run` field can even name the

@@ -44,8 +44,9 @@
 #
 #     Per marker, not per run, and the distinction is real rather than
 #     pedantic: the counter is keyed by the marker's filename, so a run that
-#     spends its cap in Phase 1 against `preflight-<session>.json` gets a
-#     fresh cap when Phase 2.1 writes `<KEY>-<id>.json`. Up to 2 x MAX_BLOCKS
+#     spends its cap in Phase 1 against `preflight-<session>-<invocation>.json`
+#     gets a fresh cap when Phase 2.1 writes `<KEY>-<id>.json`. Up to 2 x
+#     MAX_BLOCKS
 #     across a run, in two disjoint windows.
 #
 #     Carrying the count across the handover was considered and rejected. It
@@ -66,12 +67,15 @@
 # `fetchTicket` has resolved the ticket id — so on its own it leaves the whole
 # of Phase 1 unguarded: the preconditions gate, the fetch, knowledge retrieval,
 # the resume/claim protocol and the clarification gate. Issue #57. The id is
-# not known there, so that window cannot use that name; `preflight-<session>.json`
-# covers it instead, keyed by the harness session id, which is known from the
-# first line. Nothing here distinguishes them — both are `runs/*.json` carrying
-# the five required keys, and both are matched, counted and bounded the same
-# way. The only shape-specific line in this file is the stale sweep below, and
-# the only shape-specific rule anywhere is in `commands/ticket.md`: the
+# not known there, so that window cannot use that name;
+# `preflight-<session>-<invocation>.json` covers it instead — keyed by the
+# harness session id, which is known from the first line, plus a
+# per-invocation token, which is what keeps one session's second ticket run
+# from inheriting the first one's spent counter. Nothing here distinguishes
+# them — both are `runs/*.json` carrying the five required keys, and both are
+# matched, counted and bounded the same way. The only shape-specific line in
+# this file is the spent-marker sweep below, and the only shape-specific rule
+# anywhere is in `commands/ticket.md`: the
 # preflight marker is retired the moment the `<KEY>-<id>` one exists.
 #
 # NOT covered: `/notion-dev:finalize`. It writes no run marker, so a
@@ -194,10 +198,10 @@ done
 # that is what makes this reverse lookup total: `$runs/$stem.json` is the file
 # the counter came from, for every marker shape. Keyed by the `run` field it
 # was total only for `<KEY>-<id>.json`, where the two happen to be equal — a
-# `preflight-<session>.json` marker, whose `run` names a ticket that has no
-# marker of its own yet, would resolve to a path that does not exist, be
-# pruned on every single invocation, and never reach `MAX_BLOCKS`. Unbounded
-# blocking is the one failure this guard must be incapable of.
+# `preflight-<session>-<invocation>.json` marker, whose `run` names a ticket
+# that has no marker of its own yet, would resolve to a path that does not
+# exist, be pruned on every single invocation, and never reach `MAX_BLOCKS`.
+# Unbounded blocking is the one failure this guard must be incapable of.
 for counter in "$runs"/.stop-guard-*; do
   [ -f "$counter" ] || continue
   base=${counter##*/.stop-guard-}
@@ -282,11 +286,11 @@ for marker in "$runs"/*.json; do
 
   # The counter is keyed by the marker's FILENAME, never by its `run` field.
   # For `<KEY>-<id>.json` the two are equal, so nothing changes there; for the
-  # `preflight-<session>.json` shape they are not, and the `run` field is not
-  # even stable across Phase 1 — it holds the argument as supplied until 1.1
-  # derives `<KEY>-<id>`. A counter whose name moves is a cap that resets, and
-  # a counter the prune loop cannot map back to a file is a cap that is wiped
-  # on every invocation. Both end in unbounded blocking.
+  # `preflight-<session>-<invocation>.json` shape they are not, and the `run`
+  # field is not even stable across Phase 1 — it holds the argument as
+  # supplied until 1.1 derives `<KEY>-<id>`. A counter whose name moves is a
+  # cap that resets, and a counter the prune loop cannot map back to a file is
+  # a cap that is wiped on every invocation. Both end in unbounded blocking.
   this_stem=$(basename "$marker" .json)
   this_safe=$(printf '%s' "$this_stem" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
   [ -n "$this_safe" ] || this_safe="run"
