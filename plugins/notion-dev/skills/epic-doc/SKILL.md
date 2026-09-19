@@ -176,8 +176,9 @@ brief out with CRLF (`core.autocrlf=true`) while `knowledge.py` forces LF on its
 line-based `diff` of the two reports **every** line as changed regardless of the repair: measured
 in a client run as `1,137c1,137` — both copies of a 137-line brief, ~5k tokens, to report a
 two-line drift, and misleading as well as wasteful. Write stdout over the brief and report the
-`drift:` lines; on the `read` path, which writes nothing, discard stdout rather than diffing it. The script partitions the
-unresolved children, orders the numbered list by phase, step, then numeric id, puts the first
+`drift:` lines; on the `read` path, which writes nothing, discard stdout rather than diffing it.
+
+The script partitions the unresolved children, orders the numbered list by phase, step, then numeric id, puts the first
 child whose every `## Blocked by` key is resolved at item 1 with its reason preserved when item 1
 did not change (else `unblocked; <dep> landed` or `first in phase order`), writes `In progress:`
 with each key's `since` preserved, and `Blocked:` from the threads' keys plus every stop bullet's

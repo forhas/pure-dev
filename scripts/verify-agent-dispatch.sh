@@ -269,6 +269,15 @@ assert_present "create-task: the dispatch instruction itself is conditioned on \
   "$CT" 1 "$CTL" 'Unless `--no-proxy` was supplied.*dispatch the subagent with the context packet'
 assert_present "create-task: Phase 2.1's non-interactive routing names the \`--no-proxy\` exception" \
   "$CT" 1 "$CTL" "In \*\*non-interactive mode\*\*, the interviewer.s questions go to the proxy-respondent subagent.*unless \`--no-proxy\` was supplied"
+# The completeness gate caught the prose naming the wrong mechanism for the second inline path:
+# finalize never reads record.md at all. The behaviour was right and the sentence was not, which
+# is exactly the class that rots into a wrong fix later.
+assert_present "create-task: says \`/notion-dev:ticket\` runs \`references/record.md\` and \`/notion-dev:finalize\` never reads it, invoking \`notion-dev:epic-update\` on every path" \
+  "$CT" 1 "$CTL" '`/notion-dev:ticket`.s Phase 8 recovery runs `references/record.md` itself.*`/notion-dev:finalize` never reads that file at all.*invokes.*`notion-dev:epic-update` directly.*on \*\*every\*\* finalize path'
+# The hint is the user-visible flag list; a table counting eight beside a hint listing seven is
+# the kind of drift nobody reads until it is wrong in a client.
+assert_present "create-task: the \`argument-hint\` frontmatter lists \`--no-proxy\` with the other flags" \
+  "$CT" 1 "$CTL" '^argument-hint:.*\[--provenance=<marker>\] \[--no-proxy\]' 
 assert_present "record: passes \`NO_PROXY: true\` exactly when the caller passed \`DISPATCHED: true\`" \
   "$RC" 1 "$RCL" 'pass `NO_PROXY: true` whenever the caller passed `DISPATCHED: true`'
 assert_present "ticket: the record-unit dispatch carries \`DISPATCHED: true\` and the inline recovery omits it" \
