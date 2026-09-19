@@ -202,6 +202,8 @@ assert_has "notion-dev README states the block bound" \
   "$NDREADME" 'at most **3 blocks per run per'
 assert_has "notion-dev README states the staleness bound" \
   "$NDREADME" '**30 minutes** stale'
+assert_has "notion-dev README: the guard blocks only the session that owns the run" \
+  "$NDREADME" 'owns the run** — a second parallel ticket'
 
 # ---------------------------------------------------------------------------
 echo "== READMEs and release =="

@@ -56,9 +56,9 @@ field() { printf '%s' "$2" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"
 session_raw=$(field session_id "$flat")
 session=$(printf '%s' "$session_raw" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
 [ -n "$session" ] || session="unknown-session"
-# With no id there is nothing to match a marker against, and blocking on an
-# unmatched marker is the cross-session failure below. Allow.
-[ -n "$session_raw" ] || allow
+# No separate guard for an absent id: an empty `$session_raw` cannot equal any
+# marker's `claude_session`, so the match below already allows that case. A
+# redundant early return here would read as a live check and be unprovable.
 
 dir=${CLAUDE_PROJECT_DIR:-}
 [ -n "$dir" ] || dir=$(field cwd "$flat")
