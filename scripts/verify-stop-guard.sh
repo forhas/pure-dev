@@ -102,6 +102,8 @@ if [ -f "$GUARD" ]; then
   # dropping it is how a known residual turns into a surprise.
   assert_has "guard records that its marker check is structural, not a parse" \
     "$GUARD" 'This is a STRUCTURAL check, not a parse'
+  assert_has "guard's header records that \`/notion-dev:finalize\` is not covered" \
+    "$GUARD" 'NOT covered: `/notion-dev:finalize`'
   assert_has "guard records what bounds that residual" \
     "$GUARD" 'is spend the block cap, at most MAX_BLOCKS'
 else

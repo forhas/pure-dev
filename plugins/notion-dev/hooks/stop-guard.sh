@@ -45,6 +45,11 @@
 # previous block sent the run back, which is when this guard most wants to block
 # again. The count is the bound, not that flag.
 #
+# NOT covered: `/notion-dev:finalize`. It writes no run marker, so a
+# marker-keyed guard has nothing to match and a finalize run is unguarded end
+# to end. That is a boundary of this design, not an oversight to be patched
+# here — giving `finalize` a marker is its own lifecycle question.
+#
 # Both platforms: POSIX shell plus `git` and `find`, no `date -d`, no `stat -c`,
 # no `jq` — this runs on every stop in every session, so it takes no dependency
 # the plugin does not already guarantee, and it never parses a timestamp.
