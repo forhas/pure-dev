@@ -58,6 +58,27 @@ TSREAD=$ND/skills/ticket-system/references/read-ops.md
 assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more than one row or \`has_more: true\` is never resolved by taking the first row" \
   "$TSREAD" 1 "$(total_lines "$TSREAD")" 'more than one row, or `has_more: true`, is never resolved by taking the first row'
 
+# The query-call contract. 5 of 13 data-source calls in a measured client ticket were the run
+# rediscovering this, and the two worst failures do not look like failures: a `?` placeholder
+# returns 200 with an empty result set, and a `SELECT *` probe re-reads a schema config already
+# holds. Each trap is pinned on its own line — the file is not hard-wrapped here, but a regex
+# spanning two of them would go quiet the moment one is reworded.
+TSRL=$(total_lines "$TSREAD")
+assert_present "read-ops: the call shape passes \`data_source_urls\` as an array of collection URLs" \
+  "$TSREAD" 1 "$TSRL" '^ *"data_source_urls": \["collection://<dataSourceId>"\],$'
+assert_present "read-ops: the arguments are wrapped in \`data\`, with the quoted collection URL as the table name" \
+  "$TSREAD" 1 "$TSRL" 'The arguments are wrapped in `data`, and the table name is the quoted collection URL'
+assert_present "read-ops: names the third rejected shape, the \`data_sources\` JSON string, beside the other two" \
+  "$TSREAD" 1 "$TSRL" '`data_source_url` \+ `query_type` \+ `sql_query`; a `data_sources` JSON \*string\*'
+assert_present "read-ops: the rejected shapes all return one \`Invalid input\` message that names no field" \
+  "$TSREAD" 1 "$TSRL" 'Invalid input`, which names no field'
+assert_present "read-ops: \`params\` placeholders return an empty result set with no error, so inline the literal" \
+  "$TSREAD" 1 "$TSRL" 'Never use `params` with `\?` placeholders. Inline the literal value instead'
+assert_present "read-ops: column names come from the config, never from a \`SELECT \*\` probe" \
+  "$TSREAD" 1 "$TSRL" 'Column names come from `\.claude/notion-dev\.config\.json`, never from a `SELECT \*` probe'
+assert_present "read-ops: there is no bare \`name\` column and guessing one is a hard 400" \
+  "$TSREAD" 1 "$TSRL" 'There is no bare `name` column\*\*, and guessing one is a hard `400`'
+
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the write-operations reference is present and pinned =="
 

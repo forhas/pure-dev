@@ -3,6 +3,50 @@
 Read before the first read. `fetchTicket`, `findEpics`, `getEpicContext`,
 `listEpicChildren`. Referenced from `../SKILL.md`.
 
+## Calling `mcp__notion__notion-query-data-sources`
+
+**Every query operation below uses this one call shape. Use it verbatim.** Measured on a client
+run (BTC-Gateway, notion-dev 0.29.0): 5 of the 13 data-source calls in one ticket were the run
+rediscovering this contract, and two of the five failed in ways that do not look like failures.
+
+```
+mcp__notion__notion-query-data-sources({
+  "data": {
+    "data_source_urls": ["collection://<dataSourceId>"],
+    "query": "SELECT \"userDefined:ID\" AS id, \"<titleProperty>\" AS title, \"<statusProperty>\" AS status FROM \"collection://<dataSourceId>\" WHERE \"userDefined:ID\" = 142"
+  }
+})
+```
+
+Four things about it, each of which cost that run a round trip:
+
+- **The arguments are wrapped in `data`, and the table name is the quoted collection URL.** Three
+  other shapes are rejected with the same unhelpful `Input validation error: Invalid arguments for
+  tool notion-query-data-sources: data: Invalid input`, which names no field: a top-level
+  `data_source_url` + `query_type` + `sql_query`; a `data_sources` JSON *string*; and a
+  `data: { mode, data_source_url, filter }` structured-filter form. None of them is this tool.
+- **Never use `params` with `?` placeholders. Inline the literal value instead.** This is the one
+  that does not announce itself: `WHERE "ID" = ?` with `params: [142]` returns
+  `{"results":[],"has_more":false}` — **HTTP 200, no error, and an empty result set that is
+  indistinguishable from a ticket that does not exist.** A run that reads it as "no such ticket"
+  goes on to the wrong branch with nothing to say it guessed. Later in the same run the same
+  `params` form drew a `400 validation_error` instead, so the failure mode is not even stable.
+- **Column names come from `.claude/notion-dev.config.json`, never from a `SELECT *` probe.**
+  `/notion-dev:init` records every one this file needs — `idProperty`, `statusProperty`,
+  `phaseProperty`, `stepProperty`, `epicProperty`, `parentTaskProperty`, `epicMarkerProperty` —
+  so `SELECT * FROM "collection://…" LIMIT 1` to learn them reads a row the caller already has the
+  schema for. The client run ran that probe twice, the second time only because a compaction had
+  dropped the first one's answer.
+- **There is no bare `name` column**, and guessing one is a hard `400`
+  (`Failed to execute query: no such column: name`). The title lives under the live property name
+  — `"Task name"` on the client DB — and the id column is the literal string `"userDefined:ID"`,
+  not `idProperty`'s configured name; see `../SKILL.md` for why that prefix exists and why this
+  tool returns the bare integer where `notion-fetch` returns `"userDefined:ID": "PDS-1"`.
+
+`dataSourceId` is `ticketSystem.dataSourceId` when configured, otherwise derive the collection URL
+from `ticketSystem.databaseId`. Everything else in this file that says "query the database" means
+this call.
+
 ## fetchTicket(id)
 
 `id` may arrive as a **Notion page id / URL** (e.g. `383fdf83c4178177beebd41a69bf47bc`, a dashed UUID, or a full `notion.so` / `notion.com` page URL) or as a **logical key** (`STO-285`, `STO285`, `285`). Resolve the page accordingly:
@@ -11,7 +55,7 @@ Read before the first read. `fetchTicket`, `findEpics`, `getEpicContext`,
 
 1. **Detect input shape and resolve the page:**
    - If `id` is a Notion page id (32 hex chars with or without dashes), a dashed UUID, or a Notion page URL: **fetch the page directly** with `mcp__notion__notion-fetch` — skip the database query entirely.
-   - Otherwise treat `id` as a logical key: normalize it to numeric, then query the database (or data source if configured) for the page where `idProperty` equals the numeric id — use `mcp__notion__notion-query-data-sources` with an exact filter on `idProperty` (semantic `notion-search` is not reliable for numeric-ID equality, and `notion-fetch` only fetches by URL/ID; fall back to a DB-scoped `notion-search` only if the query tool is unavailable, verifying the hit's `idProperty` value before trusting it). When `idProperty` is a `unique_id` column, filter by its numeric component — ignore the textual prefix. Load the resolved page content with `mcp__notion__notion-fetch`.
+   - Otherwise treat `id` as a logical key: normalize it to numeric, then query the database (or data source if configured) for the page where `idProperty` equals the numeric id — use `mcp__notion__notion-query-data-sources` **in the call shape under "Calling `mcp__notion__notion-query-data-sources`" above — inline the numeric id as a literal, never as a `?` placeholder, which returns an empty result set with no error** — with an exact filter on `idProperty` (semantic `notion-search` is not reliable for numeric-ID equality, and `notion-fetch` only fetches by URL/ID; fall back to a DB-scoped `notion-search` only if the query tool is unavailable, verifying the hit's `idProperty` value before trusting it). When `idProperty` is a `unique_id` column, filter by its numeric component — ignore the textual prefix. Load the resolved page content with `mcp__notion__notion-fetch`.
 
      **Verify the resolved page's `idProperty` equals the id you asked for — on every path, not only the fallback.** The verify-before-trusting clause above reads as if it belonged to the `notion-search` fallback alone; it does not. A structured filter can be **silently ignored** rather than rejected: measured in a client on three separate runs, a `rows`-mode `number_equals` filter on the id column returned the same five unrelated rows of the same database with `has_more: true` and no error, while the same lookup issued in **SQL mode with a bound parameter** returned exactly the one intended row each time. An ignored filter is indistinguishable at the call site from a genuine multi-hit, and the project-scoping guardrail in step 2 does not catch it — those rows carry the same pinned `staticProperties`, because they are the same project's tickets. So: **more than one row, or `has_more: true`, is never resolved by taking the first row** — re-issue the lookup in SQL mode with a bound parameter, and confirm the resolved page's `idProperty` before anything downstream uses it. Prefer SQL mode with a bound parameter wherever it is available; three for three is a reproducible defect, not an incident. Worth knowing when reading a filter that did not bite: a column named `ID` is exposed by the MCP as `userDefined:ID`, a reserved-name remap that the rows-mode filter path may not be applying.
 2. **Apply the project scoping guardrail** (see section above) — abort here if any pinned `staticProperties` mismatch the live page. Fail before any further work.
@@ -74,7 +118,7 @@ Read-only.
    **Both slots, not just the marker** — this operation returns `null` under exactly the condition `createEpic` step 1 does, and for the same reason: an epic container needs the marker to be *identifiable* and the relation to be *attachable to*, and a container that cannot take children is not a container. Discovery must therefore not report finding one. Returning marked pages when the relation is unusable is worse than returning nothing: the caller records an `EPIC_ID`, `createTicket` skips every parent write, `refreshEpicTasks` no-ops, and `/notion-dev:create-task` reports "created under Epic" for tickets that only carry the Select tag — a claim that is simply false. `null` here is what makes the caller degrade to Select-tagging *and say so*. This is the same two-slot verdict `/notion-dev:init` reports as Epic-containers availability; `findEpics` checking only one slot was the inconsistency. Mirrors `getSelectOptions`, which returns `null` for the same absent/unsuitable-property case. All four signatures above go through `notion-dev:issue-log` — `findEpics` queries the DB directly, without `fetchTicket`, so per the marker rule's ownership split it records on its own rather than relying on a caller's earlier fetch, and it is likewise a direct recorder for the parent signatures, which `fetchTicket` never writes. `/notion-dev:create-task` invokes this operation directly (Phase 2.5.2 and Phase 2.6) with **no preceding `fetchTicket`**, so `fetchTicket` step 4a's validation does not cover this path — this step is the only thing standing between a retyped `Is Epic` column and step 2's query.
 
    **Not proceeding is the point.** Step 2 filters on this property with a checkbox `true` predicate; against a text- or select-typed column that is an **MCP query error, not an empty result**, so a presence-only guard here does not degrade — it makes ordinary task creation fail outright. Epics cannot be identified safely at all with an unusable marker: falling back to a structural guess (an Epic-select tag, an empty parent, a child count) is exactly the bug this marker exists to close, so both unusable states degrade to `null` rather than to any such fallback or to any query. Distinct from step 3's `[]`: `null` means epic containers are unavailable on this DB at all; `[]` means the property is usable but no page has it set yet. Callers must not conflate the two.
-2. Reached only when step 1 confirmed **both** properties are usable. Query the database (or `dataSourceId` when configured) with `mcp__notion__notion-query-data-sources` for pages where `epicMarkerProperty` is `true` **and** (when `parentTaskProperty` is also usable on the live DB) their own `parentTaskProperty` is empty — the same predicate `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply (see "Epic containers" above), so "epic" means the same thing at all four sites. There is no reduced, marker-only form of this query: step 1 returns `null` when `parentTaskProperty` is unusable, so this step only ever runs with **both** properties usable and always filters on both. An earlier version reduced the filter to the marker alone and called the relation's emptiness "vacuously true" — it is not true but *unknowable*, and treating it as satisfied is what let unattachable epics be reported as found. When `staticProperties` is configured, add each `[name, expected]` pair as an additional equality filter on this same query — the same scoping the "Project scoping guardrail" applies per-page, applied here at query time so epic discovery never surfaces a foreign project's epic in a shared DB. When `staticProperties` is empty or absent, the query is unchanged.
+2. Reached only when step 1 confirmed **both** properties are usable. Query the database (or `dataSourceId` when configured) with `mcp__notion__notion-query-data-sources`, in the call shape this file opens with, for pages where `epicMarkerProperty` is `true` **and** (when `parentTaskProperty` is also usable on the live DB) their own `parentTaskProperty` is empty — the same predicate `getEpicContext` step 2, `epic-update` step 1, and `/notion-dev:ticket`'s epic guard apply (see "Epic containers" above), so "epic" means the same thing at all four sites. There is no reduced, marker-only form of this query: step 1 returns `null` when `parentTaskProperty` is unusable, so this step only ever runs with **both** properties usable and always filters on both. An earlier version reduced the filter to the marker alone and called the relation's emptiness "vacuously true" — it is not true but *unknowable*, and treating it as satisfied is what let unattachable epics be reported as found. When `staticProperties` is configured, add each `[name, expected]` pair as an additional equality filter on this same query — the same scoping the "Project scoping guardrail" applies per-page, applied here at query time so epic discovery never surfaces a foreign project's epic in a shared DB. When `staticProperties` is empty or absent, the query is unchanged.
 3. For each hit return `{ id, key, pageId, name, title, url, overview }` — `key` is the logical ticket key (`"STO-67"`) for display, same meaning and format as in `fetchTicket` and `listEpicChildren`; `name` is the `epicProperty` Select value (display metadata — may be empty on a marker-only epic that was never given one), `title` is the page title with the ID prefix stripped, `overview` is the text of its `## Overview` section (empty string when absent). No hits → `[]`. There is no children-based filtering pass here: a page with zero children is returned exactly like any other epic, since the marker alone decides.
 
 ## getEpicContext(epicId, currentTicketId)
