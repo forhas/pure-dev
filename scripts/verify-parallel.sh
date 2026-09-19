@@ -54,8 +54,15 @@ assert_present "marker discipline: the 2-hour threshold bounds the longest singl
 assert_present "phase 4: the marker is touched after every build task" "$TICKET" "$P3" "$P7" 'Touch the run marker.*after every task it completes'
 assert_present "phase 5: the marker is touched after every verify iteration" "$TICKET" "$P3" "$P7" 'Touch the run marker after every verify iteration'
 assert_present "phase 7: the marker is touched after every reviewer round" "$TICKET" "$P7" "$P8" 'touch the marker.*after every reviewer round'
-assert_present "phase 9 step 1: the marker is deleted right after the worktree is removed" "$RECORD" "$RP9" "$RP9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
-assert_order "phase 9: worktree removed, then marker deleted" "$RECORD" "$RP9" "$RP9H" remove 'git worktree remove <worktree-path>' marker 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+# These two used to pin the opposite ordering — the marker deleted in Phase 9
+# step 1, right after the worktree. That was wrong once the marker became the
+# thing the Stop guard matches on: deleting it there left branch cleanup, the
+# base checkout and pull, the post-merge hooks, the record unit's return and
+# the whole of Phase 10 unguarded. Deliberately inverted, in the commit that
+# moved the deletion, with the reasoning in both documents.
+assert_present "phase 9 step 1: the marker is NOT deleted with the worktree" "$RECORD" "$RP9" "$RP9H" '\*\*Leave the run marker in place\.\*\*'
+assert_absent  "phase 9: nothing in the cleanup steps removes the run marker" "$RECORD" "$RP9" "$RP9H" 'rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/<KEY>-<id>\.json"'
+assert_present "phase 10: the caller deletes the marker last, before the summary" "$TICKET" "$P10" "$L" 'Delete the run marker — last, immediately before printing the summary'
 assert_present "stop path: the marker is set to \`\"state\": \"stopped\"\` with the cause" "$TICKET" "$FS" "$L" '"state": "stopped".*cause'
 # The rewrite lives in the unconditional "On any unrecoverable failure" bullet, not the
 # epic-only `stop` section below it — no bullet boundary separates the two in the file, so
