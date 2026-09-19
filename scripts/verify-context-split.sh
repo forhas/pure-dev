@@ -64,6 +64,19 @@ assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more tha
 # holds. Each trap is pinned on its own line — the file is not hard-wrapped here, but a regex
 # spanning two of them would go quiet the moment one is reworded.
 TSRL=$(total_lines "$TSREAD")
+# Sweep round: the contract scoped itself to read-ops while create-ops queries the data source too,
+# via two paths that never go through fetchTicket and so inherit nothing.
+assert_present "read-ops: the contract governs every data-source query in the skill, not only the operations below it" \
+  "$TSREAD" 1 "$TSRL" '\*\*Every data-source query in this skill uses this one call shape'
+TSCREATE=$ND/skills/ticket-system/references/create-ops.md
+assert_present "create-ops: sends its two query paths to read-ops for the call contract before their first query" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'call contract for that lives in$'
+assert_present "create-ops: names \`createTicket\` max-plus-one as one of the two query paths" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '`createTicket`.s max-plus-one next-id lookup'
+assert_present "create-ops: names \`setDependencies\` resolving a title reference as the other" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" '`setDependencies` resolving a title reference'
+assert_present "create-ops: says neither path picks up the contract on the way, so it must be read here" \
+  "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'so neither picks the contract up on the way'
 assert_present "read-ops: the call shape passes \`data_source_urls\` as an array of collection URLs" \
   "$TSREAD" 1 "$TSRL" '^ *"data_source_urls": \["collection://<dataSourceId>"\],$'
 assert_present "read-ops: the arguments are wrapped in \`data\`, with the quoted collection URL as the table name" \

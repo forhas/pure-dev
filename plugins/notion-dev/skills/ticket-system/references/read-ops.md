@@ -5,7 +5,11 @@ Read before the first read. `fetchTicket`, `findEpics`, `getEpicContext`,
 
 ## Calling `mcp__notion__notion-query-data-sources`
 
-**Every query operation below uses this one call shape. Use it verbatim.** Measured on a client
+**Every data-source query in this skill uses this one call shape. Use it verbatim.** That is the
+operations below *and* the two in `create-ops.md` — `createTicket`'s max-plus-one next-id lookup on
+a Number-typed `idProperty`, and `setDependencies` resolving a title reference — neither of which
+goes through `fetchTicket`, so neither inherits this contract by being downstream of it. A caller
+on the create path reads this section before its first query. Measured on a client
 run (BTC-Gateway, notion-dev 0.29.0): 5 of the 13 data-source calls in one ticket were the run
 rediscovering this contract, and two of the five failed in ways that do not look like failures.
 
