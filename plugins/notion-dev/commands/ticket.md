@@ -32,11 +32,11 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 - Record `REPO_ROOT` **first**, before loading config or invoking any skill: the first path listed by `git worktree list`, i.e. the **primary checkout** root, never a worktree path. (This recipe is correct from anywhere, including the no-arg resume path invoked from inside the ticket worktree, where `git rev-parse --show-toplevel` would wrongly return the worktree root.)
 - **Write the preflight run marker — first, before any probe below can abort.** Non-interactive mode only; in interactive mode write nothing. `hooks/stop-guard.sh` blocks a stop only while a run marker exists, and Phase 2.1's `<KEY>-<id>.json` cannot be written here: the numeric `<id>` does not exist until 1.1's `fetchTicket` returns, and the argument may be a page id, a dashed UUID, a URL or a logical key. So this window — the probes below, 1.1's fetch and knowledge retrieval, 1.2's worktree and claim protocol, 1.3's clarification gate — is covered by a second marker shape, keyed by the one identifier that *is* known here: the harness session id. Write it to `$REPO_ROOT/.claude/notion-dev/runs/preflight-<session>.json`, where `<session>` is `$NOTION_DEV_SESSION_ID` with every character outside `A-Za-z0-9._-` replaced by `_` (`mkdir -p` the `runs/` directory first — it does not exist on a fresh install, and nothing else creates it this early):
 
-```json
-{ "run": "<the argument as supplied, with any \" or \\ removed — `resume` when there was none>",
-  "session": "preflight", "phase": "Phase 1 — preconditions", "heartbeat": "<date -u +%FT%TZ>",
-  "state": "running", "non_interactive": true, "claude_session": "<$NOTION_DEV_SESSION_ID>", "cause": null }
-```
+  ```json
+  { "run": "<the argument as supplied, with any \" or \\ removed — `resume` when there was none>",
+    "session": "preflight", "phase": "Phase 1 — preconditions", "heartbeat": "<date -u +%FT%TZ>",
+    "state": "running", "non_interactive": true, "claude_session": "<$NOTION_DEV_SESSION_ID>", "cause": null }
+  ```
 
   **`claude_session` carries the id verbatim; only the filename is sanitised.** The guard matches that field against the raw `session_id` the harness hands it on stdin, so a sanitised value there would match nobody and the marker would be inert — the failure would be invisible, since a Claude Code session id is a UUID and the substitution is a no-op on one. The filename is a different problem and takes the substitution because it is a path. The field names are 2.1's and none of them is optional: the guard acts only on a marker carrying `run`, `phase`, `state`, `non_interactive` and `claude_session`, and it reads `run` and `phase` straight into the message it sends the run back with. **When `$NOTION_DEV_SESSION_ID` is empty, write no file at all** and say in the report that this run has no stop protection — the guard never blocks on a marker it cannot attribute, so an unattributable preflight marker is a file nothing will ever read. Keep it current exactly as 2.1 keeps its marker current: rewrite `phase` at each of 1.1, 1.2 and 1.3, and rewrite `run` to `<KEY>-<id>` as soon as 1.1 has derived the numeric id. Each rewrite is also what refreshes the heartbeat, which the guard reads as the file's mtime.
 

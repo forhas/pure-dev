@@ -127,6 +127,17 @@ root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree
 runs="$root/.claude/notion-dev/runs"
 [ -d "$runs" ] || allow
 
+# Sweep stale preflight markers first. They are the one marker shape that is
+# disposable by construction — a placeholder for a `<KEY>-<id>.json` that does
+# not exist yet, retired by Phase 2.1 the moment the real one is written — so a
+# stale one is litter, not evidence. Only that shape, and only when stale: a
+# real run marker is never deleted by this hook.
+for stray in "$runs"/preflight-*.json; do
+  [ -f "$stray" ] || continue
+  find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q . \
+    || rm -f "$stray" 2>/dev/null
+done
+
 # Prune counters whose RUN is over — never by the counter's own age. Age alone
 # deleted the counter of a run that was still heart-beating, which reset it to
 # "block 1 of 3" and left the cap bounding nothing: the pruning meant to keep
@@ -145,18 +156,6 @@ runs="$root/.claude/notion-dev/runs"
 # marker of its own yet, would resolve to a path that does not exist, be
 # pruned on every single invocation, and never reach `MAX_BLOCKS`. Unbounded
 # blocking is the one failure this guard must be incapable of.
-#
-# Sweep stale preflight markers here too. They are the one marker shape that is
-# disposable by construction — a placeholder for a `<KEY>-<id>.json` that does
-# not exist yet, retired by Phase 2.1 the moment the real one is written — so a
-# stale one is litter, not evidence. Only that shape, and only when stale: a
-# real run marker is never deleted by this hook.
-for stray in "$runs"/preflight-*.json; do
-  [ -f "$stray" ] || continue
-  find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q . \
-    || rm -f "$stray" 2>/dev/null
-done
-
 for counter in "$runs"/.stop-guard-*; do
   [ -f "$counter" ] || continue
   base=${counter##*/.stop-guard-}
