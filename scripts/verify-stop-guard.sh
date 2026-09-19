@@ -466,6 +466,14 @@ STOPS=$(find_line "$TK" 1 "$TKL" '^## Failure and stop conditions$')
 if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P22" ] && [ -n "$STOPS" ]; then
   assert_present "ticket.md preconditions: the preflight marker is written before any probe can abort" \
     "$TK" "$PRE" "$P11" 'Write the preflight run marker — first, before any probe below can abort'
+  # This marker is now the earliest write in the command, so the self-ignoring
+  # directory has to exist before it. Without that the first ticket run in a
+  # freshly initialised repo aborts on the clean-tree precondition, over dirt
+  # the command itself created four bullets earlier.
+  assert_present "ticket.md preconditions: the self-ignoring directory is created before the marker" \
+    "$TK" "$PRE" "$P11" 'Create the self-ignoring directory first — `mkdir -p` plus its `\.gitignore`'
+  assert_present "ticket.md preconditions: says the run would otherwise abort on a file it created itself" \
+    "$TK" "$PRE" "$P11" 'the run aborts on a file it created itself'
   assert_present "ticket.md preconditions: keyed by \`\$NOTION_DEV_SESSION_ID\` at \`runs/preflight-<session>.json\`" \
     "$TK" "$PRE" "$P11" 'runs/preflight-<session>\.json`, where `<session>` is `\$NOTION_DEV_SESSION_ID`'
   # Sanitising the FIELD as well as the filename makes the marker inert, and
