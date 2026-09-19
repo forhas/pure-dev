@@ -18,9 +18,26 @@
 # Blocks are bounded twice over, because a guard that cannot give up is a trap:
 #   * freshness — the marker is rewritten at every phase boundary, verify
 #     iteration and review round, so its mtime tracks the heartbeat. Older than
-#     STALE_MINUTES and the run is abandoned, not live: allow. A stop happens
-#     right after a unit of work returns, which is exactly when the marker was
-#     just touched, so the live case is never the stale one.
+#     STALE_MINUTES and the run is abandoned, not live: allow.
+#
+#     STALE_MINUTES matches `commands/ticket.md`'s own 2-hour staleness rule,
+#     and must not be shortened below it. A heartbeat says *this run reached
+#     that boundary*, never *this run is alive right now*: it is written
+#     BETWEEN units of work and never inside one, because a flow blocked in a
+#     build task, a verify command or a reviewer round cannot write anything
+#     until that unit returns. So the threshold has to exceed the longest
+#     single unit, which is exactly why that file picked two hours. A 30-minute
+#     window shipped in the first draft of this guard and was wrong in the one
+#     case that matters: a Phase 7 review loop runs 3-20 minutes per round for
+#     up to 15 rounds, so the marker is routinely older than 30 minutes at the
+#     moment Phase 7 ends — the precise boundary the run in the bug report
+#     stopped at. The guard would have watched it stop.
+#
+#     The short window was there to stop an abandoned run blocking a later
+#     session, and that reason is gone: the session match below means a marker
+#     can only ever block the session that created it, so an abandoned run
+#     blocks nobody but itself, whatever the threshold. The cap still bounds
+#     it either way.
 #   * count — at most MAX_BLOCKS per run per session. A run that means to stop
 #     stops on the fourth try, with the guard saying so rather than going quiet.
 #
@@ -32,7 +49,7 @@
 # no `jq` — this runs on every stop in every session, so it takes no dependency
 # the plugin does not already guarantee, and it never parses a timestamp.
 
-STALE_MINUTES=30
+STALE_MINUTES=120
 MAX_BLOCKS=3
 
 # No `set -e` and no ERR trap. An ERR trap looks like the way to fail open and
@@ -131,8 +148,17 @@ if [ "$blocks" -ge "$MAX_BLOCKS" ]; then
   exit 0
 fi
 
+# A block is only legitimate once the increment is on disk. If the counter
+# cannot be written — read-only directory, a directory sitting on the path, a
+# full filesystem — every invocation re-reads nothing, stays at "block 1 of 3",
+# and the cap never engages: unbounded blocking, which is the wedge this guard
+# is supposed to be incapable of. Read it back rather than trusting the write,
+# and allow the stop when it did not land.
 blocks=$((blocks + 1))
 printf '%s' "$blocks" > "$counter" 2>/dev/null
+persisted=""
+[ -f "$counter" ] && persisted=$(cat "$counter" 2>/dev/null)
+[ "$persisted" = "$blocks" ] || allow
 
 printf '{"decision":"block","reason":"notion-dev: %s is a --non-interactive run and its marker still reads state=running at %s. This run does not end its turn mid-run: no question was asked, so nothing is waiting on an answer, and nobody is watching to type continue. Do not summarise and stop. Continue from %s and carry on through the phases that follow it, to the final report or to one of the stop conditions the command names explicitly — those write state=stopped with a cause, which is what tells this guard a stop is real. Block %s of %s."}\n' \
   "$live_run" "$live_phase" "$live_phase" "$blocks" "$MAX_BLOCKS"

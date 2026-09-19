@@ -137,8 +137,13 @@ action, so only the harness can gate it. The guard blocks the stop while the pro
 `--non-interactive` run marker, and names the phase to resume at.
 
 It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
-session**, and it ignores a marker whose file is more than **30 minutes** stale, so an abandoned
-run cannot block a later one. It fails open on anything unexpected, and it blocks **only the session that
+session**, and it ignores a marker more than **2 hours** stale — the same threshold
+`/notion-dev:ticket` already uses, and for the same reason: a heartbeat is written *between*
+units of work, never inside one, so the window has to exceed the longest single build task,
+verify command or reviewer round. A shorter window looks safer and is not: a Phase 7 review loop
+routinely runs past it, so the guard would go quiet at exactly the boundary it exists to cover.
+An abandoned run still blocks nobody, because a marker can only ever block the session that
+created it. It fails open on anything unexpected, and it blocks **only the session that
 owns the run** — a second parallel ticket, or an interactive session in the same checkout, is
 never refused its stop. It never fires on an interactive run at all, since those end a turn to
 ask, which is correct; and it does not cover `/notion-dev:finalize`, which writes no run

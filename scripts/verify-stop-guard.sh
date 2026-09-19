@@ -66,6 +66,11 @@ if [ -f "$GUARD" ]; then
   # there is no portable date arithmetic across both platforms without one of
   # the banned tools above.
   assert_has "guard judges freshness by file mtime (\`-mmin\`)" "$CODE" '-mmin'
+  # The threshold must exceed the longest single unit of work, which is why
+  # ticket.md picked two hours. Shortening it silently switches the guard off
+  # at long phase boundaries — the ones where stops actually happen.
+  assert_has "guard's staleness threshold matches ticket.md's 2-hour rule" "$CODE" 'STALE_MINUTES=120'
+  assert_has "guard blocks only after the increment is persisted" "$CODE" '[ "$persisted" = "$blocks" ] || allow'
 else
   bad "stop-guard.sh is missing ($GUARD)"
   echo; echo "$fails CHECK(S) FAILED"; exit 1
@@ -178,6 +183,30 @@ if git -C "$REPO" worktree add -q "$T/wt" -b feat 2>/dev/null; then
 else
   bad "could not create a worktree fixture"
 fi
+
+# --- the two round-2 regressions ---------------------------------------------
+# 45 minutes old: past the 30-minute window the first draft shipped, well inside
+# `ticket.md`'s 2-hour rule. A Phase 7 review loop runs 3-20 minutes per round
+# for up to 15 rounds, so a marker this age at a phase boundary is the ORDINARY
+# case, not an abandoned run — and it is the boundary the reported stop happened
+# at. Under the short window the guard would have watched it stop.
+PY=${KNOWLEDGE_PY:-python3}
+if $PY -c 'import os,sys' 2>/dev/null; then
+  reset; marker running true sess-1
+  $PY -c 'import os,sys,time; p=sys.argv[1]; t=time.time()-45*60; os.utime(p,(t,t))' "$M" 2>/dev/null
+  expect_block "marker 45 minutes old: still blocks — the threshold must exceed the longest unit of work" \
+    "$(guard)"
+else
+  bad "no python available to age a fixture ($PY); the 45-minute case did not run"
+fi
+
+# An increment that cannot be persisted is not a bounded block: every later
+# invocation re-reads nothing, stays at "block 1 of 3", and the cap never
+# engages. Unwritable counter must therefore allow, not block.
+reset; marker running true sess-1
+mkdir -p "$RUNS/.stop-guard-STO-355-sess-1"      # a directory where the counter file goes
+expect_silent "counter cannot be written: silent — an uncountable block is an unbounded one" "$(guard)"
+rmdir "$RUNS/.stop-guard-STO-355-sess-1"
 
 # A checkout path with a space in it: `git worktree list --porcelain` emits the
 # path unquoted after "worktree ", so a whitespace-delimited field read
