@@ -33,7 +33,7 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 | Phase | Interactive | Non-interactive |
 |---|---|---|
-| 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) |
+| 2.1 interview | Questions go to the user | Questions go to a **proxy-respondent subagent** (below) — **unless `--no-proxy`**, which answers them in this agent from `--context-file`'s packet |
 | 2.1 title | Interviewer's returned `title` is used as-is, unless `--title` is supplied — then that exact string always wins, in either mode | Same rule: `--title`, when supplied, overrides the interviewer's returned `title`; otherwise the interviewer's value is used |
 | 2.1 provenance | Interviewer's returned `body`'s `## Context` section is used as-is, unless `--provenance` is supplied — then the marker is force-inserted into `## Context` verbatim before Phase 3.2 writes, in either mode | Same rule: `--provenance`, when supplied, is folded into `## Context` before Phase 3.2's creation call; otherwise the interviewer's `## Context` is used unchanged |
 | 2.2 confirm | `create` / `revise` / `cancel` | Auto-`create` |
@@ -52,7 +52,7 @@ This is deliberate. When `/notion-dev:ticket` or `/notion-dev:finalize` files a 
 
 So: **a dispatched flow unit passes `--no-proxy`**, and this command then answers the interviewer's questions itself, from the packet, under exactly the discipline above — ground every answer in the packet, and reply `unknown — needs human input` rather than inventing detail. Nothing else about the interview changes. The orchestrator's own inline paths — `/notion-dev:ticket`'s Phase 8 recovery and `/notion-dev:finalize`'s `MERGED` path both run `record.md` in the main loop — do **not** pass it, and keep the proxy respondent, because there the main loop *is* the review author and the original reasoning applies unchanged.
 
-Dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
+**Unless `--no-proxy` was supplied** (below), dispatch the subagent with the context packet and this instruction: *answer the interviewer's questions as the requester would, grounding every answer in the packet; when the packet does not support an answer, reply "unknown — needs human input" rather than inventing detail.* Answers of that form flow into the ticket's `## Open Questions`, so the gap stays visible instead of becoming a confident-sounding fabrication.
 
 **Standing rule — runtime issues.** Anything unexpected at runtime — for example an MCP error, an unexpected schema shape, a value you had to guess at, a retry, a fallback taken, an abort, a failed precondition, or a warning shown to the user — is recorded via `notion-dev:issue-log`, at the moment it happens, not batched to the end of the run. That skill is **authoritative** for the full trigger list, the entry format, the signature vocabulary, the redaction contract, and the list of conditions that are routine and must **not** be logged; the examples here are illustrative, not exhaustive. The rule applies to conditions nobody enumerated in advance. A failure to write the log never fails the run.
 
@@ -90,7 +90,7 @@ When `--provenance` was supplied, apply the same discipline to `## Context`: aft
 
 No `confidence`-branching lives in this command — depth calibration is fully owned by the skill.
 
-In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user. Everything else about the interview is unchanged.
+In **non-interactive mode**, the interviewer's questions go to the proxy-respondent subagent described above instead of to the user — **unless `--no-proxy` was supplied**, in which case answer them in this agent from `--context-file`'s packet, under that section's discipline. Everything else about the interview is unchanged in either case.
 
 ### 2.2 Confirm
 

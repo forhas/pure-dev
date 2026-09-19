@@ -260,6 +260,15 @@ assert_present "create-task: a dispatched agent has no waiting state, so a grand
   "$CT" 1 "$CTL" 'A dispatched agent has no way to be \*waiting\*.*emitted no `RECORD:` block at all'
 assert_present "create-task: only a dispatched flow unit passes \`--no-proxy\`; the inline paths keep the proxy respondent" \
   "$CT" 1 "$CTL" 'a dispatched flow unit passes `--no-proxy`.*inline paths.*do \*\*not\*\* pass it, and keep the proxy respondent'
+# A carve-out stated once, beside three operational instructions that still say "dispatch",
+# is the nested dispatch with a paragraph next to it. Caught as a P1 on this PR's round 2.
+# Every site that tells the agent to dispatch the proxy is conditioned, and pinned separately.
+assert_present "create-task: the phase table row conditions the proxy on \`--no-proxy\` being absent" \
+  "$CT" 1 "$CTL" '\| 2\.1 interview \|.*proxy-respondent subagent.*unless `--no-proxy`'
+assert_present "create-task: the dispatch instruction itself is conditioned on \`--no-proxy\`" \
+  "$CT" 1 "$CTL" 'Unless `--no-proxy` was supplied.*dispatch the subagent with the context packet'
+assert_present "create-task: Phase 2.1's non-interactive routing names the \`--no-proxy\` exception" \
+  "$CT" 1 "$CTL" "In \*\*non-interactive mode\*\*, the interviewer.s questions go to the proxy-respondent subagent.*unless \`--no-proxy\` was supplied"
 assert_present "record: passes \`NO_PROXY: true\` exactly when the caller passed \`DISPATCHED: true\`" \
   "$RC" 1 "$RCL" 'pass `NO_PROXY: true` whenever the caller passed `DISPATCHED: true`'
 assert_present "ticket: the record-unit dispatch carries \`DISPATCHED: true\` and the inline recovery omits it" \
