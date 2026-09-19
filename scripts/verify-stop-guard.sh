@@ -122,6 +122,8 @@ mkdir -p "$RUNS"
 M=$RUNS/STO-355.json
 EF_EARLY=$T/env-file-early
 MAX_SPENT=3      # must equal MAX_BLOCKS in the guard
+HOOK_EXITS=$T/.hook-exit-failures
+: > "$HOOK_EXITS"
 
 marker() { # state, non_interactive-literal-or-empty, [owning-session, default sess-1]
   local owner=${3:-sess-1}
@@ -130,6 +132,21 @@ marker() { # state, non_interactive-literal-or-empty, [owning-session, default s
   else
     printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "%s",\n "claude_session": "%s"\n}\n' "$1" "$owner" > "$M"
   fi
+}
+
+hook() { # env=VAL... -- <script> <<stdin>   ; runs it, asserts exit 0, echoes stdout
+  local envs=() script="" stdin=""
+  while [ "${1:-}" != "--" ]; do envs+=("$1"); shift; done
+  shift; script=$1; stdin=$2
+  local out rc
+  out=$(printf '%s' "$stdin" | env "${envs[@]}" bash "$script" 2>/dev/null); rc=$?
+  # Record, do not `bad`, and the difference is load-bearing: almost every
+  # caller is `out=$(hook ...)`, a SUBSHELL, so an increment to `fails` there
+  # is discarded and `bad`'s own output is captured as if the hook had printed
+  # it. Both make a crash look like something other than a crash. A file
+  # crosses the subshell; HOOK_EXITS is read once at the end.
+  [ "$rc" -eq 0 ] || printf '%s exited %s\n' "$(basename "$script")" "$rc" >> "$HOOK_EXITS"
+  printf '%s' "$out"
 }
 
 guard() { # [cwd], [session_id] -> stdout; asserts exit 0 every time
@@ -204,13 +221,13 @@ expect_silent "marker with no \`claude_session\`: silent — an unattributable m
 
 reset; marker running true sess-1
 expect_silent "hook input carrying no \`session_id\`: silent — nothing to match against" \
-  "$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$REPO" | CLAUDE_PROJECT_DIR="$REPO" bash "$GUARD_ABS" 2>/dev/null)"
+  "$(hook "CLAUDE_PROJECT_DIR=$REPO" -- "$GUARD_ABS" "$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$REPO")")"
 
 reset; rm -rf "$REPO/.claude"
 expect_silent "no runs directory: silent" "$(guard)"
 
 reset
-out=$(printf '' | CLAUDE_PROJECT_DIR="$REPO" bash "$GUARD_ABS" 2>/dev/null)
+out=$(hook "CLAUDE_PROJECT_DIR=$REPO" -- "$GUARD_ABS" '')
 expect_silent "empty stdin: silent" "$out"
 
 # --- the run lives in a worktree; the marker lives in the primary checkout ---
@@ -297,20 +314,20 @@ rmdir "$RUNS/.stop-guard-STO-355--sess-1"
 # root captured at session start can carry it.
 reset; mkdir -p "$RUNS"; marker running true sess-1
 GONE=$T/removed-worktree
-out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE" \
-      | CLAUDE_PROJECT_DIR="$GONE" NOTION_DEV_PRIMARY_ROOT="$REPO" bash "$GUARD_ABS" 2>/dev/null)
+out=$(hook "CLAUDE_PROJECT_DIR=$GONE" "NOTION_DEV_PRIMARY_ROOT=$REPO" -- "$GUARD_ABS" \
+      "$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE")")
 expect_block "every launch-derived path is a deleted worktree: the captured primary root still blocks" "$out"
 
-out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE" \
-      | CLAUDE_PROJECT_DIR="$GONE" bash "$GUARD_ABS" 2>/dev/null)
+out=$(hook "CLAUDE_PROJECT_DIR=$GONE" -- "$GUARD_ABS" \
+      "$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE")")
 expect_silent "...and with no captured root either, it fails open rather than guessing" "$out"
 
 # session-env.sh is what captures that root, from inside the worktree, while
 # the worktree still exists.
 : > "$EF_EARLY"
 if git -C "$REPO" worktree add -q "$T/wt-early" -b early 2>/dev/null; then
-  printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"SessionStart"}' "$T/wt-early" \
-    | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$T/wt-early" bash "$SENV_ABS" >/dev/null 2>&1
+  hook "CLAUDE_ENV_FILE=$EF_EARLY" "CLAUDE_PROJECT_DIR=$T/wt-early" -- "$SENV_ABS" \
+    "$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"SessionStart"}' "$T/wt-early")" >/dev/null
   got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
   if same_dir "$got" "$REPO"; then
     ok "session-env.sh resolves the primary checkout from inside a worktree"
@@ -329,8 +346,8 @@ SPREPO="$T/space repo"
 mkdir -p "$SPREPO"
 if git init -q "$SPREPO" 2>/dev/null; then
   : > "$EF_EARLY"
-  printf '{"session_id":"s-1","cwd":"%s","hook_event_name":"SessionStart"}' "$SPREPO" \
-    | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$SPREPO" bash "$SENV_ABS" >/dev/null 2>&1
+  hook "CLAUDE_ENV_FILE=$EF_EARLY" "CLAUDE_PROJECT_DIR=$SPREPO" -- "$SENV_ABS" \
+    "$(printf '{"session_id":"s-1","cwd":"%s","hook_event_name":"SessionStart"}' "$SPREPO")" >/dev/null
   got=$( . "$EF_EARLY" 2>/dev/null; printf '%s' "${NOTION_DEV_PRIMARY_ROOT:-}" )
   if same_dir "$got" "$SPREPO"; then
     ok "primary root containing a space survives being sourced back"
@@ -350,8 +367,8 @@ git -C "$SP" commit -q --allow-empty -m init 2>/dev/null
 mkdir -p "$SP/.claude/notion-dev/runs"
 printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "running",\n "non_interactive": true,\n "claude_session": "sess-1"\n}\n' \
   > "$SP/.claude/notion-dev/runs/STO-355.json"
-out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$SP" \
-      | CLAUDE_PROJECT_DIR="$SP" bash "$GUARD_ABS" 2>/dev/null)
+out=$(hook "CLAUDE_PROJECT_DIR=$SP" -- "$GUARD_ABS" \
+      "$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$SP")")
 expect_block "checkout path containing a space: still blocks" "$out"
 
 # ---------------------------------------------------------------------------
@@ -362,7 +379,7 @@ echo "== session-env.sh publishes the id the marker records =="
 # SessionStart hook is what carries it into the session's environment where a
 # run can stamp it. If it writes nothing, the whole enforcement is inert.
 EF=$T/env-file
-senv() { printf '%s' "$1" | CLAUDE_ENV_FILE="$EF" bash "$SENV_ABS" >/dev/null 2>&1; }
+senv() { hook "CLAUDE_ENV_FILE=$EF" -- "$SENV_ABS" "$1" >/dev/null; }
 
 # Source it back rather than grepping a literal line: what matters is the value
 # the harness ends up with, and every value here is shell-quoted.
@@ -392,6 +409,16 @@ if printf '{"session_id":"abc-123"}' | bash "$SENV_ABS" >/dev/null 2>&1; then
   ok "no \$CLAUDE_ENV_FILE: exits cleanly, writes nothing"
 else
   bad "no \$CLAUDE_ENV_FILE: did not exit 0"
+fi
+
+# A hook that CRASHES — non-zero exit, empty stdout — satisfies every
+# `expect_silent` case above, so without this the loudest failure mode reads
+# as the quietest. Claude Code treats a non-zero exit as a hook error, which
+# means a stop allowed: safe, but never a decision the guard made.
+if [ -s "$HOOK_EXITS" ]; then
+  while IFS= read -r line; do bad "hook exited non-zero: $line"; done < "$HOOK_EXITS"
+else
+  ok "every hook invocation in this harness exited 0"
 fi
 
 echo
