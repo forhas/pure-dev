@@ -218,6 +218,12 @@ assert_has "notion-dev README states the staleness bound" \
   "$NDREADME" '**2 hours** stale'
 assert_has "notion-dev README: the guard blocks only the session that owns the run" \
   "$NDREADME" 'owns the run** — a second parallel ticket'
+# Both hooks or neither: the Stop half without the SessionStart half is a guard
+# that skips every marker. Match one line — the README hard-wraps.
+assert_has "notion-dev README: ownership comes from the \`SessionStart\` hook" \
+  "$NDREADME" 'Ownership comes from a second hook: a `SessionStart` hook'
+assert_has "notion-dev README: without that half every marker records an empty owner" \
+  "$NDREADME" 'half every marker records an empty owner and the guard skips all of them'
 
 # ---------------------------------------------------------------------------
 echo "== READMEs and release =="
