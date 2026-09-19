@@ -266,6 +266,11 @@ assert_present "ticket: the record-unit dispatch carries \`DISPATCHED: true\` an
   "$TK" 1 "$L" '`DISPATCHED: true`.*inline recovery path below omits it and keeps the proxy'
 assert_present "epic-update: includes \`--no-proxy\` exactly when the caller passed \`NO_PROXY: true\`, never otherwise" \
   "$EU" 1 "$EUL" 'Include `--no-proxy` exactly when the caller passed `NO_PROXY: true`\*\*, and never otherwise'
+# Position is the whole of this one: create-task parses flags off the FRONT of the argument
+# string, so a flag trailing `prompt:` is prompt text and the mode never activates. Caught as a
+# P1 on this PR's own round 1, against a template that read correctly everywhere else.
+assert_present "epic-update: the template puts \`--no-proxy\` before the \`prompt:\` argument, where flags are parsed" \
+  "$EU" 1 "$EUL" '\[--no-proxy\] prompt:<finding title>'
 
 echo "== dispatch set =="
 if [ "$plan_reviews" -gt 0 ]; then
