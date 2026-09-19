@@ -242,6 +242,31 @@ assert_present "ticket: execution subagents buy throughput, not independence" \
 assert_present "ticket: the review seats never substitute the same way" \
   "$TK" 1 "$L" 'The review seats never substitute this way'
 
+# A DISPATCHED FLOW UNIT DISPATCHES NOTHING IT MUST WAIT ON.
+# The proxy respondent exists to keep the agent that wrote a review finding out of the
+# interview seat. A dispatched record unit never wrote it — it got the packet second-hand —
+# so the proxy buys it nothing, and costs it the run: a dispatched agent has no *waiting*
+# state, so it ends with no `RECORD:` block, the caller reads that as a dispatch failure and
+# recovers inline, and the grandchildren deliver after the run is over. Measured twice on
+# notion-dev 0.29.0 in a client (`unexpected:record-unit-not-dispatched`). The rule is one
+# flag threaded through four files, so each hop is pinned separately: a hop that goes quiet
+# silently restores the nested dispatch.
+CT=plugins/notion-dev/commands/create-task.md; CTL=$(total_lines "$CT")
+RC=plugins/notion-dev/references/record.md;     RCL=$(total_lines "$RC")
+EU=plugins/notion-dev/skills/epic-update/SKILL.md; EUL=$(total_lines "$EU")
+assert_present "create-task: the \`--no-proxy\` flag answers Phase 2.1 from the \`--context-file\` packet instead of dispatching a proxy respondent" \
+  "$CT" 1 "$CTL" '`--no-proxy` \| Answer Phase 2\.1.s interview from `--context-file`.s packet directly, in this agent, instead of dispatching a proxy-respondent subagent'
+assert_present "create-task: a dispatched agent has no waiting state, so a grandchild proxy leaves no \`RECORD:\` block" \
+  "$CT" 1 "$CTL" 'A dispatched agent has no way to be \*waiting\*.*emitted no `RECORD:` block at all'
+assert_present "create-task: only a dispatched flow unit passes \`--no-proxy\`; the inline paths keep the proxy respondent" \
+  "$CT" 1 "$CTL" 'a dispatched flow unit passes `--no-proxy`.*inline paths.*do \*\*not\*\* pass it, and keep the proxy respondent'
+assert_present "record: passes \`NO_PROXY: true\` exactly when the caller passed \`DISPATCHED: true\`" \
+  "$RC" 1 "$RCL" 'pass `NO_PROXY: true` whenever the caller passed `DISPATCHED: true`'
+assert_present "ticket: the record-unit dispatch carries \`DISPATCHED: true\` and the inline recovery omits it" \
+  "$TK" 1 "$L" '`DISPATCHED: true`.*inline recovery path below omits it and keeps the proxy'
+assert_present "epic-update: includes \`--no-proxy\` exactly when the caller passed \`NO_PROXY: true\`, never otherwise" \
+  "$EU" 1 "$EUL" 'Include `--no-proxy` exactly when the caller passed `NO_PROXY: true`\*\*, and never otherwise'
+
 echo "== dispatch set =="
 if [ "$plan_reviews" -gt 0 ]; then
   ok "$plan_reviews plan-review skill(s) checked (discovered by glob, never listed)"

@@ -42,6 +42,16 @@ assert_present "knowledge.py: the iwe capture decodes the child's output as \`en
 assert_has "knowledge.py: a vanished lock directory has its own handler, never the retry" "$KPY" 'except FileNotFoundError:'
 assert_has "knowledge.py: only a \`PermissionError\` retries the release rename" "$KPY" 'except PermissionError:'
 assert_present "knowledge.py: the retry re-reads the owner before renaming again" "$KPY" "$KI0" "$KPYL" '_read_owner\(d\).get\("run"\) != a.run'
+# A line-based diff of the brief is a Windows defect, not a nicety. Git for Windows checks
+# the brief out CRLF while knowledge.py forces LF on stdout, so `diff` reports 100% changed
+# whatever the repair — measured as `1,137c1,137` in a client run, ~5k tokens to report a
+# two-line drift. The file is hard-wrapped, so each assertion matches inside one line.
+ED=$ND/skills/epic-doc/SKILL.md; EDL=$(total_lines "$ED")
+assert_present "epic-doc: the brief's change list is the stderr listing, never a diff of the rendered brief" \
+  "$ED" 1 "$EDL" 'Never diff the rendered brief against the old one to see what changed'
+assert_present "epic-doc: a CRLF checkout against LF stdout is why a line diff reports every line" \
+  "$ED" 1 "$EDL" 'CRLF \(`core\.autocrlf=true`\) while `knowledge\.py` forces LF on its stdout'
+
 assert_has "gitattributes: LF everywhere" .gitattributes '* text=auto eol=lf'
 assert_has "workflow: a windows-latest job runs the harnesses under bash" "$WF" 'runs-on: windows-latest'
 WFL=$(total_lines "$WF"); WJ0=$(find_line "$WF" 1 "$WFL" '^  verify-windows:$')
