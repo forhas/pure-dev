@@ -137,7 +137,10 @@ action, so only the harness can gate it. The guard blocks the stop while the pro
 `--non-interactive` run marker **that belongs to the stopping session**, and names the phase to
 resume at. Ownership comes from a second hook: a `SessionStart` hook
 (`hooks/session-env.sh`) publishes the session id as `NOTION_DEV_SESSION_ID`, the run stamps it
-into its marker, and the guard matches the two. Both halves are needed — without the
+into its marker, and the guard matches the two. That hook also captures the primary checkout as
+`NOTION_DEV_PRIMARY_ROOT`, because on the no-argument resume path the session is launched inside
+the ticket worktree and Phase 9 deletes it mid-run — after which nothing derived from where the
+session started can still find the markers. Both halves are needed — without the
 `SessionStart` half every marker records an empty owner and the guard skips all of them.
 
 It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per

@@ -23,6 +23,11 @@
 input=$(cat 2>/dev/null)
 [ -n "$input" ] || exit 0
 
+field_cwd() {
+  printf '%s' "$1" | tr -d '\n\r' 2>/dev/null \
+    | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
 sid=$(printf '%s' "$input" | tr -d '\n\r' 2>/dev/null \
       | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 [ -n "$sid" ] || exit 0
@@ -34,4 +39,30 @@ case "$sid" in
 esac
 
 printf 'export NOTION_DEV_SESSION_ID=%s\n' "$sid" >> "$CLAUDE_ENV_FILE" 2>/dev/null
+
+# Also capture the primary checkout, NOW, while it is still resolvable.
+#
+# The Stop guard needs the primary checkout because that is where run markers
+# live, and every way of finding it at stop time starts from a directory the
+# session names. On the supported no-argument resume path the session is
+# launched *inside the ticket worktree*, and Phase 9 deletes that worktree
+# while the run is still going — so by the time the guard wants the primary,
+# `$CLAUDE_PROJECT_DIR`, the hook's `cwd` and its `pwd` can all name a
+# directory that no longer exists. A `cd` inside an earlier Bash call does not
+# move the process these values come from, so none of them recovers.
+#
+# At session start that worktree does exist, and `git worktree list` names the
+# primary checkout first from anywhere inside the repository. Resolving it here
+# and carrying it in the session's own environment is what survives the
+# deletion — no file, no state for a later run to inherit.
+start=${CLAUDE_PROJECT_DIR:-}
+[ -n "$start" ] || start=$(field_cwd "$input")
+[ -d "${start:-}" ] || exit 0
+
+primary=$(git -C "$start" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)
+[ -n "$primary" ] || exit 0
+[ -d "$primary" ] || exit 0
+case "$primary" in *[\'\"\$\`]*) exit 0 ;; esac
+
+printf 'export NOTION_DEV_PRIMARY_ROOT=%s\n' "$primary" >> "$CLAUDE_ENV_FILE" 2>/dev/null
 exit 0

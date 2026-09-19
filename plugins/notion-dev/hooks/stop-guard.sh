@@ -85,8 +85,16 @@ session=$(printf '%s' "$session_raw" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
 # 10, which is the window the delayed marker deletion exists to cover. The
 # hook's own `cwd` is the useful fallback there: by then the run is operating
 # from the primary checkout, which is where the marker lives anyway.
+# `$NOTION_DEV_PRIMARY_ROOT` FIRST, and it is not an optimisation. The other
+# three candidates all describe where the session was launched, and on the
+# no-argument resume path that is the ticket worktree — which Phase 9 deletes
+# while the run is still going. A `cd` in an earlier Bash call does not move
+# the process those values come from, so once the worktree is gone none of
+# them names an existing directory and the guard would fall open for cleanup,
+# the post-merge hooks and all of Phase 10. The SessionStart hook resolved the
+# primary checkout while the worktree still existed and put it here.
 dir=""
-for candidate in "${CLAUDE_PROJECT_DIR:-}" "$(field cwd "$flat")" "$(pwd 2>/dev/null)"; do
+for candidate in "${NOTION_DEV_PRIMARY_ROOT:-}" "${CLAUDE_PROJECT_DIR:-}" "$(field cwd "$flat")" "$(pwd 2>/dev/null)"; do
   if [ -n "$candidate" ] && [ -d "$candidate" ]; then dir=$candidate; break; fi
 done
 [ -n "$dir" ] || allow

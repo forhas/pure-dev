@@ -43,6 +43,10 @@ if [ -f "$HOOKS" ]; then
   assert_has "hooks.json registers the \`SessionStart\` hook that publishes the session id" \
     "$HOOKS" '"SessionStart"'
   assert_has "hooks.json runs \`session-env.sh\`" "$HOOKS" '${CLAUDE_PLUGIN_ROOT}/hooks/session-env.sh'
+  # The captured root is consulted FIRST: every other candidate describes where
+  # the session started, which on the resume path is a worktree Phase 9 deletes.
+  assert_has "guard prefers \`\$NOTION_DEV_PRIMARY_ROOT\` over launch-derived paths" \
+    "$GUARD" 'for candidate in "${NOTION_DEV_PRIMARY_ROOT:-}"'
 else
   bad "hooks.json is missing ($HOOKS)"
 fi
@@ -93,6 +97,7 @@ REPO=$T/primary
 RUNS=$REPO/.claude/notion-dev/runs
 mkdir -p "$RUNS"
 M=$RUNS/STO-355.json
+EF_EARLY=$T/env-file-early
 
 marker() { # state, non_interactive-literal-or-empty, [owning-session, default sess-1]
   local owner=${3:-sess-1}
@@ -221,11 +226,34 @@ rmdir "$RUNS/.stop-guard-STO-355-sess-1"
 # run continues through hooks and Phase 10. A vanished project dir must not
 # read as "nothing to guard"; the hook's own cwd (the primary checkout by
 # then) is what carries it.
+# The hostile version of this case, and the one the earlier fixture was too
+# kind about: EVERY launch-derived candidate names the deleted worktree, which
+# is what the resume path actually looks like once Phase 9 has run. Only the
+# root captured at session start can carry it.
 reset; mkdir -p "$RUNS"; marker running true sess-1
 GONE=$T/removed-worktree
-out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$REPO" \
+out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE" \
+      | CLAUDE_PROJECT_DIR="$GONE" NOTION_DEV_PRIMARY_ROOT="$REPO" bash "$GUARD_ABS" 2>/dev/null)
+expect_block "every launch-derived path is a deleted worktree: the captured primary root still blocks" "$out"
+
+out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$GONE" \
       | CLAUDE_PROJECT_DIR="$GONE" bash "$GUARD_ABS" 2>/dev/null)
-expect_block "project dir no longer exists (worktree removed mid-run): falls back to cwd and blocks" "$out"
+expect_silent "...and with no captured root either, it fails open rather than guessing" "$out"
+
+# session-env.sh is what captures that root, from inside the worktree, while
+# the worktree still exists.
+: > "$EF_EARLY"
+if git -C "$REPO" worktree add -q "$T/wt-early" -b early 2>/dev/null; then
+  printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"SessionStart"}' "$T/wt-early" \
+    | CLAUDE_ENV_FILE="$EF_EARLY" CLAUDE_PROJECT_DIR="$T/wt-early" bash "$SENV_ABS" >/dev/null 2>&1
+  if grep -q "^export NOTION_DEV_PRIMARY_ROOT=$REPO\$" "$EF_EARLY" 2>/dev/null; then
+    ok "session-env.sh resolves the primary checkout from inside a worktree"
+  else
+    bad "session-env.sh did not capture the primary root (file: $(cat "$EF_EARLY" 2>/dev/null))"
+  fi
+else
+  bad "could not create the early-worktree fixture"
+fi
 
 # A checkout path with a space in it: `git worktree list --porcelain` emits the
 # path unquoted after "worktree ", so a whitespace-delimited field read
