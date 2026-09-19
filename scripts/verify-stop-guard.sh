@@ -125,6 +125,12 @@ if [ -f "$GUARD" ]; then
   # be rewriting its marker in place, so it must require the positive token.
   assert_has "guard sweeps on an explicit \`stopped\` token" \
     "$CODE" '"state"[[:space:]]*:[[:space:]]*"stopped"'
+  # The glob is unquoted, so with no match the loop body runs once on the
+  # literal pattern. Removing this test is benign today only because `find`
+  # then prints nothing and the `rm -f` hits a name that does not exist; pin
+  # it rather than rely on that, since this is the one loop that deletes.
+  assert_has "guard's sweep skips a glob that matched nothing" \
+    "$CODE" '[ -f "$stray" ] || continue'
   assert_has "guard requires the swept marker to be brace-delimited first" \
     "$CODE" "case \"\$stray_body\" in '{'*'}')"
   assert_has "guard's header records why a missing \`running\` is not enough" \
@@ -595,6 +601,8 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P13" ] && [ -n "$P2
   # them into its message, so the documented body is part of the contract.
   assert_present "ticket.md preconditions: the marker body carries \`non_interactive\` and \`claude_session\`" \
     "$TK" "$PRE" "$P11" '"state": "running", "non_interactive": true, "claude_session": "<\$NOTION_DEV_SESSION_ID>"'
+  assert_present "ticket.md preconditions: the marker body's \`run\` is the argument as supplied" \
+    "$TK" "$PRE" "$P11" '{ "run": "<the argument as supplied'
   assert_present "ticket.md preconditions: the marker body's \`session\` is the per-invocation token" \
     "$TK" "$PRE" "$P11" '"session": "<invocation>", "phase": "Phase 1 — preconditions"'
 
