@@ -61,8 +61,9 @@ assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more tha
 # The query-call contract. 5 of 13 data-source calls in a measured client ticket were the run
 # rediscovering this, and the two worst failures do not look like failures: a `?` placeholder
 # returns 200 with an empty result set, and a `SELECT *` probe re-reads a schema config already
-# holds. Each trap is pinned on its own line — the file is not hard-wrapped here, but a regex
-# spanning two of them would go quiet the moment one is reworded.
+# holds. Each trap is pinned on its own line, and it has to be: this section IS hard-wrapped, so
+# a regex spanning two lines never matches — the trap CLAUDE.md names. Several anchors below are
+# half a sentence for that reason, not by preference.
 TSRL=$(total_lines "$TSREAD")
 # Sweep round: the contract scoped itself to read-ops while create-ops queries the data source too,
 # via two paths that never go through fetchTicket and so inherit nothing.

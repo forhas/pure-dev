@@ -67,9 +67,7 @@ Four things about it, each of which cost that run a round trip:
 `dataSourceId` is `ticketSystem.dataSourceId` when configured, otherwise derive the collection URL
 from `ticketSystem.databaseId`. Everything else in this file that says "query the database" **or
 "Query the DB"** means this call — both wordings are in use, and a clause naming only the first
-leaves `listEpicChildren` step 3 uncovered, which is how that site went unpointed until the
-completeness gate counted the call sites and found three where this PR's own description said
-two.
+leaves `listEpicChildren` step 3 uncovered, which is a site that queries the data source directly.
 
 ## fetchTicket(id)
 
