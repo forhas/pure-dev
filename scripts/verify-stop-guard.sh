@@ -539,6 +539,15 @@ STOPS=$(find_line "$TK" 1 "$TKL" '^## Failure and stop conditions$')
 if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P13" ] && [ -n "$P21" ] && [ -n "$P22" ] && [ -n "$STOPS" ]; then
   assert_present "ticket.md preconditions: the preflight marker is written before any probe can abort" \
     "$TK" "$PRE" "$P11" 'Write the preflight run marker — first, before any probe below can abort'
+  # `REPO_ROOT` must be recorded BEFORE the marker write, because every path
+  # the marker write spells is anchored to it. It is also the line a
+  # concurrent agent's mutation deleted from this branch in 47ff004 without
+  # any harness noticing — pinning the ORDER, not just the presence, is what
+  # makes that visible.
+  assert_order "ticket.md preconditions: \`REPO_ROOT\` is recorded before the preflight marker is written" \
+    "$TK" "$PRE" "$P11" \
+    repo_root '^- Record `REPO_ROOT` \*\*first\*\*' \
+    marker    '^- \*\*Write the preflight run marker'
   # This marker is now the earliest write in the command, so the self-ignoring
   # directory has to exist before it. Without that the first ticket run in a
   # freshly initialised repo aborts on the clean-tree precondition, over dirt
