@@ -254,6 +254,17 @@ assert_has "notion-dev README: the other commands get the rule and not the detec
   "$NDREADME" 'The other commands get the rule and not the detection'
 assert_has "quick-dev README: the flag also never hands the turn back" \
   "$QDREADME" 'It also never hands the turn back'
+# The guard's coverage claim is the part a user acts on. Left at "from Phase 2
+# on", the README would describe a rule that covers every phase and a mechanism
+# that covers most of them, with nothing saying which phases are which.
+assert_has "notion-dev README: the whole of \`/notion-dev:ticket\` carries a marker, Phase 1 included" \
+  "$NDREADME" 'The whole of `/notion-dev:ticket` carries a marker, including Phase 1'
+assert_has "notion-dev README names the preflight marker shape, \`runs/preflight-<session>.json\`" \
+  "$NDREADME" '`runs/preflight-<session>.json`'
+assert_has "notion-dev README: Phase 2.1 deletes it the moment it writes the other" \
+  "$NDREADME" 'Phase 2.1 deletes it the'
+assert_has "notion-dev README: every stop before the handover writes \`state: stopped\` into it first" \
+  "$NDREADME" 'writes `state: stopped` into the'
 
 assert_version_above "notion-dev version bumped above the pre-change 0.28.0" \
   "$ND/.claude-plugin/plugin.json" 0.28.0

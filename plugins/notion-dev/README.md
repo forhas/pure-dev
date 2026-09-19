@@ -156,6 +156,17 @@ never refused its stop. It never fires on an interactive run at all, since those
 ask, which is correct; and it does not cover `/notion-dev:finalize`, which writes no run
 marker.
 
+**The whole of `/notion-dev:ticket` carries a marker, including Phase 1.** Two shapes do that
+work. From Phase 2 on it is `runs/<KEY>-<id>.json`, written once the ticket id is known. Phase 1
+cannot use that name — the id is not resolved until the ticket is fetched, and the argument may
+be a page id, a UUID, a URL or a logical key — so the preconditions gate writes
+`runs/preflight-<session>.json` instead, keyed by the session id, and Phase 2.1 deletes it the
+moment it writes the other. Every stop before that handover writes `state: stopped` into the
+preflight marker first, which is what lets a documented hard abort — the epic guard, the
+`held elsewhere` ownership check, the under-spec gate — actually stop. Before 0.30.0 the
+preconditions gate, the fetch, knowledge retrieval, the resume protocol and the clarification
+gate were all unguarded.
+
 **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway — past the guard's bounds, or
 under it — is recorded as
 `unexpected:run-ended-mid-phase` in the [runtime issue log](#runtime-issue-log) by the next
