@@ -143,8 +143,9 @@ the ticket worktree and Phase 9 deletes it mid-run — after which nothing deriv
 session started can still find the markers. Both halves are needed — without the
 `SessionStart` half every marker records an empty owner and the guard skips all of them.
 
-It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
-session**, and it ignores a marker more than **2 hours** stale — the same threshold
+It is bounded in both directions so it can never wedge a session: at most **3 blocks per marker per
+session** — so up to six across a run that spends the cap in Phase 1 and again later, in two
+disjoint windows, because the two marker shapes below count separately — and it ignores a marker more than **2 hours** stale — the same threshold
 `/notion-dev:ticket` already uses, and for the same reason: a heartbeat is written *between*
 units of work, never inside one, so the window has to exceed the longest single build task,
 verify command or reviewer round. A shorter window looks safer and is not: a Phase 7 review loop
@@ -155,6 +156,19 @@ owns the run** — a second parallel ticket, or an interactive session in the sa
 never refused its stop. It never fires on an interactive run at all, since those end a turn to
 ask, which is correct; and it does not cover `/notion-dev:finalize`, which writes no run
 marker.
+
+**The whole of `/notion-dev:ticket` carries a marker, including Phase 1.** Two shapes do that
+work. From Phase 2 on it is `runs/<KEY>-<id>.json`, written once the ticket id is known. Phase 1
+cannot use that name — the id is not resolved until the ticket is fetched, and the argument may
+be a page id, a UUID, a URL or a logical key — so the preconditions gate writes
+`runs/preflight-<session>-<invocation>.json` instead — keyed by the session id, which is what
+scopes the guard's counter, plus a per-invocation token, which is what stops a second ticket run
+in the same session inheriting the first one's spent counter — and Phase 2.1 deletes it the
+moment it writes the other. Every stop before that handover writes `state: stopped` into the
+preflight marker first, which is what lets a documented hard abort — the epic guard, the
+`held elsewhere` ownership check, the under-spec gate — actually stop. Before 0.30.0 the
+preconditions gate, the fetch, knowledge retrieval, the resume protocol and the clarification
+gate were all unguarded.
 
 **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway — past the guard's bounds, or
 under it — is recorded as

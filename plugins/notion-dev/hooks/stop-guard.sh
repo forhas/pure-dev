@@ -38,12 +38,45 @@
 #     can only ever block the session that created it, so an abandoned run
 #     blocks nobody but itself, whatever the threshold. The cap still bounds
 #     it either way.
-#   * count — at most MAX_BLOCKS per run per session. A run that means to stop
-#     stops on the fourth try, with the guard saying so rather than going quiet.
+#   * count — at most MAX_BLOCKS per MARKER per session. A run that means to
+#     stop stops on the fourth try, with the guard saying so rather than going
+#     quiet.
+#
+#     Per marker, not per run, and the distinction is real rather than
+#     pedantic: the counter is keyed by the marker's filename, so a run that
+#     spends its cap in Phase 1 against `preflight-<session>-<invocation>.json`
+#     gets a fresh cap when Phase 2.1 writes `<KEY>-<id>.json`. Up to 2 x
+#     MAX_BLOCKS
+#     across a run, in two disjoint windows.
+#
+#     Carrying the count across the handover was considered and rejected. It
+#     would have `ticket.md` renaming a file whose name is this hook's private
+#     business — including the sanitised session id — which is a worse
+#     coupling than the bound is worth. And the reset is arguably the correct
+#     behaviour: three refusals in Phase 1 are about a run that kept trying to
+#     hand back before it had a worktree, and they say nothing about whether a
+#     stop at Phase 8 should be refused. What the cap has to guarantee is that
+#     the guard always lets go, and 2 x MAX_BLOCKS terminates exactly as
+#     MAX_BLOCKS does.
 #
 # `stop_hook_active` is deliberately not consulted: it is true precisely when a
 # previous block sent the run back, which is when this guard most wants to block
 # again. The count is the bound, not that flag.
+#
+# TWO MARKER SHAPES, one rule. `<KEY>-<id>.json` is written in Phase 2.1, once
+# `fetchTicket` has resolved the ticket id — so on its own it leaves the whole
+# of Phase 1 unguarded: the preconditions gate, the fetch, knowledge retrieval,
+# the resume/claim protocol and the clarification gate. Issue #57. The id is
+# not known there, so that window cannot use that name;
+# `preflight-<session>-<invocation>.json` covers it instead — keyed by the
+# harness session id, which is known from the first line, plus a
+# per-invocation token, which is what keeps one session's second ticket run
+# from inheriting the first one's spent counter. Nothing here distinguishes
+# them — both are `runs/*.json` carrying the five required keys, and both are
+# matched, counted and bounded the same way. The only shape-specific line in
+# this file is the spent-marker sweep below, and the only shape-specific rule
+# anywhere is in `commands/ticket.md`: the
+# preflight marker is retired the moment the `<KEY>-<id>` one exists.
 #
 # NOT covered: `/notion-dev:finalize`. It writes no run marker, so a
 # marker-keyed guard has nothing to match and a finalize run is unguarded end
@@ -115,6 +148,42 @@ root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree
 runs="$root/.claude/notion-dev/runs"
 [ -d "$runs" ] || allow
 
+# Sweep spent preflight markers first. They are the one marker shape that is
+# disposable by construction — a placeholder for a `<KEY>-<id>.json` that does
+# not exist yet, retired by Phase 2.1 the moment the real one is written — so a
+# spent one is litter, not evidence. Two ways to be spent: stale, or explicitly
+# `stopped`. The second matters because the filename carries a per-invocation
+# token, so a session that runs several tickets writes a different one each
+# time and nothing else would ever remove the stopped ones; and unlike a
+# `<KEY>-<id>.json` marker, a `stopped` preflight marker has no readers at all
+# — `## 1.2`'s resume protocol and `/notion-dev:next-task` both look up the
+# `<KEY>-<id>` name and neither knows this shape exists.
+#
+# DELETE ON AN EXPLICIT `stopped`, NEVER ON A MISSING `running`. The two read
+# alike on a whole marker and are opposites on a torn one, and this hook runs
+# in every session while another session may be rewriting its marker in place.
+# Inside that truncate-and-write window the file contains neither value, so
+# "not running" would delete a live run's marker — and the writer would then
+# finish through an unlinked descriptor, leaving that run with no marker and
+# no stop protection at all, permanently and silently. Requiring the positive
+# token, and requiring the object to be brace-delimited first, makes a partial
+# write unsweepable by construction: the same structural test the marker loop
+# below already applies before believing a marker, for the same reason.
+#
+# Only this shape, ever. A real run marker is never deleted by this hook: its
+# `stopped` state is what tells `## 1.2` the run is resumable, and its `cause`
+# is the whole record of why it stopped.
+for stray in "$runs"/preflight-*.json; do
+  [ -f "$stray" ] || continue
+  if ! find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q .; then
+    rm -f "$stray" 2>/dev/null; continue
+  fi
+  stray_body=$(tr -d '\n\r' < "$stray" 2>/dev/null) || continue
+  case "$stray_body" in '{'*'}') : ;; *) continue ;; esac
+  printf '%s' "$stray_body" | grep -q '"state"[[:space:]]*:[[:space:]]*"stopped"' \
+    && rm -f "$stray" 2>/dev/null
+done
+
 # Prune counters whose RUN is over — never by the counter's own age. Age alone
 # deleted the counter of a run that was still heart-beating, which reset it to
 # "block 1 of 3" and left the cap bounding nothing: the pruning meant to keep
@@ -122,15 +191,23 @@ runs="$root/.claude/notion-dev/runs"
 # spent exactly when its marker is gone, stale, or no longer `running`, which
 # is also when the directory pressure it was added for disappears.
 #
-# The name is `.stop-guard-<run>--<session>`: a single `-` cannot separate them
-# because both halves contain one — run ids look like `STO-355`, session ids
-# are UUIDs — so `--` is the delimiter and `%%--*` is what reads it back.
+# The name is `.stop-guard-<marker-stem>--<session>`: a single `-` cannot
+# separate them because both halves contain one — run ids look like `STO-355`,
+# session ids are UUIDs — so `--` is the delimiter and `%%--*` is what reads it
+# back. The first half is the marker's FILENAME stem, not its `run` field, and
+# that is what makes this reverse lookup total: `$runs/$stem.json` is the file
+# the counter came from, for every marker shape. Keyed by the `run` field it
+# was total only for `<KEY>-<id>.json`, where the two happen to be equal — a
+# `preflight-<session>-<invocation>.json` marker, whose `run` names a ticket
+# that has no marker of its own yet, would resolve to a path that does not
+# exist, be pruned on every single invocation, and never reach `MAX_BLOCKS`.
+# Unbounded blocking is the one failure this guard must be incapable of.
 for counter in "$runs"/.stop-guard-*; do
   [ -f "$counter" ] || continue
   base=${counter##*/.stop-guard-}
-  run_of=${base%%--*}
-  [ -n "$run_of" ] && [ "$run_of" != "$base" ] || { rm -f "$counter" 2>/dev/null; continue; }
-  m="$runs/$run_of.json"
+  stem_of=${base%%--*}
+  [ -n "$stem_of" ] && [ "$stem_of" != "$base" ] || { rm -f "$counter" 2>/dev/null; continue; }
+  m="$runs/$stem_of.json"
   if [ ! -f "$m" ]; then rm -f "$counter" 2>/dev/null; continue; fi
   if ! find "$m" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q .; then
     rm -f "$counter" 2>/dev/null; continue
@@ -207,7 +284,15 @@ for marker in "$runs"/*.json; do
   [ -n "$this_run" ] || this_run=$(basename "$marker" .json)
   [ -n "$this_phase" ] || this_phase="an earlier phase"
 
-  this_safe=$(printf '%s' "$this_run" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
+  # The counter is keyed by the marker's FILENAME, never by its `run` field.
+  # For `<KEY>-<id>.json` the two are equal, so nothing changes there; for the
+  # `preflight-<session>-<invocation>.json` shape they are not, and the `run`
+  # field is not even stable across Phase 1 — it holds the argument as
+  # supplied until 1.1 derives `<KEY>-<id>`. A counter whose name moves is a
+  # cap that resets, and a counter the prune loop cannot map back to a file is
+  # a cap that is wiped on every invocation. Both end in unbounded blocking.
+  this_stem=$(basename "$marker" .json)
+  this_safe=$(printf '%s' "$this_stem" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
   [ -n "$this_safe" ] || this_safe="run"
   this_counter="$runs/.stop-guard-$this_safe--$session"
   this_blocks=""

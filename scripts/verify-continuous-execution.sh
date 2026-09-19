@@ -225,8 +225,12 @@ assert_has "$TK: the take-over branch rewrites \`claude_session\` and \`non_inte
   "$TK" 'rewriting `session`, `phase`, `heartbeat`, **`claude_session` and `non_interactive`**'
 assert_has "notion-dev README documents the \`Stop\` hook" \
   "$NDREADME" 'enforced by a `Stop` hook this plugin ships'
+# Per MARKER, not per run, since 0.30.0: the counter is keyed by the marker
+# filename, so Phase 1's preflight marker and Phase 2.1's run marker count
+# separately and a run can spend the cap twice, in two disjoint windows. The
+# README has to say which, or the bound it states is not the bound that holds.
 assert_has "notion-dev README states the block bound" \
-  "$NDREADME" 'at most **3 blocks per run per'
+  "$NDREADME" 'at most **3 blocks per marker per'
 assert_has "notion-dev README states the staleness bound" \
   "$NDREADME" '**2 hours** stale'
 assert_has "notion-dev README: the guard blocks only the session that owns the run" \
@@ -254,6 +258,21 @@ assert_has "notion-dev README: the other commands get the rule and not the detec
   "$NDREADME" 'The other commands get the rule and not the detection'
 assert_has "quick-dev README: the flag also never hands the turn back" \
   "$QDREADME" 'It also never hands the turn back'
+# The guard's coverage claim is the part a user acts on. Left at "from Phase 2
+# on", the README would describe a rule that covers every phase and a mechanism
+# that covers most of them, with nothing saying which phases are which.
+assert_has "notion-dev README: the whole of \`/notion-dev:ticket\` carries a marker, Phase 1 included" \
+  "$NDREADME" 'The whole of `/notion-dev:ticket` carries a marker, including Phase 1'
+assert_has "notion-dev README names the preflight marker shape, \`runs/preflight-<session>-<invocation>.json\`" \
+  "$NDREADME" '`runs/preflight-<session>-<invocation>.json`'
+assert_has "notion-dev README says the per-invocation token stops a second run inheriting the counter" \
+  "$NDREADME" "inheriting the first one's spent counter"
+assert_has "notion-dev README: Phase 2.1 deletes it the moment it writes the other" \
+  "$NDREADME" 'Phase 2.1 deletes it the'
+assert_has "notion-dev README: every stop before the handover writes \`state: stopped\` into it first" \
+  "$NDREADME" 'writes `state: stopped` into the'
+assert_has "notion-dev README: the two shapes count separately, so a run can spend the cap twice" \
+  "$NDREADME" 'because the two marker shapes below count separately'
 
 assert_version_above "notion-dev version bumped above the pre-change 0.28.0" \
   "$ND/.claude-plugin/plugin.json" 0.28.0
