@@ -110,17 +110,59 @@ root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree
 runs="$root/.claude/notion-dev/runs"
 [ -d "$runs" ] || allow
 
-# Prune counters left by runs that have finished (Phase 9 deletes the marker) or
-# by sessions long gone, so this directory cannot grow without bound.
-find "$runs" -maxdepth 1 -name '.stop-guard-*' -mtime +1 -exec rm -f {} + 2>/dev/null
+# Prune counters whose RUN is over — never by the counter's own age. Age alone
+# deleted the counter of a run that was still heart-beating, which reset it to
+# "block 1 of 3" and left the cap bounding nothing: the pruning meant to keep
+# this directory small quietly undid the guard's other bound. A counter is
+# spent exactly when its marker is gone, stale, or no longer `running`, which
+# is also when the directory pressure it was added for disappears.
+#
+# The name is `.stop-guard-<run>--<session>`: a single `-` cannot separate them
+# because both halves contain one — run ids look like `STO-355`, session ids
+# are UUIDs — so `--` is the delimiter and `%%--*` is what reads it back.
+for counter in "$runs"/.stop-guard-*; do
+  [ -f "$counter" ] || continue
+  base=${counter##*/.stop-guard-}
+  run_of=${base%%--*}
+  [ -n "$run_of" ] && [ "$run_of" != "$base" ] || { rm -f "$counter" 2>/dev/null; continue; }
+  m="$runs/$run_of.json"
+  if [ ! -f "$m" ]; then rm -f "$counter" 2>/dev/null; continue; fi
+  if ! find "$m" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q .; then
+    rm -f "$counter" 2>/dev/null; continue
+  fi
+  tr -d '\n\r' < "$m" 2>/dev/null | grep -q '"state"[[:space:]]*:[[:space:]]*"running"' \
+    || rm -f "$counter" 2>/dev/null
+done
 
+# EVERY qualifying marker, not the first one found. One session can hold two
+# live runs — a ticket that reached the block cap, and another started before
+# the first marker aged out — and `break`ing at the first took whichever
+# filename sorted earlier. If that one's counter was spent, the cap branch
+# allowed every stop without ever looking at the run that was actually going;
+# if it was not, the guard blocked with another ticket's phase in the message.
+# So: gather them, then block on the first whose counter is not yet spent.
 live_run=""
 live_phase=""
+exhausted_run=""
+exhausted_phase=""
 for marker in "$runs"/*.json; do
   [ -f "$marker" ] || continue
   # Fresh? The marker is touched at every boundary, so mtime is the heartbeat.
   find "$marker" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q . || continue
   body=$(tr -d '\n\r' < "$marker" 2>/dev/null) || continue
+  # Structurally whole before it is believed. The flow rewrites this file in
+  # place rather than atomically, so a torn write can leave a fragment that
+  # still contains `"non_interactive":true` and a `"claude_session"` — enough
+  # for the greps below to accept it and block on a marker that is not a
+  # marker, which contradicts the fail-open handling of an unparseable one.
+  case "$body" in
+    '{'*'}') : ;;
+    *) continue ;;
+  esac
+  for required in '"run"' '"phase"' '"state"' '"non_interactive"' '"claude_session"'; do
+    printf '%s' "$body" | grep -q "$required[[:space:]]*:" || { body=""; break; }
+  done
+  [ -n "$body" ] || continue
   printf '%s' "$body" | grep -q '"state"[[:space:]]*:[[:space:]]*"running"' || continue
   # Absent means interactive: an interactive run ends its turn to ask, and
   # blocking that would break the flow this guard is meant to protect. Only an
@@ -143,25 +185,33 @@ for marker in "$runs"/*.json; do
   # anyone's stop.
   [ -n "$marker_session" ] || continue
   [ "$marker_session" = "$session_raw" ] || continue
-  live_run=$(field run "$body")
-  live_phase=$(field phase "$body")
-  [ -n "$live_run" ] || live_run=$(basename "$marker" .json)
-  [ -n "$live_phase" ] || live_phase="an earlier phase"
-  break
+
+  this_run=$(field run "$body")
+  this_phase=$(field phase "$body")
+  [ -n "$this_run" ] || this_run=$(basename "$marker" .json)
+  [ -n "$this_phase" ] || this_phase="an earlier phase"
+
+  this_safe=$(printf '%s' "$this_run" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
+  [ -n "$this_safe" ] || this_safe="run"
+  this_counter="$runs/.stop-guard-$this_safe--$session"
+  this_blocks=""
+  [ -f "$this_counter" ] && this_blocks=$(cat "$this_counter" 2>/dev/null)
+  case "$this_blocks" in (''|*[!0-9]*) this_blocks=0 ;; esac
+
+  if [ "$this_blocks" -lt "$MAX_BLOCKS" ]; then
+    live_run=$this_run; live_phase=$this_phase
+    counter=$this_counter; blocks=$this_blocks
+    break
+  fi
+  # Spent, but remember it: if every live run is spent, that is what the
+  # give-up message should name rather than reporting no run at all.
+  exhausted_run=$this_run; exhausted_phase=$this_phase
 done
 
-[ -n "$live_run" ] || allow
-
-safe_run=$(printf '%s' "$live_run" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
-[ -n "$safe_run" ] || safe_run="run"
-counter="$runs/.stop-guard-$safe_run-$session"
-blocks=""
-[ -f "$counter" ] && blocks=$(cat "$counter" 2>/dev/null)
-case "$blocks" in (''|*[!0-9]*) blocks=0 ;; esac
-
-if [ "$blocks" -ge "$MAX_BLOCKS" ]; then
+if [ -z "$live_run" ]; then
+  [ -n "$exhausted_run" ] || allow
   printf '{"systemMessage":"notion-dev stop guard: %s is still at %s, but this session has already been sent back %s times — allowing the stop. The run is unfinished; resume it with /notion-dev:ticket or /notion-dev:finalize."}\n' \
-    "$live_run" "$live_phase" "$MAX_BLOCKS"
+    "$exhausted_run" "$exhausted_phase" "$MAX_BLOCKS"
   exit 0
 fi
 

@@ -98,6 +98,7 @@ RUNS=$REPO/.claude/notion-dev/runs
 mkdir -p "$RUNS"
 M=$RUNS/STO-355.json
 EF_EARLY=$T/env-file-early
+MAX_SPENT=3      # must equal MAX_BLOCKS in the guard
 
 marker() { # state, non_interactive-literal-or-empty, [owning-session, default sess-1]
   local owner=${3:-sess-1}
@@ -197,6 +198,47 @@ else
   bad "could not create a worktree fixture"
 fi
 
+# --- the three items the final sweep took -------------------------------------
+# 1. A torn marker with the right substrings must not block.
+reset
+printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "running",\n "non_interactive": true,\n "claude_session": "sess-1"' > "$M"
+expect_silent "marker truncated mid-object (no closing brace): silent, despite carrying every key" "$(guard)"
+reset
+printf '{ "state": "running", "non_interactive": true, "claude_session": "sess-1" }\n' > "$M"
+expect_silent "marker missing \`run\` and \`phase\`: silent — a partial marker is not a marker" "$(guard)"
+
+# 2. A counter is pruned when its run is over, never merely because it is old.
+reset; marker running true sess-1
+guard >/dev/null                                   # creates the counter
+CNT="$RUNS/.stop-guard-STO-355--sess-1"
+if [ -f "$CNT" ]; then ok "the block counter is written next to the marker"; else bad "no counter written"; fi
+touch -t 202601010000 "$CNT"                       # a day-old counter, live run
+out=$(guard)
+if [ -f "$CNT" ] && blocks "$out"; then
+  ok "an old counter for a LIVE run survives — pruning by age alone unbounds the cap"
+else
+  bad "the counter of a live run was pruned (exists=$([ -f "$CNT" ] && echo yes || echo no))"
+fi
+marker stopped true sess-1; guard >/dev/null
+[ ! -f "$CNT" ] && ok "the counter is pruned once its run is no longer running" \
+                || bad "a finished run's counter was left behind"
+
+# 3. Two live markers in one session: the spent one must not mask the other.
+reset; marker running true sess-1
+M2=$RUNS/AAA-1.json                                # sorts BEFORE STO-355.json
+printf '{\n "run": "AAA-1",\n "phase": "Phase 3",\n "state": "running",\n "non_interactive": true,\n "claude_session": "sess-1"\n}\n' > "$M2"
+printf '%s' "$MAX_SPENT" > "$RUNS/.stop-guard-AAA-1--sess-1"   # AAA-1 has hit its cap
+out=$(guard)
+if blocks "$out"; then
+  case "$out" in
+    *STO-355*) ok "a spent marker sorting first does not mask the live run behind it" ;;
+    *) bad "blocked, but named the spent run: ${out:0:80}" ;;
+  esac
+else
+  bad "a spent marker sorting first suppressed the guard entirely"
+fi
+rm -f "$M2" "$RUNS/.stop-guard-AAA-1--sess-1"
+
 # --- the two round-2 regressions ---------------------------------------------
 # 45 minutes old: past the 30-minute window the first draft shipped, well inside
 # `ticket.md`'s 2-hour rule. A Phase 7 review loop runs 3-20 minutes per round
@@ -217,9 +259,9 @@ fi
 # invocation re-reads nothing, stays at "block 1 of 3", and the cap never
 # engages. Unwritable counter must therefore allow, not block.
 reset; marker running true sess-1
-mkdir -p "$RUNS/.stop-guard-STO-355-sess-1"      # a directory where the counter file goes
+mkdir -p "$RUNS/.stop-guard-STO-355--sess-1"      # a directory where the counter file goes
 expect_silent "counter cannot be written: silent — an uncountable block is an unbounded one" "$(guard)"
-rmdir "$RUNS/.stop-guard-STO-355-sess-1"
+rmdir "$RUNS/.stop-guard-STO-355--sess-1"
 
 # The no-arg resume path launches Claude inside the ticket worktree, so
 # $CLAUDE_PROJECT_DIR names it — and Phase 9 deletes that worktree while the
