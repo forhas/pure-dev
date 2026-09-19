@@ -216,6 +216,17 @@ mkdir -p "$RUNS/.stop-guard-STO-355-sess-1"      # a directory where the counter
 expect_silent "counter cannot be written: silent — an uncountable block is an unbounded one" "$(guard)"
 rmdir "$RUNS/.stop-guard-STO-355-sess-1"
 
+# The no-arg resume path launches Claude inside the ticket worktree, so
+# $CLAUDE_PROJECT_DIR names it — and Phase 9 deletes that worktree while the
+# run continues through hooks and Phase 10. A vanished project dir must not
+# read as "nothing to guard"; the hook's own cwd (the primary checkout by
+# then) is what carries it.
+reset; mkdir -p "$RUNS"; marker running true sess-1
+GONE=$T/removed-worktree
+out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$REPO" \
+      | CLAUDE_PROJECT_DIR="$GONE" bash "$GUARD_ABS" 2>/dev/null)
+expect_block "project dir no longer exists (worktree removed mid-run): falls back to cwd and blocks" "$out"
+
 # A checkout path with a space in it: `git worktree list --porcelain` emits the
 # path unquoted after "worktree ", so a whitespace-delimited field read
 # truncates it and the guard silently stops guarding.

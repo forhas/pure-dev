@@ -77,10 +77,19 @@ session=$(printf '%s' "$session_raw" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
 # marker's `claude_session`, so the match below already allows that case. A
 # redundant early return here would read as a live check and be unprovable.
 
-dir=${CLAUDE_PROJECT_DIR:-}
-[ -n "$dir" ] || dir=$(field cwd "$flat")
-[ -n "$dir" ] || dir=$(pwd)
-[ -d "$dir" ] || allow
+# Take the first candidate that EXISTS, not the first that is merely set. On
+# the no-arg resume path Claude is launched inside the ticket worktree, so
+# `$CLAUDE_PROJECT_DIR` names it — and Phase 9 removes that worktree while the
+# run is still going. Treating a vanished project dir as "nothing to guard"
+# allowed every stop for the whole of cleanup, the post-merge hooks and Phase
+# 10, which is the window the delayed marker deletion exists to cover. The
+# hook's own `cwd` is the useful fallback there: by then the run is operating
+# from the primary checkout, which is where the marker lives anyway.
+dir=""
+for candidate in "${CLAUDE_PROJECT_DIR:-}" "$(field cwd "$flat")" "$(pwd 2>/dev/null)"; do
+  if [ -n "$candidate" ] && [ -d "$candidate" ]; then dir=$candidate; break; fi
+done
+[ -n "$dir" ] || allow
 
 # The run happens inside a worktree; the marker lives in the primary checkout.
 # `git worktree list` names that first, from anywhere in the repository.
