@@ -517,7 +517,13 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
   # freshly initialised repo aborts on the clean-tree precondition, over dirt
   # the command itself created four bullets earlier.
   assert_present "ticket.md preconditions: the self-ignoring directory is created before the marker" \
-    "$TK" "$PRE" "$P11" 'Create the self-ignoring directory first — `mkdir -p` plus its `\.gitignore`'
+    "$TK" "$PRE" "$P11" 'Create the self-ignoring directory first, and spell all three paths against `\$REPO_ROOT`'
+  # `ledger.md` writes those two commands relative, and the no-arg resume path
+  # starts inside the ticket worktree — so a literal copy puts the ignore file
+  # in the worktree while the marker goes to the absolute $REPO_ROOT path, and
+  # the primary checkout fails the same cleanliness gate one directory over.
+  assert_present "ticket.md preconditions: the borrowed commands must not be copied relative here" \
+    "$TK" "$PRE" "$P11" 'which are written relative there and must not be copied relative here'
   assert_present "ticket.md preconditions: says the run would otherwise abort on a file it created itself" \
     "$TK" "$PRE" "$P11" 'the run aborts on a file it created itself'
   assert_present "ticket.md preconditions: keyed by \`\$NOTION_DEV_SESSION_ID\` at \`runs/preflight-<session>-<invocation>.json\`" \
