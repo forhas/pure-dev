@@ -13,7 +13,7 @@ rediscovering this contract, and two of the five failed in ways that do not look
 mcp__notion__notion-query-data-sources({
   "data": {
     "data_source_urls": ["collection://<dataSourceId>"],
-    "query": "SELECT \"userDefined:<idProperty>\" AS id, \"<titleProperty>\" AS title, \"<statusProperty>\" AS status FROM \"collection://<dataSourceId>\" WHERE \"userDefined:<idProperty>\" = 142"
+    "query": "SELECT \"userDefined:<idProperty>\" AS id, \"<live title property>\" AS title, \"<statusProperty>\" AS status FROM \"collection://<dataSourceId>\" WHERE \"userDefined:<idProperty>\" = 142"
   }
 })
 ```
@@ -37,6 +37,15 @@ Four things about it, each of which cost that run a round trip:
   so `SELECT * FROM "collection://…" LIMIT 1` to learn them reads a row the caller already has the
   schema for. The client run ran that probe twice, the second time only because a compaction had
   dropped the first one's answer.
+
+  **The title is the one exception, and it is not configured at all.** There is no
+  `ticketSystem.titleProperty`: every Notion database has exactly one `title`-typed property and
+  the adapter discovers it by scanning the live schema, because its *name* is free — `Name`,
+  `Title` and `Task name` are all in use. So resolve it the way `config.md` "Title" says, and
+  **select it only in queries that actually need the title**; a lookup that just resolves a page
+  omits the column rather than guessing a name, since a wrong guess is the same hard `400` as
+  `name`. Discovering one property from the live schema is not the `SELECT *` probe this bullet
+  forbids — that probe was re-reading columns the config already names.
 - **There is no bare `name` column**, and guessing one is a hard `400`
   (`Failed to execute query: no such column: name`). Every property is queried under its own
   **configured** name — `ticketSystem.titleProperty`, `statusProperty` and the rest — with one

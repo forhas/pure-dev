@@ -93,6 +93,14 @@ assert_present "read-ops: the ambiguous-lookup recovery inlines the id as a lite
   "$TSREAD" 1 "$TSRL" 're-issue the lookup in SQL mode \*\*with the id inlined as a literal\*\*'
 assert_present "read-ops: says three-for-three established SQL mode, not the parameter binding" \
   "$TSREAD" 1 "$TSRL" 'established is that \*\*SQL mode\*\* beats'
+# Codex round 2: the contract invented a `ticketSystem.titleProperty`. There is none — the title
+# is the one column discovered from the live schema, and a guessed name is the same hard 400.
+assert_present "read-ops: states there is no \`ticketSystem.titleProperty\` and exactly one title-typed property exists" \
+  "$TSREAD" 1 "$TSRL" '`ticketSystem.titleProperty`: every Notion database has exactly one `title`-typed property'
+assert_present "read-ops: names the free title column and the three names in use" \
+  "$TSREAD" 1 "$TSRL" 'the adapter discovers it by scanning the live schema'
+assert_present "read-ops: a lookup that only resolves a page omits the title column rather than guessing" \
+  "$TSREAD" 1 "$TSRL" 'select it only in queries that actually need the title'
 
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the write-operations reference is present and pinned =="
