@@ -65,8 +65,11 @@ Four things about it, each of which cost that run a round trip:
   this tool returns the bare integer where `notion-fetch` returns `"userDefined:ID": "PDS-1"`.
 
 `dataSourceId` is `ticketSystem.dataSourceId` when configured, otherwise derive the collection URL
-from `ticketSystem.databaseId`. Everything else in this file that says "query the database" means
-this call.
+from `ticketSystem.databaseId`. Everything else in this file that says "query the database" **or
+"Query the DB"** means this call — both wordings are in use, and a clause naming only the first
+leaves `listEpicChildren` step 3 uncovered, which is how that site went unpointed until the
+completeness gate counted the call sites and found three where this PR's own description said
+two.
 
 ## fetchTicket(id)
 
@@ -183,6 +186,6 @@ Read-only.
 
 1. If `parentTaskProperty` is **unusable** on the live DB — absent, **or present but not a self-referential Relation** — warn once and return `[]`, **without proceeding to step 3's query**. Both states degrade identically (see this property under "Property type handling"): step 3 filters with a relation-`contains` predicate, and against a non-relation column that is an MCP query error, not an empty result — the same trap the "Marker usability rule" closes for `epicMarkerProperty`. Record `missing-property:parentTaskProperty` when the property is **absent**, or `wrong-type:parentTaskProperty` when it is present but not a self-referential Relation, per `notion-dev:issue-log` — identical behavior, separate conditions, separate signatures.
 2. Resolve `epicId` to a page ID via `fetchTicket`.
-3. Query the DB for pages whose `parentTaskProperty` contains that page ID.
+3. Query the DB — in the call shape this file opens with — for pages whose `parentTaskProperty` contains that page ID.
 4. Return `[{ id, key, title, status, url }]` ordered ascending by `id` — `key` the logical ticket key (`"STO-67"`) for display, `title` prefix-stripped, `status` the live option name verbatim (not a logical key; callers compare it against the resolved set).
 

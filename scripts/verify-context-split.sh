@@ -68,6 +68,14 @@ TSRL=$(total_lines "$TSREAD")
 # via two paths that never go through fetchTicket and so inherit nothing.
 assert_present "read-ops: the contract governs every data-source query in the skill, not only the operations below it" \
   "$TSREAD" 1 "$TSRL" '\*\*Every data-source query in this skill uses this one call shape'
+# Completeness gate: the file uses two wordings for the same act, and the blanket clause named one
+# — so `listEpicChildren` step 3, which says "Query the DB", was never covered.
+assert_present "read-ops: the blanket clause no longer names only \`query the database\`" \
+  "$TSREAD" 1 "$TSRL" 'that says "query the database" \*\*or$'
+assert_present "read-ops: the blanket clause reaches the \`Query the DB\` wording too" \
+  "$TSREAD" 1 "$TSRL" '^"Query the DB"\*\* means this call'
+assert_present "read-ops: the third query site names the call shape at its own step" \
+  "$TSREAD" 1 "$TSRL" '^3\. Query the DB — in the call shape this file opens with —'
 TSCREATE=$ND/skills/ticket-system/references/create-ops.md
 assert_present "create-ops: sends its two query paths to read-ops for the call contract before their first query" \
   "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'call contract for that lives in$'
