@@ -128,7 +128,36 @@ Then:
 `--non-interactive` means two things, not one: the run never **asks** you anything, and it never
 **hands back**. It does not stop between phases to announce what it is about to do next, so one
 invocation carries the work through to its final report or to one of the stop conditions the
-command names. **In `/notion-dev:ticket` only**, a run that ends mid-phase anyway is recorded as
+command names.
+
+**The second half is enforced by a `Stop` hook this plugin ships** (`hooks/stop-guard.sh`), not
+by instructions alone. 0.28.1 shipped it as instructions and a run stopped mid-`Phase 8` anyway,
+then quoted the rule it had just broken when asked why — ending a turn is the *absence* of an
+action, so only the harness can gate it. The guard blocks the stop while the project has a live
+`--non-interactive` run marker **that belongs to the stopping session**, and names the phase to
+resume at. Ownership comes from a second hook: a `SessionStart` hook
+(`hooks/session-env.sh`) publishes the session id as `NOTION_DEV_SESSION_ID`, the run stamps it
+into its marker, and the guard matches the two. That hook also captures the primary checkout as
+`NOTION_DEV_PRIMARY_ROOT`, because on the no-argument resume path the session is launched inside
+the ticket worktree and Phase 9 deletes it mid-run — after which nothing derived from where the
+session started can still find the markers. Both halves are needed — without the
+`SessionStart` half every marker records an empty owner and the guard skips all of them.
+
+It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
+session**, and it ignores a marker more than **2 hours** stale — the same threshold
+`/notion-dev:ticket` already uses, and for the same reason: a heartbeat is written *between*
+units of work, never inside one, so the window has to exceed the longest single build task,
+verify command or reviewer round. A shorter window looks safer and is not: a Phase 7 review loop
+routinely runs past it, so the guard would go quiet at exactly the boundary it exists to cover.
+An abandoned run still blocks nobody, because a marker can only ever block the session that
+created it. It fails open on anything unexpected, and it blocks **only the session that
+owns the run** — a second parallel ticket, or an interactive session in the same checkout, is
+never refused its stop. It never fires on an interactive run at all, since those end a turn to
+ask, which is correct; and it does not cover `/notion-dev:finalize`, which writes no run
+marker.
+
+**In `/notion-dev:ticket` only**, a run that ends mid-phase anyway — past the guard's bounds, or
+under it — is recorded as
 `unexpected:run-ended-mid-phase` in the [runtime issue log](#runtime-issue-log) by the next
 resume — the ending run cannot observe its own ending, so a resume is the only place that
 condition is visible, and `/notion-dev:ticket` is the one command with a run marker and a resume

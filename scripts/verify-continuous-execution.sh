@@ -175,6 +175,70 @@ assert_has "signature registry: the one signature no run can record about itself
   "$SIG" 'the one signature no run can record about itself'
 
 # ---------------------------------------------------------------------------
+echo "== the rule names the mechanism that enforces it =="
+# ---------------------------------------------------------------------------
+# Prose shipped alone in 0.28.1 and did not hold. The document must point at the
+# hook, or the next editor reads the paragraph as the enforcement and the guard
+# looks like belt-and-braces it is safe to drop.
+assert_has "$TK: the rule is enforced by a \`Stop\` hook, because prose alone did not hold" \
+  "$TK" 'This rule is enforced by a `Stop` hook, because as prose alone it did not hold'
+assert_has "$TK: names \`hooks/stop-guard.sh\` as the enforcement" \
+  "$TK" '`hooks/stop-guard.sh` blocks the stop'
+# The guard is only live while the marker is. Deleting it with the worktree
+# left every later step unguarded — the same class of defect as the rule being
+# prose: enforcement present, and not covering the window.
+assert_has "$TK: the marker is deleted last, immediately before the summary" \
+  "$TK" 'Delete the run marker — last, immediately before printing the summary below'
+assert_has "$TK: not in Phase 9 cleanup, which is where it used to happen" \
+  "$TK" '**Not in Phase 9 cleanup, which is where it used to happen**'
+# 2.1's marker-discipline sentence is the OPERATIONAL one a run follows. It
+# named Phase 9 step 1 and would have reinstated the gap by itself while
+# Phase 10 said otherwise — two instructions, one of them stale, is how the
+# whole enforcement comes back off.
+assert_has "$TK: 2.1's marker discipline agrees — deleted in Phase 10, never in Phase 9" \
+  "$TK" 'delete the file in Phase 10, last, immediately before printing the summary — never in Phase 9 cleanup'
+assert_has "$TK: \`/notion-dev:finalize\` writes no marker, so the guard does not cover it" \
+  "$TK" '`/notion-dev:finalize` writes no run marker, so the guard does not cover it at all'
+assert_has "$TK: the run marker carries \`non_interactive\`" \
+  "$TK" '"non_interactive": <true|false>'
+# Without an owning session the guard blocks whoever stops first, which in a
+# checkout running two tickets is the guard doing the wedging it exists to stop.
+assert_has "$TK: the run marker carries \`claude_session\`, the harness session id" \
+  "$TK" '"claude_session": "<$NOTION_DEV_SESSION_ID>"'
+# The id must come from the hook-published variable, not an ambient one: an
+# ambient variable that happens to be unset writes an empty owner and leaves
+# the guard skipping that marker for the whole run.
+assert_has "$TK: the id is published by \`hooks/session-env.sh\`, not read from an ambient variable" \
+  "$TK" "published into this session's environment by this plugin's own \`SessionStart\` hook (\`hooks/session-env.sh\`)"
+assert_has "$TK: reading an ambient variable instead is called out" \
+  "$TK" 'Do not read an ambient `CLAUDE_CODE_*` variable instead'
+assert_has "$TK: the guard blocks only the session that owns this run" \
+  "$TK" 'the guard blocks **only the session that owns this run**'
+assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\` and \`claude_session\`" \
+  "$TK" "and this invocation's \`non_interactive\` and \`claude_session\`"
+# Omitting either on a rewrite path is silent and disables the guard for the
+# whole resumed run, so both rewrite sites are pinned, not just the prose that
+# says they should be.
+assert_has "$TK: omitting \`claude_session\` on resume is called out as silent" \
+  "$TK" '`claude_session` is not optional here and its omission is silent'
+assert_has "$TK: the take-over branch rewrites \`claude_session\` and \`non_interactive\` too" \
+  "$TK" 'rewriting `session`, `phase`, `heartbeat`, **`claude_session` and `non_interactive`**'
+assert_has "notion-dev README documents the \`Stop\` hook" \
+  "$NDREADME" 'enforced by a `Stop` hook this plugin ships'
+assert_has "notion-dev README states the block bound" \
+  "$NDREADME" 'at most **3 blocks per run per'
+assert_has "notion-dev README states the staleness bound" \
+  "$NDREADME" '**2 hours** stale'
+assert_has "notion-dev README: the guard blocks only the session that owns the run" \
+  "$NDREADME" 'owns the run** — a second parallel ticket'
+# Both hooks or neither: the Stop half without the SessionStart half is a guard
+# that skips every marker. Match one line — the README hard-wraps.
+assert_has "notion-dev README: ownership comes from the \`SessionStart\` hook" \
+  "$NDREADME" 'Ownership comes from a second hook: a `SessionStart` hook'
+assert_has "notion-dev README: without that half every marker records an empty owner" \
+  "$NDREADME" 'half every marker records an empty owner and the guard skips all of them'
+
+# ---------------------------------------------------------------------------
 echo "== READMEs and release =="
 # ---------------------------------------------------------------------------
 assert_has "notion-dev README: \`--non-interactive\` means two things, not one" \
