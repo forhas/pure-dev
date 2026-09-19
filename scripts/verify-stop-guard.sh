@@ -400,10 +400,14 @@ echo "== the preflight marker: Phase 1 is guarded too (issue #57) =="
 # shape keyed by the session id. The guard is deliberately shape-agnostic: these
 # cases prove that, and prove the one place the shapes differ.
 rm -f "$M"
-PFM=$RUNS/preflight-sess-1.json
+# The real filename shape: the session id scopes the guard's counter, and the
+# per-invocation token stops the NEXT run in the same session inheriting it.
+INV1=20260919T150000Z-ab12
+INV2=20260919T151500Z-cd34
+PFM=$RUNS/preflight-sess-1-$INV1.json
 preflight() { # run-field, [state, default running], [owner, default sess-1]
-  printf '{\n "run": "%s",\n "session": "preflight",\n "phase": "Phase 1 — preconditions",\n "state": "%s",\n "non_interactive": true,\n "claude_session": "%s"\n}\n' \
-    "$1" "${2:-running}" "${3:-sess-1}" > "$PFM"
+  printf '{\n "run": "%s",\n "session": "%s",\n "phase": "Phase 1 — preconditions",\n "state": "%s",\n "non_interactive": true,\n "claude_session": "%s"\n}\n' \
+    "$1" "$INV1" "${2:-running}" "${3:-sess-1}" > "$PFM"
 }
 
 reset; preflight "STO-355"
@@ -416,6 +420,16 @@ case "$out" in *"Phase 1"*) ok "the block names the Phase 1 sub-phase to resume 
 reset; preflight "STO-355" stopped
 expect_silent "preflight marker written \`stopped\` by a Phase 1 stop path: silent — the abort goes through" \
   "$(guard)"
+# Filenames are unique per invocation now, so nothing else would ever remove a
+# stopped one. Unlike `<KEY>-<id>.json` it has no readers: 1.2's resume
+# protocol and `/notion-dev:next-task` both look up the `<KEY>-<id>` name.
+[ ! -f "$PFM" ] && ok "...and it is swept off disk, not left to age out over the staleness window" \
+                || bad "a stopped preflight marker survived the sweep"
+reset; rm -f "$PFM"; marker stopped true
+guard >/dev/null
+[ -f "$M" ] && ok "a \`stopped\` RUN marker is NOT swept — 1.2 reads that state as resumable" \
+            || bad "the guard deleted a stopped run marker"
+rm -f "$M"
 
 # THE REGRESSION THIS SHAPE INTRODUCES, and the reason the counter is keyed by
 # the marker's FILENAME rather than its `run` field. Before 1.1 resolves the
@@ -425,7 +439,7 @@ expect_silent "preflight marker written \`stopped\` by a Phase 1 stop path: sile
 # MAX_BLOCKS, and the guard blocks forever: the one failure it must be incapable
 # of. Use the hostile value, not a tidy one.
 reset; preflight "https://notion.so/1f2e3d4c5b6a"
-PFC="$RUNS/.stop-guard-preflight-sess-1--sess-1"
+PFC="$RUNS/.stop-guard-preflight-sess-1-$INV1--sess-1"
 expect_block "preflight marker whose \`run\` is a raw URL: blocks (1 of 3)" "$(guard)"
 if [ -f "$PFC" ]; then
   ok "its counter is named for the marker file, not for the unresolvable \`run\` value"
@@ -440,6 +454,31 @@ case "$out" in
   *'"systemMessage"'*)    ok "the cap engages on the fourth stop, as it does for a run marker" ;;
   *) bad "fourth stop: expected the give-up message, got: ${out:0:70}" ;;
 esac
+
+# THE ROUND-2 FINDING. A second `/notion-dev:ticket` in the same session must
+# not inherit the first invocation's spent counter. Keyed by the session alone
+# both runs write one filename, the counter survives pruning because its
+# marker exists and is `running`, and every Phase 1 stop of the second run is
+# allowed immediately — the enforcement present and silently off.
+# `/notion-dev:next-task` runs tickets back-to-back in one session.
+reset; preflight "STO-355"
+guard >/dev/null; guard >/dev/null; guard >/dev/null     # spend the cap
+out=$(guard)
+case "$out" in *'"decision":"block"'*) bad "the first invocation's cap did not engage" ;; esac
+PFM2=$RUNS/preflight-sess-1-$INV2.json
+printf '{\n "run": "STO-999",\n "session": "%s",\n "phase": "Phase 1 — preconditions",\n "state": "running",\n "non_interactive": true,\n "claude_session": "sess-1"\n}\n' \
+  "$INV2" > "$PFM2"
+rm -f "$PFM"                                              # the first run handed over or stopped
+out=$(guard)
+if blocks "$out"; then
+  case "$out" in
+    *STO-999*) ok "a second invocation in the same session gets a fresh cap, not the first one's" ;;
+    *) bad "blocked, but named the wrong run: ${out:0:80}" ;;
+  esac
+else
+  bad "the second invocation inherited the spent counter — Phase 1 is unguarded for it"
+fi
+rm -f "$PFM2"; reset
 
 # The preflight marker is a placeholder, retired by Phase 2.1 the moment the
 # real marker exists — so a stale one is litter and the guard sweeps it. A stale
@@ -481,8 +520,15 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
     "$TK" "$PRE" "$P11" 'Create the self-ignoring directory first — `mkdir -p` plus its `\.gitignore`'
   assert_present "ticket.md preconditions: says the run would otherwise abort on a file it created itself" \
     "$TK" "$PRE" "$P11" 'the run aborts on a file it created itself'
-  assert_present "ticket.md preconditions: keyed by \`\$NOTION_DEV_SESSION_ID\` at \`runs/preflight-<session>.json\`" \
-    "$TK" "$PRE" "$P11" 'runs/preflight-<session>\.json`, where `<session>` is `\$NOTION_DEV_SESSION_ID`'
+  assert_present "ticket.md preconditions: keyed by \`\$NOTION_DEV_SESSION_ID\` at \`runs/preflight-<session>-<invocation>.json\`" \
+    "$TK" "$PRE" "$P11" 'runs/preflight-<session>-<invocation>\.json`, where `<session>` is `\$NOTION_DEV_SESSION_ID`'
+  # The session half scopes the counter; the invocation half is what stops a
+  # SECOND ticket run in the same session inheriting the first one's spent
+  # counter, which would leave Phase 1 unguarded with nothing on screen.
+  assert_present "ticket.md preconditions: \`<invocation>\` is a per-run token in 2.1's form" \
+    "$TK" "$PRE" "$P11" '`<invocation>` is a token generated \*\*once, here\*\* in 2\.1.s form'
+  assert_present "ticket.md preconditions: without it, every Phase 1 stop of the next run is allowed" \
+    "$TK" "$PRE" "$P11" 'every Phase 1 stop of the new run is allowed immediately'
   # Sanitising the FIELD as well as the filename makes the marker inert, and
   # invisibly so: a session id is a UUID, so the substitution changes nothing
   # on one and the mismatch never shows up in testing.
@@ -504,7 +550,7 @@ if [ -n "$PRE" ] && [ -n "$P11" ] && [ -n "$P12" ] && [ -n "$P21" ] && [ -n "$P2
   # The three places a `<KEY>-<id>` marker goes live are the three places the
   # handover can happen. 2.1 is the fresh path; the other two skip it entirely.
   assert_present "ticket.md 2.1: the handover \`rm -f\` runs right after the run marker is written" \
-    "$TK" "$P21" "$P22" 'Then `rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/preflight-<session>\.json"` — the handover'
+    "$TK" "$P21" "$P22" 'Then `rm -f "\$REPO_ROOT/\.claude/notion-dev/runs/preflight-<session>-<invocation>\.json"` — the handover'
   assert_present "ticket.md 1.2 resume: the claim rewrite also \`rm -f\`s the preflight marker" \
     "$TK" "$P12" "$P21" 'then `rmdir` the claim directory and `rm -f` the preflight marker'
   assert_present "ticket.md 1.2 take-over: that branch is where the handover happens, since 2.1 never runs" \
@@ -526,7 +572,7 @@ fi
 # ticket, and each is a documented HARD abort — the worst thing to have refused.
 if [ -n "$P11" ] && [ -n "$P12" ]; then
   assert_present "ticket.md 1.1: the epic guard retires the preflight marker before aborting" \
-    "$TK" "$P11" "$P12" 'write `"state": "stopped"` with the cause into `\$REPO_ROOT/\.claude/notion-dev/runs/preflight-<session>\.json` before stopping'
+    "$TK" "$P11" "$P12" 'write `"state": "stopped"` with the cause into `\$REPO_ROOT/\.claude/notion-dev/runs/preflight-<session>-<invocation>\.json` before stopping'
   assert_present "ticket.md 1.1: the \`held elsewhere\` ownership check retires it too" \
     "$TK" "$P11" "$P12" 'for `held elsewhere` non-interactive mode never proceeds — and because this too runs before Phase 2'
   assert_present "ticket.md 1.1: \`run\` becomes \`<KEY>-<id>\` as soon as the numeric id is derived" \
@@ -536,7 +582,7 @@ fi
 # The rule at the top of the command has to say Phase 1 is covered, or the
 # guard's own bounds paragraph still reads as "Phase 1 is not".
 assert_has "ticket.md: the preflight marker is what guards the whole of Phase 1" \
-  "$TK" "the preconditions gate's \`preflight-<session>.json\` for the whole of Phase 1"
+  "$TK" "the preconditions gate's \`preflight-<session>-<invocation>.json\` for the whole of Phase 1"
 
 # ---------------------------------------------------------------------------
 echo "== session-env.sh publishes the id the marker records =="

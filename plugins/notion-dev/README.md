@@ -161,7 +161,9 @@ marker.
 work. From Phase 2 on it is `runs/<KEY>-<id>.json`, written once the ticket id is known. Phase 1
 cannot use that name — the id is not resolved until the ticket is fetched, and the argument may
 be a page id, a UUID, a URL or a logical key — so the preconditions gate writes
-`runs/preflight-<session>.json` instead, keyed by the session id, and Phase 2.1 deletes it the
+`runs/preflight-<session>-<invocation>.json` instead — keyed by the session id, which is what
+scopes the guard's counter, plus a per-invocation token, which is what stops a second ticket run
+in the same session inheriting the first one's spent counter — and Phase 2.1 deletes it the
 moment it writes the other. Every stop before that handover writes `state: stopped` into the
 preflight marker first, which is what lets a documented hard abort — the epic guard, the
 `held elsewhere` ownership check, the under-spec gate — actually stop. Before 0.30.0 the

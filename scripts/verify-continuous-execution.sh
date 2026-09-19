@@ -263,8 +263,10 @@ assert_has "quick-dev README: the flag also never hands the turn back" \
 # that covers most of them, with nothing saying which phases are which.
 assert_has "notion-dev README: the whole of \`/notion-dev:ticket\` carries a marker, Phase 1 included" \
   "$NDREADME" 'The whole of `/notion-dev:ticket` carries a marker, including Phase 1'
-assert_has "notion-dev README names the preflight marker shape, \`runs/preflight-<session>.json\`" \
-  "$NDREADME" '`runs/preflight-<session>.json`'
+assert_has "notion-dev README names the preflight marker shape, \`runs/preflight-<session>-<invocation>.json\`" \
+  "$NDREADME" '`runs/preflight-<session>-<invocation>.json`'
+assert_has "notion-dev README says the per-invocation token stops a second run inheriting the counter" \
+  "$NDREADME" "inheriting the first one's spent counter"
 assert_has "notion-dev README: Phase 2.1 deletes it the moment it writes the other" \
   "$NDREADME" 'Phase 2.1 deletes it the'
 assert_has "notion-dev README: every stop before the handover writes \`state: stopped\` into it first" \

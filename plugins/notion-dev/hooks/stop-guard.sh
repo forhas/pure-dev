@@ -144,14 +144,26 @@ root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree
 runs="$root/.claude/notion-dev/runs"
 [ -d "$runs" ] || allow
 
-# Sweep stale preflight markers first. They are the one marker shape that is
+# Sweep spent preflight markers first. They are the one marker shape that is
 # disposable by construction — a placeholder for a `<KEY>-<id>.json` that does
 # not exist yet, retired by Phase 2.1 the moment the real one is written — so a
-# stale one is litter, not evidence. Only that shape, and only when stale: a
-# real run marker is never deleted by this hook.
+# spent one is litter, not evidence. Two ways to be spent: stale, or no longer
+# `running`. The second matters because the filename carries a per-invocation
+# token, so a session that runs several tickets writes a different one each
+# time and nothing else would ever remove the stopped ones; and unlike a
+# `<KEY>-<id>.json` marker, a `stopped` preflight marker has no readers at all
+# — `## 1.2`'s resume protocol and `/notion-dev:next-task` both look up the
+# `<KEY>-<id>` name and neither knows this shape exists.
+#
+# Only this shape, ever. A real run marker is never deleted by this hook: its
+# `stopped` state is what tells `## 1.2` the run is resumable, and its `cause`
+# is the whole record of why it stopped.
 for stray in "$runs"/preflight-*.json; do
   [ -f "$stray" ] || continue
-  find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q . \
+  if ! find "$stray" -maxdepth 0 -mmin "-$STALE_MINUTES" 2>/dev/null | grep -q .; then
+    rm -f "$stray" 2>/dev/null; continue
+  fi
+  tr -d '\n\r' < "$stray" 2>/dev/null | grep -q '"state"[[:space:]]*:[[:space:]]*"running"' \
     || rm -f "$stray" 2>/dev/null
 done
 
