@@ -34,6 +34,13 @@ sid=$(printf '%s' "$input" | tr -d '\n\r' 2>/dev/null \
 
 # Only the characters a session id is actually made of. This value is written
 # into a file that the harness sources, so nothing else may reach it.
+#
+# THIS filter is the guarantee for the id, not the quoting below: with it in
+# place no id can reach `shquote` that needed quoting, so no test can tell the
+# quoted form from the unquoted one. The id is quoted anyway for uniformity
+# with the path, which genuinely needs it. Do not remove this filter on the
+# grounds that the values are quoted — quoting is what makes a *path* safe, and
+# an id is not a path.
 case "$sid" in
   *[!A-Za-z0-9._-]*) exit 0 ;;
 esac
