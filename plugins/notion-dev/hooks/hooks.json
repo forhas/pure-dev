@@ -1,5 +1,5 @@
 {
-  "description": "notion-dev: keep a --non-interactive run from ending its turn mid-run.",
+  "description": "notion-dev: publish the session id, and keep a --non-interactive run from ending its turn mid-run.",
   "hooks": {
     "Stop": [
       {
@@ -8,6 +8,18 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-guard.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-env.sh\"",
             "timeout": 10
           }
         ]

@@ -134,7 +134,11 @@ command names.
 by instructions alone. 0.28.1 shipped it as instructions and a run stopped mid-`Phase 8` anyway,
 then quoted the rule it had just broken when asked why — ending a turn is the *absence* of an
 action, so only the harness can gate it. The guard blocks the stop while the project has a live
-`--non-interactive` run marker, and names the phase to resume at.
+`--non-interactive` run marker **that belongs to the stopping session**, and names the phase to
+resume at. Ownership comes from a second hook: a `SessionStart` hook
+(`hooks/session-env.sh`) publishes the session id as `NOTION_DEV_SESSION_ID`, the run stamps it
+into its marker, and the guard matches the two. Both halves are needed — without the
+`SessionStart` half every marker records an empty owner and the guard skips all of them.
 
 It is bounded in both directions so it can never wedge a session: at most **3 blocks per run per
 session**, and it ignores a marker more than **2 hours** stale — the same threshold

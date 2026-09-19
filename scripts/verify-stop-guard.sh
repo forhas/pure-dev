@@ -26,6 +26,8 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 HOOKS=plugins/notion-dev/hooks/hooks.json
 GUARD=plugins/notion-dev/hooks/stop-guard.sh
 GUARD_ABS=$PWD/$GUARD
+SENV=plugins/notion-dev/hooks/session-env.sh
+SENV_ABS=$PWD/$SENV
 
 # ---------------------------------------------------------------------------
 echo "== the hook is registered and runnable =="
@@ -35,6 +37,12 @@ if [ -f "$HOOKS" ]; then
   assert_has "hooks.json runs the guard via \`\${CLAUDE_PLUGIN_ROOT}\`" \
     "$HOOKS" '${CLAUDE_PLUGIN_ROOT}/hooks/stop-guard.sh'
   assert_has "hooks.json declares the hook \`type\` as \`command\`"  "$HOOKS" '"type": "command"'
+  # Without the SessionStart half there is no session id for a run to stamp
+  # into its marker, so every marker records an empty owner, the guard skips
+  # every one of them, and the Stop half is present and inert.
+  assert_has "hooks.json registers the \`SessionStart\` hook that publishes the session id" \
+    "$HOOKS" '"SessionStart"'
+  assert_has "hooks.json runs \`session-env.sh\`" "$HOOKS" '${CLAUDE_PLUGIN_ROOT}/hooks/session-env.sh'
 else
   bad "hooks.json is missing ($HOOKS)"
 fi
@@ -220,6 +228,43 @@ printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "running",\n "non
 out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$SP" \
       | CLAUDE_PROJECT_DIR="$SP" bash "$GUARD_ABS" 2>/dev/null)
 expect_block "checkout path containing a space: still blocks" "$out"
+
+# ---------------------------------------------------------------------------
+echo "== session-env.sh publishes the id the marker records =="
+# ---------------------------------------------------------------------------
+# The guard matches a marker's owner against the `session_id` the harness hands
+# a hook on stdin. That value is only reliably available inside a hook, so this
+# SessionStart hook is what carries it into the session's environment where a
+# run can stamp it. If it writes nothing, the whole enforcement is inert.
+EF=$T/env-file
+senv() { printf '%s' "$1" | CLAUDE_ENV_FILE="$EF" bash "$SENV_ABS" >/dev/null 2>&1; }
+
+: > "$EF"; senv '{"session_id":"abc-123","hook_event_name":"SessionStart"}'
+if grep -q '^export NOTION_DEV_SESSION_ID=abc-123$' "$EF" 2>/dev/null; then
+  ok "session-env.sh exports the session id to \$CLAUDE_ENV_FILE"
+else
+  bad "session-env.sh did not export the session id (file: $(cat "$EF" 2>/dev/null))"
+fi
+
+: > "$EF"; senv '{"hook_event_name":"SessionStart"}'
+[ ! -s "$EF" ] && ok "no \`session_id\` in the input: writes nothing" \
+              || bad "wrote something with no session_id: $(cat "$EF")"
+
+: > "$EF"; senv ''
+[ ! -s "$EF" ] && ok "empty stdin: writes nothing" || bad "wrote something on empty stdin"
+
+# The value lands in a file the harness SOURCES, so a session id carrying shell
+# metacharacters would be executed. Nothing but the characters an id is made of
+# may pass.
+: > "$EF"; senv '{"session_id":"a\"; rm -rf /tmp/pd-x; #"}'
+[ ! -s "$EF" ] && ok "session id with shell metacharacters: rejected, writes nothing" \
+              || bad "wrote an unsafe session id: $(cat "$EF")"
+
+if printf '{"session_id":"abc-123"}' | bash "$SENV_ABS" >/dev/null 2>&1; then
+  ok "no \$CLAUDE_ENV_FILE: exits cleanly, writes nothing"
+else
+  bad "no \$CLAUDE_ENV_FILE: did not exit 0"
+fi
 
 echo
 if [ "$fails" -eq 0 ]; then

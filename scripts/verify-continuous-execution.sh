@@ -191,7 +191,14 @@ assert_has "$TK: the run marker carries \`non_interactive\`" \
 # Without an owning session the guard blocks whoever stops first, which in a
 # checkout running two tickets is the guard doing the wedging it exists to stop.
 assert_has "$TK: the run marker carries \`claude_session\`, the harness session id" \
-  "$TK" '"claude_session": "<$CLAUDE_CODE_SESSION_ID>"'
+  "$TK" '"claude_session": "<$NOTION_DEV_SESSION_ID>"'
+# The id must come from the hook-published variable, not an ambient one: an
+# ambient variable that happens to be unset writes an empty owner and leaves
+# the guard skipping that marker for the whole run.
+assert_has "$TK: the id is published by \`hooks/session-env.sh\`, not read from an ambient variable" \
+  "$TK" "published into this session's environment by this plugin's own \`SessionStart\` hook (\`hooks/session-env.sh\`)"
+assert_has "$TK: reading an ambient variable instead is called out" \
+  "$TK" 'Do not read an ambient `CLAUDE_CODE_*` variable instead'
 assert_has "$TK: the guard blocks only the session that owns this run" \
   "$TK" 'the guard blocks **only the session that owns this run**'
 assert_has "$TK: the resume rewrite sets this invocation's \`non_interactive\` and \`claude_session\`" \
