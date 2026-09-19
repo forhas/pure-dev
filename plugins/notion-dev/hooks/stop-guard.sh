@@ -64,7 +64,11 @@ dir=${CLAUDE_PROJECT_DIR:-}
 
 # The run happens inside a worktree; the marker lives in the primary checkout.
 # `git worktree list` names that first, from anywhere in the repository.
-root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
+# Everything after "worktree " is the path, spaces included — `{print $2}` would
+# truncate `/path/repo with space` to `/path/repo`, and the runs lookup would
+# then either fail open on a live run or, if that shorter path happens to exist,
+# read a different checkout's markers.
+root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)
 [ -n "$root" ] || root=$dir
 runs="$root/.claude/notion-dev/runs"
 [ -d "$runs" ] || allow

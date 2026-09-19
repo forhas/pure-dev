@@ -162,6 +162,19 @@ else
   bad "could not create a worktree fixture"
 fi
 
+# A checkout path with a space in it: `git worktree list --porcelain` emits the
+# path unquoted after "worktree ", so a whitespace-delimited field read
+# truncates it and the guard silently stops guarding.
+SP="$T/dir with space"
+git init -q "$SP" 2>/dev/null
+git -C "$SP" commit -q --allow-empty -m init 2>/dev/null
+mkdir -p "$SP/.claude/notion-dev/runs"
+printf '{\n "run": "STO-355",\n "phase": "Phase 8",\n "state": "running",\n "non_interactive": true,\n "claude_session": "sess-1"\n}\n' \
+  > "$SP/.claude/notion-dev/runs/STO-355.json"
+out=$(printf '{"session_id":"sess-1","cwd":"%s","hook_event_name":"Stop"}' "$SP" \
+      | CLAUDE_PROJECT_DIR="$SP" bash "$GUARD_ABS" 2>/dev/null)
+expect_block "checkout path containing a space: still blocks" "$out"
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "ALL CHECKS PASSED"
