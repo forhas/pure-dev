@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -33,6 +34,36 @@ def require(condition, message):
 
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+_BASH_EXE = None
+
+
+def bash_exe():
+    """Resolve `bash` once; never spawn the bare name.
+
+    Windows `CreateProcess` — what `subprocess.run` uses with `shell=False` — searches
+    `System32` BEFORE `PATH`, so a bare `"bash"` resolves to the WSL launcher stub at
+    `C:\\Windows\\System32\\bash.exe` rather than the Git for Windows bash this plugin
+    requires. With no WSL distribution installed that stub exits 1 without running the
+    command at all, which this module would otherwise record as a failed verification
+    rather than as a missing interpreter. `shutil.which` searches `PATH` in order
+    instead; where it still lands in System32, fall back to the Git for Windows install
+    the README already names as a prerequisite. On POSIX the whole function is a no-op:
+    `shutil.which("bash")` returns exactly what `"bash"` alone would resolve to.
+    """
+    global _BASH_EXE
+    if _BASH_EXE is None:
+        found = shutil.which("bash")
+        if os.name == "nt" and (not found or "\\system32\\" in found.lower()):
+            for base in (os.environ.get("PROGRAMW6432"), os.environ.get("PROGRAMFILES"),
+                         os.environ.get("PROGRAMFILES(X86)")):
+                candidate = Path(base, "Git", "bin", "bash.exe") if base else None
+                if candidate is not None and candidate.exists():
+                    found = str(candidate)
+                    break
+        _BASH_EXE = found or "bash"
+    return _BASH_EXE
 
 
 def digest(path):
@@ -416,7 +447,7 @@ class Runtime:
             self.event(state, "verification_started", verification=key,
                        command_sha256=command_hash, revision=before, log=str(log))
         with log.open("wb") as output:
-            process = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command],
+            process = subprocess.run([bash_exe(), "-e", "-o", "pipefail", "-c", command],
                                      cwd=worktree, stdout=output, stderr=subprocess.STDOUT)
         receipt = {"verification": key, "exit_code": process.returncode, "log": str(log),
                    "duration_seconds": elapsed(started, self.clock.stamp()),

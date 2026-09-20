@@ -99,5 +99,15 @@ done
 assert_has "runtime protocol uses the configured interpreter" "$ND/references/runtime.md" '`knowledge.python` interpreter'
 assert_has "runtime harness supports Windows interpreter selection" scripts/verify-runtime.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
 
+# A bare `bash` is not the Git for Windows bash. Windows `CreateProcess` — what
+# `subprocess.run` uses with `shell=False` — searches System32 BEFORE PATH, so the name
+# resolves to the WSL launcher stub, which exits 1 without running anything. Both Python
+# spawn sites resolve the interpreter instead, or the runtime records a verification that
+# never ran as a failure and the Stop-guard regression fails on Windows alone.
+assert_has  "runtime resolves the bash interpreter rather than trusting the bare name" "$ND/scripts/runtime.py" 'shutil.which("bash")'
+assert_has  "runtime verification spawns the resolved interpreter" "$ND/scripts/runtime.py" 'subprocess.run([bash_exe(),'
+assert_lacks "runtime takes no bare \`bash\` spawn" "$ND/scripts/runtime.py" 'subprocess.run(["bash"'
+assert_lacks "the runtime regression takes no bare \`bash\` spawn" scripts/tests/test_runtime.py 'subprocess.run(["bash"'
+
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

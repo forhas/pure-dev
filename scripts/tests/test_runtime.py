@@ -334,7 +334,7 @@ class RuntimeTests(unittest.TestCase):
         env = {**os.environ, "NOTION_DEV_PRIMARY_ROOT": str(self.repo), "CLAUDE_PROJECT_DIR": str(self.repo)}
         hook = ROOT / "plugins/notion-dev/hooks/stop-guard.sh"
         def stop():
-            process = subprocess.run(["bash", str(hook)], input=json.dumps({"session_id": "session-1", "cwd": str(self.repo)}),
+            process = subprocess.run([runtime.bash_exe(), str(hook)], input=json.dumps({"session_id": "session-1", "cwd": str(self.repo)}),
                                      capture_output=True, encoding="utf-8", env=env, check=True)
             return json.loads(process.stdout) if process.stdout.strip() else {}
         self.assertIn("Block 1 of 3", stop()["reason"])
