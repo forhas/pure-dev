@@ -37,7 +37,9 @@ own result contract, not inherited shell-variable assumptions.
   merge pass, premature worker cancellation and streamed usage double-counting.
 - Python sources parse against Python 3.8's grammar. UTF-8/LF output and configured
   interpreter selection are checked. The existing Windows CI job discovers the new
-  harness; Windows execution has not been performed in this session.
+  harness; the windows-latest leg has since run on this PR. It first failed -- a bare
+  `bash` resolves to the System32 WSL stub there, not Git for Windows -- and passes
+  once `runtime.py` resolves the interpreter explicitly.
 - New telemetry reconciles the available STO-153 parent/child logs: 293 requests;
   586 uncached input, 969,796 cache creation, 116,132,372 cache read and 254,065 output
   tokens. New-input-plus-output is 1,224,447; parent peak input context is 718,327.
@@ -55,12 +57,23 @@ workflow, not a server-side GitHub branch protection or an interception of all t
 No test is cached/skipped. No knowledge bundle, epic brief, provider adapter or
 third-party build-plugin internals were redesigned. quick-dev and its repo-local
 mirrors retain their existing semantics. Historical audit artifacts under `optimize/`
-were preserved. No live Notion/GitHub mutation or plugin installation was performed.
+were retained outside version control and are deliberately not part of this change. No
+live Notion/GitHub mutation or plugin installation was performed.
 
-Before using the new version on a production ticket, use explicitly designated test
-resources for a real Claude Code canary (and run Windows CI). Exercise a short
-publish-before-final worker, delayed delivery, a pending Stop-hook yield/resume and
-a blocked prerequisite; confirm no merge or Done transition can precede consumption.
+A real Claude Code canary has since been run on this PR's head, in a disposable local
+git repository with synthetic ticket data and mocked provider operations -- no live
+Notion writes, GitHub mutations, deployments or BTC-Gateway changes. It exercised a
+real dispatched agent publishing before its final reply (result available to the
+parent 47s before delivery), delayed consumption (61.676s lag, measured), Stop-hook
+yield/resume (one-shot, session-owned, counter neither reset nor spent) and a blocked
+prerequisite refusing both `ready` and `prepare`. Results and the retained event trace
+are recorded on the pull request. Actual host termination remains unexercised: the
+runtime records `confirmed=True` on the parent's assertion, and nothing there verified
+the host had really stopped the process.
+
+Before using the new version on a production ticket, repeat the canary against
+explicitly designated *provider* test resources, which the synthetic run deliberately
+did not touch; confirm no merge or Done transition can precede consumption.
 Then run one ready, representative ticket and collect the complete parent/child logs
 plus runtime state. Compare stage times, cancellation waste, delivery lag, validation
 repetition and the four usage counters against the baseline while independently
