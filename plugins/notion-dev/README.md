@@ -2,7 +2,23 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.9.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.32.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+
+## Runtime reliability and evidence (0.32.0)
+
+Ticket/finalize runs now retain per-invocation lifecycle state and timing under
+`.claude/notion-dev/runtime/`. Background agents publish durable results; pending
+delivery is not failure, and cancellation must be confirmed before recovery.
+Mandatory prerequisites outside AC also gate readiness. Merge requires a consumed,
+current independent completeness result with resolved evidence for every mandatory
+requirement; degraded or stale checks stop with the work preserved.
+
+The standard-library helpers `scripts/runtime.py` and `scripts/telemetry.py` use
+`knowledge.python`. Verification records real exit status and duplicate signatures,
+but does not skip checks. Raw JSONL telemetry separates cache reads, cache creation,
+uncached input, output and peak context; missing logs remain unknown. See
+[the runtime protocol](references/runtime.md). This changes notion-dev's gates;
+quick-dev's independent workflow is not opted into this protocol.
 
 ## Prerequisites
 

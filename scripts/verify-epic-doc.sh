@@ -224,7 +224,7 @@ if [ -f "$TICKET" ]; then
   # verify-context-split.sh.
   assert_order "ticket Phase 10 order: the record dispatch precedes the workspace pass before the summary" \
     "$TICKET" "$P8" "$PF" \
-    "dispatch" '\*\*Dispatch one .general-purpose. agent, synchronously\*\*' \
+    "dispatch" '\*\*Dispatch one .general-purpose. agent using the runtime protocol\*\*' \
     "closeout" 'invoke the \*\*workspace pass\*\* of the .notion-dev:session-closeout' \
     "summary"  '^Print a summary covering:'
   assert_present "ticket.md reports the epic doc line" \

@@ -61,6 +61,14 @@ for S in plugins/*/skills/plan-review/SKILL.md plugins/*/skills/flow-triage/SKIL
 
   echo "== $n $k — zero-byte agent result =="
 
+  # notion-dev's measured async protocol supersedes the old idle/age heuristic.
+  # Functional timing, cancellation and delivery regressions run in verify-runtime.
+  if [ "$n" = notion-dev ]; then
+    assert_has "$n $k: dispatch uses the runtime reference" "$S" 'references/runtime.md'
+    assert_has "$n $k: completion precedes degradation" "$S" '**Completion before degradation.**'
+    continue
+  fi
+
   assert_present "$n $k: a zero-byte result is its own failure shape, not a malformed one" \
     "$S" 1 "$L" 'A zero-byte result is its own failure shape — not a malformed one'
 
@@ -569,6 +577,14 @@ for S in plugins/*/skills/plan-review/SKILL.md plugins/*/skills/flow-triage/SKIL
 
   echo "== $n $k — a dispatch that never returns =="
 
+  # notion-dev's measured async protocol supersedes the old idle/age heuristic.
+  # Functional timing, cancellation and delivery regressions run in verify-runtime.
+  if [ "$n" = notion-dev ]; then
+    assert_has "$n $k: dispatch uses the runtime reference" "$S" 'references/runtime.md'
+    assert_has "$n $k: completion precedes degradation" "$S" '**Completion before degradation.**'
+    continue
+  fi
+
   assert_present "$n $k: never-returning is a third shape neither earlier rule covers" \
     "$S" 1 "$L" 'A dispatch that never returns is a third shape, and neither rule above covers it'
 
@@ -612,6 +628,14 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   n=$(plugin_of "$S"); L=$(total_lines "$S")
   echo "== $n review-and-merge — a seat that never returns =="
 
+  # notion-dev's measured async protocol supersedes the old idle/age heuristic.
+  # Functional timing, cancellation and delivery regressions run in verify-runtime.
+  if [ "$n" = notion-dev ]; then
+    assert_has "$n: pending acknowledgements are not failures" "$S" '**Completed results, not launch acknowledgements.**'
+    assert_has "$n: confirmed termination precedes replacement" "$S" 'confirm termination before replacement'
+    continue
+  fi
+
   assert_present "$n review-and-merge: a seat that never returns is a third failure shape" \
     "$S" 1 "$L" 'A seat that never returns is a third failure shape'
 
@@ -639,6 +663,13 @@ for S in plugins/*/skills/plan-review/SKILL.md; do
   [ -f "$S" ] || continue
   n=$(plugin_of "$S"); L=$(total_lines "$S")
   echo "== $n plan-review — control probe and correlated seats =="
+
+  # notion-dev's measured async protocol supersedes the old idle/age heuristic.
+  # Functional timing, cancellation and delivery regressions run in verify-runtime.
+  if [ "$n" = notion-dev ]; then
+    assert_has "$n: automatic control probe is prohibited" "$S" 'Do not run an automatic control probe'
+    continue
+  fi
 
   assert_present "$n plan-review: a control probe tells a broken dispatch from a broken host" \
     "$S" 1 "$L" 'Tell "this dispatch is broken" from "dispatch is broken on this host" with a control probe'

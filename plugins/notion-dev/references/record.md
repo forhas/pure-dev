@@ -10,6 +10,8 @@ taken the primary lock (`LOCK_HELD: true`), and left the worktree (`cd $REPO_ROO
 Do not take the lock again, do not ask the user anything, and do not release the
 lock — the caller does that after this unit returns.
 
+**Runtime result delivery.** The caller supplies `RUNTIME_STATE` and the prepared record worker ID. Follow `runtime.md`'s publication contract: finish all record work, publish the complete `RECORD:` block as the result JSON's `report`, then return it in the final reply. Do not release the caller's primary lock and do not perform side effects after publishing. Inline recovery does not impersonate the child or publish its verdict; it records its own measured work in the same invocation. Pass `RUNTIME_STATE` through invoked skills.
+
 ### 8.1 Update status
 
 `updateStatus(id, "implemented")` — marks the ticket as merged-and-code-complete. The plugin **never** transitions beyond this; release/deployment status is out of scope.

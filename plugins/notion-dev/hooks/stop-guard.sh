@@ -279,6 +279,17 @@ for marker in "$runs"/*.json; do
   [ -n "$marker_session" ] || continue
   [ "$marker_session" = "$session_raw" ] || continue
 
+  # One deliberate parent-turn yield can deliver a background worker's mailbox.
+  # The runtime issues this permit only for an owned pending/result-ready worker.
+  # Keep state=running and the existing counter: waiting is not completion, and
+  # yielding must not reset the bounded protection against abandoned work.
+  yield_stem=$(basename "$marker" .json)
+  yield_safe=$(printf '%s' "$yield_stem" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)
+  yield_permit="$runs/.awaiting-worker-$yield_safe--$session"
+  if [ -f "$yield_permit" ] && find "$yield_permit" -maxdepth 0 -mmin -1 2>/dev/null | grep -q .; then
+    if rm -f "$yield_permit" 2>/dev/null; then continue; fi
+  fi
+
   this_run=$(field run "$body")
   this_phase=$(field phase "$body")
   [ -n "$this_run" ] || this_run=$(basename "$marker" .json)

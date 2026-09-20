@@ -62,7 +62,12 @@ done
 echo "== the completeness gate's terminal rule =="
 for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
+  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+    assert_has "$n stops on an unresolved mandatory criterion" "$RM" 'stops the merge when it'
+    assert_has "$n forbids a budget-driven scope reduction" "$RM" 'or round cap does not authorize scope reduction'
+  else
   assert_has "$n offers three terminal dispositions" "$RM" '`file`, `drop`, or `blocked` with a rationale'
+  fi
   # A free choice among the three is what produced every one of STO-77's tickets.
   # The decision ORDER bounds it — but the RESIDUAL is what decides which way the
   # ordering leaks. An earlier revision of this PR defaulted the residual to

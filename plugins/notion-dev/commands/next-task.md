@@ -73,6 +73,8 @@ Walk `NEXT` in order. A candidate is **valid** when all of:
 
 ### 3. Delegate
 
+The selected ticket owns its per-invocation `RUNTIME_STATE` and gates; do not share one state across successive tickets. Preserve the returned runtime evidence path in this command's final report. A child awaiting an asynchronous result has not returned a completed ticket: honor its runtime wait/resume protocol, never increment `DONE` or select another ticket on a launch acknowledgement. A runtime-authorized yield is the narrow waiting exception to continuous execution.
+
 Announce: `Next: [<key>] <title> — <the reason text from the brief's NEXT item, or "resume" / "fallback: first unblocked child">`.
 
 Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | selected by next-task from <brief path>: <reason>[; <user guidance>]` via the Skill tool, passing exactly the flags recorded above, plus `KNOWLEDGE_CONTEXT` (Step 1) as context so its own 1.1 skips the fetch and the bundle is read once for the whole run. Remain in `$REPO_ROOT`; `/notion-dev:ticket` manages its own worktree and returns there.
