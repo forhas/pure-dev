@@ -27,7 +27,13 @@ def analyze(path, stages=()):
         try:
             records.append(json.loads(line))
         except ValueError:
-            if index != len(lines) - 1:
+            # The tolerance is for a live writer caught mid-record, and the raw bytes are
+            # the only thing that distinguishes one. `splitlines()` erases the difference:
+            # `{bad}\n` and `{bad` both land last. A newline-terminated final record is a
+            # COMPLETE record that is simply corrupt, so dropping it would return lower
+            # totals and report success -- the one failure a usage accounting module may
+            # not have. Only an unterminated tail is a partial write.
+            if index != len(lines) - 1 or raw.endswith(b"\n"):
                 raise ValueError(f"invalid JSONL at line {index + 1}; refusing partial totals")
             incomplete_tail = True
     groups = defaultdict(list)

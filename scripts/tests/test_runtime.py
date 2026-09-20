@@ -386,6 +386,11 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(result["compactions"], 1)
         self.assertTrue(result["incomplete_tail"])
 
+    def test_terminated_malformed_tail_is_corruption_not_a_live_write(self):
+        self.save([self.record()], '{bad}\n')
+        with self.assertRaisesRegex(ValueError, "refusing partial totals"):
+            telemetry.analyze(self.path)
+
     def test_disagreeing_inputs_fail_instead_of_inventing_totals(self):
         changed = copy.deepcopy(self.record())
         changed["message"]["usage"]["input_tokens"] = 3
