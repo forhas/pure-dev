@@ -108,6 +108,9 @@ assert_has  "runtime resolves the bash interpreter rather than trusting the bare
 assert_has  "runtime verification spawns the resolved interpreter" "$ND/scripts/runtime.py" 'subprocess.run([bash_exe(),'
 assert_lacks "runtime takes no bare \`bash\` spawn" "$ND/scripts/runtime.py" 'subprocess.run(["bash"'
 assert_lacks "the runtime regression takes no bare \`bash\` spawn" scripts/tests/test_runtime.py 'subprocess.run(["bash"'
+assert_has  "runtime rejects the System32 stub through \`_wsl_stub\`" "$ND/scripts/runtime.py" '_wsl_stub(found)'
+assert_has  "runtime walks PATH itself when the stub is what PATH resolved to" "$ND/scripts/runtime.py" 'os.environ.get("PATH", "").split(os.pathsep)'
+assert_has  "runtime falls back to the bare name, never to the rejected stub" "$ND/scripts/runtime.py" '_BASH_EXE = found or "bash"'
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

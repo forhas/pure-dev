@@ -39,6 +39,20 @@ def read_json(path):
 _BASH_EXE = None
 
 
+def _wsl_stub(path):
+    """True when `path` is the System32 WSL launcher rather than a real bash.
+
+    Resolved against %SystemRoot% rather than a hard-coded `C:\\Windows`, because the
+    Windows directory is not always on C:.
+    """
+    try:
+        root = os.environ.get("SystemRoot") or os.environ.get("windir") or "C:\\Windows"
+        system32 = os.path.normcase(os.path.join(os.path.abspath(root), "system32"))
+        return os.path.normcase(os.path.abspath(path)).startswith(system32 + os.sep)
+    except (OSError, ValueError):
+        return False
+
+
 def bash_exe():
     """Resolve `bash` once; never spawn the bare name.
 
@@ -46,21 +60,36 @@ def bash_exe():
     `System32` BEFORE `PATH`, so a bare `"bash"` resolves to the WSL launcher stub at
     `C:\\Windows\\System32\\bash.exe` rather than the Git for Windows bash this plugin
     requires. With no WSL distribution installed that stub exits 1 without running the
-    command at all, which this module would otherwise record as a failed verification
-    rather than as a missing interpreter. `shutil.which` searches `PATH` in order
-    instead; where it still lands in System32, fall back to the Git for Windows install
-    the README already names as a prerequisite. On POSIX the whole function is a no-op:
-    `shutil.which("bash")` returns exactly what `"bash"` alone would resolve to.
+    command, which this module would otherwise record as a failed verification rather
+    than as a missing interpreter.
+
+    `shutil.which` searches `PATH` in order instead, which is the whole fix wherever
+    `PATH` is sane. Where it still lands in System32, walk `PATH` for a `bash.exe` that
+    is not the stub before falling back to the Git for Windows roots: that install is
+    routinely per-user, portable, or placed by scoop/choco, and none of those live under
+    a `Program Files` root. The rejected stub is never retained as the fallback — a bare
+    `"bash"` fails visibly, where the stub fails as a command that silently did not run.
+
+    On POSIX the whole function is a no-op: `shutil.which("bash")` returns exactly what
+    `"bash"` alone would resolve to.
     """
     global _BASH_EXE
     if _BASH_EXE is None:
         found = shutil.which("bash")
-        if os.name == "nt" and (not found or "\\system32\\" in found.lower()):
-            for base in (os.environ.get("PROGRAMW6432"), os.environ.get("PROGRAMFILES"),
-                         os.environ.get("PROGRAMFILES(X86)")):
-                candidate = Path(base, "Git", "bin", "bash.exe") if base else None
-                if candidate is not None and candidate.exists():
-                    found = str(candidate)
+        if os.name == "nt" and (not found or _wsl_stub(found)):
+            found = None
+            directories = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if entry]
+            directories += [os.path.join(base, "Git", "bin") for base in
+                            (os.environ.get("PROGRAMW6432"), os.environ.get("PROGRAMFILES"),
+                             os.environ.get("PROGRAMFILES(X86)")) if base]
+            for directory in directories:
+                candidate = os.path.join(directory, "bash.exe")
+                try:
+                    usable = not _wsl_stub(candidate) and os.path.isfile(candidate)
+                except (OSError, ValueError):
+                    continue
+                if usable:
+                    found = candidate
                     break
         _BASH_EXE = found or "bash"
     return _BASH_EXE
