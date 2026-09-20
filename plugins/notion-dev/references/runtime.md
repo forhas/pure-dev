@@ -94,7 +94,7 @@ if none exists, stop and request it rather than inventing requirements. A previo
 merged `finalize` recovery records unresolved evidence honestly but does not attempt
 to retroactively merge or bypass a gate.
 
-## Workers: prepare → attach → result_ready → consumed
+## Workers: prepare → attach → result_ready → consumed → accepted
 
 Before each actual dispatch, prepare a distinct worker with role `scout`, `plan`,
 `local-review`, `completeness`, or `record`. Supply the necessary input files (not a
@@ -150,6 +150,23 @@ waiting or doing independent useful work—not failure. Inspect the returned sta
 Consume only `result_ready`, then validate/triage the report under the caller's rubric.
 Consumption is idempotent. A malformed completed report takes the existing bounded
 replacement path, not a clean verdict. No unconditional PONG control probe is run.
+
+**Consuming a result is not accepting it, and the difference is enforced.** A report
+must be consumed before its contract can be judged, so `consumed` says only that the
+parent has read it — never that the worker is finished with. Record the judgement:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" accept --worker <worker>
+```
+
+`accept` and `end-worker --invalid-result` are the only two exits from `consumed`, and
+`prepare` refuses another worker in the same role until one of them has been taken. That
+gate fails closed on purpose: without it, a contract-invalid report that had to be
+consumed to be judged would leave its worker `consumed`, unterminated and possibly still
+running, while a replacement started alongside it — for `record`, two live workers with
+provider side effects and duplicate writes. A caller that forgets is stopped and told
+which exit to record, rather than silently permitted. `merge-gate` counts a consumed but
+unjudged worker as an outstanding outcome for the same reason.
 
 For completeness, the parent must also resolve each citation under the existing
 citation rules. Write a list of `{id, artifact, quote}` objects: a real evidence/log

@@ -196,6 +196,8 @@ class RuntimeTests(unittest.TestCase):
             self.rt.publish(key, result)
             self.rt.consume(key)
             self.assertFalse(self.rt.merge_gate(key, self.repo)["passed"], verdict)
+            # Rejected, so the retry goes through the documented invalid-result exit.
+            self.rt.end_worker(key, "verdict " + verdict, confirmed=True, invalid_result=True)
 
     def test_degraded_or_missing_claim_check_blocks(self):
         key = self.prepare()
@@ -251,6 +253,7 @@ class RuntimeTests(unittest.TestCase):
         self.run_git("add", "code.txt")
         self.run_git("commit", "-qm", "repair")
         self.assertFalse(self.rt.merge_gate(old, self.repo)["passed"])
+        self.rt.accept(old)   # the first result was valid when produced; it went stale, it was not rejected
         current = self.complete()
         self.assertTrue(self.rt.merge_gate(current, self.repo)["passed"])
 
@@ -261,6 +264,47 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.rt.summary()["delivery_lags"]), 1)
         with self.assertRaises(runtime.Invalid):
             self.rt.publish(key, {"report": "different"})
+
+    def test_consumed_but_unjudged_worker_cannot_be_replaced(self):
+        """Consuming is not accepting: the rejected worker may still be running."""
+        key = self.prepare("record")
+        self.rt.publish(key, {"report": "RECORD: missing mandatory keys"})
+        self.rt.consume(key)
+        self.assertFalse(self.rt.inspect(key)["accepted"])
+        with self.assertRaisesRegex(runtime.Invalid, "accepted or confirmed terminated"):
+            self.prepare("record")
+        # Either documented exit unblocks it, and only those two.
+        self.rt.end_worker(key, "contract invalid", confirmed=True, invalid_result=True)
+        self.assertTrue(self.prepare("record"))
+
+    def test_accepting_a_consumed_result_permits_the_next_same_role_worker(self):
+        key = self.prepare("local-review")
+        self.rt.publish(key, {"report": "VERDICT: CLEAN"})
+        self.rt.consume(key)
+        self.rt.accept(key)
+        self.assertTrue(self.rt.inspect(key)["accepted"])
+        self.assertTrue(self.prepare("local-review"))
+
+    def test_acceptance_requires_a_consumed_result_and_a_live_worker(self):
+        key = self.prepare("record")
+        with self.assertRaisesRegex(runtime.Invalid, "consume the result before accepting"):
+            self.rt.accept(key)
+        self.rt.publish(key, {"report": "RECORD: ok"})
+        self.rt.consume(key)
+        self.rt.end_worker(key, "host confirmed stop", confirmed=True, invalid_result=True)
+        with self.assertRaisesRegex(runtime.Invalid, "not acceptable"):
+            self.rt.accept(key)
+
+    def test_merge_gate_counts_a_consumed_but_unjudged_worker_as_outstanding(self):
+        other = self.prepare("record")
+        self.rt.publish(other, {"report": "RECORD: ok"})
+        self.rt.consume(other)
+        key = self.complete()
+        gate = self.rt.merge_gate(key, self.repo)
+        self.assertFalse(gate["passed"])
+        self.assertIn("other worker results or termination outcomes remain outstanding", gate["reasons"])
+        self.rt.accept(other)
+        self.assertTrue(self.rt.merge_gate(key, self.repo)["passed"])
 
     def test_invalid_consumed_record_still_requires_confirmed_termination(self):
         key = self.prepare("record")

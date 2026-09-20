@@ -280,14 +280,28 @@ class Runtime:
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
-            require(not any(w["role"] == role and w["status"] != "consumed" and not w["terminated"]
+            # CONSUMPTION IS NOT ACCEPTANCE, and conflating them reopened the exact race
+            # this protocol exists to close. A contract-invalid report must be consumed
+            # BEFORE it can be judged -- `end_worker(--invalid-result)` is itself gated on
+            # `status == "consumed"` -- so a predicate that reads `consumed` as "finished"
+            # lets a rejected worker be replaced while it may still be running, with no
+            # confirmed termination anywhere. For `record`, that is two live workers with
+            # provider side effects.
+            #
+            # So a worker is replaceable on exactly two positive signals, never on the
+            # absence of one: it was ACCEPTED (the parent judged its result valid) or it
+            # was CONFIRMED TERMINATED. Fail closed -- a caller that forgets is stopped
+            # here and told which of the two to record, rather than silently permitted.
+            require(not any(w["role"] == role and not w["terminated"] and not w.get("accepted")
                             for w in state["workers"].values()),
-                    "previous worker in this role must be consumed or confirmed terminated before replacement")
+                    "previous worker in this role must be accepted or confirmed terminated "
+                    "before replacement; consuming a result is not accepting it")
             key = uuid.uuid4().hex
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
                       "started": self.clock.stamp(), "timeout_seconds": timeout,
                       "files": snapshots, "revision": current, "result": None,
-                      "terminated": False, "requirements": state["requirements"]}
+                      "terminated": False, "accepted": False,
+                      "requirements": state["requirements"]}
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role)
         return {"worker": key, "state": str(self.path), "role": role,
@@ -336,6 +350,7 @@ class Runtime:
                 self.event(state, "worker_timed_out", worker=key)
             return {"worker": key, "status": worker["status"], "elapsed_seconds": duration,
                     "clock_uncertain": duration is None, "terminated": worker["terminated"],
+                    "accepted": worker.get("accepted", False),
                     "result_available": worker["result"] is not None}
 
     def wait(self, key, seconds=30):
@@ -359,6 +374,25 @@ class Runtime:
             if state["awaiting_worker"] == key:
                 state["awaiting_worker"] = None
         return {"worker": key, "status": "consumed", "result": worker["result"]}
+
+    def accept(self, key):
+        """Record that the parent judged this worker's result valid.
+
+        The counterpart to `end-worker --invalid-result`: together they are the only two
+        exits from `consumed`, and `prepare` refuses a same-role replacement until one of
+        them has been taken. Acceptance is deliberately a separate call from `consume`,
+        because the contract can only be judged after the result has been read.
+        """
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(not worker["terminated"],
+                    "a confirmed-terminated worker's result is not acceptable")
+            require(worker["status"] == "consumed",
+                    "consume the result before accepting it")
+            if not worker["accepted"]:
+                worker["accepted"] = True
+                self.event(state, "worker_result_accepted", worker=key, role=worker["role"])
+        return {"worker": key, "status": worker["status"], "accepted": True}
 
     def end_worker(self, key, reason, confirmed=False, host_failed=False, user_requested=False, invalid_result=False):
         require(bool(reason.strip()), "a termination reason is required")
@@ -459,8 +493,10 @@ class Runtime:
                     reasons.append(f"{field} must match the acceptance inventory ({total})")
             if result.get("blocking_findings") != []:
                 reasons.append("blocking claims/caveats unresolved or not checked")
+            # Same two positive signals as `prepare`: a consumed-but-unjudged worker is an
+            # outstanding outcome, not an accounted-for one.
             pending = [w["id"] for w in state["workers"].values()
-                       if w["id"] != key and w["status"] != "consumed" and not w["terminated"]]
+                       if w["id"] != key and not w["terminated"] and not w.get("accepted")]
             if pending:
                 reasons.append("other worker results or termination outcomes remain outstanding")
             self.event(state, "merge_gate_checked", passed=not reasons, worker=key, head=current["head"])
@@ -517,7 +553,7 @@ def main():
     commands.add_parser("ready")
     p = commands.add_parser("prepare"); p.add_argument("--role", required=True); p.add_argument("--file", action="append", default=[])
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
-    for name in ("attach", "publish", "inspect", "wait", "consume", "resolve-citations", "end-worker", "yield", "merge-gate"):
+    for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations", "end-worker", "yield", "merge-gate"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
         if name == "publish": p.add_argument("--result", required=True)
@@ -551,6 +587,7 @@ def main():
     elif name == "inspect": result = runtime.inspect(args.worker)
     elif name == "wait": result = runtime.wait(args.worker, args.seconds)
     elif name == "consume": result = runtime.consume(args.worker)
+    elif name == "accept": result = runtime.accept(args.worker)
     elif name == "resolve-citations": result = runtime.resolve_citations(args.worker, read_json(args.citations))
     elif name == "end-worker": result = runtime.end_worker(args.worker, args.reason, args.confirmed, args.host_failed, args.user_requested, args.invalid_result)
     elif name == "yield": result = runtime.yield_once(args.worker, args.marker, args.session)

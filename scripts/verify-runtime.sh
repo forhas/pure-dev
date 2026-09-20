@@ -23,6 +23,16 @@ assert_has "next-task does not advance while a worker is pending" "$ND/commands/
 assert_has "record worker publishes before final reply" "$ND/references/record.md" 'publish the complete `RECORD:` block'
 assert_has "protocol resolves citations before merge" "$PROTOCOL" 'resolve-citations --worker'
 assert_has "protocol tracks the entire requirement" "$PROTOCOL" 'reviewed_whole_ticket'
+
+# Consuming is not accepting. A contract-invalid report has to be consumed before it can
+# be judged, so `consumed` alone must never unlock a same-role replacement -- that left a
+# rejected worker unterminated and possibly still running beside its replacement, which
+# for `record` is duplicate provider writes.
+assert_has "protocol separates accepting a result from consuming it" "$PROTOCOL" '**Consuming a result is not accepting it, and the difference is enforced.**'
+assert_has "protocol names \`accept\` as an exit from consumed" "$PROTOCOL" 'accept --worker'
+assert_has "runtime.py gates replacement on acceptance or confirmed termination" "$ND/scripts/runtime.py" 'not w["terminated"] and not w.get("accepted")'
+assert_has "runtime.py refuses to accept a result that was never consumed" "$ND/scripts/runtime.py" 'consume the result before accepting it'
+assert_lacks "replacement no longer unlocks on \`consumed\` alone" "$ND/scripts/runtime.py" 'w["status"] != "consumed" and not w["terminated"]'
 assert_has "second pass returns a full current-head verdict set" "$REVIEW" 'complete current-head verdict set for every inventory ID'
 assert_has "verifier may honestly report ambiguity" "$REVIEW" '**The verifier writes `met`, `not-met`, or `unverified`**'
 assert_lacks "mandatory incompleteness cannot pass by labeling" "$REVIEW" 'is exactly what this gate exists to produce rather than prevent'
