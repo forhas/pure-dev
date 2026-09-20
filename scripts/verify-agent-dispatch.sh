@@ -53,8 +53,13 @@ for S in plugins/*/skills/plan-review/SKILL.md; do
 
   echo "== $n plan-review dispatch =="
 
-  assert_present "$n: the dispatch is one \`general-purpose\` agent, synchronously" \
-    "$S" 1 "$L" 'Dispatch \*\*one\*\* `general-purpose` agent, \*\*synchronously\*\*'
+  if [ "$n" = notion-dev ]; then
+    assert_has "$n: dispatch uses the runtime protocol" "$S" 'references/runtime.md'
+    assert_has "$n: dispatch consumes a completed result" "$S" 'prepare/attach/wait/consume'
+  else
+    assert_present "$n: the dispatch is one \`general-purpose\` agent, synchronously" \
+      "$S" 1 "$L" 'Dispatch \*\*one\*\* `general-purpose` agent, \*\*synchronously\*\*'
+  fi
 
   assert_present "$n: invoking the skill is itself the request for that agent" \
     "$S" 1 "$L" '\*\*Invoking this skill \*is\* the request for that agent\.\*\*'

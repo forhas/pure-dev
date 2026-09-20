@@ -91,5 +91,13 @@ assert_has  "hooks.json: the command is invoked through \`bash\` so Windows does
   "$ND/hooks/hooks.json" '"command": "bash '
 rm -f "$GUARDCODE"
 
+# Runtime/telemetry use the same interpreter contract; behavioral fixtures are
+# discovered by the existing Windows job through verify-runtime.sh.
+for helper in runtime telemetry; do
+  assert_has "$helper forces UTF-8 and LF output" "$ND/scripts/$helper.py" 'stream.reconfigure(encoding="utf-8", newline="\n")'
+done
+assert_has "runtime protocol uses the configured interpreter" "$ND/references/runtime.md" '`knowledge.python` interpreter'
+assert_has "runtime harness supports Windows interpreter selection" scripts/verify-runtime.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
+
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

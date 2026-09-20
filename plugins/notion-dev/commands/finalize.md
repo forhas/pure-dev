@@ -31,6 +31,8 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 
 ## Phase 1 — Resolve
 
+**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/runtime.md`. When Phase 1 resolves the ticket, resume its recorded `runtime_state` or initialize a new invocation's `RUNTIME_STATE`; pass it to reviewing/recording skills and record phase transitions. For an open PR, establish full-source requirements/readiness before Phase 2. On the already-`MERGED` recovery path, record missing historical evidence honestly without trying to apply a retroactive merge gate. Run configured verification through the measured runtime runner. A protocol-authorized asynchronous yield is unfinished work, not a completion report.
+
 Before anything else — record `RUN_START` = `date -u +%FT%TZ`. (`REPO_ROOT` was already recorded at the preconditions gate, before the first config read.)
 
 These anchors, taken before any worktree resolution or `cd` below, keep Phase 4's cleanup and the ledger write pinned to the primary checkout even after this command `cd`s into a worktree (mirrors ticket.md's pattern).
@@ -227,6 +229,8 @@ Metrics come from `REVIEW_REPORT` (review rounds, fix commits) and `git show --s
 ---
 
 ## Phase 5 — Report
+
+After workspace closeout, record runtime stage `complete` and collect `summary`; on stops use `stopped`. Include the evidence path and measured timing/worker/verification summary. Raw-token telemetry is an optional read-only snapshot with an explicit last-observed-request cutoff; absent logs mean unknown usage.
 
 **Epic doc — record the resolution.** Runs after the draft report is composed and before the closeout workspace pass below, so the closeout can see the commit it makes. Compose the full draft report (the summary list below) first. Then, when `EPIC_REPORT` is anything but `EPIC-UPDATE: none`, invoke the `notion-dev:epic-doc` skill, operation `record(<id>)`, from `$REPO_ROOT`, passing as context: `REPO_ROOT`, `LOCK_HELD`, `<baseRefName>` and `<merge-commit>` (the same two Phase 4's hook assertions used), `EPIC_REPORT` (3.2), `REVIEW_REPORT` and `COMPLETENESS_REPORT` (Phase 2, or the recovery in Phase 1 step 2 — absent when neither yielded anything), the completion pass's `CLOSEOUT:` block from Phase 2's pre-merge check as `COMPLETION_CLOSEOUT` (on the `MERGED` recovery path, the block Phase 1 step 2 recorded from the completion pass Phase 3 ran at its start), the run's non-interactive decisions as `DECISIONS`, and the draft report as `DRAFT_REPORT`. Record its output block as `EPIC_DOC_REPORT`. It rewrites the epic's brief and commits it straight to `<baseRefName>` — the same slot and the same three assertions as the post-merge hooks. When the block reads `EPIC-DOC: failed`, record `partial:epic-doc` per `notion-dev:issue-log`; a local commit its `CAUSE:` names is a tail the closeout below forces into `blocked:` with that cause. Skip silently when the ticket had no epic. On the `MERGED` recovery path this step still runs: `epic-update` returned `already-recorded`, but the brief may never have been written if the original run died before reaching this step, and `record` on an unchanged brief is a no-op commit-wise (nothing to add → no commit, `EPIC-DOC: updated` with `THREADS: +0 -0`).
 

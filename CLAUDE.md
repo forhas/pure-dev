@@ -1,8 +1,9 @@
 # pure-dev
 
 This repository ships two Claude Code plugins — `plugins/quick-dev` and `plugins/notion-dev` —
-that are **markdown instruction files, not code**. Nothing here executes. That shapes everything
-below.
+primarily Markdown instructions, plus standard-library Python helpers and shell hooks.
+Test both the instruction contracts and the executable mechanisms; textual assertions
+alone do not validate agent lifecycle behavior.
 
 ## The test suite is `scripts/verify-*.sh`
 

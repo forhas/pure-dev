@@ -1,0 +1,8 @@
+{
+  "source": "STO-153 raw session 626aba5c-560d-4d43-a246-617561c1667f, 2026-09-20 UTC; sanitized timing fixture",
+  "plan_cancel_after_seconds": 180,
+  "probe_result_after_seconds": 1.854,
+  "completeness_result_after_seconds": 344.552,
+  "completeness_delivery_after_seconds": 1174.054,
+  "ticket": "Requirements\nSettle the HMAC question with Talles first, and only then decide the shape here.\nAcceptance Criteria\nThe endpoint refuses traffic beyond a stated bound rather than queueing it indefinitely.\nA refusal uses the existing error contract and does not introduce a new HTTP status.\nWithdrawal-path latency under sustained status traffic is stated, not assumed.\nWhether the limit is in-app or at the edge is recorded with its reasoning.\n"
+}

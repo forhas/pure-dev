@@ -233,7 +233,7 @@ assert_order "Phase 8 asks, locks, leaves the worktree, then dispatches" \
   "filing gate"  'Resolve the interactive filing gate before the lock is taken' \
   "lock take"    'knowledge\.py. lock take .*--section record' \
   "cd REPO_ROOT" 'Leave the worktree: .cd \$REPO_ROOT' \
-  "dispatch"     'Dispatch one .general-purpose. agent, synchronously'
+  "dispatch"     'Dispatch one .general-purpose. agent using the runtime protocol'
 
 assert_present "the dispatch names \`\${CLAUDE_PLUGIN_ROOT}/references/record.md\` as the agent's instructions" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
@@ -283,11 +283,11 @@ echo "== ticket.md: the dispatch's return value is what Phase 10 actually consum
 # (A) "wait for it" wording alone is satisfiable by accident; a demonstrated
 # data dependency on the dispatch's return value is the strongest proxy prose
 # can express for "the call already returned". assert_order proves the
-# dispatch instruction (asserted `synchronously` above) precedes the line
+# dispatch instruction (runtime protocol asserted above) precedes the line
 # that reads a named field out of the `RECORD:` block the dispatch returns.
-assert_order "ticket.md: the synchronous dispatch precedes the epic-doc line's read of RECORD_REPORT's \`EPIC-DOC-RECORD\` field" \
+assert_order "ticket.md: the runtime dispatch precedes the epic-doc line's read of RECORD_REPORT's \`EPIC-DOC-RECORD\` field" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
-  "dispatch"           'Dispatch one .general-purpose. agent, synchronously' \
+  "dispatch"           'Dispatch one .general-purpose. agent using the runtime protocol' \
   "epic-doc field read" 'RECORD_REPORT.*EPIC-DOC-RECORD.*field verbatim'
 
 # ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ echo "== ticket.md: the dispatch prompt supplies everything references/record.md
 # must appear in the dispatch prompt's list, unless it is declared below as a
 # name the unit produces or reads out of another block rather than receiving.
 # A new payload name added to `record.md` is caught by default.
-DISPATCH_LINE=$(find_line "$TICKET" 1 "$(total_lines "$TICKET")" 'Dispatch one .general-purpose. agent, synchronously')
+DISPATCH_LINE=$(find_line "$TICKET" 1 "$(total_lines "$TICKET")" 'Dispatch one .general-purpose. agent using the runtime protocol')
 if [ -z "$DISPATCH_LINE" ]; then
   bad "ticket.md: found the dispatch sentence, to check its payload list against \`references/record.md\`"
 else
