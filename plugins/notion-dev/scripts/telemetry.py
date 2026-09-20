@@ -20,21 +20,33 @@ def analyze(path, stages=()):
     raw = Path(path).read_bytes()
     records = []
     incomplete_tail = False
-    lines = raw.decode("utf-8").splitlines()
+    # Split on the RAW BYTES before decoding anything. The tolerance below is for a live
+    # writer caught mid-record, and a writer can equally be caught mid-CHARACTER: decoding
+    # the whole buffer would raise UnicodeDecodeError on a truncated multibyte sequence
+    # before the tolerance could run, so a snapshot of any transcript containing non-ASCII
+    # text failed outright instead of returning the complete records it did have.
+    #
+    # The delimiter is also the only thing that distinguishes a partial write from a
+    # complete corrupt record -- `splitlines()` erases it, landing `{bad}\n` and `{bad`
+    # alike at the end. A terminated record is COMPLETE, so a malformed one is corruption
+    # and must refuse totals rather than silently lowering them.
+    complete, delimiter, tail = raw.rpartition(b"\n")
+    lines = (complete + delimiter).decode("utf-8").splitlines() if delimiter else []
     for index, line in enumerate(lines):
         if not line.strip():
             continue
         try:
             records.append(json.loads(line))
         except ValueError:
-            # The tolerance is for a live writer caught mid-record, and the raw bytes are
-            # the only thing that distinguishes one. `splitlines()` erases the difference:
-            # `{bad}\n` and `{bad` both land last. A newline-terminated final record is a
-            # COMPLETE record that is simply corrupt, so dropping it would return lower
-            # totals and report success -- the one failure a usage accounting module may
-            # not have. Only an unterminated tail is a partial write.
-            if index != len(lines) - 1 or raw.endswith(b"\n"):
-                raise ValueError(f"invalid JSONL at line {index + 1}; refusing partial totals")
+            raise ValueError(f"invalid JSONL at line {index + 1}; refusing partial totals")
+    # An unterminated tail, decoded on its own. A writer that has finished the record but
+    # not the newline still parses and counts; only one that cannot be read is tolerated.
+    if tail.strip():
+        try:
+            # UnicodeDecodeError subclasses ValueError, so one clause covers both a tail
+            # truncated mid-character and one truncated mid-record.
+            records.append(json.loads(tail.decode("utf-8")))
+        except ValueError:
             incomplete_tail = True
     groups = defaultdict(list)
     tools = {}

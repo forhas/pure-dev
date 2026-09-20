@@ -391,6 +391,18 @@ class TelemetryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "refusing partial totals"):
             telemetry.analyze(self.path)
 
+    def test_partial_multibyte_tail_still_reports_the_complete_records(self):
+        self.path.write_bytes(json.dumps(self.record()).encode("utf-8") + b'\n{"text":"\xe2\x82')
+        result = telemetry.analyze(self.path)
+        self.assertEqual(result["usage"]["requests"], 1)
+        self.assertTrue(result["incomplete_tail"])
+
+    def test_unterminated_but_valid_tail_is_counted_not_dropped(self):
+        self.save([self.record()], json.dumps(self.record("message-2")))
+        result = telemetry.analyze(self.path)
+        self.assertEqual(result["usage"]["requests"], 2)
+        self.assertFalse(result["incomplete_tail"])
+
     def test_disagreeing_inputs_fail_instead_of_inventing_totals(self):
         changed = copy.deepcopy(self.record())
         changed["message"]["usage"]["input_tokens"] = 3
