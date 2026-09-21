@@ -7,7 +7,7 @@ permission or availability gates. Do not send skill bodies to this probe or to c
 For `ticket`, `next-task`, and `init`, require these exact live skill names:
 `superpowers:writing-plans`, `superpowers:subagent-driven-development`,
 `superpowers:receiving-code-review`, and `feature-dev:feature-dev`.
-`finalize` uses mode `review`, requiring only `superpowers:receiving-code-review`.
+`finalize` and `new-info --pr` use mode `review`, requiring only `superpowers:receiving-code-review`.
 An installed plugin or files in a plugin cache do not prove the host loaded its skills.
 If the host cannot expose availability, stop with that uncertainty; do not guess names.
 
