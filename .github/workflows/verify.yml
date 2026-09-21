@@ -68,6 +68,76 @@ jobs:
           fi
           echo "All ${#scripts[@]} harness(es) passed."
 
+  # The EXECUTION half of the Python floor (issue #69). scripts/verify-python-floor.sh
+  # proves every shipped script PARSES at the floor the README declares, on every runner.
+  # Grammar is not execution: `str.removeprefix`, `functools.cache`, `math.lcm`,
+  # `itertools.pairwise` and `zoneinfo` are all grammar-valid on 3.8 and fatal at runtime,
+  # and no amount of ast.parse sees them. Only a real 3.8 interpreter does, which is what
+  # this job is.
+  #
+  # It targets knowledge.py first among equals: the README's floor is stated as
+  # "**Python 3.8+** — **required** for `scripts/knowledge.py`", so a floor job that
+  # skipped it would not test the claim actually made. That is why iwe is installed here
+  # as well — verify-knowledge-py.sh shells out to it.
+  #
+  # Linux only, deliberately. actions/python-versions publishes a win32 build for 3.8.0
+  # through 3.8.10 and nothing newer, so a windows-latest cell would pin 3.8.10 (2021) and
+  # report on an interpreter four years of fixes behind the 3.8.18 used here. The
+  # platform-specific code path is `msvcrt.locking` in runtime.py, whose API is unchanged
+  # across every 3.8+ release, and the verify-windows job above already exercises it on the
+  # runner's own Python. The cross-product would cost a sixth runner minute per push to
+  # test a combination neither axis leaves uncovered.
+  verify-python-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: Install iwe
+        run: npm i -g @iwe-org/iwe@0.19.1 && iwe --version
+
+      - name: Run the Python suite on the floor interpreter
+        shell: bash
+        env:
+          KNOWLEDGE_PY: python
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+
+          # A job that silently ran 3.12 would be green and worthless -- the exact
+          # silent-pass this repo refuses elsewhere. Assert the interpreter before
+          # trusting anything it reports.
+          python - <<'CHECK'
+          import sys
+          print("interpreter:", sys.version.replace("\n", " "))
+          if sys.version_info[:2] != (3, 8):
+              sys.exit("FAIL: expected a 3.8 interpreter, got %d.%d" % sys.version_info[:2])
+          CHECK
+
+          # Under 3.8 itself, ast.parse IS the 3.8 grammar -- no feature_version
+          # approximation. This is the authoritative syntax check the harness's smoke
+          # filter cannot be: it rejects `except*`, `X | Y` annotations and every other
+          # construct 3.8 genuinely cannot parse.
+          python - <<'SYNTAX'
+          import ast, pathlib, sys
+          bad = 0
+          targets = sorted(pathlib.Path("plugins").rglob("*.py")) + \
+                    sorted(pathlib.Path("scripts/tests").glob("*.py"))
+          for p in (t for t in targets if "__pycache__" not in t.parts):
+              try:
+                  ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+              except SyntaxError as e:
+                  print("FAIL %s: %s" % (p, e)); bad += 1
+          print("syntax-checked %d file(s) on this interpreter" % len(targets))
+          sys.exit(1 if bad else 0)
+          SYNTAX
+
+          python -m unittest discover -s scripts/tests -p 'test_*.py'
+          bash scripts/verify-knowledge-py.sh
+
   # The Windows leg of CLAUDE.md's "Both platforms, always": every shipped plugin instruction
   # must work unchanged from WSL 2 Ubuntu and from a Windows-native Claude Code session, which
   # runs through Git Bash. This job is what makes that a checked claim rather than a stated one.
