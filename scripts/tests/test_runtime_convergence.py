@@ -202,6 +202,32 @@ class ConvergenceTests(unittest.TestCase):
         with self.assertRaisesRegex(runtime.Invalid, "delta.*budget"):
             self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=previous)
 
+    def test_terminated_delta_attempt_does_not_strand_the_second(self):
+        # The budget counts failed attempts, so a dead first attempt must still leave a
+        # usable second one. It did not: the spent worker stayed "the latest completeness
+        # result", so the accepted baseline was rejected as stale and the dead worker was
+        # rejected as unaccepted -- no legal value for --previous existed.
+        previous = self.baseline()
+        self.change()
+        spent, _, _ = self.delta(previous)
+        self.rt.end_worker(spent, "host died", confirmed=True, host_failed=True)
+        with self.assertRaisesRegex(runtime.Invalid, "accepted"):
+            self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=spent)
+        second, result, _ = self.delta(previous)
+        self.assertTrue(self.finish(second, result)["passed"])
+        self.assertEqual(self.rt.summary()["delta_attempts"], 2)
+        with self.assertRaisesRegex(runtime.Invalid, "delta.*budget"):
+            self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=second)
+
+    def test_a_live_delta_attempt_still_blocks_a_new_baseline(self):
+        # The skip above is scoped to `terminated` precisely so this stays true: an
+        # in-flight review is still the latest result and cannot be stepped around.
+        previous = self.baseline()
+        self.change()
+        self.delta(previous)
+        with self.assertRaisesRegex(runtime.Invalid, "accepted"):
+            self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=previous)
+
     def test_whole_branch_reviewer_blocks_merge_until_accounted_for(self):
         baseline = self.baseline()
         reviewer = self.prepare("branch-review")

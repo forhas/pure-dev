@@ -345,7 +345,15 @@ class Runtime:
     def delta_manifest(self, state, previous, current, snapshots):
         baseline = self.worker(state, previous)
         reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
-        require(reviews and reviews[-1]["id"] == previous and baseline.get("accepted")
+        # A CONFIRMED-TERMINATED attempt is spent, not a baseline. Reading it as "the latest
+        # completeness result" strands the second attempt the budget below still grants: after the
+        # documented `end-worker --confirmed` recovery, naming the last accepted worker failed this
+        # predicate while naming the dead one failed `accepted`, so the two-attempt budget only ever
+        # worked when attempt one succeeded. Only `terminated` is skipped -- a running or
+        # result_ready worker is still the latest and still blocks a delta, so this is not a way
+        # past an in-flight review, and the budget below counts every attempt including the dead one.
+        live = [w for w in reviews if not w["terminated"]]
+        require(live and live[-1]["id"] == previous and baseline.get("accepted")
                 and baseline["status"] == "consumed", "delta requires the latest accepted completeness result")
         require(sum(bool(w.get("previous")) for w in reviews) < 2, "delta attempt budget exhausted")
         require(baseline["requirements"] == state["requirements"],
