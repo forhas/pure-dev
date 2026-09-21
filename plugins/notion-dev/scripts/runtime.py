@@ -979,7 +979,19 @@ class Runtime:
         return {"passed": not reasons, "reasons": reasons, "head": current["head"]}
 
     @staticmethod
-    def receipt_applicable(receipt, revision_now, signature):
+    def declared_inputs(paths):
+        """Hash the non-Git inputs a caller says its command reads."""
+        records = []
+        for item in paths or ():
+            source = Path(item).resolve()
+            require(source.is_file(),
+                    "declared verification input must be an existing file: " + str(source))
+            records.append({"path": str(source), "sha256": digest(source)})
+        records.sort(key=lambda record: record["path"])
+        return records
+
+    @staticmethod
+    def receipt_applicable(receipt, revision_now, signature, declared=None):
         """Why a stored receipt may or may not stand in for running the command again.
 
         Byte equality of a log establishes that the receipt is intact, never that it
@@ -987,8 +999,31 @@ class Runtime:
         dirty and untracked content, and the toolchain signature are both part of the
         answer. A receipt whose command modified the tree is not reusable at all: it
         never described a state that survived its own run.
+
+        **What the fingerprint and the signature cover is the whole warranty, and it is
+        narrower than "the command's inputs".** `revision` builds its fingerprint with
+        `--exclude-standard`, so ignored files are outside it; the signature is four
+        toolchain facts and no environment values. A `--shell-command` is arbitrary and
+        may read either. So a caller declares the rest with `--depends`, exactly as a
+        citation declares `depends_on`, and those are hashed into the receipt and
+        rechecked here. A command with an input that CANNOT be declared — an env value,
+        a clock, a network service — must simply not be given `--reuse`: omitting the
+        flag always runs the command, and that is the honest answer for that case.
         """
         reasons = []
+        recorded = receipt.get("inputs", [])
+        for entry in recorded:
+            source = Path(entry["path"])
+            if not source.is_file():
+                reasons.append("declared input is missing: " + entry["path"])
+            elif digest(source) != entry["sha256"]:
+                reasons.append("declared input changed: " + entry["path"])
+        # Declaring MORE than the receipt did is not a match: the extra input was never
+        # covered when that receipt was earned, so reusing it would answer a narrower
+        # question than the caller asked.
+        if declared is not None and \
+                [e["path"] for e in declared] != [e["path"] for e in recorded]:
+            reasons.append("this call declares a different input set than the receipt")
         # The fingerprint covers tracked and untracked content, but `revision` builds it
         # with `--exclude-standard`, so IGNORED files are invisible to it — and two
         # worktrees at the same commit routinely differ in exactly those: local config,
@@ -1012,6 +1047,22 @@ class Runtime:
             reasons.append("verification log changed after the run")
         return reasons
 
+    @classmethod
+    def receipt_reusable(cls, receipt, revision_now, signature, declared=None):
+        """Applicable AND passing. One predicate, so the index cannot contradict the path.
+
+        `applicable` and `reusable` are different questions and the index reports both:
+        a failed receipt is perfectly applicable evidence — it says this command fails on
+        this tree — it is simply not reusable as a pass. Collapsing them would lose that;
+        letting the reuse path apply its own extra condition, which is what it did, let
+        the index advertise a failed receipt as reusable while `verify --reuse` correctly
+        skipped it.
+        """
+        reasons = list(cls.receipt_applicable(receipt, revision_now, signature, declared))
+        if receipt.get("exit_code") != 0:
+            reasons.append("the command failed when this receipt was produced")
+        return reasons
+
     def verifications(self, worktree=None):
         """Index of every command receipt, with why each is or is not reusable now."""
         current = revision(worktree) if worktree else None
@@ -1021,6 +1072,8 @@ class Runtime:
             for receipt in state.get("verifications", []):
                 reasons = self.receipt_applicable(receipt, current, signature) if current else \
                     ["applicability needs a worktree"]
+                reuse_reasons = self.receipt_reusable(receipt, current, signature) if current else \
+                    list(reasons)
                 # `{**a, **b}`, not `a | b`: the merge operator is 3.9 and this plugin
                 # supports 3.8. verify-python-floor.sh is a smoke filter that does not
                 # see this form, so the floor job is what would have caught it.
@@ -1030,23 +1083,26 @@ class Runtime:
                               "revision": receipt["revision"]["fingerprint"],
                               "environment": receipt.get("environment", {}).get("signature"),
                               "started": receipt.get("started", {}).get("utc"),
-                              "applicable": not reasons, "reasons": reasons})
+                              "declared_inputs": [e["path"] for e in receipt.get("inputs", [])],
+                              "applicable": not reasons, "reasons": reasons,
+                              "reusable": not reuse_reasons, "reuse_reasons": reuse_reasons})
             self.event(state, "verification_indexed", count=len(items))
         return {"verifications": items, "count": len(items),
                 "environment": signature,
                 "coverage": "receipts recorded by this runtime only; a command run outside it "
                             "leaves no receipt and is unknown, never passed"}
 
-    def verify(self, worktree, command, reuse=False):
+    def verify(self, worktree, command, reuse=False, depends=()):
         before = revision(worktree)
         signature = environment_signature()
+        declared = self.declared_inputs(depends)
         command_hash = digest_bytes(command.encode("utf-8"))
         if reuse:
             with self.transaction() as state:
                 for receipt in reversed(state.get("verifications", [])):
-                    if receipt["command_sha256"] != command_hash or receipt["exit_code"] != 0:
+                    if receipt["command_sha256"] != command_hash:
                         continue
-                    if self.receipt_applicable(receipt, before, signature):
+                    if self.receipt_reusable(receipt, before, signature, declared):
                         continue
                     self.event(state, "verification_reused", verification=receipt["verification"],
                                command_sha256=command_hash)
@@ -1064,7 +1120,7 @@ class Runtime:
                    "log_sha256": digest(log), "log_bytes": log.stat().st_size,
                    "duration_seconds": elapsed(started, self.clock.stamp()),
                    "command_sha256": command_hash, "revision": before,
-                   "environment": signature, "started": started,
+                   "environment": signature, "started": started, "inputs": declared,
                    "changed_during_verification": revision(worktree) != before}
         with self.transaction() as state:
             state.setdefault("verifications", []).append(receipt)
@@ -1223,6 +1279,9 @@ def main():
     p = commands.add_parser("verify"); p.add_argument("--worktree", required=True); p.add_argument("--shell-command", required=True)
     p.add_argument("--reuse", action="store_true",
                    help="return an applicable existing receipt instead of rerunning; never caches a stale one")
+    p.add_argument("--depends", action="append", default=[],
+                   help="a non-Git input this command reads (ignored file, generated artifact); "
+                        "hashed into the receipt and rechecked before any reuse. Repeatable.")
     p = commands.add_parser("verifications"); p.add_argument("--worktree")
     p = commands.add_parser("record-op")
     p.add_argument("--operation", required=True); p.add_argument("--target", required=True)
@@ -1258,7 +1317,7 @@ def main():
     elif name == "end-worker": result = runtime.end_worker(args.worker, args.reason, args.confirmed, args.host_failed, args.user_requested, args.invalid_result)
     elif name == "yield": result = runtime.yield_once(args.worker, args.marker, args.session)
     elif name == "merge-gate": result = runtime.merge_gate(args.worker, args.worktree)
-    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command, args.reuse)
+    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command, args.reuse, args.depends)
     elif name == "verifications": result = runtime.verifications(args.worktree)
     elif name == "record-op":
         result = runtime.record_op(args.operation, args.target, args.outcome, args.provider_id, args.digest)

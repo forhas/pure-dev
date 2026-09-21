@@ -61,16 +61,38 @@ on an unrelated variable.
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" verifications --worktree <absolute-worktree>
 ```
 
-Each entry carries `applicable` and, when false, the reasons: the revision moved, the
-toolchain signature differs, the log is missing or was edited after the run, or the
-command modified the tree it verified. Read this index before rerunning a command.
+Each entry carries **two** verdicts, because they answer different questions.
+`applicable` says the receipt is intact and still describes this tree; when false, the
+reasons are the revision moved, the worktree differs, a declared input changed or is
+missing, the toolchain signature differs, the log is missing or was edited after the
+run, or the command modified the tree it verified. `reusable` says it is applicable
+**and** it passed — a failed receipt is perfectly applicable evidence that this command
+fails here, and is never a pass to stand in for one. Read this index before rerunning a
+command.
 
-`verify --reuse` returns an applicable passing receipt instead of running again, and
-records a `verification_reused` event. It reuses nothing else: a failure, a receipt
-whose log changed, a moved revision, a changed signature and a tree-modifying command
-are all rerun. Reuse is a stated choice at the call site, never a silent cache — omit
-the flag and the command always runs. A reviewer may still run its own independent
-probes when the evidence or the risk warrants it; a receipt is a floor, not a ceiling.
+`verify --reuse` returns a reusable receipt instead of running again, and records a
+`verification_reused` event. It uses exactly the index's `reusable` predicate, so the
+two can never disagree. Reuse is a stated choice at the call site, never a silent cache
+— omit the flag and the command always runs. A reviewer may still run its own
+independent probes when the evidence or the risk warrants it; a receipt is a floor, not
+a ceiling.
+
+**What reuse warrants is narrower than "the command's inputs", and the gap is yours to
+declare.** The fingerprint is built with `--exclude-standard`, so **ignored** files are
+outside it, and the signature is four toolchain facts with no environment values. A
+`--shell-command` is arbitrary and may read either. So name the rest:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" verify --worktree <absolute-worktree> --shell-command '<configured command>' --reuse --depends <ignored-config> --depends <generated-artifact>
+```
+
+Declared inputs are hashed into the receipt and rechecked before any reuse, exactly as a
+citation's `depends_on` is. The declared **set** must match too: a call that declares an
+input the receipt did not is asking a wider question than that receipt answered, and is
+rerun. A command with an input that cannot be declared — an environment value, a clock,
+a network service — must simply not be given `--reuse`. Omitting the flag always runs
+the command, and that is the honest answer for that case rather than a warranty this
+runtime cannot give.
 
 ### State-lock recovery
 

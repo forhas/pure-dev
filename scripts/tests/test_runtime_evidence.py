@@ -356,6 +356,57 @@ class VerificationIndexTests(unittest.TestCase):
         # And the original worktree still reuses its own receipt.
         self.assertTrue(self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True)["reused"])
 
+    def test_a_changed_ignored_input_invalidates_a_receipt_the_fingerprint_cannot_see(self):
+        """`revision` excludes ignored files, so the fingerprint alone never notices."""
+        (self.repo / ".gitignore").write_text("ignored-config\n", encoding="utf-8")
+        self.run_git("add", ".gitignore")
+        self.run_git("commit", "-qm", "ignore the config")
+        config = self.repo / "ignored-config"
+        config.write_text("pass\n", encoding="utf-8")
+        command = 'test "$(cat ignored-config)" = pass'
+        first = self.rt.verify(self.repo, command, reuse=True, depends=[config])
+        self.assertEqual(first["exit_code"], 0)
+        before = runtime.revision(self.repo)["fingerprint"]
+        config.write_text("fail\n", encoding="utf-8")
+        self.assertEqual(runtime.revision(self.repo)["fingerprint"], before)
+        rerun = self.rt.verify(self.repo, command, reuse=True, depends=[config])
+        self.assertFalse(rerun["reused"])
+        self.assertEqual(rerun["exit_code"], 1)
+        self.assertIn("declared input changed: " + str(config),
+                      self.rt.verifications(self.repo)["verifications"][0]["reasons"])
+
+    def test_reuse_requires_the_same_declared_input_set(self):
+        extra = self.root / "extra.txt"
+        extra.write_text("x\n", encoding="utf-8")
+        undeclared = self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True)
+        self.assertFalse(undeclared["reused"])
+        # A caller that now declares an input must not be served a receipt earned
+        # without it: that receipt answered a narrower question.
+        widened = self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True, depends=[extra])
+        self.assertFalse(widened["reused"])
+        self.assertTrue(self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True,
+                                       depends=[extra])["reused"])
+        # Dropping the declaration goes back to the receipt that answered THAT question,
+        # never to the widened one — matching is by set, not by recency.
+        again = self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True)
+        self.assertTrue(again["reused"])
+        self.assertEqual(again["verification"], undeclared["verification"])
+        self.assertNotEqual(again["verification"], widened["verification"])
+        with self.assertRaisesRegex(runtime.Invalid, "declared verification input"):
+            self.rt.verify(self.repo, "printf 'ok\\n'", depends=[self.root / "absent"])
+
+    def test_the_index_never_advertises_a_failed_receipt_as_reusable(self):
+        """`applicable` and `reusable` are different questions; the index reports both."""
+        failed = self.rt.verify(self.repo, "exit 3")
+        entry = self.rt.verifications(self.repo)["verifications"][0]
+        self.assertEqual(entry["verification"], failed["verification"])
+        self.assertTrue(entry["applicable"])      # intact, current evidence of a failure
+        self.assertEqual(entry["reasons"], [])
+        self.assertFalse(entry["reusable"])       # ...but never a pass to stand in for
+        self.assertIn("the command failed when this receipt was produced",
+                      entry["reuse_reasons"])
+        self.assertFalse(self.rt.verify(self.repo, "exit 3", reuse=True)["reused"])
+
     def test_a_command_that_modified_the_tree_is_not_a_reusable_receipt(self):
         receipt = self.rt.verify(self.repo, "printf 'x\\n' >> code.txt")
         self.assertTrue(receipt["changed_during_verification"])

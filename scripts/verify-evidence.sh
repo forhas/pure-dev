@@ -95,9 +95,21 @@ assert_has "a changed toolchain signature is not reusable" "$RT" 'toolchain sign
 # durable state AND invalidate every receipt on an unrelated variable.
 assert_has "the environment signature is four named toolchain facts" "$RT" '"os_name": os.name'
 assert_lacks "the environment itself is never hashed into state" "$RT" 'dict(os.environ)'
-RTL=$(total_lines "$RT")
-assert_present "reuse is refused for a nonzero exit as well as an inapplicable receipt" \
-  "$RT" 1 "$RTL" 'receipt\["exit_code"\] != 0'
+# `applicable` and `reusable` are different questions, and letting the reuse path carry
+# its own extra condition is how the index advertised a failed receipt as reusable while
+# `verify --reuse` correctly skipped it. One predicate, used by both.
+assert_has "a failed receipt is applicable evidence but never reusable" \
+  "$RT" 'the command failed when this receipt was produced'
+assert_has "one predicate decides reuse, so the index cannot contradict the path" \
+  "$RT" 'def receipt_reusable'
+assert_has "the index reports a \`reusable\` verdict of its own" "$RT" '"reusable": not reuse_reasons'
+# The fingerprint excludes ignored files and the signature carries no environment values,
+# so a command reading either has inputs no receipt can see unless the caller says so.
+assert_has "a caller declares the non-Git inputs its command reads" "$RT" 'def declared_inputs'
+assert_has "a changed declared input invalidates the receipt" "$RT" 'declared input changed: '
+assert_has "a missing declared input invalidates the receipt" "$RT" 'declared input is missing: '
+assert_has "reuse requires the same declared input set, not a subset" \
+  "$RT" 'this call declares a different input set than the receipt'
 
 echo "== the publication probe can fail =="
 assert_has "probe distinguishes a truncated delivery from a mangled one" "$RT" '"truncated" if expected.startswith(received)'
@@ -127,7 +139,10 @@ assert_has "protocol documents the \`depends_on\` obligation" "$PROTOCOL" '`depe
 assert_has "protocol documents the \`evidence\` index command" "$PROTOCOL" 'evidence --worker <worker>'
 assert_has "protocol documents paged \`section\` retrieval" "$PROTOCOL" 'section --worker <worker> --name changed_paths'
 assert_has "protocol documents the \`verifications\` index" "$PROTOCOL" 'verifications --worktree <absolute-worktree>'
-assert_has "protocol documents \`verify --reuse\`" "$PROTOCOL" '`verify --reuse` returns an applicable passing receipt'
+assert_has "protocol documents \`verify --reuse\`" "$PROTOCOL" '`verify --reuse` returns a reusable receipt'
+assert_has "protocol documents \`--depends\` for non-Git inputs" "$PROTOCOL" '--depends <ignored-config>'
+assert_has "protocol says an undeclarable input means no reuse at all" \
+  "$PROTOCOL" 'must simply not be given `--reuse`'
 assert_has "protocol documents the \`probe\` command" "$PROTOCOL" 'probe --worker <worker> --expect <payload-file>'
 assert_has "protocol documents \`record-op\` outcomes" "$PROTOCOL" 'record-op --operation <stable-logical-id>'
 assert_has "protocol documents the \`correction-needed\` reason" "$PROTOCOL" 'correction-needed --worktree <worktree> --reason'
