@@ -469,7 +469,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" prob
 The finding is `delivered`, `truncated`, `mangled` or `missing`, with both hashes and
 the delivery lag; exit 1 for anything but `delivered`. Use a payload with non-ASCII
 text and enough length to cross the host's own limits — a short ASCII round trip proves
-nothing about the case that fails. A schema test that only shows a valid result object
+nothing about the case that fails. **Write the expectation file as UTF-8 with LF**: the
+probe compares bytes on purpose, so a CRLF expectation makes every delivery `mangled` on
+Windows against a host that is working correctly. A schema test that only shows a valid result object
 exists cannot distinguish these four outcomes, which is why this compares bytes.
 
 An unsupported host stops honestly. Do not route around a refused write by asking the

@@ -73,7 +73,10 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(again["resolved"], len(self.ids()))
         stored = runtime.read_json(self.state)["workers"][key]["citation_resolutions"]
         self.assertEqual([c["id"] for c in stored], self.ids())
-        self.assertEqual(stored[0]["artifact"], str(second))
+        # Compare RESOLVED to RESOLVED. Windows hands `tempfile` the 8.3 short form
+        # (`C:\Users\RUNNER~1\...`) while `Path.resolve()` returns the long one, so a
+        # raw `str(second)` here failed on the Windows leg alone against correct code.
+        self.assertEqual(stored[0]["artifact"], str(Path(second).resolve()))
 
     def test_citations_cannot_invent_or_repeat_a_requirement(self):
         key = self.consumed()
@@ -363,8 +366,14 @@ class ProbeAndJournalTests(unittest.TestCase):
         return key
 
     def payload(self, text):
+        # `newline=""`, because the probe compares BYTES on purpose. Python's default
+        # text mode rewrites "\n" as "\r\n" on Windows, so the expectation file would
+        # differ from the payload the worker published and every delivery would read as
+        # `mangled` -- a red Windows leg against a correct probe. The expectation file
+        # is written LF, like everything else this plugin generates.
         path = self.root / "expected.txt"
-        path.write_text(text, encoding="utf-8")
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            stream.write(text)
         return path
 
     def test_publication_probe_distinguishes_delivered_truncated_and_mangled(self):

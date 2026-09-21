@@ -135,6 +135,17 @@ assert_has  "the evaluation oracle is selected by an environment variable, not a
   scripts/fixtures/evaluation/oracle/test_scheduler.py 'os.environ["EVAL_SCHEDULER"]'
 assert_has  "verify-evidence.sh supports Windows interpreter selection" \
   scripts/verify-evidence.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
+# The probe compares BYTES, so the expectation file it is given must be LF. Python's
+# default text mode writes CRLF on Windows, which would make a correctly delivered
+# payload read as `mangled` on that leg alone -- it did, on this change's first CI run.
+assert_has  "the protocol requires an LF expectation file for the probe" \
+  "$ND/references/runtime.md" '**Write the expectation file as UTF-8 with LF**'
+assert_has  "the probe regression writes its expectation without newline translation" \
+  scripts/tests/test_runtime_evidence.py 'with path.open("w", encoding="utf-8", newline="") as stream'
+# `tempfile` hands back Windows' 8.3 short path while `Path.resolve()` returns the long
+# one, so a citation's stored path compares equal only when both sides are resolved.
+assert_has  "the citation regression compares resolved paths on both platforms" \
+  scripts/tests/test_runtime_evidence.py 'str(Path(second).resolve())'
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"
