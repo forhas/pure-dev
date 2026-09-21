@@ -1073,7 +1073,8 @@ round terminal:
    name which findings took it. **The Completeness gate's correction-review requirement cannot
    reach this patch**, and that gap is real rather than a disclosure: the sweep runs before that
    gate, so no accepted completeness baseline exists yet for its delta path to build on. Closing
-   the ordering is tracked separately — do not read the delta path as available here.
+   the ordering is tracked in https://github.com/forhas/pure-dev/issues/66 — do not read the
+   delta path as available here.
 
    **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
    public
