@@ -78,7 +78,9 @@ assert_has "an oversized list halves past one page rather than shipping over bud
   "$RT" 'index[name][:min(page, length // 2)]'
 assert_has "the index reports whether it fit its budget" "$RT" '"within_budget"'
 assert_has "paged retrieval refuses a page past the end" "$RT" 'section page is past the end'
-assert_has "publication rehashes the delta sections file" "$RT" 'delta sections changed'
+# `delta sections changed` is also the message `section` raises, so the whole-file
+# literal would stay green with the publication check deleted. Pin the tuple entry.
+assert_has "publication rehashes the delta sections file" "$RT" '("sections_file", "delta sections changed")'
 assert_has "publication rehashes the delta input index" "$RT" 'delta input index changed'
 assert_has "publication rehashes the previous report" "$RT" 'previous report changed'
 assert_has "publication rehashes the evidence index" "$RT" 'evidence index changed'
@@ -139,7 +141,7 @@ assert_present "protocol says reuse is a stated choice, never a silent cache" \
 echo "== the review skill resolves evidence at the boundary =="
 assert_has "review resolves citations when the result is consumed" \
   "$REVIEW" 'resolve every citation it supports'
-assert_has "review reads the returned unresolved list" "$REVIEW" '`unresolved` list'
+assert_has "review reads the returned unresolved list" "$REVIEW" 'read the returned `unresolved` list'
 assert_has "review pages a section the index marked incomplete" "$REVIEW" 'section --name <list> --page <n>'
 assert_has "review keeps reuse-applicable a candidate set" "$REVIEW" 'is a candidate set, never a verdict'
 
