@@ -164,6 +164,10 @@ class DeltaIndexTests(unittest.TestCase):
         packet = runtime.read_json(receipt["packet"])
         return receipt["worker"], runtime.read_json(packet["delta"]["path"])
 
+    def written_bytes(self, worker):
+        """Size of `delta.json` as it was actually written — the reviewer's read cost."""
+        return Path(runtime.read_json(self.state)["workers"][worker]["delta"]["path"]).stat().st_size
+
     def test_the_index_references_the_previous_report_instead_of_inlining_it(self):
         """A 'delta' that starts by re-reading the whole prior report is a full review."""
         long_report = self.result()
@@ -176,12 +180,13 @@ class DeltaIndexTests(unittest.TestCase):
         self.rt.accept(key)
         self.code.write_text("original\nrepair\n", encoding="utf-8")
         self.run_git("commit", "-qam", "repair")
-        _, manifest = self.delta(key)
+        delta_worker, manifest = self.delta(key)
         self.assertNotIn("previous_result", manifest)
         self.assertNotIn("previous_citations", manifest)
-        self.assertLessEqual(manifest["content_bytes"], runtime.INDEX_BYTES)
+        self.assertLessEqual(manifest["index_bytes"], runtime.INDEX_BYTES)
         self.assertTrue(manifest["within_budget"])
         self.assertTrue(manifest["complete"])
+        self.assertEqual(self.written_bytes(delta_worker), manifest["index_bytes"])
         self.assertGreater(manifest["previous_report"]["bytes"], 40000)
         self.assertEqual(runtime.digest(runtime.Runtime.ref_path(manifest, manifest["previous_report"])),
                          manifest["previous_report"]["sha256"])
@@ -251,7 +256,11 @@ class DeltaIndexTests(unittest.TestCase):
         self.assertLessEqual(len(manifest["changed_paths"]), runtime.PAGE_ITEMS)
         self.assertGreater(len(manifest["changed_paths"]), 0)
         self.assertFalse(manifest["complete"])
-        self.assertLessEqual(manifest["content_bytes"], runtime.INDEX_BYTES)
+        # The file on disk, not a compact form nobody writes: the number the budget
+        # reported and the bytes a reviewer actually reads must be the same number.
+        self.assertLessEqual(manifest["index_bytes"], runtime.INDEX_BYTES)
+        self.assertEqual(self.written_bytes(worker), manifest["index_bytes"])
+        self.assertLessEqual(self.written_bytes(worker), runtime.INDEX_BYTES)
         # The small sections keep their full detail; only the oversized one is paged.
         self.assertEqual(manifest["changed_inputs"], [])
         pages = -(-141 // sections["page_items"])
@@ -691,7 +700,7 @@ class MutationProofTests(unittest.TestCase):
             index["sections"] = {"page_items": page, "incomplete": [],
                                  "counts": {n: len(i) for n, i in sections.items()}}
             index.update({name: list(items) for name, items in sections.items()})
-            index["content_bytes"] = 0
+            index["index_bytes"] = 0
             index["within_budget"] = True
             index["complete"] = True
             return index

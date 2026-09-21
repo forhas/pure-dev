@@ -403,7 +403,11 @@ either budget. If full review is needed and its budget is spent, stop.
 
 #### The delta index is a table of contents, not the material
 
-`delta.json` is a **bounded index**, kept at or under 2KB of content. It names one
+`delta.json` is a **bounded index**, kept at or under 2KB — measured as the bytes of the
+file itself, which is written compactly for exactly that reason: indentation is a fifth
+of this file and buys a JSON parser nothing, and the budget exists to bound a reviewer's
+read. Its sibling artifacts stay indented; they are not budgeted, and they are the ones
+a person opens when a receipt is disputed. It names one
 `directory` and one `worktree`, and every artifact it references is a `{file, sha256,
 bytes}` triple **relative to that directory** — join the two to open one. It carries:
 
@@ -419,7 +423,8 @@ bytes}` triple **relative to that directory** — join the two to open one. It c
 
 Lists are inlined while they fit the budget; the largest is shortened first, and every
 shortened list is named in `sections.incomplete` with its true count in
-`sections.counts`. `complete` and `within_budget` say so at the top level. An inlined
+`sections.counts`. `complete` and `within_budget` say so at the top level, and `index_bytes` is the file's
+real size rather than a figure for a form nobody writes. An inlined
 list is always a **prefix of page 1**, never a sample, and a short one is never the
 whole section. Retrieve the rest a page at a time:
 

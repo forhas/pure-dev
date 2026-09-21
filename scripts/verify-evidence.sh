@@ -77,6 +77,13 @@ assert_has "shortening a list names it in sections.incomplete" "$RT" 'incomplete
 assert_has "an oversized list halves past one page rather than shipping over budget" \
   "$RT" 'index[name][:min(page, length // 2)]'
 assert_has "the index reports whether it fit its budget" "$RT" '"within_budget"'
+# The budget bounds a reviewer's READ, so it has to measure the file that is read. It
+# measured a compact form while `atomic_json` wrote an indented one: 2005 reported for a
+# 2409-byte file. One helper now spells the bytes, and both sides use it.
+assert_has "one helper spells the bytes that get written" "$RT" 'def json_bytes'
+assert_has "the index is measured in the form it is written in" "$RT" 'len(json_bytes(index, indent=None))'
+assert_has "the index alone is written compactly, and says so at the call site" \
+  "$RT" 'indent=None)'
 assert_has "paged retrieval refuses a page past the end" "$RT" 'section page is past the end'
 # The unread-page rule was prose plus a recorded event and no gate, so a reviewer could
 # read a 50-item preview of a 141-item change, call the scope sufficient, and merge.

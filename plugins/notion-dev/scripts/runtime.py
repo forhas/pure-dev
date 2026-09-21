@@ -131,13 +131,27 @@ def environment_signature():
     return {"signature": digest_bytes(json.dumps(facts, sort_keys=True).encode("utf-8")), **facts}
 
 
-def atomic_json(path, value):
+def json_bytes(value, indent=2):
+    """The exact bytes `atomic_json` writes for `value`. One spelling, two callers.
+
+    `bound_index` has to measure the file it is about to produce; measuring a form
+    nobody writes is how a budget reports 2005 for a 2409-byte file.
+    """
+    separators = None if indent is not None else (",", ":")
+    body = json.dumps(value, ensure_ascii=False, indent=indent,
+                      separators=separators, allow_nan=False)
+    return (body + "\n").encode("utf-8")
+
+
+def atomic_json(path, value, indent=2):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".runtime-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
+            json.dump(value, stream, ensure_ascii=False, indent=indent,
+                      separators=None if indent is not None else (",", ":"),
+                      allow_nan=False)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
@@ -425,7 +439,10 @@ class Runtime:
                       "sha256": digest(inventory_path)}}
             if baseline is not None:
                 delta_path = directory / "delta.json"
-                atomic_json(delta_path, self.delta_index(baseline, current, snapshots, directory))
+                # `indent=None`: this one file is budgeted, and `bound_index` measured
+                # the compact form it is about to be written in.
+                atomic_json(delta_path, self.delta_index(baseline, current, snapshots, directory),
+                            indent=None)
                 packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path),
                                    "bytes": delta_path.stat().st_size}
             if correction_manifest is not None:
@@ -500,7 +517,36 @@ class Runtime:
         `complete` flag, the whole list stays retrievable by page, and when even the
         first pages do not fit, `within_budget` says that rather than cutting further.
         """
-        size = lambda: len(json.dumps(index, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        # THE BYTES `atomic_json` WILL ACTUALLY WRITE for this file. Measuring a form
+        # nobody writes was exact about the wrong quantity — on a wide-delta fixture it
+        # reported 2005 against a 2048 budget while `delta.json` landed at 2409, 18% over,
+        # on precisely the wide changes the bound exists for.
+        #
+        # So the index is written COMPACTLY and measured compactly, and `prepare` passes
+        # `indent=None` for it alone. Indentation is 20% of this file — an ordinary index
+        # measures 1700 bytes compact and 2060 indented, over budget before any wide
+        # change has been paged — and it buys an agent parsing JSON nothing at all. The
+        # budget exists to bound a reviewer's read, so the cheaper serialization is the
+        # one that should be read. Its sibling artifacts stay indented: they are not
+        # budgeted, and they are the ones a person opens when a receipt is disputed.
+        def size():
+            return len(json_bytes(index, indent=None))
+
+        def shrink():
+            # Shrink the LARGEST inlined list, repeatedly, so one wide change does not
+            # cost every small section its detail. First cut is to one page; after that
+            # it halves, because a fixed page can still exceed the budget on its own. The
+            # inlined list stays a PREFIX of page 1, and `incomplete` names every list
+            # that was cut, so a short preview is never mistakable for the whole section.
+            while size() > budget:
+                name = max(sections, key=lambda n: (len(index[n]), n))
+                length = len(index[name])
+                if length == 0:
+                    return
+                index[name] = index[name][:min(page, length // 2)]
+                if len(index[name]) != len(sections[name]) and name not in incomplete:
+                    incomplete.append(name)
+
         # One counts map and one list of truncated names, not a metadata object per
         # section: at six sections that ceremony cost more of the budget than the
         # content it described. `pages` is ceil(count / page_items); `section` returns it.
@@ -509,24 +555,21 @@ class Runtime:
                              "counts": {name: len(items) for name, items in sections.items()}}
         for name, items in sections.items():
             index[name] = list(items)
-        # Shrink the LARGEST inlined list, repeatedly, so one wide change does not cost
-        # every small section its detail. First cut is to one page; after that it halves,
-        # because a fixed page can still exceed the budget on its own. The inlined list
-        # stays a PREFIX of page 1, and `incomplete` names every list that was cut, so a
-        # short preview is never mistakable for the whole section.
-        while size() > budget:
-            name = max(sections, key=lambda n: (len(index[n]), n))
-            length = len(index[name])
-            if length == 0:
+        # The three self-describing keys are present for every measurement, because
+        # writing them changes the size they describe. Their values then reach a fixed
+        # point — only one integer's digit width and two booleans' spellings vary, so it
+        # settles in a pass or two — and shrinking runs again inside the loop, in case a
+        # value that grew pushed the file back over. On exit `index_bytes` equals the
+        # file's real size, rather than being exact about a quantity nobody reads.
+        index["index_bytes"], index["within_budget"], index["complete"] = 0, False, False
+        for _ in range(8):
+            shrink()
+            index["complete"] = not incomplete
+            measured = size()
+            if measured == index["index_bytes"] and index["within_budget"] == (measured <= budget):
                 break
-            index[name] = index[name][:min(page, length // 2)]
-            if len(index[name]) != len(sections[name]) and name not in incomplete:
-                incomplete.append(name)
-        # Measured BEFORE these three keys are added, so the number is exact rather than
-        # a figure that changes the thing it measures. They add well under 100 bytes.
-        index["content_bytes"] = size()
-        index["within_budget"] = index["content_bytes"] <= budget
-        index["complete"] = not incomplete
+            index["index_bytes"] = measured
+            index["within_budget"] = measured <= budget
         return index
 
     def delta_index(self, baseline, current, snapshots, directory):
