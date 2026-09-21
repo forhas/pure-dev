@@ -118,6 +118,22 @@ class EvidenceTests(unittest.TestCase):
 
     # -- the evidence index ------------------------------------------------
 
+    def test_an_absent_or_null_verdict_is_blocked_not_reusable(self):
+        """A verdict nobody gave is not a verdict of `met`."""
+        for mutate in (lambda r: r["requirements"].pop(0),
+                       lambda r: r["requirements"][0].update(verdict=None)):
+            key = self.prepare()
+            outcome = self.result()
+            mutate(outcome)
+            self.rt.publish(key, outcome)
+            self.rt.consume(key)
+            self.cite(key, self.ids(), self.log())
+            index = self.rt.evidence(key)
+            self.assertEqual(index["blocked"], [self.ids()[0]])
+            self.assertNotIn(self.ids()[0], index["reuse_applicable"])
+            self.assertFalse(self.rt.merge_gate(key, self.repo)["passed"])
+            self.rt.end_worker(key, "contract invalid", confirmed=True, invalid_result=True)
+
     def test_evidence_index_separates_current_stale_blocked_and_unresolved(self):
         key = self.prepare()
         outcome = self.result()

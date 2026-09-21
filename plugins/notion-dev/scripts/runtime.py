@@ -927,9 +927,17 @@ class Runtime:
                                 "reasons": ["no evidence recorded for this requirement"]})
                 continue
             reasons = []
+            # Fail closed on anything that is not exactly `met`, INCLUDING an absent or
+            # null verdict. A contract-invalid report is deliberately publishable so the
+            # parent can judge it, so "the ID is missing from the verdict list" is a case
+            # that really occurs — and treating a verdict nobody gave as a verdict of
+            # `met` advertised it to the next delta reviewer as reuse-applicable. The
+            # merge gate catches missing coverage separately; this is the reuse path,
+            # which is the one that decides what gets re-derived.
             verdict = verdicts.get(item)
-            if verdict is not None and verdict != "met":
-                reasons.append("baseline verdict is '%s', not 'met'" % verdict)
+            if verdict != "met":
+                reasons.append("baseline verdict is %s, not 'met'"
+                               % ("absent" if verdict is None else "'%s'" % verdict))
             blocked = bool(reasons)
             for label, path, expected_hash in \
                     [("evidence artifact", citation["artifact"], citation["sha256"])] + \
