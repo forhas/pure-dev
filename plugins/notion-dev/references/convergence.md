@@ -36,7 +36,10 @@ next-task: select + artifact references
   them as PR attachments. Historical snapshots deliberately use disk to save context.
 - No host API is invented here: the prompt adapter supplies the lifecycle contract to
   actual agents. An adapter that cannot publish/attach is unsupported and stops honestly.
-  Offline tests do not establish live adapter support.
+  Offline tests do not establish live adapter support. **Disposition: `blocked`** —
+  external cause: establishing it needs a live Claude Code host session, which offline
+  tests structurally cannot provide. Unblocked by the canary run below, which also
+  discharges the unmeasured savings targets; no release is claimed until it runs.
 
 ## Acceptance and canary
 
