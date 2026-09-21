@@ -427,12 +427,27 @@ class ProbeAndJournalTests(unittest.TestCase):
         self.rt.record_op("status-in-progress", "ticket", "confirmed", provider_id="page-1")
         self.rt.record_op("create-follow-up", "tickets", "unknown-outcome")
         end = self.rt.summary()["end_to_end"]
+        # Attempt counts stay per entry; the open list is per operation.
         self.assertEqual(end["record_operations"],
                          {"attempted": 1, "confirmed": 1, "unknown-outcome": 1})
-        self.assertEqual(end["unconfirmed_record_operations"],
-                         ["create-follow-up", "create-follow-up"])
+        self.assertEqual(end["unconfirmed_record_operations"], ["create-follow-up"])
         with self.assertRaisesRegex(runtime.Invalid, "invalid record operation outcome"):
             self.rt.record_op("create-follow-up", "tickets", "done")
+
+    def test_a_confirmed_operation_leaves_the_open_list_and_a_retry_returns_to_it(self):
+        """The ordinary lifecycle used to report itself as permanently unrecorded."""
+        self.rt.record_op("create-follow-up", "tickets", "attempted")
+        self.assertEqual(self.rt.summary()["end_to_end"]["unconfirmed_record_operations"],
+                         ["create-follow-up"])
+        self.rt.record_op("create-follow-up", "tickets", "confirmed", provider_id="page-9")
+        self.assertEqual(self.rt.summary()["end_to_end"]["unconfirmed_record_operations"], [])
+        # A later attempt on the same logical operation reopens it — latest entry wins in
+        # both directions, so this is not a one-way "once confirmed, always confirmed".
+        self.rt.record_op("create-follow-up", "tickets", "unknown-outcome")
+        end = self.rt.summary()["end_to_end"]
+        self.assertEqual(end["unconfirmed_record_operations"], ["create-follow-up"])
+        self.assertEqual(end["record_operations"],
+                         {"attempted": 1, "confirmed": 1, "unknown-outcome": 1})
 
     def test_correction_causes_are_recorded_without_replacing_the_baseline(self):
         first = self.rt.correction_needed(self.repo, "reviewer found a false claim")

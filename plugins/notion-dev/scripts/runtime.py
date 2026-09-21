@@ -1141,6 +1141,16 @@ class Runtime:
                     evidence[worker["id"]] = {k: counts[k] for k in
                                               ("current", "stale", "blocked", "unresolved")}
             journal = state.get("record_journal", [])
+            # An operation's CURRENT outcome is its latest entry, not every entry it ever
+            # had. The journal is append-only, so the ordinary lifecycle — `attempted`,
+            # then `confirmed` — left the operation permanently listed as unconfirmed, and
+            # a run that reconciled everything still reported itself incompletely recorded.
+            # A gate that cries wolf on a clean run is one people learn to skip, which is
+            # the opposite of what this list is for. Later entries override earlier ones,
+            # so a retry after a confirmation correctly puts the operation back on the list.
+            current_outcome = {}
+            for entry in journal:
+                current_outcome[entry["operation"]] = entry["outcome"]
             # The old ledger's fields are kept verbatim -- they are still the right
             # counters -- but they were printed at the top level where they read as
             # whole-run totals. They only ever covered what this runtime observed:
@@ -1163,9 +1173,13 @@ class Runtime:
                                                 if not w["terminated"] and not w.get("accepted")],
                         "verification_reuses": sum(e["kind"] == "verification_reused" for e in state["events"]),
                         "evidence_by_worker": evidence,
+                        # Attempt counts stay per entry: how many attempts an operation
+                        # took is exactly what a journal is for. Only the unconfirmed
+                        # LIST collapses, because that one answers "what is still open".
                         "record_operations": dict(Counter(e["outcome"] for e in journal)),
-                        "unconfirmed_record_operations": [e["operation"] for e in journal
-                                                          if e["outcome"] != "confirmed"],
+                        "unconfirmed_record_operations": sorted(
+                            name for name, outcome in current_outcome.items()
+                            if outcome != "confirmed"),
                         "correction_causes": (state.get("correction") or {}).get("reasons", []),
                         "stages_measured": [s["stage"] for s in spans]},
                     "model_usage": "unknown until raw telemetry is imported; never inferred from characters"}
