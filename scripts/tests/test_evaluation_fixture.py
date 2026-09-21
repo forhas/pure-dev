@@ -4,7 +4,10 @@ A seeded defect that quietly stopped being a defect, or an oracle that stopped
 checking one, turns every later comparison into a measurement of nothing. So the
 fixture is re-proved mechanically on every run rather than by whoever remembers:
 the oracle must PASS against the corrected twin and FAIL against the candidate, on
-exactly the seeded findings, and the intake inventory must still match the ticket.
+exactly the findings declared `detectable_by: oracle` — no more and no fewer. The two
+`detectable_by: review` findings have no oracle by design and are checked differently:
+each must still be declared, with the reason it survives a weak review. The intake
+inventory must also still match the ticket.
 """
 import ast
 import hashlib

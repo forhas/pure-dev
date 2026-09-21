@@ -106,8 +106,12 @@ defective implementation, a corrected twin and a hidden oracle, with seeded defe
 four classes: a concurrency cap that does not hold, a memoization key that loses part of
 the identity, a validator that reinterprets an unusable value, and a false quantitative
 PR claim — plus a ticked-but-unimplemented criterion and two mandatory constraints
-outside the acceptance section. `scripts/tests/test_evaluation_fixture.py` proves the
-oracle passes against the twin and fails on each seeded defect on every run. Copy it
+outside the acceptance section. `scripts/tests/test_evaluation_fixture.py` proves, on
+every run, that the oracle passes against the twin and fails on each of the four
+**oracle-detectable** defects. The ticked criterion and the two constraints outside the
+acceptance section are `detectable_by: review`: no oracle can catch an intake that never
+inventoried them, so the fixture declares each with the reason it survives a weak review,
+and the same test requires that declaration in both directions. Copy it
 into a disposable repository before running a candidate workflow against it; never in
 place, and never restore it with `git checkout -- .`.
 
