@@ -441,8 +441,8 @@ class Runtime:
                 delta_path = directory / "delta.json"
                 # `indent=None`: this one file is budgeted, and `bound_index` measured
                 # the compact form it is about to be written in.
-                atomic_json(delta_path, self.delta_index(baseline, current, snapshots, directory),
-                            indent=None)
+                index = self.delta_index(baseline, current, snapshots, directory)
+                atomic_json(delta_path, index, indent=None)
                 packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path),
                                    "bytes": delta_path.stat().st_size}
             if correction_manifest is not None:
