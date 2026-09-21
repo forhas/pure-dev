@@ -23,6 +23,18 @@
 __pycache__/
 *.py[cod]
 
+# Local optimization scratch — session transcripts, context dumps and analysis notes
+# produced while measuring a run. It is working material for one investigation, never a
+# repo artifact, and `optimize/session-log.txt` is a RAW SESSION LOG: the same class of
+# content `feedback-harvest` redacts before archiving, and the kind a pull-request body
+# routinely promises it does not ship.
+#
+# Untracked-but-unignored is the dangerous state, not untracked. The next `git add -A`
+# commits the whole directory without a word, exactly as it once committed a .pyc and
+# once skipped a newly mirrored skill. Two entries above already exist because that
+# happened; this one exists so it does not happen with a transcript.
+optimize/
+
 node_modules/
 .DS_Store
 *.log
