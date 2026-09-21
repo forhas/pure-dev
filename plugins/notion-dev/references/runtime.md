@@ -427,9 +427,14 @@ whole section. Retrieve the rest a page at a time:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" section --worker <worker> --name changed_paths --page 2
 ```
 
-**No truncated section and no unread page is complete input.** A reviewer that reasons
-from a shortened list as though it were whole has not bounded its scope; say so and
-escalate instead. Read the index first to assess scope, then only what it references,
+**No truncated section and no unread page is complete input, and the merge gate enforces
+it.** A `sufficient` disposition is a claim that the scope was bounded, so every page of
+every section named in `sections.incomplete` must actually have been retrieved — the
+runtime records which pages this worker read and blocks the merge naming any section it
+never finished. Reading them is the floor, never the judgement: what the reviewer
+concludes from a complete list remains its own independent call. An honest
+`full-review-required` escalation needs no complete input, because it claims the
+opposite — that the scope was *not* bounded. Read the index first to assess scope, then only what it references,
 by relevant section rather than dumping a large patch into the parent context. Every
 referenced artifact's hash is verified at publication and at merge. A large or broad
 patch calls for honest escalation, never silent truncation.

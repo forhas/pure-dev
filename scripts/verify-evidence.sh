@@ -78,6 +78,15 @@ assert_has "an oversized list halves past one page rather than shipping over bud
   "$RT" 'index[name][:min(page, length // 2)]'
 assert_has "the index reports whether it fit its budget" "$RT" '"within_budget"'
 assert_has "paged retrieval refuses a page past the end" "$RT" 'section page is past the end'
+# The unread-page rule was prose plus a recorded event and no gate, so a reviewer could
+# read a 50-item preview of a 141-item change, call the scope sufficient, and merge.
+assert_has "the merge gate blocks a section that was never paged in full" \
+  "$RT" 'delta section was never retrieved in full: '
+assert_has "which pages a reviewer read is recorded on the worker" "$RT" 'def unread_delta_sections'
+assert_has "only a \`sufficient\` disposition owes complete input" \
+  "$RT" 'Only `sufficient` makes this claim'
+assert_has "protocol says the merge gate enforces the unread-page rule" \
+  "$PROTOCOL" 'the merge gate enforces'
 # `delta sections changed` is also the message `section` raises, so the whole-file
 # literal would stay green with the publication check deleted. Pin the tuple entry.
 assert_has "publication rehashes the delta sections file" "$RT" '("sections_file", "delta sections changed")'
@@ -147,7 +156,7 @@ assert_has "protocol documents the \`probe\` command" "$PROTOCOL" 'probe --worke
 assert_has "protocol documents \`record-op\` outcomes" "$PROTOCOL" 'record-op --operation <stable-logical-id>'
 assert_has "protocol documents the \`correction-needed\` reason" "$PROTOCOL" 'correction-needed --worktree <worktree> --reason'
 assert_has "protocol says an unread page is not complete input" \
-  "$PROTOCOL" '**No truncated section and no unread page is complete input.**'
+  "$PROTOCOL" 'no unread page is complete input'
 assert_has "protocol says a reuse candidate is not a verdict" "$PROTOCOL" 'marks a **reuse candidate**, not a'
 PL=$(total_lines "$PROTOCOL")
 assert_present "protocol says reuse is a stated choice, never a silent cache" \

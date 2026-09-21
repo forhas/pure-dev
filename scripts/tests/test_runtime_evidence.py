@@ -269,6 +269,66 @@ class DeltaIndexTests(unittest.TestCase):
         with self.assertRaisesRegex(runtime.Invalid, "unknown delta section"):
             self.rt.section(worker, "invented", page=1)
 
+    def wide_delta(self):
+        """A baseline plus a change wide enough that the index must page a section."""
+        for index in range(120):
+            (self.repo / ("file-%03d.txt" % index)).write_text("x\n", encoding="utf-8")
+        self.run_git("add", "-A")
+        self.run_git("commit", "-qm", "wide change")
+        previous = self.baseline()
+        (self.repo / "file-000.txt").write_text("y\n", encoding="utf-8")
+        for index in range(120, 260):
+            (self.repo / ("file-%03d.txt" % index)).write_text("x\n", encoding="utf-8")
+        self.run_git("add", "-A")
+        self.run_git("commit", "-qm", "wider change")
+        worker, manifest = self.delta(previous)
+        self.rt.attach(worker, "agent-delta")
+        outcome = self.result()
+        packet = runtime.read_json(runtime.read_json(self.state)["workers"][worker]["packet"])
+        outcome["delta_review"] = {"previous": previous, "manifest_sha256": packet["delta"]["sha256"],
+                                   "disposition": "sufficient", "checked_requirement_ids": self.ids()}
+        return worker, manifest, outcome
+
+    def test_a_sufficient_delta_cannot_pass_on_a_section_it_never_paged(self):
+        """The protocol's unread-page rule was prose with an event and no gate."""
+        worker, manifest, outcome = self.wide_delta()
+        self.assertEqual(manifest["sections"]["incomplete"], ["changed_paths"])
+        self.rt.publish(worker, outcome)
+        self.rt.consume(worker)
+        self.rt.resolve_citations(worker, [{"id": i, "artifact": str(self.code), "quote": "original"}
+                                           for i in self.ids()])
+        self.rt.accept(worker)
+        gate = self.rt.merge_gate(worker, self.repo)
+        self.assertFalse(gate["passed"])
+        self.assertIn("delta section was never retrieved in full: changed_paths", gate["reasons"])
+        # A partial read is still not a read.
+        pages = -(-manifest["sections"]["counts"]["changed_paths"] //
+                  manifest["sections"]["page_items"])
+        self.rt.section(worker, "changed_paths", page=1)
+        self.assertFalse(self.rt.merge_gate(worker, self.repo)["passed"])
+        for page in range(2, pages + 1):
+            self.rt.section(worker, "changed_paths", page=page)
+        self.assertTrue(self.rt.merge_gate(worker, self.repo)["passed"])
+
+    def test_an_honest_escalation_needs_no_complete_input(self):
+        """`full-review-required` says the scope was NOT bounded; it claims nothing."""
+        worker, _, outcome = self.wide_delta()
+        outcome["delta_review"]["disposition"] = "full-review-required"
+        self.rt.publish(worker, outcome)
+        self.rt.consume(worker)
+        gate = self.rt.merge_gate(worker, self.repo)
+        self.assertIn("delta reviewer requires full review", gate["reasons"])
+        self.assertEqual([r for r in gate["reasons"] if "never retrieved in full" in r], [])
+
+    def test_a_complete_index_requires_no_paging_at_all(self):
+        previous = self.baseline()
+        self.code.write_text("original\nrepair\n", encoding="utf-8")
+        self.run_git("commit", "-qam", "repair")
+        worker, manifest = self.delta(previous)
+        self.assertTrue(manifest["complete"])
+        self.assertEqual(runtime.Runtime.unread_delta_sections(
+            runtime.read_json(self.state)["workers"][worker]), [])
+
     def test_every_referenced_artifact_is_hash_bound_at_publication(self):
         key = self.baseline()
         self.code.write_text("original\nrepair\n", encoding="utf-8")
@@ -655,6 +715,13 @@ class MutationProofTests(unittest.TestCase):
             broken = self.run_one(
                 EvidenceTests, "test_partial_evidence_is_recorded_and_what_is_missing_is_named")
         self.assertEqual(len(broken.errors), 1)
+
+    def test_a_gate_that_ignores_unread_pages_is_detected(self):
+        with patch.object(runtime.Runtime, "unread_delta_sections", staticmethod(lambda w: [])):
+            broken = self.run_one(DeltaIndexTests,
+                                  "test_a_sufficient_delta_cannot_pass_on_a_section_it_never_paged")
+        self.assertEqual(len(broken.failures), 1)
+        self.assertEqual(len(broken.errors), 0)
 
     def test_a_probe_that_cannot_fail_is_detected(self):
         with patch.object(runtime.Runtime, "probe",

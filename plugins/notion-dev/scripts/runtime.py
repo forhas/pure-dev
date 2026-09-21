@@ -573,6 +573,34 @@ class Runtime:
         return self.bound_index(index, sections)
 
     @staticmethod
+    def unread_delta_sections(worker):
+        """Sections the index shortened that this reviewer never paged in full.
+
+        `references/runtime.md` says a truncated section and an unread page are not
+        complete input — and until this existed that was prose with a recorded event and
+        no gate, so a reviewer could read a 50-item preview of a 141-item change, declare
+        the scope `sufficient`, and pass the merge gate having never seen the rest. This
+        repo's own standard is that a claim is worth what re-checks it; this is the check.
+
+        Only pages are required, never a judgement: reading them all is the floor, and
+        what the reviewer concludes from them remains its own independent call.
+        """
+        reference = worker.get("delta")
+        if not reference or not Path(reference["path"]).is_file():
+            return []
+        index = read_json(reference["path"])
+        sections = index.get("sections") or {}
+        size = sections.get("page_items") or PAGE_ITEMS
+        read = worker.get("sections_read") or {}
+        missing = []
+        for name in sections.get("incomplete", []):
+            count = (sections.get("counts") or {}).get(name, 0)
+            pages = max(1, -(-count // size))
+            if not set(range(1, pages + 1)) <= set(read.get(name, [])):
+                missing.append(name)
+        return sorted(missing)
+
+    @staticmethod
     def ref_path(index, reference):
         """Absolute path of one artifact the delta index names relative to its directory."""
         return str(Path(index["directory"]) / reference["file"])
@@ -594,6 +622,12 @@ class Runtime:
             size = index["sections"]["page_items"]
             pages = max(1, -(-len(items) // size))
             require(page <= pages, "section page is past the end")
+            # Recorded on the WORKER, not only as an event, so the merge gate can decide
+            # from the worker alone -- the same place every other delta receipt lives.
+            read = worker.setdefault("sections_read", {}).setdefault(name, [])
+            if page not in read:
+                read.append(page)
+                read.sort()
             self.event(state, "delta_section_read", worker=key, section=name, page=page)
         return {"worker": key, "section": name, "page": page, "pages": pages,
                 "count": len(items), "items": items[(page - 1) * size:page * size],
@@ -926,6 +960,11 @@ class Runtime:
                 self.validate_delta(worker, result)
                 if result["delta_review"]["disposition"] != "sufficient":
                     reasons.append("delta reviewer requires full review")
+                else:
+                    # Only `sufficient` makes this claim. An honest escalation says the
+                    # scope was NOT bounded, which needs no complete input to say.
+                    for name in self.unread_delta_sections(worker):
+                        reasons.append(f"delta section was never retrieved in full: {name}")
             if result.get("requirements_complete") is not True:
                 reasons.append("independent full-source requirement coverage was not confirmed")
             verdicts = result.get("requirements", [])
