@@ -90,7 +90,11 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: \`BEHIND\` or \`DIRTY\` → \`git rebase origin/<base>\` in the worktree" "$f" "$M5" "$SR" '`BEHIND`.*`DIRTY`.*git rebase origin/<base>'
   assert_present "$f: the rebase also fires when the head is not a descendant of origin/<base>" "$f" "$M5" "$SR" 'merge-base --is-ancestor origin/<base> HEAD. fails'
   assert_present "$f: re-run verify, then \`git push --force-with-lease\`" "$f" "$M5" "$SR" 'verify.*git push --force-with-lease'
-  assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
+  if [ "$f" = plugins/notion-dev/skills/review-and-merge/SKILL.md ]; then
+    assert_present "$f: a conflict-free rebase still checks behavior" "$f" "$M5" "$SR" 'conflict-free rebase.*changed behavior needs independent review'
+  else
+    assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
+  fi
   assert_present "$f: \`.claude-plugin/plugin.json\` version conflict: take the base's value and re-apply the bump class" "$f" "$M5" "$SR" '\.claude-plugin/plugin\.json.*take the base.s value.*bump class'
   assert_present "$f: bump class recorded before the rebase (merge-base vs head)" "$f" "$M5" "$SR" 'bump class.*merge-base'
   assert_present "$f: any other conflict → \`git rebase --abort\` and the unmergeable stop" "$f" "$M5" "$SR" 'git rebase --abort.*unmergeable'
@@ -102,8 +106,13 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: the bounded re-read distinguishes \`UNKNOWN\` from \`BLOCKED\`" "$f" "$M5" "$SR" '`UNKNOWN`.*wait.*`BLOCKED`.*gate 1'
   assert_present "$f: a merge-ready status — \`CLEAN\`, \`HAS_HOOKS\`, \`UNSTABLE\` — continues rather than stopping" "$f" "$M5" "$SR" 'merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue'
   assert_present "$f: gate 1 is re-satisfied on the pushed head" "$f" "$M5" "$SR" 're-satisfy gate 1 on the pushed head'
-  assert_order "$f: completeness gate, rebase, pre-merge check, merge command" "$f" "$M5" "$SR" \
-    completeness '^4\. \*\*Completeness gate\*\*' rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" merge '^gh pr merge <pr> '
+  if [ "$f" = plugins/notion-dev/skills/review-and-merge/SKILL.md ]; then
+    assert_order "$f: stabilize and close out before completeness, then merge" "$f" "$M5" "$SR" \
+      rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" completeness '^4\. \*\*Completeness gate\*\*' merge '^gh pr merge <pr> '
+  else
+    assert_order "$f: completeness gate, rebase, pre-merge check, merge command" "$f" "$M5" "$SR" \
+      completeness '^4\. \*\*Completeness gate\*\*' rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" merge '^gh pr merge <pr> '
+  fi
   assert_present "$f: the re-bump commit precedes the single push, which precedes gate 1's re-satisfaction" "$f" "$M5" "$SR" 're-bump version after rebase.*git push --force-with-lease.*re-satisfy gate 1 on the pushed head'
 done
 

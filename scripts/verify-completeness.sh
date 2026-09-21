@@ -80,7 +80,11 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n specifies the VERDICTS line shape"              "$RM" '- [<met|not-met|unverified>] <criterion verbatim>'
   # The four rules that were deletable with both harnesses green.
   assert_has "$n re-runs the gate stack unconditionally" "$RM" 'The gate stack then re-runs on the new HEAD,'
-  assert_has "$n caps the verifier at two passes"        "$RM" 'The verifier runs at most twice.'
+  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+    assert_has "$n caps full verification at two passes" "$RM" 'The full verifier runs at most twice.'
+  else
+    assert_has "$n caps the verifier at two passes" "$RM" 'The verifier runs at most twice.'
+  fi
   assert_has "$n dispatches artifacts as file paths"     "$RM" 'as **file paths, not inline text**'
   assert_has "$n excludes the implementer's material"    "$RM" 'Pass **nothing** from the implementer'
   # C2: the interactive degraded branch still raises items.
@@ -93,8 +97,13 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # literal below is a NEGATION — it survives the removal of the triage rule that is the
   # only thing standing behind the decision to state this limitation rather than fix it.
   # So the rule gets its own anchor, on the sentence that carries it.
-  assert_has "$n states that completeness-absorb work is not code-reviewed" "$RM" '`absorb` work is not code-reviewed'
-  assert_has "$n keeps the triage rule that mitigates it"                   "$RM" 'prefer `file` over `absorb` for any'
+  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+    assert_has "$n independently reviews corrective code" "$RM" 'require the independent correction review below'
+    assert_has "$n bounds delta attempts" "$RM" 'delta attempts per invocation'
+  else
+    assert_has "$n states that completeness-absorb work is not code-reviewed" "$RM" '`absorb` work is not code-reviewed'
+    assert_has "$n keeps the triage rule that mitigates it" "$RM" 'prefer `file` over `absorb` for any'
+  fi
   # `blocked` has a defined producer rather than being an undefined enum member.
   assert_has "$n defines when the block reads blocked" "$RM" '- **`blocked`** — the check ran and produced at least one item'
 done

@@ -35,6 +35,16 @@ Then the **inverted epic guard**: `fetchTicket(<epic-id>)` via `notion-dev:ticke
 
 ## The loop
 
+**Selection hands off references, not another investigation.** Persist this iteration's
+retrieval output and selected ticket source under `.claude/notion-dev/` with the epic/ticket
+IDs and fetched revision/time. Pass their paths to `ticket`; do not paste the entire bundle
+and prior ticket conversations into its guidance. These are reuse candidates, not authority
+to skip ticket readiness or live status/claim checks. `ticket` validates the source identity
+and freshness, reuses matching artifacts, and retrieves changed/missing material only.
+Each ticket still owns a distinct runtime invocation; resuming that ticket preserves its
+existing worker ledger and review budgets. A new selection must never reset a stopped
+ticket's budgets or proceed while its workers remain unaccounted for.
+
 `DONE = 0`. Repeat while `DEPTH` is `all` or `DONE < DEPTH`:
 
 ### 1. Read the brief
@@ -77,7 +87,7 @@ The selected ticket owns its per-invocation `RUNTIME_STATE` and gates; do not sh
 
 Announce: `Next: [<key>] <title> — <the reason text from the brief's NEXT item, or "resume" / "fallback: first unblocked child">`.
 
-Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | selected by next-task from <brief path>: <reason>[; <user guidance>]` via the Skill tool, passing exactly the flags recorded above, plus `KNOWLEDGE_CONTEXT` (Step 1) as context so its own 1.1 skips the fetch and the bundle is read once for the whole run. Remain in `$REPO_ROOT`; `/notion-dev:ticket` manages its own worktree and returns there.
+Then invoke `/notion-dev:ticket <key> [--non-interactive] [--flow=<value>] | selected by next-task from <brief path>: <reason>[; <user guidance>]` via the Skill tool, passing exactly the flags recorded above, plus the saved `KNOWLEDGE_CONTEXT` path and provenance from Step 1 so its own 1.1 can reuse a current bundle. Remain in `$REPO_ROOT`; `/notion-dev:ticket` manages its own worktree and returns there.
 
 ### 4. After the run
 
