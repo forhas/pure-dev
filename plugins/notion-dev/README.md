@@ -19,9 +19,11 @@ participate in the durable lifecycle; pending delivery cannot silently drop a re
 
 These are generic notion-dev changes, not client-project patches. Python 3.8+, the
 configured interpreter, explicit Git Bash resolution on Windows, and Bash on Ubuntu
-WSL2 remain supported. No checks are skipped by a cache. Actual token/time savings
-require a measured Claude Code canary; this release does not claim the <200K target
-has already been achieved. See [rollout and measurement](references/convergence.md).
+WSL2 remain supported. No check of external or live state, and no check following a
+code or environment change, is served from a cache; a deterministic check may reuse
+its successful output only on unchanged inputs. Actual token/time savings require a
+measured Claude Code canary; this release does not claim the <200K target has already
+been achieved. See [rollout and measurement](references/convergence.md).
 
 ## Runtime reliability and evidence (0.32.0)
 
