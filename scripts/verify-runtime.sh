@@ -12,6 +12,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_runtime.py; then
 else
   bad "offline runtime and telemetry fixtures"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_runtime_convergence.py; then
+  ok "offline context packets, independent deltas, and workflow ordering"
+else
+  bad "offline context packets, independent deltas, and workflow ordering"
+fi
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
 REVIEW=$ND/skills/review-and-merge/SKILL.md

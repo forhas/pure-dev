@@ -161,7 +161,8 @@ def revision(worktree):
                           "sha256": hashlib.sha256(content).hexdigest()})
     manifest = {"head": head, "diff_sha256": hashlib.sha256(diff).hexdigest(), "untracked": untracked}
     fingerprint = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode("utf-8")).hexdigest()
-    return {"worktree": str(root), "head": head, "fingerprint": fingerprint}
+    return {"worktree": str(root), "head": head, "fingerprint": fingerprint,
+            "clean": not diff and not untracked}
 
 
 class Runtime:
@@ -268,14 +269,19 @@ class Runtime:
             self.event(state, "readiness_checked", passed=not reasons)
         return {"passed": not reasons, "reasons": reasons}
 
-    def prepare(self, role, files, worktree=None, timeout=900):
-        require(role in {"plan", "scout", "local-review", "completeness", "record"}, "invalid worker role")
+    def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None):
+        require(role in {"plan", "scout", "implementation", "branch-review", "local-review",
+                         "completeness", "record"}, "invalid worker role")
+        require(slot is None or (role in {"implementation", "scout", "plan", "local-review", "branch-review"}
+                                and isinstance(slot, str) and slot.strip()),
+                "only build-flow workers may have a stable task/review slot")
+        require(previous is None or role == "completeness", "only completeness supports delta review")
         require(math.isfinite(timeout) and 0 < timeout <= (2700 if role == "record" else 900),
                 "timeout must be positive and within the role's bound")
         snapshots = {name: {"path": str(Path(path).resolve()), "sha256": digest(path)}
                      for name, path in files.items()}
         require(bool(snapshots), "at least one input artifact is required")
-        require(role not in {"plan", "local-review", "completeness"} or worktree,
+        require(role not in {"plan", "implementation", "branch-review", "local-review", "completeness"} or worktree,
                 "review workers require a worktree revision")
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
@@ -292,21 +298,130 @@ class Runtime:
             # absence of one: it was ACCEPTED (the parent judged its result valid) or it
             # was CONFIRMED TERMINATED. Fail closed -- a caller that forgets is stopped
             # here and told which of the two to record, rather than silently permitted.
-            require(not any(w["role"] == role and not w["terminated"] and not w.get("accepted")
+            require(not any(w["role"] == role and (not slot or not w.get("slot") or w["slot"] == slot)
+                            and not w["terminated"] and not w.get("accepted")
                             for w in state["workers"].values()),
                     "previous worker in this role must be accepted or confirmed terminated "
                     "before replacement; consuming a result is not accepting it")
             key = uuid.uuid4().hex
+            directory = self.path.parent / ("worker-" + key)
+            delta = self.delta_manifest(state, previous, current, snapshots) if previous else None
+            # Owned snapshots preserve old PR claims/evidence without transporting them
+            # through every parent/tool response. Artifact names are never used as paths.
+            for index, source in enumerate(snapshots.values()):
+                saved = directory / ("input-" + str(index))
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source["path"], saved)
+                require(digest(saved) == source["sha256"], "input changed during preparation")
+                source["snapshot"] = str(saved)
+            inventory_path = directory / "requirements.json"
+            atomic_json(inventory_path, state["requirements"])
+            packet = {"worker": key, "role": role, "slot": slot, "revision": current,
+                      "inputs": snapshots, "requirements": {"path": str(inventory_path),
+                      "sha256": digest(inventory_path)}}
+            if delta is not None:
+                patch_path = directory / "changes.patch"
+                patch_path.write_bytes(delta.pop("patch"))
+                delta["patch"] = {"path": str(patch_path), "sha256": digest(patch_path),
+                                  "bytes": patch_path.stat().st_size}
+                delta_path = directory / "delta.json"
+                atomic_json(delta_path, delta)
+                packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path)}
+            packet_path = directory / "context.json"
+            atomic_json(packet_path, packet)
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
                       "started": self.clock.stamp(), "timeout_seconds": timeout,
                       "files": snapshots, "revision": current, "result": None,
                       "terminated": False, "accepted": False,
-                      "requirements": state["requirements"]}
+                      "requirements": state["requirements"], "slot": slot,
+                      "packet": str(packet_path), "packet_sha256": digest(packet_path),
+                      "inventory_snapshot": packet["requirements"], "previous": previous,
+                      "delta": packet.get("delta")}
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role)
         return {"worker": key, "state": str(self.path), "role": role,
-                "timeout_seconds": timeout, "revision": current, "files": snapshots,
-                "requirements": worker["requirements"]}
+                "timeout_seconds": timeout, "revision": current, "packet": str(packet_path)}
+
+    def delta_manifest(self, state, previous, current, snapshots):
+        baseline = self.worker(state, previous)
+        reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
+        # A CONFIRMED-TERMINATED attempt is spent, not a baseline. Reading it as "the latest
+        # completeness result" strands the second attempt the budget below still grants: after the
+        # documented `end-worker --confirmed` recovery, naming the last accepted worker failed this
+        # predicate while naming the dead one failed `accepted`, so the two-attempt budget only ever
+        # worked when attempt one succeeded. Only `terminated` is skipped -- a running or
+        # result_ready worker is still the latest and still blocks a delta, so this is not a way
+        # past an in-flight review, and the budget below counts every attempt including the dead one.
+        live = [w for w in reviews if not w["terminated"]]
+        require(live and live[-1]["id"] == previous and baseline.get("accepted")
+                and baseline["status"] == "consumed", "delta requires the latest accepted completeness result")
+        require(sum(bool(w.get("previous")) for w in reviews) < 2, "delta attempt budget exhausted")
+        require(baseline["requirements"] == state["requirements"],
+                "changed requirements require a full review")
+        self.validate_packet(baseline)
+        require(not baseline.get("previous") or (baseline["result"] or {}).get("delta_review", {}).get(
+            "disposition") == "sufficient", "escalated delta requires a full review")
+        old = baseline["revision"]
+        require(old and old.get("clean") and current and current.get("clean")
+                and old["worktree"] == current["worktree"], "delta needs clean committed trees in the same worktree")
+        expected = {item["id"] for item in state["requirements"]["items"]}
+        verdicts = (baseline["result"] or {}).get("requirements", [])
+        require(baseline["result"].get("requirements_complete") is True
+                and len(verdicts) == len(expected)
+                and {v.get("id") for v in verdicts if isinstance(v, dict)} == expected,
+                "baseline must cover all requirements; missing coverage requires a full review")
+        args = ["git", "-C", current["worktree"], "diff", "--no-ext-diff", "--no-textconv",
+                "--no-renames", old["head"], current["head"]]
+        names = subprocess.check_output(args + ["--name-only", "-z"]).decode("utf-8").split("\0")
+        patch_bytes = subprocess.check_output(args + ["--binary"])
+        old_inputs = baseline["files"]
+        changed = [name for name in sorted(set(old_inputs) | set(snapshots))
+                   if {k: old_inputs.get(name, {}).get(k) for k in ("path", "sha256")}
+                   != {k: snapshots.get(name, {}).get(k) for k in ("path", "sha256")}]
+        resolutions = baseline.get("citation_resolutions", [])
+        changed_evidence = [c["id"] for c in resolutions if not Path(c["artifact"]).is_file()
+                            or digest(c["artifact"]) != c["sha256"]]
+        return {"previous": previous, "before": old, "after": current,
+                "changed_paths": [n for n in names if n], "patch": patch_bytes,
+                "changed_inputs": changed, "before_inputs": old_inputs, "after_inputs": snapshots,
+                "changed_evidence_ids": changed_evidence,
+                "unresolved_evidence_ids": sorted(expected - {c["id"] for c in resolutions}),
+                "previous_result": baseline["result"], "previous_citations": resolutions,
+                "instruction": "Check indirect effects for EVERY requirement, claims and caveats. "
+                "Unchanged bytes are not proof of unchanged behavior. Escalate if scope is not bounded."}
+
+    @staticmethod
+    def validate_packet(worker):
+        # Legacy full reviews can still be consumed, but cannot provide delta history.
+        if not worker.get("packet"):
+            return
+        require(digest(worker["packet"]) == worker["packet_sha256"], "context packet changed")
+        inventory = worker["inventory_snapshot"]
+        require(digest(inventory["path"]) == inventory["sha256"], "requirement snapshot changed")
+
+    @staticmethod
+    def validate_delta(worker, result):
+        if not worker.get("previous"):
+            return
+        delta = result.get("delta_review")
+        expected = {item["id"] for item in worker["requirements"]["items"]}
+        require(isinstance(delta, dict) and delta.get("previous") == worker["previous"]
+                and delta.get("manifest_sha256") == worker["delta"]["sha256"]
+                and digest(worker["delta"]["path"]) == worker["delta"]["sha256"],
+                "delta review must identify the exact baseline and unchanged manifest")
+        checked = delta.get("checked_requirement_ids")
+        require(isinstance(checked, list) and len(checked) == len(expected)
+                and all(isinstance(key, str) for key in checked) and set(checked) == expected,
+                "delta review must check indirect impact on every requirement")
+        require(delta.get("disposition") in {"sufficient", "full-review-required"},
+                "delta review must assess whether its scope is sufficient")
+        manifest = read_json(worker["delta"]["path"])
+        require(digest(manifest["patch"]["path"]) == manifest["patch"]["sha256"],
+                "delta patch changed")
+        for inputs in (manifest["before_inputs"], manifest["after_inputs"]):
+            for source in inputs.values():
+                require(source.get("snapshot") and digest(source["snapshot"]) == source["sha256"],
+                        "delta input snapshot changed or missing; require a full review")
 
     @staticmethod
     def worker(state, key):
@@ -332,6 +447,8 @@ class Runtime:
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(not worker["terminated"], "worker was confirmed terminated; reconcile late output explicitly")
+            self.validate_packet(worker)
+            self.validate_delta(worker, result)
             if worker["result"] is not None:
                 require(worker["result"] == result, "result is immutable; create a new attempt for a revision")
                 return {"worker": key, "status": worker["status"]}
@@ -449,6 +566,7 @@ class Runtime:
         current = revision(worktree)
         with self.transaction() as state:
             worker = self.worker(state, key)
+            self.validate_packet(worker)
             reasons = self.readiness(state)
             if worker["role"] != "completeness" or worker["status"] != "consumed":
                 reasons.append("independent completeness result has not been consumed")
@@ -459,7 +577,13 @@ class Runtime:
             for name, source in worker["files"].items():
                 if digest(source["path"]) != source["sha256"]:
                     reasons.append(f"review input changed: {name}")
+                if source.get("snapshot") and digest(source["snapshot"]) != source["sha256"]:
+                    reasons.append(f"review snapshot changed: {name}")
             result = worker["result"] or {}
+            if worker.get("previous"):
+                self.validate_delta(worker, result)
+                if result["delta_review"]["disposition"] != "sufficient":
+                    reasons.append("delta reviewer requires full review")
             if result.get("requirements_complete") is not True:
                 reasons.append("independent full-source requirement coverage was not confirmed")
             verdicts = result.get("requirements", [])
@@ -536,6 +660,9 @@ class Runtime:
                     spans.append({"stage": event["stage"],
                                   "seconds": elapsed(starts.pop(event["stage"]), event)})
             return {"run": state["run"], "stage": state["stage"], "workers": workers,
+                    "full_completeness_attempts": sum(w["role"] == "completeness" and not w.get("previous")
+                                                       for w in state["workers"].values()),
+                    "delta_attempts": sum(bool(w.get("previous")) for w in state["workers"].values()),
                     "stage_spans": spans, "open_stages": list(starts),
                     "verification_runs": len(tests),
                     "repeated_verification_signatures": len(signatures) - len(set(signatures)),
@@ -553,6 +680,7 @@ def main():
     commands.add_parser("ready")
     p = commands.add_parser("prepare"); p.add_argument("--role", required=True); p.add_argument("--file", action="append", default=[])
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
+    p.add_argument("--previous"); p.add_argument("--slot")
     for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations", "end-worker", "yield", "merge-gate"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
@@ -581,7 +709,7 @@ def main():
             key, path = item.split("=", 1)
             require(key and key not in files, "unique artifact name required")
             files[key] = path
-        result = runtime.prepare(args.role, files, args.worktree, args.timeout)
+        result = runtime.prepare(args.role, files, args.worktree, args.timeout, args.previous, args.slot)
     elif name == "attach": result = runtime.attach(args.worker, args.agent)
     elif name == "publish": result = runtime.publish(args.worker, read_json(args.result))
     elif name == "inspect": result = runtime.inspect(args.worker)

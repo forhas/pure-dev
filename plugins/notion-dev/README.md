@@ -2,7 +2,28 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.32.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.33.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+
+## Review convergence and scoped handoffs (0.33.0)
+
+Review-and-merge stabilizes the base, version and mutating pre-merge checks before
+completeness. Bounded independent correction reviews can reuse applicable evidence
+after a small fix or late rebase; they still return every requirement verdict and
+must stop for broad changes, stale inputs, or unresolved mandatory work. The runtime
+limits correction attempts to two; the workflow retains its two-full-pass bound.
+
+Workers receive a file-based context packet with frozen inputs instead of another
+inline inventory. Implementation and whole-branch reviewers from both build flows
+participate in the durable lifecycle; pending delivery cannot silently drop a reviewer.
+`next-task` hands off artifact references and preserves resumed ticket state.
+
+These are generic notion-dev changes, not client-project patches. Python 3.8+, the
+configured interpreter, explicit Git Bash resolution on Windows, and Bash on Ubuntu
+WSL2 remain supported. No check of external or live state, and no check following a
+code or environment change, is served from a cache; a deterministic check may reuse
+its successful output only on unchanged inputs. Actual token/time savings require a
+measured Claude Code canary; this release does not claim the <200K target has already
+been achieved. See [rollout and measurement](references/convergence.md).
 
 ## Runtime reliability and evidence (0.32.0)
 

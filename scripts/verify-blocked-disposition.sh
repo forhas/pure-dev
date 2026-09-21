@@ -63,7 +63,7 @@ echo "== the completeness gate's terminal rule =="
 for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
-    assert_has "$n stops on an unresolved mandatory criterion" "$RM" 'stops the merge when it'
+    assert_has "$n stops on an unresolved mandatory criterion" "$RM" 'exhausted budget or an unmet mandatory'
     assert_has "$n forbids a budget-driven scope reduction" "$RM" 'or round cap does not authorize scope reduction'
   else
   assert_has "$n offers three terminal dispositions" "$RM" '`file`, `drop`, or `blocked` with a rationale'

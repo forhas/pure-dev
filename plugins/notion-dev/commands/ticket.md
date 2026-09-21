@@ -82,6 +82,13 @@ A page carrying only the `Epic` select tag, with no `epicMarkerProperty` set, is
 
 `KNOWLEDGE_CONTEXT` and `EPIC_CONTEXT` are **background, not requirements**: the ticket body remains the single source of truth for what to build. Where either appears to conflict — an open thread or a recorded decision in the brief, or a stable concept the bundle carries, that the ticket now contradicts — the ticket wins, and the conflict is surfaced to the user at the 1.3 clarification gate rather than silently resolved.
 
+When the caller supplies saved context paths, validate the epic identity and the bundle's
+recorded source revision against the fetched epic branch before reusing them; missing or
+changed provenance triggers retrieval. A path is not a freshness guarantee. Save newly
+retrieved material once under the invocation directory and pass references downstream.
+Keep the fetched ticket's full authoritative body there as `ticket.md`; cached selection
+metadata never replaces this phase's live status/ownership/readiness checks.
+
 Record `RUN_START` (`date -u +%FT%TZ`). `REPO_ROOT` was already recorded at the preconditions gate — before the first config read and ticket-system call, both of which depend on it; the ledger, per `skills/flow-triage/references/ledger.md`, likewise lives in the primary checkout it points to.
 
 Announce to the user: "Working on `<key>`: <title>" (`<key>` is the `key` field returned by `fetchTicket`, e.g. `"STO-67"` — display it as-is, don't rebuild it from `project.key`). Show the ticket URL.
@@ -205,6 +212,14 @@ Mark the ticket as started — invoke `notion-dev:ticket-system`:
 
 The worktree exists before this section (2.1) and the status is set before it, so the claim precedes every mirror of it. The primary is clean by precondition on a fresh start; on a resume inside an existing worktree it may not be, and the write path then falls back to its branch assertion.
 
+**Synchronize after start bookkeeping.** The brief may just have advanced the branch
+from which the worktree was created. After releasing the primary lock, fetch the configured
+PR base (`git.prTargetBranch`, falling back to `git.baseBranch`). On a fresh branch with no
+ticket commits, fast-forward the clean worktree to that base before exploration. Never
+reset a resumed branch or auto-stash user edits. On resume, preserve local work and reconcile
+the base through review-and-merge's bounded stabilization step before final verification.
+Do not spend a completeness pass on a head already known to predate this run's base write.
+
 All subsequent file work happens in the worktree. Ledger writes go to `$REPO_ROOT/.claude/notion-dev/` — a sanctioned exception to the worktree-only rule, and a self-ignored directory that never appears in `git status`.
 
 **Assert the primary checkout is unchanged after each build task.** Every clean-tree gate in this
@@ -246,17 +261,17 @@ From inside the worktree, follow the branch matching `FLOW`:
 
 ### 4.1 `FLOW=feature-dev`
 
-Invoke `feature-dev:feature-dev` with the ticket body plus `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (they are absent when Phase 3 was skipped on resume). When `KNOWLEDGE_CONTEXT` is present, include it too as further seed context, labeled background, not requirements. Follow its full flow (explore → clarify → architect → implement → review).
+Invoke `feature-dev:feature-dev` with the authoritative `ticket.md` path plus paths to `MICRO_PLAN`/`SCOUT_FINDINGS` as seed context for its exploration/architecture steps, when available (absent when Phase 3 was skipped on resume). Require it to read the full ticket before implementation. When `KNOWLEDGE_CONTEXT` is present, pass its saved path as background, not requirements, and retrieve relevant sections. Follow its full flow (explore → clarify → architect → implement → review).
 
 ### 4.2 `FLOW=superpowers`
 
-(a) Invoke `superpowers:writing-plans`, passing the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections — already a well-formed spec from `/notion-dev:create-task`) as the input, with these overrides (writing-plans honors a caller-supplied plan location):
+(a) Invoke `superpowers:writing-plans`, passing the authoritative `ticket.md` path and instructing it to read the full ticket (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections — already a well-formed spec from `/notion-dev:create-task`) as the input, with these overrides (writing-plans honors a caller-supplied plan location):
 
 - **Save location**: write the plan to `<worktree>/PLAN.md`. Do **not** use writing-plans' default `docs/superpowers/plans/...` path.
 - **Feature name** for the plan header: `<KEY>-<id>: <title>`.
 - **No execution handoff.** `superpowers:writing-plans` ends with an `## Execution Handoff` section that presents the user two execution options and asks "Which approach?". Suppress it — do not present it, and do not ask. This command already chose: step (d) below runs `superpowers:subagent-driven-development`, and step (b) runs first regardless. Writing the plan file **completes** this step; go straight to (b). The handoff is written for a standalone `writing-plans` invocation that has no caller waiting, and left unsuppressed it is a scripted turn-ending hand-back sitting in the middle of a flow that continues here — what ends the turn is the offer, not the absence of an answer, so a self-answer rule cannot recover it — answering the question does not un-end the turn. Measured in a client: a `--non-interactive` run stopped at exactly this boundary.
 
-When `KNOWLEDGE_CONTEXT` is present, also pass it — labeled explicitly as **background context, not spec**: writing-plans must not turn an open thread, a recorded decision, or a stable concept the bundle carries into a task. Only the ticket body is the spec.
+When `KNOWLEDGE_CONTEXT` is present, pass its saved path — labeled explicitly as **background context, not spec**: writing-plans must not turn an open thread, a recorded decision, or a stable concept the bundle carries into a task. Only the ticket body is the spec.
 
 Writing-plans produces a TDD-structured plan with bite-sized (2-5 minute) tasks, explicit file-by-file create/modify paths, and checkbox (`- [ ]`) tracking.
 
@@ -268,7 +283,7 @@ For tickets that are genuinely not TDD-shaped (docs-only edit, config bump, pure
 
 **Never review the plan yourself instead.** Whoever runs this command wrote the plan or ordered it written, so a self-review verifies nothing while producing something that reads like a verdict — the absence of the check, reported as the check. Only an instruction forbidding *this* dispatch counts as a prohibition (the user saying not to use subagents at all, or not for this review), or a harness that refuses the call outright; a general default is not one. When the dispatch is genuinely forbidden, `plan-review` emits `PLAN-REVIEW: degraded`, and the final report must say plainly that the plan went unreviewed.
 
-Pass `--plan="<worktree>/PLAN.md"` (add `--auto` in non-interactive mode) and a context packet whose `INTENT:` block is the ticket body (the `Requirements` / `Acceptance Criteria` / `Context` / `Open Questions` sections), `SCOUT-FINDINGS:` and `MICRO-PLAN:` are the blocks recorded in Phase 3 — or `NONE — not available` when Phase 3 was skipped on resume — `VERIFY:` lists the `verify.steps` commands from config, and `EPIC-CONTEXT:` is `KNOWLEDGE_CONTEXT` when present or `NONE — not available` when absent, following the same convention as the other optional blocks — labeled as background, not requirements, so the reviewer never treats a resolution-log entry as spec. No `--spec-file`: the ticket body is the spec and travels inline.
+Pass `--plan="<worktree>/PLAN.md" --spec-file="<invocation>/ticket.md"` (add `--auto` in non-interactive mode). In the labelled context packet use `INTENT: (see --spec-file)`, `SCOUT-FINDINGS:` and `MICRO-PLAN:` with their saved `FILE: <absolute-path>` references, or `NONE — not available` when Phase 3 was skipped on resume. `VERIFY:` lists the configured commands. `EPIC-CONTEXT:` references saved `KNOWLEDGE_CONTEXT` when present, otherwise `NONE — not available`, explicitly background, not requirements. Do not inline a second copy of the ticket, plan, or bundle.
 
 It dispatches a fresh reviewer against the plan **and the codebase**, triages the findings, revises `PLAN.md`, and returns a `PLAN-REVIEW:` output block. Record the whole output block as `PLAN_REVIEW_REPORT` — `PLAN-REVIEW`, `FINDINGS`, `ACCEPTED`, `DECLINED`, `UNRESOLVED-CRITICAL`, `UNRESOLVED-REQUIRED`, `TRIAGE`, `DECLINED-WITH-REASONING`, and `UNRESOLVED` — for the ledger outcome and the ticket's `## Implementation` section (6.5). When the block reads `PLAN-REVIEW: degraded` — the reviewer never ran — record `retry-exhausted:plan-review` per `notion-dev:issue-log`. The revision preserves every `- [ ]` checkbox, so Phase 1.2's resume detection is unaffected.
 
@@ -293,6 +308,26 @@ Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blo
 
 State the explicit deviations from stock superpowers when invoking, so the flows do not fight: skip `superpowers:using-git-worktrees` (Phase 2 already made the worktree); the end-of-branch review that `subagent-driven-development`/`finishing-a-development-branch` would normally run is not a substitute for Phase 7's review loop, which runs identically for both build flows.
 
+**Runtime adapter — both build flows.** Before delegating to either feature-dev or
+superpowers, pass the worker lifecycle from `references/runtime.md` through to every
+actual dispatch: `scout` for exploration, `plan` for architecture, `implementation`
+(stable `--slot <task-or-seat-id>` for disjoint parallel tasks),
+`local-review` for task review, and `branch-review` for the whole-branch review. Prepare
+each immediately before dispatch; attach its real agent ID, require publication before
+the final reply, consume and judge it, then accept or confirm termination. Do not launch
+a substitute while a whole-branch reviewer is pending or abandon it when starting Phase 7.
+Register each actual dispatch once with its own assigned seat; do not create a dummy worker
+to count an already registered dispatch again. The build's branch review still does not
+replace Phase 7's review loop. Explicitly unsupported host adapters stop at that boundary.
+
+Pass the generated context packet and task-specific file references instead of inherited
+conversation history wherever the host supports isolated contexts. Persist scout findings,
+the plan, decisions with their source, unresolved questions, and current verification once
+under the invocation directory; subsequent stages reference those files. Requirements stay
+authoritative; background is not a new spec. Do not reload an entire skill or regenerate an
+unchanged summary merely to resume a phase. A resumed stage reads durable state and changed
+inputs, then calls `stage <actual-stage>`; it does not leave active work labeled `stopped`.
+
 ### 4.3 Non-interactive mode and shared context
 
 Non-interactive mode: every build-flow user gate (clarifying questions, plan approval, per-task review pauses) is self-answered with the most reasonable choice and logged for the final report.
@@ -302,6 +337,11 @@ Throughout execution, project context matters: `CLAUDE.md` at the repo root, exi
 ---
 
 ## Phase 5 — Verify
+
+Retain measured verification receipts and their log paths in the invocation directory.
+Report only failed checks and the final summary; downstream reviewers retrieve the logs
+they cite. Do not repeat successful commands solely to copy their output into a new prompt;
+required fresh-validation gates and checks after code/environment changes still run.
 
 Touch the run marker: `phase` = "Phase 5", `heartbeat` = now.
 

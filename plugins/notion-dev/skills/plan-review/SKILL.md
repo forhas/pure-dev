@@ -39,16 +39,22 @@ EPIC-CONTEXT:
 
 `SCOUT-FINDINGS` and `MICRO-PLAN` are legitimately absent when the caller skipped triage (for example a resumed run). When they are, tell the reviewer they are unavailable — never fabricate a stand-in.
 
+Each material block may instead contain `FILE: <absolute-path>`. Forward the reference,
+not another inline copy. The reviewer reads the spec and plan completely, then the scoped
+background/code needed to test the plan. A missing file is unavailable evidence, never an
+empty successful read. `prepare --role plan` supplies the runtime context packet and frozen
+input hashes; include these referenced files in that preparation.
+
 `EPIC-CONTEXT` is legitimately absent whenever the ticket has no epic — the ordinary case. When present, it is **background, not spec**: the reviewer may use it to judge whether the plan is consistent with what siblings already decided, but must never treat an open thread or a recorded decision from the brief as a requirement — the ticket body (`INTENT`, plus `--spec-file` when given) remains the single source of truth.
 
 ## Step 1 — Build the reviewer prompt
 
 Assemble a **self-contained** prompt. The reviewer is a fresh agent with an empty conversation; it inherits nothing. Include:
 
-1. The full text of `references/reviewer-rubric.md` — instruct the reviewer to apply it exactly, including its output contract.
-2. The plan file's absolute path and its full current contents.
+1. The absolute path to `references/reviewer-rubric.md` — instruct the reviewer to read and apply it exactly, including its output contract.
+2. The plan file's absolute path; require the reviewer to read its full current contents.
 3. The plan's identity for the echo line: the current HEAD sha if the plan is committed, otherwise `uncommitted`.
-4. The `INTENT` block and, when `--spec-file` was given, that file's contents — together these are what the plan is judged against. When the caller supplies both they are complementary, not alternatives: the spec file carries the full requirement, `INTENT` the caller's framing of it. Include both; neither overrides the other.
+4. The `INTENT` block and, when `--spec-file` was given, that file's absolute path with an instruction to read the full contents — together these are what the plan is judged against. When the caller supplies both they are complementary, not alternatives: the spec file carries the full requirement, `INTENT` the caller's framing of it. Include both; neither overrides the other.
 5. The `SCOUT-FINDINGS` and `MICRO-PLAN` blocks, labelled as precomputed context from triage, or explicitly marked unavailable.
 6. The `VERIFY` commands, so the reviewer knows what verification exists in this repo.
 7. The `EPIC-CONTEXT` block, when present, labelled explicitly as **background, not spec** — the epic's overview, sibling status, and recent resolution history, useful for judging consistency with what siblings already decided, never a source of requirements. Omit this item entirely when `EPIC-CONTEXT` is `NONE — not available`.

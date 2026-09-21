@@ -71,6 +71,12 @@ Work PR-first — the PR number is the entry point, and the ticket id is derived
 
 ## Phase 2 — Review and merge
 
+Resume the recorded `RUNTIME_STATE` and call `stage review` before work; retain worker
+outcomes and full/delta review budgets. Do not recreate state just because `ticket` stopped.
+The reviewing skill stabilizes the base and mutating closeout/checks before completeness,
+then uses independent bounded corrections for small later changes. Call `stage merge`
+before merging and `stage record` before Phase 3; stopped time must not include resumed work.
+
 Reached only when Phase 1 did **not** take the `MERGED` recovery path (that path skips this
 phase entirely).
 

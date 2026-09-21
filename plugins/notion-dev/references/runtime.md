@@ -31,6 +31,9 @@ verdicts. Pass `RUNTIME_STATE` to invoked notion-dev skills and the record unit.
 At each phase boundary call `stage <name>` (selection, intake, plan, implementation,
 validation, review, merge, record, complete, or stopped). Calls close the previous
 span using a real clock. A repeated identical name does not restart its timer.
+On resuming a stopped run, call the actual resumed stage before doing work; never
+leave review, merge, or record charged to `stopped`. Resuming does not reset review
+budgets, deadlines, accepted results, or the worker registry.
 
 Run configured validation commands through the measured runner, without changing
 which checks/retries the existing workflow requires:
@@ -97,7 +100,7 @@ to retroactively merge or bypass a gate.
 ## Workers: prepare → attach → result_ready → consumed → accepted
 
 Before each actual dispatch, prepare a distinct worker with role `scout`, `plan`,
-`local-review`, `completeness`, or `record`. Supply the necessary input files (not a
+`implementation`, `branch-review`, `local-review`, `completeness`, or `record`. Supply the necessary input files (not a
 whole conversational history). Review roles also require the worktree. For example:
 
 ```bash
@@ -110,9 +113,30 @@ inventory and the deadline. Use its returned worker ID. Default deadline: 900 se
 record with configured hooks may use `--timeout 2700`, still within the existing
 primary-lock safety margin. Preparation belongs immediately before dispatch.
 
+`prepare` returns a **packet path**, not another copy of the inventory. The packet
+indexes immutable UTF-8 JSON requirement metadata and byte-preserving input snapshots
+beside state; it does not replace the authoritative sources or waive freshness checks.
+Give the child this path and a narrow objective. Read the ticket/inventory and applicable
+project instructions first, then relevant input snapshots and code. Retrieve referenced
+architecture/history only for a named question. Missing/contradictory evidence expands
+retrieval; no token budget permits omitting a requirement. Do not load the entire runtime
+state (which includes all historical reports) or send the whole transcript to each worker.
+
+This protocol covers **third-party flow agents too**, including a whole-branch reviewer
+launched by feature-dev or superpowers. Pass the prepare/publish contract through the flow
+adapter before dispatch, not after a delayed reply. Use `branch-review` for the whole-branch
+seat and `local-review` for task reviews. Build-flow workers may use `--slot <task-or-seat-id>`
+for disjoint parallel implementation, scouting, architecture or review tasks. A slot is
+stable across retries and never an escape from waiting for its previous worker. An unscoped
+worker excludes other workers in its role; `record` and `completeness` never permit slots.
+Every actual agent has one worker ID and real host ID. A host that cannot provide this
+contract must be handled as an explicit unsupported dispatch, not an untracked agent
+or a second reviewer launched while the first is pending. Existing authority rules apply.
+
 Give the child the resolved interpreter command, absolute `runtime.py` path,
 `RUNTIME_STATE`, worker ID, input paths, and the result contract below. Pass literal
 values; do not assume parent shell variables exist in the child's environment.
+Also pass the packet path; do not paste its input file contents into the dispatch.
 The Agent tool may be asynchronous: a launch acknowledgement is **pending work**,
 not zero-byte output. Attach the actual returned host agent ID:
 
@@ -203,6 +227,55 @@ record-unit lock/unknown-hook-outcome rules if termination cannot be confirmed.
 
 ## Final merge guard
 
+### Independent correction receipts
+
+Finish branch/base synchronization, version fixes, configured checks, and mutating
+closeout work **before** full completeness dispatch. Freeze the factual PR body and
+verification logs. Do not keep adding adjacent explanations or provisional counts;
+unsupported new prose creates new review work. Never advance the base with this run's
+brief bookkeeping during the final evidence window.
+
+For a bounded correction after an accepted full report, refresh all current input files
+and prepare an independent worker with the same role and the latest baseline:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" prepare --role completeness --previous <latest-accepted-worker> --worktree <worktree> --file ticket=<ticket.md> --file inventory=<requirements.json> --file criteria=<criteria-file> --file diff=<current-full-diff> --file pr=<current-PR-body> --file verify=<current-verification-log>
+```
+
+The delta manifest references a separate, byte-preserving before/after committed-tree patch, lists changed
+input names, prior immutable report and citation hashes, and old/new input references.
+It requires clean trees, unchanged requirements, a complete accepted baseline, and
+**at most two delta attempts per invocation**, including failed attempts. The two full
+passes remain the workflow's separate bound. Older states without clean-tree/snapshot
+metadata require a full review, not an inferred baseline. Failure/rejection never resets
+either budget. If full review is needed and its budget is spent, stop.
+
+Read the manifest first to assess scope; inspect the patch/code by relevant section rather
+than dumping a large patch into the parent context. The patch hash is verified at publication
+and merge. A large/broad patch calls for honest escalation, never silent truncation.
+
+The fresh reviewer checks the source/inventory, corrected code for defects, current
+claims/caveats, all changed dependencies, and indirect effects on every requirement.
+Unchanged citation bytes only identify reuse candidates; they never prove behavior is
+unchanged. Retrieve the original diff/code where needed. Return the usual full current
+verdict set and this additional object (including when reporting an honest escalation):
+
+```json
+{"delta_review": {
+  "previous": "<baseline worker ID>",
+  "manifest_sha256": "<packet's delta sha256>",
+  "disposition": "sufficient",
+  "checked_requirement_ids": ["P1", "AC1"]
+}}
+```
+
+`full-review-required` is the other disposition; it publishes successfully but blocks
+merge. The host must not author the review, rewrite `not-met`, or copy forward a verdict
+without independent applicability checks. Resolve every current citation, consume/accept
+the report, and use the new worker ID at merge. Any subsequent code/input mutation still
+invalidates this receipt. Missing history/coverage, new requirements, or broad changes
+use a full independent review within budget, not an ever-growing “delta”.
+
 After citation resolution, the existing checks/thread/rebase gates and pre-merge
 closeout, refresh the ticket source and validate the consumed completeness receipt:
 
@@ -215,7 +288,7 @@ Run this as its own command immediately before the merge command. Exit 1 or 2 me
 pending, stale or unconsumed result passes; all mandatory items need cited `met`
 verdicts, and all worker results/termination outcomes must be accounted for. A rebase,
 code/input change, or repaired requirement needs a new applicable completeness result
-within the existing bounded passes; exhaustion stops rather than waiving the gate.
+within the bounded full/delta passes; exhaustion stops rather than waiving the gate.
 This guard takes precedence over legacy prose that allowed filing an unmet criterion
 or merging with degraded completeness. Non-required follow-ups remain permissible.
 

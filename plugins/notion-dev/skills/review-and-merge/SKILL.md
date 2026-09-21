@@ -1069,8 +1069,12 @@ round terminal:
    So a non-blocking finding from the sweep round **may be fixed**, under Rule 3 (minimal patch)
    and Rule 4 (verify before push), when the fix is small and inside files this pull request
    already touches. What it must never do is trigger **another review round**. Such a fix
-   therefore reaches the merge with CI and the gate stack as its only checks — the same
-   limitation the Completeness gate discloses — and the report must name which findings took it.
+   therefore reaches the merge with CI and the gate stack as its only checks, and the report must
+   name which findings took it. **The Completeness gate's correction-review requirement cannot
+   reach this patch**, and that gap is real rather than a disclosure: the sweep runs before that
+   gate, so no accepted completeness baseline exists yet for its delta path to build on. Closing
+   the ordering is tracked in https://github.com/forhas/pure-dev/issues/66 — do not read the
+   delta path as available here.
 
    **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
    public
@@ -1091,9 +1095,9 @@ round terminal:
 3. **A `blocking` finding the sweep did *not* induce** is a defect the earlier rounds missed in
    pre-sweep code. It is fixed, not filed — the Absorb gate would demand that anyway — and it is
    the one thing in this round that gets a patch. That patch reaches the merge with CI and the
-   gate stack as its only independent check. This is the same limitation the Completeness gate
-   discloses, for the same reason, and it is bounded to a defect the loop had already agreed was
-   blocking rather than to any new scope.
+   gate stack as its only independent check, under the same unclosed ordering gap branch 1 names,
+   and it stays bounded to a defect the loop had already agreed was blocking rather than to any
+   new scope.
 
 **If the bound reviewer is unavailable** for the sweep round, run one local review round instead
 (`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
@@ -1135,6 +1139,33 @@ The sweep is not one of the gates below; it is the step before them, and skippin
 filed item turns into a second pull request. Hard gates — all of these hold even under the round
 cap:
 
+### Stabilize before completeness
+
+Finish mutations before spending a completeness pass. No start/stop/record brief writes
+or other run-owned base updates belong between this preparation and merge. Keep the
+existing claims and primary locks; parallel runs may still advance the base.
+
+**Rebase at the gate.** Read `gh pr view <pr> --json mergeStateStatus`. `BEHIND` or `DIRTY`, or `git merge-base --is-ancestor origin/<base> HEAD` fails after `git fetch origin <base>` (GitHub reports `BEHIND` only under branch protection; an unprotected base reports `CLEAN` for a head that fell behind) → in the worktree: when the repo carries a manifest, before rebasing record the bump class: compare the manifest at `git merge-base origin/<base> HEAD` with the head's manifest; the first differing component (major, minor, patch) is `BUMP_CLASS`; identical manifests → no class (the branch made no bump); no manifest at the merge-base → this branch introduces the plugin (`/notion-dev:ticket` Phase 6.1's new-plugin rule): no class, and nothing below re-bumps it; a head version lower than the merge-base's → stop with the unmergeable report (a downward version is never re-applied). Then `git fetch origin <base>` and `git rebase origin/<base>` (conflict handling below). After any rebase, when a `BUMP_CLASS` was recorded, unconditionally re-check that the head's version is strictly greater than `origin/<base>`'s under semver ordering — a base carrying no manifest has no version to exceed, so the head's initial version stands (`/notion-dev:ticket` Phase 6.1's rule); when it is not, re-apply `BUMP_CLASS` on the base's value and commit `chore: re-bump version after rebase`. No class recorded — the branch made no bump, or it introduces the plugin — means there is nothing to re-apply and nothing to re-check: a rebase never gives a branch a bump it did not already have, and a directly-invoked run on a hand-opened documentation-only PR is the supported case that has none. Then run **one** verify on the rebased head, the way the review loop does (notion-dev: `verify.steps` from `.claude/notion-dev.config.json` in the primary checkout, honouring per-step `retries`; quick-dev: the project's verify command), replacing `VERIFY_OUTPUT`. Then **one** `git push --force-with-lease`, carrying both the rebase and any re-bump. Re-read `mergeStateStatus` with the same bounded poll gate 1 uses (~15 minutes): `UNKNOWN` means GitHub has not recomputed yet — wait; `BLOCKED` → re-run gate 1's `gh pr checks` and gate 2's thread query and continue only when both pass; `BEHIND`/`DIRTY` again → the base moved during the rebase: one more pass, then stop if it recurs; a merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue (gate 1's re-satisfaction below is what re-reads a red or pending check, and this same paragraph already documents `CLEAN` as what an unprotected base reports); any other status stops. Then re-satisfy gate 1 on the pushed head, and continue to the next gate. A conflict-free rebase is not proof of unchanged behavior: inspect its base/head delta and verify the integrated result; it does not automatically trigger a whole review round, but changed behavior needs independent review before merging; the final report states that the rebase happened and the new head sha. `git.mergeStrategy` is unchanged by the rebase. This runs **once, at the gate, never per round** — a base that moves during review rounds is caught here, not chased.
+
+One conflict class resolves itself: when the rebase stops with the **only** conflicting hunk being `version` in `.claude-plugin/plugin.json`, take the base's value and re-apply this PR's bump class (`BUMP_CLASS`, recorded before the rebase started) on top, `git add .claude-plugin/plugin.json`, `git rebase --continue`. Two minor PRs against 0.24.0: the first lands 0.25.0; the second's identical version line rebases without conflict, the re-check finds 0.25.0 equal to base, and the re-bump lands 0.26.0. Any other conflict → `git rebase --abort` and the existing unmergeable stop, worktree and PR left for a person; no automatic resolution of code. A repo without a manifest gets the rebase and nothing else.
+
+**Config pre-merge checks**: read `git.preMergeChecks` from
+   `.claude/notion-dev.config.json` in the primary checkout (an ordered list of skill names; empty by default).
+   Invoke each skill in order via the Skill tool. If any skill signals failure, stop
+   and report which check failed and why — never merge past a failing configured check.
+
+**Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — before freezing completeness inputs (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** and the gates below if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
+
+Refresh the authoritative requirement source/inventory and PR body after these checks.
+Commit/push intended fixes; require a clean worktree, green checks, and current verification.
+A command that changes tracked files is preparation, not a read-only final check. Record
+`STABLE_BASE` and `STABLE_HEAD` with `git rev-parse origin/<base> HEAD`. Write factual PR
+claims supported by evidence; omit speculative explanations and provisional completeness
+totals. The final completeness report belongs in its PR comment, not a second body summary.
+Then freeze the input files and proceed through the gates below.
+
+### Final evidence gates
+
 1. **Checks gate**: every **required** check must pass — `gh pr checks <pr> --required`. Beware: this command exits non-zero **both** on failing required checks **and** when no required checks exist at all (cli/cli#9682) — if it fails with "no checks reported", the repo defines no required checks and the required gate is satisfied; do not treat that as a failure. Additionally, no check of any kind may be **failing** (`gh pr checks <pr>`, same "no checks reported" caveat) — a red optional check still blocks until fixed. Pending **optional** checks do not block the merge; pending **required** checks do — wait for them (`gh pr checks <pr> --required --watch`, or a 30-second sleep loop) with a bounded timeout of ~15 minutes; on timeout, stop and report.
 2. **All threads resolved**: re-run the GraphQL thread query, paging through every page, and verify every thread has `isResolved: true`.
 
@@ -1174,7 +1205,8 @@ cap:
 
    `absorb` items are fixed and pushed. **The gate stack then re-runs on the new HEAD,
    unconditionally** — not only when `--pre-merge-check` was supplied and fired; that
-   check's own re-run is one instance of this rule, not its source. **The verifier runs at most twice.**
+   check's own re-run is one instance of this rule, not its source. **The full verifier runs at most twice.** Bounded correction checks below are separate,
+   never a third full investigation.
    Pass 2 focuses investigation on changed or unresolved requirements, scoped to
    **the new commits plus the original diff** (`origin/<baseRefName>...HEAD` in full).
    It must return a complete current-head verdict set for every inventory ID, independently
@@ -1185,8 +1217,8 @@ cap:
    diff, fail to resolve a second time, and convert "we could not confirm it" into a
    recorded scope reduction for work that was already done. Pass 2 uses retained evidence for unchanged requirements and rechecks its applicability,
    rather than repeating their entire investigation. Anything still `not-met` or
-   `unverified` after pass 2 — whichever state it started in — stops the merge when it
-   is a mandatory requirement. Preserve its honest disposition and evidence; a budget
+   `unverified` after pass 2 needs the bounded correction path below or stops the merge
+   when it is mandatory. Preserve its honest disposition and evidence; a budget
    or round cap does not authorize scope reduction. The classification below records
    why work remains; it never overrides the final runtime gate.
 
@@ -1231,24 +1263,18 @@ cap:
    in fact. The third was a genuine `file`. Under the order above that run files one
    ticket, not three.
 
-   **Completeness `absorb` work is not code-reviewed, and that is a stated limitation of
-   this gate.** These items arise *after* the review loop has ended, and the re-run above
-   re-runs the gate stack, not the review loop — so a fix absorbed here reaches the merge
-   with CI, the other hard gates, and the verifier's own second pass as its only checks.
-   The Absorb gate's "the next round reviews it" holds for review findings, which arise
-   inside the loop; it does not hold for these. Re-entering the loop was considered and
-   rejected: each absorbed round can raise new completeness items and re-enter again,
-   which defeats the two-pass bound this gate is built on and the cost it is bounded for.
-   The mitigation is a triage rule, not a new loop: **prefer `file` over `absorb` for any
-   item whose fix is substantial new implementation** rather than a citation, a
-   documentation correction, or a small completion — a filed item is reviewed as its own
-   ticket, which is the review this path cannot give it.
+   **Full completeness verification is not code review.** Corrective code changes also
+   require the independent correction review below; CI alone is not that review.
+   Substantial new implementation needs full independent code review before merge,
+   not an expanding correction check. If the remaining budget cannot establish that,
+   stop with the actual defect and evidence; never file a mandatory requirement merely
+   to call this PR complete.
 
    **Reconcile the pull request body against the gate's final counts before merging.**
    Charge 2 audits the body's claims, but it runs *before* pass 2 can change a verdict, so
    a body that stated the pass-1 result is left asserting a number the gate has since
    contradicted — and nothing re-reads it. So once the verdicts settle: read the body's own
-   completeness statement and rewrite it to the gate's final `CRITERIA-MET` /
+   completeness statement, if any, and correct a contradiction to the gate's final `CRITERIA-MET` /
    `CRITERIA-NOT-MET` / `CRITERIA-UNVERIFIED`, naming each criterion that is not `met` and
    its disposition. **A body asserting a completeness count that contradicts the gate is an
    unsupported claim by charge 2's own definition** — the gate must not merge past one it
@@ -1257,18 +1283,39 @@ cap:
    met**" while the gate, the ledger, and the run's own final report all recorded 3 met and
    1 unverified — the claim the gate exists to catch, published by the gate's own run.
 
-**Rebase at the gate.** Read `gh pr view <pr> --json mergeStateStatus`. `BEHIND` or `DIRTY`, or `git merge-base --is-ancestor origin/<base> HEAD` fails after `git fetch origin <base>` (GitHub reports `BEHIND` only under branch protection; an unprotected base reports `CLEAN` for a head that fell behind) → in the worktree: when the repo carries a manifest, before rebasing record the bump class: compare the manifest at `git merge-base origin/<base> HEAD` with the head's manifest; the first differing component (major, minor, patch) is `BUMP_CLASS`; identical manifests → no class (the branch made no bump); no manifest at the merge-base → this branch introduces the plugin (`/notion-dev:ticket` Phase 6.1's new-plugin rule): no class, and nothing below re-bumps it; a head version lower than the merge-base's → stop with the unmergeable report (a downward version is never re-applied). Then `git fetch origin <base>` and `git rebase origin/<base>` (conflict handling below). After any rebase, when a `BUMP_CLASS` was recorded, unconditionally re-check that the head's version is strictly greater than `origin/<base>`'s under semver ordering — a base carrying no manifest has no version to exceed, so the head's initial version stands (`/notion-dev:ticket` Phase 6.1's rule); when it is not, re-apply `BUMP_CLASS` on the base's value and commit `chore: re-bump version after rebase`. No class recorded — the branch made no bump, or it introduces the plugin — means there is nothing to re-apply and nothing to re-check: a rebase never gives a branch a bump it did not already have, and a directly-invoked run on a hand-opened documentation-only PR is the supported case that has none. Then run **one** verify on the rebased head, the way the review loop does (notion-dev: `verify.steps` from `.claude/notion-dev.config.json` in the primary checkout, honouring per-step `retries`; quick-dev: the project's verify command), replacing `VERIFY_OUTPUT`. Then **one** `git push --force-with-lease`, carrying both the rebase and any re-bump. Re-read `mergeStateStatus` with the same bounded poll gate 1 uses (~15 minutes): `UNKNOWN` means GitHub has not recomputed yet — wait; `BLOCKED` → re-run gate 1's `gh pr checks` and gate 2's thread query and continue only when both pass; `BEHIND`/`DIRTY` again → the base moved during the rebase: one more pass, then stop if it recurs; a merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue (gate 1's re-satisfaction below is what re-reads a red or pending check, and this same paragraph already documents `CLEAN` as what an unprotected base reports); any other status stops. Then re-satisfy gate 1 on the pushed head, and continue to the next gate. A clean rebase changes no diff, so it triggers no new review round; the final report states that the rebase happened and the new head sha. `git.mergeStrategy` is unchanged by the rebase. This runs **once, at the gate, never per round** — a base that moves during review rounds is caught here, not chased.
+### Bounded correction review
 
-One conflict class resolves itself: when the rebase stops with the **only** conflicting hunk being `version` in `.claude-plugin/plugin.json`, take the base's value and re-apply this PR's bump class (`BUMP_CLASS`, recorded before the rebase started) on top, `git add .claude-plugin/plugin.json`, `git rebase --continue`. Two minor PRs against 0.24.0: the first lands 0.25.0; the second's identical version line rebases without conflict, the re-check finds 0.25.0 equal to base, and the re-bump lands 0.26.0. Any other conflict → `git rebase --abort` and the existing unmergeable stop, worktree and PR left for a person; no automatic resolution of code. A repo without a manifest gets the rebase and nothing else.
+A small correction, claim reconciliation, or late base advance must not silently invalidate
+a completed review. After committing the correction and running applicable validation,
+prepare a fresh independent completeness worker with `--previous <latest-accepted-worker>`
+under `references/runtime.md`. This is the **delta path**, not another full pass. Use it
+for a bounded follow-up even if the two full passes are spent. It consumes one of **two
+delta attempts per invocation**, including failed attempts. Never reset the invocation
+or select an older baseline to replenish that budget.
 
-5. **Config pre-merge checks**: read `git.preMergeChecks` from
-   `.claude/notion-dev.config.json` in the primary checkout (an ordered list of skill names; empty by default).
-   Invoke each skill in order via the Skill tool. If any skill signals failure, stop
-   and report which check failed and why — never merge past a failing configured check.
+The helper supplies the exact before/after diff (including incoming base changes), frozen
+old/new input references, changed citation dependencies, and the prior independent result.
+The reviewer reads that packet, the authoritative source and current claims, reviews the
+correction's code for defects, and checks indirect effects on **every** requirement. It
+returns the complete current-head verdict set for every inventory ID, with current citations,
+not just changed IDs. Unchanged file hashes alone never establish semantic validity. Broader
+behavior, changed requirements, missing history, or insufficient evidence requires a full
+review within the remaining full-pass budget; otherwise stop. No automatic “docs-only”,
+“clean rebase”, or parent-authored waiver exists.
 
-6. **Caller's pre-merge check**: if `--pre-merge-check` was provided, evaluate it now — after the other gates pass and immediately before the merge command (`git fetch origin` first if the check references remote state). If it fails, apply the remediation the check describes (then re-satisfy **every gate above** if that pushed new commits — stated ordinal-free deliberately: an enumeration here silently goes stale the next time a gate is inserted, which is exactly how the Absorb gate came to be missing from it); if it cannot be satisfied, stop and report. Never merge with a failing pre-merge check.
+After citation resolution, accept the new result and set `COMPLETENESS_WORKER` to its ID.
+Resolve/review findings within these same bounds; exhausted budget or an unmet mandatory
+item stops merging. Re-run the read-only final checks after any accepted correction.
 
-**Runtime receipt gate — immediately before merging.** Refresh the authoritative ticket/spec source and the PR-body snapshot, and resolve the consumed verifier's citations using `resolve-citations` from the runtime protocol. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" merge-gate --worker "$COMPLETENESS_WORKER" --worktree <worktree>` as its own command. Exit 1 or 2 stops the merge; retain artifacts and report the reasons. Changed inputs/head (including a rebase), unavailable verification, unresolved mandatory requirements, or unconsumed results need fresh applicable evidence within the existing bounded passes, never an automatic waiver. Only exit 0 permits the following merge command; this is additional to all existing checks/thread/config gates.
+**Final read-only freshness check.** Re-fetch the base and ticket; read the PR body, required
+checks and all threads again. Compare base/head to `STABLE_BASE`/`STABLE_HEAD` (or their
+accepted correction's values). Re-evaluate the configured and caller checks against the
+same inputs, reusing their successful output only when they are deterministic for those
+unchanged inputs. Checks of external/live state must run again. A new remediation or changed
+input returns to preparation and the bounded correction/full-review path, never directly to
+merge. Do not invoke a mutating closeout pass a second time merely to rediscover its report.
+
+**Runtime receipt gate — immediately before merging.** Refresh the authoritative ticket/spec source and the PR-body snapshot, and resolve the consumed verifier's citations using `resolve-citations` from the runtime protocol. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" merge-gate --worker "$COMPLETENESS_WORKER" --worktree <worktree>` as its own command. Exit 1 or 2 stops the merge; retain artifacts and report the reasons. Changed inputs/head (including a rebase), unavailable verification, unresolved mandatory requirements, or unconsumed results need fresh applicable evidence within the bounded full/delta passes, never an automatic waiver. Only exit 0 permits the following merge command; this is additional to all existing checks/thread/config gates.
 
 Read the merge strategy from .claude/notion-dev.config.json → git.mergeStrategy (default "squash") in the primary checkout. Then merge (per the configured strategy) into the PR's base branch (`baseRefName` — never retarget), **confirm it actually merged**, and only then delete the remote branch:
 
