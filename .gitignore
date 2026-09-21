@@ -33,7 +33,11 @@ __pycache__/
 # commits the whole directory without a word, exactly as it once committed a .pyc and
 # once skipped a newly mirrored skill. Two entries above already exist because that
 # happened; this one exists so it does not happen with a transcript.
-optimize/
+#
+# Anchored. Unanchored, `optimize/` matches a directory of that name at ANY depth, so a
+# future `plugins/<name>/optimize/` of real source would be ignored silently -- the same
+# silent skip this entry exists to prevent, caused by the entry itself.
+/optimize/
 
 node_modules/
 .DS_Store
