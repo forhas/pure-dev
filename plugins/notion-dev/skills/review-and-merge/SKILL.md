@@ -1068,12 +1068,12 @@ round terminal:
 
    So a non-blocking finding from the sweep round **may be fixed**, under Rule 3 (minimal patch)
    and Rule 4 (verify before push), when the fix is small and inside files this pull request
-   already touches. What it must never do is trigger **another review round**. Such a fix is a
-   corrective code change like any other, so it goes through the **bounded correction review**
-   below — the delta path, not another full pass — and CI and the gate stack alone are not that
-   review. That review is bounded by construction (two delta attempts per invocation), so routing
-   the sweep through it can form no second batch and costs none of the round the sweep refuses.
-   The report must name which findings took this path.
+   already touches. What it must never do is trigger **another review round**. Such a fix
+   therefore reaches the merge with CI and the gate stack as its only checks, and the report must
+   name which findings took it. **The Completeness gate's correction-review requirement cannot
+   reach this patch**, and that gap is real rather than a disclosure: the sweep runs before that
+   gate, so no accepted completeness baseline exists yet for its delta path to build on. Closing
+   the ordering is tracked separately — do not read the delta path as available here.
 
    **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
    public
@@ -1093,10 +1093,10 @@ round terminal:
    it instead would need a round to review the fix, and there is no round left to give it.
 3. **A `blocking` finding the sweep did *not* induce** is a defect the earlier rounds missed in
    pre-sweep code. It is fixed, not filed — the Absorb gate would demand that anyway — and it is
-   the one thing in this round that gets a patch. That patch is a corrective code change, so it
-   goes through the **bounded correction review** below before merging; CI and the gate stack
-   alone are not that review. It stays bounded to a defect the loop had already agreed was
-   blocking rather than to any new scope.
+   the one thing in this round that gets a patch. That patch reaches the merge with CI and the
+   gate stack as its only independent check, under the same unclosed ordering gap branch 1 names,
+   and it stays bounded to a defect the loop had already agreed was blocking rather than to any
+   new scope.
 
 **If the bound reviewer is unavailable** for the sweep round, run one local review round instead
 (`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
