@@ -1115,7 +1115,13 @@ class Runtime:
                        "expected_bytes": len(expected), "received_bytes": len(received),
                        "expected_sha256": digest_bytes(expected),
                        "received_sha256": digest_bytes(received),
-                       "delivery_lag_seconds": elapsed(worker["started"], self.clock.stamp())
+                       # From `result_ready`, not from `started` — the same baseline
+                       # `consume` uses for the identically named field. Measuring from
+                       # worker start folds the agent's whole execution into the number,
+                       # so a worker that thought for 30 seconds and was read instantly
+                       # reported 30 seconds of "delivery lag": the one quantity this
+                       # probe exists to measure, distorted by the one thing it is not.
+                       "delivery_lag_seconds": elapsed(worker["result_ready"], self.clock.stamp())
                        if worker.get("result_ready") else None,
                        "environment": environment_signature()}
             self.event(state, "publication_probed", worker=key, finding=finding)

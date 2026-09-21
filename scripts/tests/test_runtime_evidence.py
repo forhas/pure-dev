@@ -408,6 +408,15 @@ class ProbeAndJournalTests(unittest.TestCase):
             self.rt.consume(key)
             self.rt.accept(key)
 
+    def test_delivery_lag_measures_publication_to_observation_not_the_agent_run(self):
+        key = self.probe_worker()
+        self.clock.seconds += 300          # the worker's own execution time
+        self.rt.publish(key, {"report": "probe", "payload": "x"})
+        self.clock.seconds += 7            # the mailbox delay this probe exists to measure
+        outcome = self.rt.probe(key, self.payload("x"))
+        self.assertEqual(outcome["finding"], "delivered")
+        self.assertEqual(outcome["delivery_lag_seconds"], 7)
+
     def test_a_probe_with_no_delivered_result_fails_rather_than_passing_quietly(self):
         key = self.probe_worker()
         outcome = self.rt.probe(key, self.payload("anything"))
