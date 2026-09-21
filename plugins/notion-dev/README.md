@@ -2,9 +2,9 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.33.1). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.34.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
 
-## Reliability fixes (0.33.1)
+## Reliability fixes (0.34.0)
 
 Commands check live build-flow skills, with read-only diagnostics for stale setup flags
 and disabled local plugins; init does not reinstall over intentional disablement.

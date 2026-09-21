@@ -76,7 +76,7 @@ and reduced median total tokens/time. Keep <200K peak context and roughly <1h as
 not achieved measurements. If parent context still dominates, the next measured slice
 is knowledge retrieval and command/stage separation, not weaker completeness checks.
 
-## Reliability follow-through (0.33.1)
+## Reliability follow-through (0.34.0)
 
 Issues #61, #64 and #66 add live dependency diagnostics, OS-released state locks, and
 an explicit code-review obligation for terminal-sweep corrections. The first full
