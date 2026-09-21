@@ -112,5 +112,29 @@ assert_has  "runtime rejects the System32 stub through \`_wsl_stub\`" "$ND/scrip
 assert_has  "runtime walks PATH itself when the stub is what PATH resolved to" "$ND/scripts/runtime.py" 'os.environ.get("PATH", "").split(os.pathsep)'
 assert_has  "runtime falls back to the bare name, never to the rejected stub" "$ND/scripts/runtime.py" '_BASH_EXE = found or "bash"'
 
+# A verification receipt is reusable only under the same toolchain, so the signature is
+# computed in Python from values both platforms have. Shelling out to `uname` would make
+# the signature depend on a tool Windows does not ship, and `stat -c`/`date -d` would
+# make it depend on GNU coreutils; neither is available in Git Bash's minimal set the way
+# it is on Ubuntu, and a receipt that cannot be fingerprinted is a receipt reused blind.
+assert_has  "the environment signature is computed in Python, not by shelling out" \
+  "$ND/scripts/runtime.py" '"platform": sys.platform'
+assert_has  "the signature names the shell by basename, so an absolute path never splits it" \
+  "$ND/scripts/runtime.py" 'os.path.basename(bash_exe())'
+assert_lacks "the runtime takes no \`uname\` dependency" "$ND/scripts/runtime.py" 'uname'
+assert_lacks "the runtime takes no \`stat -c\`" "$ND/scripts/runtime.py" 'stat -c'
+assert_lacks "the runtime takes no \`date -d\`" "$ND/scripts/runtime.py" 'date -d'
+# Delta artifacts are named relative to one directory, which is also what keeps a
+# Windows absolute path (drive letter, backslashes) out of five separate index entries.
+assert_has  "delta artifacts resolve against the index's own directory" \
+  "$ND/scripts/runtime.py" 'Path(index["directory"]) / reference["file"]'
+# The evaluation fixture's oracle is plain Python run through the configured interpreter:
+# a fixture that only reproduces its defects on one platform cannot be the thing both
+# CI legs compare against.
+assert_has  "the evaluation oracle is selected by an environment variable, not a shell path" \
+  scripts/fixtures/evaluation/oracle/test_scheduler.py 'os.environ["EVAL_SCHEDULER"]'
+assert_has  "verify-evidence.sh supports Windows interpreter selection" \
+  scripts/verify-evidence.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
+
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

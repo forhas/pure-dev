@@ -93,26 +93,99 @@ def analyze(path, stages=()):
             "stages": {k: dict(v) for k, v in per_stage.items()}}
 
 
+def roster(state):
+    """Runtime workers as an attribution table: agent ID -> role, slot, and stage.
+
+    The stage is the one the run was IN when the worker was prepared, read off the
+    `worker_prepared` event rather than inferred from timestamps. A child's requests
+    overlap the parent's and each other's, so placing them on the parent's stage
+    timeline by clock would invent a sequence that never happened.
+    """
+    prepared = {e["worker"]: e for e in state.get("events", []) if e["kind"] == "worker_prepared"}
+    workers = []
+    for key, worker in state.get("workers", {}).items():
+        workers.append({"worker": key, "role": worker["role"], "slot": worker.get("slot"),
+                        "agent_id": worker.get("agent_id"),
+                        "stage": prepared.get(key, {}).get("stage"),
+                        "accepted": worker.get("accepted", False),
+                        "terminated": worker.get("terminated", False)})
+    return sorted(workers, key=lambda w: (w["role"], w["worker"]))
+
+
+def correlate(workers, logs):
+    """Match child logs to workers by host agent ID; leave the rest explicitly unknown.
+
+    Both directions are reported. A worker whose log is absent is UNKNOWN cost, not
+    zero -- that distinction is the whole reason this returns lists rather than one
+    coverage number someone would read as completeness.
+    """
+    by_agent = {w["agent_id"]: w for w in workers if w["agent_id"]}
+    attribution, matched = {}, set()
+    for name in logs:
+        stem = Path(name).stem
+        worker = by_agent.get(stem)
+        if worker is None:
+            # Some hosts decorate the filename around the agent ID. An unambiguous
+            # containment match is still evidence; an ambiguous one is not.
+            candidates = [w for agent, w in by_agent.items() if agent and agent in stem]
+            worker = candidates[0] if len(candidates) == 1 else None
+        attribution[name] = worker
+        if worker:
+            matched.add(worker["worker"])
+    attached = [w for w in workers if w["agent_id"]]
+    return {"attribution": attribution,
+            "summary": {
+                "workers": len(workers), "attached_workers": len(attached),
+                "child_logs": len(logs), "matched_workers": len(matched),
+                "log_coverage_percent": round(100.0 * len(matched) / len(attached), 1)
+                if attached else None,
+                "missing_logs": [{k: w[k] for k in ("worker", "role", "agent_id")}
+                                 for w in attached if w["worker"] not in matched],
+                "unattached_workers": [{k: w[k] for k in ("worker", "role")}
+                                       for w in workers if not w["agent_id"]],
+                "unmatched_logs": [n for n, w in attribution.items() if w is None],
+                "note": "A worker with no log is unknown cost, never zero. An unmatched "
+                        "log is real cost this run cannot attribute to a role."}}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("session", type=Path)
     parser.add_argument("--runtime", type=Path)
     args = parser.parse_args()
-    stages = []
+    stages, workers = [], []
     if args.runtime:
         state = json.loads(args.runtime.read_text(encoding="utf-8"))
         stages = [e for e in state["events"] if e["kind"] == "stage_started"]
+        workers = roster(state)
     parent = analyze(args.session, stages)
     # Children are separate scopes; do not pretend their overlapping work is a
     # sequential parent stage. A missing child log is unknown, never zero cost.
-    agents = [analyze(path) for path in sorted(args.session.with_suffix("").glob("subagents/*.jsonl"))]
+    paths = sorted(args.session.with_suffix("").glob("subagents/*.jsonl"))
+    agents = [analyze(path) for path in paths]
+    links = correlate(workers, [path.name for path in paths])
+    by_role = defaultdict(Counter)
+    for child in agents:
+        worker = links["attribution"].get(child["file"])
+        child["worker"] = worker["worker"] if worker else None
+        child["role"] = worker["role"] if worker else "unattributed"
+        child["slot"] = worker["slot"] if worker else None
+        child["runtime_stage"] = worker["stage"] if worker else None
+        by_role[child["role"]].update(child["usage"])
     total = Counter(parent["usage"])
     for child in agents:
         total.update(child["usage"])
     print(json.dumps({"parent": parent, "agents": agents, "usage": dict(total),
                       "new_input_plus_output": sum(total[k] for k in FIELDS if k != "cache_read_input_tokens"),
                       "total_token_traffic": sum(total[k] for k in FIELDS),
-                      "coverage": "Only available logs through their last observed request; not a billing invoice. Child stage attribution is unavailable without correlation. Thinking is included in output."},
+                      "correlation": links["summary"],
+                      "by_role": {role: dict(counts) for role, counts in sorted(by_role.items())},
+                      # Peaks are concurrent scopes. Adding them would describe a
+                      # context window no single request ever held.
+                      "peak_context": {"parent": parent["peak_input_context_tokens"],
+                                       "max_child": max([c["peak_input_context_tokens"] for c in agents] or [0]),
+                                       "note": "the largest single request in each scope; peaks are never summed"},
+                      "coverage": "Only available logs through their last observed request; not a billing invoice. Child roles come from the runtime roster; missing and unmatched logs are reported rather than absorbed. Thinking is included in output."},
                      ensure_ascii=False, indent=2))
 
 

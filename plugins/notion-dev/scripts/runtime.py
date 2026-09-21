@@ -6,6 +6,7 @@ per ticket. Consumers use the CLI, never edit the state file. Exit 1 is a closed
 gate/pending wait; exit 2 is invalid input or an operational error.
 """
 import argparse
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import errno
@@ -22,6 +23,18 @@ import sys
 import tempfile
 import time
 import uuid
+
+
+SCHEMA = 2
+SCHEMAS = (1, SCHEMA)
+
+# A delta index is read by a fresh reviewer as its first act, so it is a table of
+# contents, not the material. Lists that do not fit are paged out to a side file and
+# marked incomplete rather than silently cut; INDEX_BYTES is the budget that decides.
+INDEX_BYTES = 2048
+PAGE_ITEMS = 50
+
+RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
 
 
 class Invalid(ValueError):
@@ -98,6 +111,24 @@ def bash_exe():
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def digest_bytes(payload):
+    return hashlib.sha256(payload).hexdigest()
+
+
+def environment_signature():
+    """Hash of the toolchain facts a verification receipt actually depends on.
+
+    Deliberately NOT the environment: dumping `os.environ` into durable state would
+    put credentials in a file that travels with the run, and would also invalidate
+    every receipt on an unrelated variable. These four are what decides whether the
+    same command on the same tree can produce the same result, and none is a secret.
+    """
+    facts = {"os_name": os.name, "platform": sys.platform,
+             "python": "%d.%d" % sys.version_info[:2],
+             "shell": os.path.basename(bash_exe())}
+    return {"signature": digest_bytes(json.dumps(facts, sort_keys=True).encode("utf-8")), **facts}
 
 
 def atomic_json(path, value):
@@ -216,7 +247,13 @@ class Runtime:
         with state_lock(self.path.with_suffix(".lock"), self.lock_timeout):
             if self.path.exists():
                 state = read_json(self.path)
-                require(state.get("schema") == 1, "unsupported runtime schema")
+                # Schema 1 runs stay schema 1: an in-flight invocation is never force-
+                # rewritten into the new version. The additive records below are read
+                # through `setdefault`, so a schema 1 state gains them only when this
+                # runtime actually writes one, and an old binary still accepts it.
+                require(state.get("schema") in SCHEMAS, "unsupported runtime schema")
+                for key, empty in (("verifications", []), ("record_journal", [])):
+                    state.setdefault(key, empty)
             else:
                 require(create, "runtime state missing; initialize this invocation first")
                 state = {}
@@ -237,8 +274,9 @@ class Runtime:
                 require(state["run"] == run and state["ticket"] == ticket,
                         "state belongs to a different invocation")
                 return {"state": str(self.path), "run": run, "resumed": True}
-            state.update(schema=1, run=run, ticket=ticket, stage=None, events=[],
-                         workers={}, requirements=None, awaiting_worker=None)
+            state.update(schema=SCHEMA, run=run, ticket=ticket, stage=None, events=[],
+                         workers={}, requirements=None, awaiting_worker=None,
+                         verifications=[], record_journal=[])
             self.event(state, "run_started")
         return {"state": str(self.path), "run": run, "resumed": False}
 
@@ -297,17 +335,25 @@ class Runtime:
             self.event(state, "readiness_checked", passed=not reasons)
         return {"passed": not reasons, "reasons": reasons}
 
-    def correction_needed(self, worktree):
+    def correction_needed(self, worktree, reason=None):
         """Register BEFORE post-round edits. A repeated call cannot erase their history."""
         current = revision(worktree)
         with self.transaction() as state:
             if state.get("correction"):
                 require(state["correction"]["before"]["worktree"] == current["worktree"],
                         "correction belongs to a different worktree")
+                # The first registration owns the baseline; later ones only add their
+                # cause, so a second correction cannot quietly restate why the first ran.
+                if reason and reason not in state["correction"].setdefault("reasons", []):
+                    state["correction"]["reasons"].append(reason)
+                    self.event(state, "correction_cause", correction=state["correction"]["id"],
+                               reason=reason)
                 return state["correction"]
             require(current["clean"], "register correction before editing a clean committed worktree")
-            state["correction"] = {"id": uuid.uuid4().hex, "before": current}
-            self.event(state, "correction_needed", correction=state["correction"]["id"], revision=current)
+            state["correction"] = {"id": uuid.uuid4().hex, "before": current,
+                                   "reasons": [reason] if reason else []}
+            self.event(state, "correction_needed", correction=state["correction"]["id"],
+                       revision=current, reason=reason)
             return state["correction"]
 
     @staticmethod
@@ -324,7 +370,7 @@ class Runtime:
 
     def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None):
         require(role in {"plan", "scout", "implementation", "branch-review", "local-review",
-                         "completeness", "record"}, "invalid worker role")
+                         "completeness", "record", "probe"}, "invalid worker role")
         require(slot is None or (role in {"implementation", "scout", "plan", "local-review", "branch-review"}
                                 and isinstance(slot, str) and slot.strip()),
                 "only build-flow workers may have a stable task/review slot")
@@ -358,7 +404,9 @@ class Runtime:
                     "before replacement; consuming a result is not accepting it")
             key = uuid.uuid4().hex
             directory = self.path.parent / ("worker-" + key)
-            delta = self.delta_manifest(state, previous, current, snapshots) if previous else None
+            # Validate the delta BEFORE writing anything: a rejected preparation must
+            # not leave half a packet on disk under an unregistered worker directory.
+            baseline = self.delta_baseline(state, previous, current) if previous else None
             correction = state.get("correction") if role == "completeness" else None
             correction_manifest = self.correction_manifest(correction, current) if correction else None
             # Owned snapshots preserve old PR claims/evidence without transporting them
@@ -371,17 +419,15 @@ class Runtime:
                 source["snapshot"] = str(saved)
             inventory_path = directory / "requirements.json"
             atomic_json(inventory_path, state["requirements"])
+            input_bytes = sum(Path(s["path"]).stat().st_size for s in snapshots.values())
             packet = {"worker": key, "role": role, "slot": slot, "revision": current,
                       "inputs": snapshots, "requirements": {"path": str(inventory_path),
                       "sha256": digest(inventory_path)}}
-            if delta is not None:
-                patch_path = directory / "changes.patch"
-                patch_path.write_bytes(delta.pop("patch"))
-                delta["patch"] = {"path": str(patch_path), "sha256": digest(patch_path),
-                                  "bytes": patch_path.stat().st_size}
+            if baseline is not None:
                 delta_path = directory / "delta.json"
-                atomic_json(delta_path, delta)
-                packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path)}
+                atomic_json(delta_path, self.delta_index(baseline, current, snapshots, directory))
+                packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path),
+                                   "bytes": delta_path.stat().st_size}
             if correction_manifest is not None:
                 patch_path = directory / "correction.patch"
                 patch_path.write_bytes(correction_manifest.pop("patch"))
@@ -402,11 +448,13 @@ class Runtime:
                       "delta": packet.get("delta"), "correction": correction,
                       "correction_manifest": packet.get("correction_manifest")}
             state["workers"][key] = worker
-            self.event(state, "worker_prepared", worker=key, role=role)
+            self.event(state, "worker_prepared", worker=key, role=role,
+                       input_bytes=input_bytes, packet_bytes=packet_path.stat().st_size,
+                       delta_bytes=(packet.get("delta") or {}).get("bytes"))
         return {"worker": key, "state": str(self.path), "role": role,
                 "timeout_seconds": timeout, "revision": current, "packet": str(packet_path)}
 
-    def delta_manifest(self, state, previous, current, snapshots):
+    def delta_baseline(self, state, previous, current):
         baseline = self.worker(state, previous)
         reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
         # A CONFIRMED-TERMINATED attempt is spent, not a baseline. Reading it as "the latest
@@ -437,22 +485,119 @@ class Runtime:
         args = ["git", "-C", current["worktree"], "diff", "--no-ext-diff", "--no-textconv",
                 "--no-renames", old["head"], current["head"]]
         names = subprocess.check_output(args + ["--name-only", "-z"]).decode("utf-8").split("\0")
-        patch_bytes = subprocess.check_output(args + ["--binary"])
-        old_inputs = baseline["files"]
-        changed = [name for name in sorted(set(old_inputs) | set(snapshots))
-                   if {k: old_inputs.get(name, {}).get(k) for k in ("path", "sha256")}
-                   != {k: snapshots.get(name, {}).get(k) for k in ("path", "sha256")}]
-        resolutions = baseline.get("citation_resolutions", [])
-        changed_evidence = [c["id"] for c in resolutions if not Path(c["artifact"]).is_file()
-                            or digest(c["artifact"]) != c["sha256"]]
-        return {"previous": previous, "before": old, "after": current,
-                "changed_paths": [n for n in names if n], "patch": patch_bytes,
-                "changed_inputs": changed, "before_inputs": old_inputs, "after_inputs": snapshots,
-                "changed_evidence_ids": changed_evidence,
-                "unresolved_evidence_ids": sorted(expected - {c["id"] for c in resolutions}),
-                "previous_result": baseline["result"], "previous_citations": resolutions,
-                "instruction": "Check indirect effects for EVERY requirement, claims and caveats. "
-                "Unchanged bytes are not proof of unchanged behavior. Escalate if scope is not bounded."}
+        return {"worker": baseline, "previous": previous, "before": old,
+                "changed_paths": [n for n in names if n],
+                "patch_bytes": subprocess.check_output(args + ["--binary"])}
+
+    @staticmethod
+    def bound_index(index, sections, budget=INDEX_BYTES, page=PAGE_ITEMS):
+        """Inline what fits; page out the rest and SAY SO.
+
+        The reviewer's first read must be a table of contents, not the material —
+        the previous manifest inlined the entire prior report, so every "incremental"
+        review began by re-reading the full one. But a quietly cut list is worse than
+        a long one: it reads as complete. So each section carries its true count and a
+        `complete` flag, the whole list stays retrievable by page, and when even the
+        first pages do not fit, `within_budget` says that rather than cutting further.
+        """
+        size = lambda: len(json.dumps(index, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        # One counts map and one list of truncated names, not a metadata object per
+        # section: at six sections that ceremony cost more of the budget than the
+        # content it described. `pages` is ceil(count / page_items); `section` returns it.
+        incomplete = []
+        index["sections"] = {"page_items": page, "incomplete": incomplete,
+                             "counts": {name: len(items) for name, items in sections.items()}}
+        for name, items in sections.items():
+            index[name] = list(items)
+        # Shrink the LARGEST inlined list, repeatedly, so one wide change does not cost
+        # every small section its detail. First cut is to one page; after that it halves,
+        # because a fixed page can still exceed the budget on its own. The inlined list
+        # stays a PREFIX of page 1, and `incomplete` names every list that was cut, so a
+        # short preview is never mistakable for the whole section.
+        while size() > budget:
+            name = max(sections, key=lambda n: (len(index[n]), n))
+            length = len(index[name])
+            if length == 0:
+                break
+            index[name] = index[name][:min(page, length // 2)]
+            if len(index[name]) != len(sections[name]) and name not in incomplete:
+                incomplete.append(name)
+        # Measured BEFORE these three keys are added, so the number is exact rather than
+        # a figure that changes the thing it measures. They add well under 100 bytes.
+        index["content_bytes"] = size()
+        index["within_budget"] = index["content_bytes"] <= budget
+        index["complete"] = not incomplete
+        return index
+
+    def delta_index(self, baseline, current, snapshots, directory):
+        """The compact change/reuse index a delta reviewer reads first."""
+        worker = baseline["worker"]
+        old_inputs = worker["files"]
+        changed_inputs = [name for name in sorted(set(old_inputs) | set(snapshots))
+                          if {k: old_inputs.get(name, {}).get(k) for k in ("path", "sha256")}
+                          != {k: snapshots.get(name, {}).get(k) for k in ("path", "sha256")}]
+        records = self.evidence_records(worker, baseline["changed_paths"])
+        buckets = {"reuse_applicable": [], "recheck_needed": [], "blocked": [], "unresolved": []}
+        for record in records:
+            buckets[{"current": "reuse_applicable", "stale": "recheck_needed",
+                     "blocked": "blocked", "unresolved": "unresolved"}[record["applicability"]]
+                    ].append(record["id"])
+
+        # Artifacts are named RELATIVE to one `directory`, and the two revisions share
+        # one `worktree`, because an index whose fixed overhead is six absolute paths
+        # spends its whole budget before listing anything. Resolve with `ref_path`.
+        def side(name, value, raw=False):
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if raw:
+                path.write_bytes(value)
+            else:
+                atomic_json(path, value)
+            return {"file": name, "sha256": digest(path), "bytes": path.stat().st_size}
+
+        sections = {"changed_paths": baseline["changed_paths"], "changed_inputs": changed_inputs}
+        sections.update(buckets)
+        index = {"previous": baseline["previous"], "worktree": current["worktree"],
+                 "directory": str(directory),
+                 "before": {k: baseline["before"][k] for k in ("head", "fingerprint", "clean")},
+                 "after": {k: current[k] for k in ("head", "fingerprint", "clean")},
+                 "patch": side("changes.patch", baseline["patch_bytes"], raw=True),
+                 "inputs": side("delta-inputs.json", {"before": old_inputs, "after": snapshots}),
+                 "previous_report": side("previous-report.json", worker["result"]),
+                 "sections_file": side("delta-sections.json", sections),
+                 "evidence": dict({"index": side("evidence-index.json", records),
+                                   "requirements": len(records)},
+                                  **{k: len(v) for k, v in buckets.items()}),
+                 "instruction": "Read only what this index references. Reuse-applicable is a "
+                 "candidate, not a verdict. Check indirect effects on EVERY requirement."}
+        return self.bound_index(index, sections)
+
+    @staticmethod
+    def ref_path(index, reference):
+        """Absolute path of one artifact the delta index names relative to its directory."""
+        return str(Path(index["directory"]) / reference["file"])
+
+    def section(self, key, name, page=1):
+        """Retrieve one page of a delta section the index could not inline."""
+        require(isinstance(page, int) and page >= 1, "section pages are 1-based")
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            reference = worker.get("delta")
+            require(bool(reference), "only a delta worker has paged sections")
+            require(digest(reference["path"]) == reference["sha256"], "delta index changed")
+            index = read_json(reference["path"])
+            source = self.ref_path(index, index["sections_file"])
+            require(digest(source) == index["sections_file"]["sha256"], "delta sections changed")
+            sections = read_json(source)
+            require(name in sections, "unknown delta section: " + name)
+            items = sections[name]
+            size = index["sections"]["page_items"]
+            pages = max(1, -(-len(items) // size))
+            require(page <= pages, "section page is past the end")
+            self.event(state, "delta_section_read", worker=key, section=name, page=page)
+        return {"worker": key, "section": name, "page": page, "pages": pages,
+                "count": len(items), "items": items[(page - 1) * size:page * size],
+                "complete": page == pages}
 
     @staticmethod
     def validate_packet(worker):
@@ -500,10 +645,18 @@ class Runtime:
         require(delta.get("disposition") in {"sufficient", "full-review-required"},
                 "delta review must assess whether its scope is sufficient")
         manifest = read_json(worker["delta"]["path"])
-        require(digest(manifest["patch"]["path"]) == manifest["patch"]["sha256"],
-                "delta patch changed")
-        for inputs in (manifest["before_inputs"], manifest["after_inputs"]):
-            for source in inputs.values():
+        # Every artifact the index merely REFERENCES is hash-bound here, because moving
+        # the bulk out of the index moved the tampering surface out with it.
+        for reference, message in ([(manifest[n], m) for n, m in
+                                    (("patch", "delta patch changed"),
+                                     ("inputs", "delta input index changed"),
+                                     ("sections_file", "delta sections changed"),
+                                     ("previous_report", "previous report changed"))] +
+                                   [(manifest["evidence"]["index"], "evidence index changed")]):
+            require(digest(Runtime.ref_path(manifest, reference)) == reference["sha256"], message)
+        inputs = read_json(Runtime.ref_path(manifest, manifest["inputs"]))
+        for group in (inputs["before"], inputs["after"]):
+            for source in group.values():
                 require(source.get("snapshot") and digest(source["snapshot"]) == source["sha256"],
                         "delta input snapshot changed or missing; require a full review")
 
@@ -539,7 +692,12 @@ class Runtime:
             require(worker["status"] in {"pending", "running", "timed_out", "cancellation_requested"},
                     "worker cannot publish in its current state")
             worker.update(result=result, status="result_ready", result_ready=self.clock.stamp())
-            self.event(state, "worker_result_ready", worker=key)
+            # Sizes, not bodies. Knowing a report arrived at 40KB is what identifies
+            # prose duplicated into both `report` and the per-criterion records; copying
+            # the prose here to measure it would be the same mistake one layer down.
+            self.event(state, "worker_result_ready", worker=key, role=worker["role"],
+                       result_bytes=len(json.dumps(result, ensure_ascii=False).encode("utf-8")),
+                       report_bytes=len(result["report"].encode("utf-8")))
         return {"worker": key, "status": "result_ready"}
 
     def inspect(self, key):
@@ -610,25 +768,123 @@ class Runtime:
         return {"worker": key, "status": worker["status"], "safe_to_replace": confirmed}
 
     def resolve_citations(self, key, citations):
+        """Ingest evidence PER ITEM, and keep what is still missing visible.
+
+        This used to be all-or-nothing: a report that cited eight of ten requirements
+        resolved none of them, so the next delta was built against an empty evidence
+        set and its reviewer had nothing to reuse — it re-investigated everything
+        while being billed as an incremental pass. Recording the eight, and naming
+        the two, is what makes a narrow delta narrow.
+
+        Partial ingestion is not a partial gate. `merge_gate` still requires every
+        requirement resolved, unchanged, so the only thing this relaxes is when the
+        evidence becomes durable — never whether it is eventually complete.
+        """
         require(isinstance(citations, list), "citation resolutions must be a list")
-        resolved = []
+        incoming = {}
         for citation in citations:
+            require(isinstance(citation, dict), "each citation resolution must be an object")
+            key_id = citation.get("id")
+            require(isinstance(key_id, str) and key_id.strip() and key_id not in incoming,
+                    "resolve each requirement at most once per call")
             path = Path(citation["artifact"]).resolve()
             quote = citation.get("quote")
             require(isinstance(quote, str) and quote.strip() and quote in path.read_text(encoding="utf-8"),
                     "citation quote must resolve in its actual evidence artifact")
-            resolved.append({"id": citation["id"], "artifact": str(path),
-                             "quote": quote, "sha256": digest(path)})
+            dependencies = citation.get("depends_on") or []
+            require(isinstance(dependencies, list), "depends_on must be a list of paths")
+            recorded = []
+            for dependency in dependencies:
+                # Byte equality of the cited artifact proves the RECEIPT is intact, not
+                # that what it describes still holds. Naming the sources a receipt
+                # depends on is how a changed helper invalidates a verdict whose own
+                # quoted log never changed.
+                source = Path(dependency).resolve()
+                require(source.is_file(), "evidence dependency must be an existing file")
+                recorded.append({"path": str(source), "sha256": digest(source)})
+            incoming[key_id] = {"id": key_id, "artifact": str(path), "quote": quote,
+                                "sha256": digest(path), "depends_on": recorded,
+                                "recorded": self.clock.stamp()["utc"]}
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(worker["role"] == "completeness" and worker["status"] == "consumed",
                     "resolve citations only after consuming independent completeness")
-            expected = {item["id"] for item in worker["requirements"]["items"]}
-            require(len(resolved) == len(expected) and {c["id"] for c in resolved} == expected,
-                    "resolve every requirement exactly once")
-            worker["citation_resolutions"] = resolved
-            self.event(state, "citations_resolved", worker=key, count=len(resolved))
-        return {"worker": key, "resolved": len(resolved)}
+            expected = [item["id"] for item in worker["requirements"]["items"]]
+            unknown = sorted(set(incoming) - set(expected))
+            require(not unknown, "citation resolves an unknown requirement: " + ", ".join(unknown))
+            existing = {c["id"]: c for c in worker.get("citation_resolutions", [])}
+            replaced = sorted(set(incoming) & set(existing))
+            existing.update(incoming)
+            worker["citation_resolutions"] = [existing[i] for i in expected if i in existing]
+            unresolved = [i for i in expected if i not in existing]
+            self.event(state, "citations_resolved", worker=key, count=len(incoming),
+                       replaced=len(replaced), resolved_total=len(existing),
+                       unresolved=len(unresolved))
+        return {"worker": key, "resolved": len(existing), "accepted_now": len(incoming),
+                "replaced": replaced, "unresolved": unresolved,
+                "required": len(expected), "complete": not unresolved,
+                "passed": not unresolved}
+
+    @staticmethod
+    def evidence_records(worker, changed_paths=()):
+        """Per-requirement applicability: `current`, `stale`, `blocked`, or `unresolved`.
+
+        Four states, not two, because "reusable" and "present" are different questions
+        and collapsing them is how a stale receipt gets a pass. A requirement the
+        baseline itself could not verify is `blocked` however intact its bytes are.
+        """
+        expected = [item["id"] for item in worker["requirements"]["items"]]
+        cited = {c["id"]: c for c in worker.get("citation_resolutions", [])}
+        verdicts = {v.get("id"): v.get("verdict") for v in (worker.get("result") or {}).get("requirements", [])
+                    if isinstance(v, dict)}
+        worktree = (worker.get("revision") or {}).get("worktree")
+        touched = set()
+        for name in changed_paths:
+            if worktree:
+                touched.add(str((Path(worktree) / name).resolve()))
+        records = []
+        for item in expected:
+            citation = cited.get(item)
+            if citation is None:
+                records.append({"id": item, "applicability": "unresolved",
+                                "reasons": ["no evidence recorded for this requirement"]})
+                continue
+            reasons = []
+            verdict = verdicts.get(item)
+            if verdict is not None and verdict != "met":
+                reasons.append("baseline verdict is '%s', not 'met'" % verdict)
+            blocked = bool(reasons)
+            for label, path, expected_hash in \
+                    [("evidence artifact", citation["artifact"], citation["sha256"])] + \
+                    [("dependency " + d["path"], d["path"], d["sha256"])
+                     for d in citation.get("depends_on", [])]:
+                source = Path(path)
+                if not source.is_file():
+                    reasons.append(label + " is missing")
+                elif digest(source) != expected_hash:
+                    reasons.append(label + " changed since it was recorded")
+                elif str(source.resolve()) in touched:
+                    reasons.append(label + " is inside this change's diff")
+            records.append({"id": item, "artifact": citation["artifact"],
+                            "applicability": "blocked" if blocked else
+                                             ("stale" if reasons else "current"),
+                            "reasons": reasons})
+        return records
+
+    def evidence(self, key):
+        records = None
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            records = self.evidence_records(worker)
+            counts = Counter(r["applicability"] for r in records)
+            self.event(state, "evidence_indexed", worker=key, **{k: counts[k] for k in
+                       ("current", "stale", "blocked", "unresolved")})
+        buckets = {name: [r["id"] for r in records if r["applicability"] == state_name]
+                   for name, state_name in (("reuse_applicable", "current"), ("recheck_needed", "stale"),
+                                            ("blocked", "blocked"), ("unresolved", "unresolved"))}
+        return {"worker": key, "items": records, "count": len(records),
+                "complete": not buckets["unresolved"], "passed": not buckets["unresolved"],
+                **buckets}
 
     def yield_once(self, key, marker, session):
         """One owned, short-lived permission for the Stop hook to deliver mailbox events."""
@@ -678,8 +934,18 @@ class Runtime:
             if len(resolutions) != len(expected) or {c["id"] for c in resolutions} != expected:
                 reasons.append("parent citation resolution is incomplete")
             for citation in resolutions:
-                if digest(citation["artifact"]) != citation["sha256"]:
+                if not Path(citation["artifact"]).is_file():
+                    reasons.append(f"resolved evidence is missing: {citation['id']}")
+                elif digest(citation["artifact"]) != citation["sha256"]:
                     reasons.append(f"resolved evidence changed: {citation['id']}")
+                # A receipt whose own bytes are intact can still have stopped describing
+                # the code: the cited log does not change when the helper it exercised
+                # does. Declared dependencies are where that shows up.
+                for dependency in citation.get("depends_on", []):
+                    if not Path(dependency["path"]).is_file():
+                        reasons.append(f"evidence dependency is missing: {citation['id']}")
+                    elif digest(dependency["path"]) != dependency["sha256"]:
+                        reasons.append(f"evidence dependency changed: {citation['id']}")
             require(isinstance(verdicts, list), "invalid requirement verdicts")
             ids = [v.get("id") for v in verdicts if isinstance(v, dict)]
             if set(ids) != expected or len(ids) != len(expected):
@@ -712,11 +978,71 @@ class Runtime:
             self.event(state, "merge_gate_checked", passed=not reasons, worker=key, head=current["head"])
         return {"passed": not reasons, "reasons": reasons, "head": current["head"]}
 
-    def verify(self, worktree, command):
+    @staticmethod
+    def receipt_applicable(receipt, revision_now, signature):
+        """Why a stored receipt may or may not stand in for running the command again.
+
+        Byte equality of a log establishes that the receipt is intact, never that it
+        still describes the current tree — so the revision fingerprint, which includes
+        dirty and untracked content, and the toolchain signature are both part of the
+        answer. A receipt whose command modified the tree is not reusable at all: it
+        never described a state that survived its own run.
+        """
+        reasons = []
+        if receipt["revision"]["fingerprint"] != revision_now["fingerprint"]:
+            reasons.append("revision changed since this receipt")
+        if receipt.get("environment", {}).get("signature") != signature["signature"]:
+            reasons.append("toolchain signature changed or unrecorded")
+        if receipt.get("changed_during_verification"):
+            reasons.append("the command modified the tree it verified")
+        log = Path(receipt["log"])
+        if not log.is_file():
+            reasons.append("verification log is missing")
+        elif receipt.get("log_sha256") and digest(log) != receipt["log_sha256"]:
+            reasons.append("verification log changed after the run")
+        return reasons
+
+    def verifications(self, worktree=None):
+        """Index of every command receipt, with why each is or is not reusable now."""
+        current = revision(worktree) if worktree else None
+        signature = environment_signature()
+        with self.transaction() as state:
+            items = []
+            for receipt in state.get("verifications", []):
+                reasons = self.receipt_applicable(receipt, current, signature) if current else \
+                    ["applicability needs a worktree"]
+                # `{**a, **b}`, not `a | b`: the merge operator is 3.9 and this plugin
+                # supports 3.8. verify-python-floor.sh is a smoke filter that does not
+                # see this form, so the floor job is what would have caught it.
+                items.append({**{k: receipt.get(k) for k in
+                                 ("verification", "command_sha256", "exit_code",
+                                  "duration_seconds", "log", "log_sha256")},
+                              "revision": receipt["revision"]["fingerprint"],
+                              "environment": receipt.get("environment", {}).get("signature"),
+                              "started": receipt.get("started", {}).get("utc"),
+                              "applicable": not reasons, "reasons": reasons})
+            self.event(state, "verification_indexed", count=len(items))
+        return {"verifications": items, "count": len(items),
+                "environment": signature,
+                "coverage": "receipts recorded by this runtime only; a command run outside it "
+                            "leaves no receipt and is unknown, never passed"}
+
+    def verify(self, worktree, command, reuse=False):
         before = revision(worktree)
+        signature = environment_signature()
+        command_hash = digest_bytes(command.encode("utf-8"))
+        if reuse:
+            with self.transaction() as state:
+                for receipt in reversed(state.get("verifications", [])):
+                    if receipt["command_sha256"] != command_hash or receipt["exit_code"] != 0:
+                        continue
+                    if self.receipt_applicable(receipt, before, signature):
+                        continue
+                    self.event(state, "verification_reused", verification=receipt["verification"],
+                               command_sha256=command_hash)
+                    return {**receipt, "reused": True}
         key = uuid.uuid4().hex
         log = self.path.parent / f"verify-{key}.log"
-        command_hash = hashlib.sha256(command.encode("utf-8")).hexdigest()
         started = self.clock.stamp()
         with self.transaction() as state:
             self.event(state, "verification_started", verification=key,
@@ -725,12 +1051,65 @@ class Runtime:
             process = subprocess.run([bash_exe(), "-e", "-o", "pipefail", "-c", command],
                                      cwd=worktree, stdout=output, stderr=subprocess.STDOUT)
         receipt = {"verification": key, "exit_code": process.returncode, "log": str(log),
+                   "log_sha256": digest(log), "log_bytes": log.stat().st_size,
                    "duration_seconds": elapsed(started, self.clock.stamp()),
                    "command_sha256": command_hash, "revision": before,
+                   "environment": signature, "started": started,
                    "changed_during_verification": revision(worktree) != before}
         with self.transaction() as state:
+            state.setdefault("verifications", []).append(receipt)
             self.event(state, "verification_finished", **receipt)
-        return receipt
+        return {**receipt, "reused": False}
+
+    def record_op(self, operation, target, outcome, provider_id=None, data_sha256=None):
+        """Append-only journal of an attempted provider operation. Telemetry, not a driver.
+
+        This runtime performs no provider call and holds no credential; the host's
+        authorized tools do that. What it can do is make the outcome durable, so an
+        interrupted create is visible as `unknown-outcome` to whoever resumes instead
+        of being retried blind.
+        """
+        require(outcome in RECORD_OUTCOMES, "invalid record operation outcome")
+        require(bool(operation.strip()) and bool(target.strip()),
+                "a record operation needs a stable logical identity and a target")
+        entry = {"operation": operation, "target": target, "outcome": outcome,
+                 "provider_id": provider_id, "data_sha256": data_sha256,
+                 **self.clock.stamp()}
+        with self.transaction() as state:
+            state.setdefault("record_journal", []).append(entry)
+            self.event(state, "record_operation", operation=operation, outcome=outcome,
+                       provider_id=provider_id)
+        return entry
+
+    def probe(self, key, expect):
+        """Host publication feasibility: did the worker's own bytes survive delivery?
+
+        A feasibility gate has to be able to FAIL. Comparing hashes of the payload the
+        child was told to publish against what actually landed distinguishes the three
+        outcomes that matter — nothing arrived, a prefix arrived, or something else
+        arrived — where a schema test would call all three a valid result object.
+        """
+        expected = Path(expect).read_bytes()
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(worker["role"] == "probe", "publication probes use the probe role")
+            result = worker["result"]
+            payload = (result or {}).get("payload")
+            if result is None or not isinstance(payload, str):
+                finding, received = ("missing" if result is None else "mangled"), b""
+            else:
+                received = payload.encode("utf-8")
+                finding = ("delivered" if received == expected else
+                           "truncated" if expected.startswith(received) else "mangled")
+            outcome = {"worker": key, "finding": finding, "passed": finding == "delivered",
+                       "expected_bytes": len(expected), "received_bytes": len(received),
+                       "expected_sha256": digest_bytes(expected),
+                       "received_sha256": digest_bytes(received),
+                       "delivery_lag_seconds": elapsed(worker["started"], self.clock.stamp())
+                       if worker.get("result_ready") else None,
+                       "environment": environment_signature()}
+            self.event(state, "publication_probed", worker=key, finding=finding)
+        return outcome
 
     def summary(self):
         with self.transaction() as state:
@@ -745,6 +1124,18 @@ class Runtime:
                 elif event["kind"] == "stage_ended" and event["stage"] in starts:
                     spans.append({"stage": event["stage"],
                                   "seconds": elapsed(starts.pop(event["stage"]), event)})
+            evidence = {}
+            for worker in state["workers"].values():
+                if worker["role"] == "completeness" and worker.get("requirements"):
+                    counts = Counter(r["applicability"] for r in self.evidence_records(worker))
+                    evidence[worker["id"]] = {k: counts[k] for k in
+                                              ("current", "stale", "blocked", "unresolved")}
+            journal = state.get("record_journal", [])
+            # The old ledger's fields are kept verbatim -- they are still the right
+            # counters -- but they were printed at the top level where they read as
+            # whole-run totals. They only ever covered what this runtime observed:
+            # a command run outside `verify`, or an agent never registered as a worker,
+            # is absent from every number here. `end_to_end` says so in the output.
             return {"run": state["run"], "stage": state["stage"], "workers": workers,
                     "full_completeness_attempts": sum(w["role"] == "completeness" and not w.get("previous")
                                                        for w in state["workers"].values()),
@@ -753,6 +1144,20 @@ class Runtime:
                     "verification_runs": len(tests),
                     "repeated_verification_signatures": len(signatures) - len(set(signatures)),
                     "delivery_lags": [e for e in state["events"] if e["kind"] == "worker_result_consumed"],
+                    "end_to_end": {
+                        "scope": "runtime-observed only: registered workers, measured stages, and "
+                                 "commands run through `verify`. Anything else is unknown, not zero.",
+                        "schema": state.get("schema"),
+                        "workers_by_role": dict(Counter(w["role"] for w in state["workers"].values())),
+                        "unaccounted_workers": [w["id"] for w in state["workers"].values()
+                                                if not w["terminated"] and not w.get("accepted")],
+                        "verification_reuses": sum(e["kind"] == "verification_reused" for e in state["events"]),
+                        "evidence_by_worker": evidence,
+                        "record_operations": dict(Counter(e["outcome"] for e in journal)),
+                        "unconfirmed_record_operations": [e["operation"] for e in journal
+                                                          if e["outcome"] != "confirmed"],
+                        "correction_causes": (state.get("correction") or {}).get("reasons", []),
+                        "stages_measured": [s["stage"] for s in spans]},
                     "model_usage": "unknown until raw telemetry is imported; never inferred from characters"}
 
 
@@ -765,14 +1170,19 @@ def main():
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
     commands.add_parser("ready")
     p = commands.add_parser("correction-needed"); p.add_argument("--worktree", required=True)
+    p.add_argument("--reason", help="what made this correction necessary; recorded, never inferred")
     p = commands.add_parser("prepare"); p.add_argument("--role", required=True); p.add_argument("--file", action="append", default=[])
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--previous"); p.add_argument("--slot")
-    for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations", "end-worker", "yield", "merge-gate"):
+    for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations",
+                 "evidence", "section", "probe", "end-worker", "yield", "merge-gate"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
         if name == "publish": p.add_argument("--result", required=True)
         if name == "resolve-citations": p.add_argument("--citations", required=True)
+        if name == "probe": p.add_argument("--expect", required=True)
+        if name == "section":
+            p.add_argument("--name", required=True); p.add_argument("--page", type=int, default=1)
         if name == "wait": p.add_argument("--seconds", type=float, default=30)
         if name == "end-worker":
             p.add_argument("--reason", required=True); p.add_argument("--confirmed", action="store_true")
@@ -781,6 +1191,13 @@ def main():
         if name == "yield": p.add_argument("--marker", required=True); p.add_argument("--session", required=True)
         if name == "merge-gate": p.add_argument("--worktree", required=True)
     p = commands.add_parser("verify"); p.add_argument("--worktree", required=True); p.add_argument("--shell-command", required=True)
+    p.add_argument("--reuse", action="store_true",
+                   help="return an applicable existing receipt instead of rerunning; never caches a stale one")
+    p = commands.add_parser("verifications"); p.add_argument("--worktree")
+    p = commands.add_parser("record-op")
+    p.add_argument("--operation", required=True); p.add_argument("--target", required=True)
+    p.add_argument("--outcome", required=True, choices=RECORD_OUTCOMES)
+    p.add_argument("--provider-id"); p.add_argument("--digest")
     commands.add_parser("summary")
     args = parser.parse_args()
     runtime = Runtime(args.state)
@@ -789,7 +1206,7 @@ def main():
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
     elif name == "ready": result = runtime.ready()
-    elif name == "correction-needed": result = runtime.correction_needed(args.worktree)
+    elif name == "correction-needed": result = runtime.correction_needed(args.worktree, args.reason)
     elif name == "prepare":
         files = {}
         for item in args.file:
@@ -805,10 +1222,16 @@ def main():
     elif name == "consume": result = runtime.consume(args.worker)
     elif name == "accept": result = runtime.accept(args.worker)
     elif name == "resolve-citations": result = runtime.resolve_citations(args.worker, read_json(args.citations))
+    elif name == "evidence": result = runtime.evidence(args.worker)
+    elif name == "section": result = runtime.section(args.worker, args.name, args.page)
+    elif name == "probe": result = runtime.probe(args.worker, args.expect)
     elif name == "end-worker": result = runtime.end_worker(args.worker, args.reason, args.confirmed, args.host_failed, args.user_requested, args.invalid_result)
     elif name == "yield": result = runtime.yield_once(args.worker, args.marker, args.session)
     elif name == "merge-gate": result = runtime.merge_gate(args.worker, args.worktree)
-    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command)
+    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command, args.reuse)
+    elif name == "verifications": result = runtime.verifications(args.worktree)
+    elif name == "record-op":
+        result = runtime.record_op(args.operation, args.target, args.outcome, args.provider_id, args.digest)
     else: result = runtime.summary()
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))
     if result.get("passed") is False or (name == "wait" and result["status"] not in {"result_ready", "consumed"}):
