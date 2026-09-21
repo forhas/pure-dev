@@ -66,8 +66,11 @@ done
 echo "== the schema agrees that the block is optional =="
 # The doc claim and the schema must not drift apart: this is the pair whose
 # disagreement produced the new-info regression.
+# assert_lacks is grep -F: a FIXED string. Regex-escaping the brackets here put
+# literal backslashes in the pattern, so the check passed against a schema that
+# did require the block -- the silent-pass trap, not a failure.
 assert_lacks "the schema does not require the dependencies block" \
-  "$ND/schema/notion-dev.config.schema.json" '"required": \["project", "ticketSystem", "git", "verify", "dependencies"\]'
+  "$ND/schema/notion-dev.config.schema.json" '"required": ["project", "ticketSystem", "git", "verify", "dependencies"]'
 assert_has "the schema calls the block optional setup-time hints" \
   "$ND/schema/notion-dev.config.schema.json" 'Optional setup-time hints'
 
