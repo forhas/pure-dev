@@ -138,6 +138,13 @@ jobs:
           python -m unittest discover -s scripts/tests -p 'test_*.py'
           bash scripts/verify-knowledge-py.sh
 
+          # The floor harness invokes Python itself, so a contributor on 3.8 must be able
+          # to run it. Nothing else in CI covers that: the `verify` and `verify-windows`
+          # jobs run it on the runner's own (much newer) interpreter. Running it here is
+          # what makes "the suite works on the floor" a checked claim rather than one
+          # somebody verified by hand once.
+          bash scripts/verify-python-floor.sh
+
   # The Windows leg of CLAUDE.md's "Both platforms, always": every shipped plugin instruction
   # must work unchanged from WSL 2 Ubuntu and from a Windows-native Claude Code session, which
   # runs through Git Bash. This job is what makes that a checked claim rather than a stated one.

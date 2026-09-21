@@ -115,6 +115,11 @@ assert_has "the floor job runs knowledge.py, which the README names for the floo
   "$WORKFLOW" 'bash scripts/verify-knowledge-py.sh'
 assert_has "the floor job asserts the interpreter it actually got" \
   "$WORKFLOW" 'expected a 3.8 interpreter'
+# This harness calls Python, so it must itself run on the floor. The other two jobs only
+# ever run it on the runner's newer interpreter, so without this line that compatibility
+# is verified by hand or not at all.
+assert_has "the floor job runs this harness on the floor interpreter too" \
+  "$WORKFLOW" 'bash scripts/verify-python-floor.sh'
 
 echo
 if [ "$fails" -eq 0 ]; then
