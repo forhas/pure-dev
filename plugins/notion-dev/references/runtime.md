@@ -49,6 +49,34 @@ cache or skip them. Read relevant failure output from the log; do not pipe the r
 through a success-masking command. Missing state/invalid input returns exit 2 and
 must be repaired, not interpreted as a passed gate.
 
+### State-lock recovery
+
+Transactions use an OS-managed lock on the persistent `state.lock` **file**: `flock`
+on Ubuntu/WSL2 and a nonblocking `msvcrt` byte-range lock on native Windows Python.
+Process exit or termination releases the lock automatically; retry the same command
+against the same state after the host confirms the holder ended. An interrupted atomic
+write leaves the previous committed state intact. An unused file is normal, not a stale
+lock. **Never delete or replace this file**: that can let two processes lock different
+files and write the same state concurrently. A live holder makes contenders time out
+after five seconds with an OS-lock message, not a guessed stale-PID diagnosis.
+
+Legacy releases used a directory at `state.lock`, without owner metadata. The runtime
+refuses to guess whether that directory is abandoned. Stop/confirm termination of all
+old runtime processes for this invocation, then remove **only that exact empty legacy
+directory** with `rmdir` and retry. Never recursively delete it, edit `state.json`,
+reset the invocation, or remove it merely because it is old. If ownership cannot be
+established, stop and ask the operator rather than breaking a possible live lock.
+Upgrading while an old binary owns a directory fails closed; use one runtime version
+per invocation.
+
+Scope: local filesystem and one OS host per invocation. Simultaneous native-Windows
+and WSL processes sharing one state, and network filesystem lock interoperability,
+are not guaranteed; do not share an invocation across those boundaries. This lock
+protects state transactions, not the lifetime of an agent or provider operation.
+Worker cancellation still requires host confirmation under the protocol below.
+See [Python locking](https://docs.python.org/3/library/fcntl.html) and
+[Windows byte-range locking](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/locking?view=msvc-170).
+
 ## Readiness: the whole requirement, not just its checkboxes
 
 Save the full authoritative ticket body as `ticket.md` next to state, unchanged.
@@ -227,6 +255,51 @@ record-unit lock/unknown-hook-outcome rules if termination cannot be confirmed.
 
 ## Final merge guard
 
+### Corrective code before the first completeness receipt
+
+Before post-round sweep edits/reverts, on the clean committed worktree, register:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" correction-needed --worktree <worktree>
+```
+
+This records the pre-edit revision, not a review verdict. Register before editing,
+never after committing the fix. Repeated registration preserves the original baseline;
+it cannot clear an obligation. All terminal sweep branches that change code use it.
+If registration was missed, stop and recover the true baseline through independent
+review; do not pretend that an empty post-fix diff proves the edit was checked.
+
+Commit and validate the correction, then prepare the first **full** completeness
+worker normally (no `--previous` required). Its packet includes `correction_manifest`,
+a hash-bound path indexing the entire pre-edit/current committed-tree diff, including
+incoming base changes and deleted files. Patch bytes live in a separate file; do not
+copy them into the parent prompt. The manifest and patch are checked at publication
+and merge. Subsequent full/delta workers retain this explicit obligation too.
+
+The independent verifier additionally applies the `notion-dev:local-code-review`
+rubric to the correction and its indirect effects, without spawning another worker.
+It returns this object alongside (not instead of) the full completeness result:
+
+```json
+{"correction_review": {
+  "id": "<correction manifest id>",
+  "manifest_sha256": "<packet's correction_manifest sha256>",
+  "verdict": "clean",
+  "blocking_findings": [],
+  "report": "VERDICT: CLEAN\n<code review evidence and scope>"
+}}
+```
+
+Use `not-clean` with `VERDICT: NOT-CLEAN` for defects, or `unverified` with
+`VERDICT: UNVERIFIED` for insufficient scope/evidence; report findings honestly.
+Only one exact `VERDICT: CLEAN` header, a clean structured verdict, no blocking
+findings and the matching manifest can pass. Missing or mismatched code review blocks
+merge even if all requirements are met. It is legal to publish/consume a nonpassing
+report so the parent can triage it; acceptance does not turn it into a passing gate.
+Completeness alone is not code review. This adds a task to the existing independent
+worker, not another reviewer round or a reset of the two-full/two-delta budgets.
+If the patch requires broader review than the remaining budget supports, stop.
+
 ### Independent correction receipts
 
 Finish branch/base synchronization, version fixes, configured checks, and mutating
@@ -235,6 +308,8 @@ verification logs. Do not keep adding adjacent explanations or provisional count
 unsupported new prose creates new review work. Never advance the base with this run's
 brief bookkeeping during the final evidence window.
 
+Before a corrective code edit or rebase after an accepted report, register
+`correction-needed` on the clean pre-edit tree too; any existing baseline is retained.
 For a bounded correction after an accepted full report, refresh all current input files
 and prepare an independent worker with the same role and the latest baseline:
 

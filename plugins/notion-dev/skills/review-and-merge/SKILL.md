@@ -925,7 +925,7 @@ Pass these as **file paths, not inline text**: the criteria file, the diff (`ori
 
 **`VERIFY_OUTPUT` is the config `verify.steps` output the loop retained** — step 2, step 4 item 4, and the local review loop's step 4 each write it, overwriting the previous value, so it always holds the most recent verification of the current HEAD. **It can legitimately be unset**: every one of those sites runs verification only when code changed, and a run whose review rounds changed nothing never sets it. **When it is unset, the gate runs `verify.steps` once itself, here, before dispatching, and retains that as `VERIFY_OUTPUT`** — the gate resolves test citations against this output (see "Citation resolution" below), so a gate holding nothing would demote every test-cited criterion to `unverified` and block a genuinely clean run. When the repo configures no `verify.steps` at all, `VERIFY_OUTPUT` stays empty; say so in the verifier's prompt so it cites commands (which the gate runs itself) or code spans rather than test names it has no way to have resolved.
 
-Its three charges:
+Its three completeness charges (plus the explicit correction-code charge below when registered):
 
 1. **Per-criterion verdict.** `met` or `not-met` for each line of the criteria file, each with a **citation**: a command and its output, a named test and its result, or a quoted span with `file:line`. A `met` verdict carrying no citation is malformed output, not a passing criterion. Restating the criterion, "the implementation handles this", and pointing at a plan that said it would are all non-citations.
 
@@ -938,6 +938,17 @@ Its three charges:
 2. **Unsupported completeness claims**, over text **this pull request changed** — not the whole repository. The finding is the **missing referent, not the claim**: report only "this text says X exists, is handled, is mitigated, or is durable; I looked for X and it is absent or materially different." A true claim produces no finding, so honest prose costs nothing.
 
 3. **Untriaged caveats.** Any stated gap, caveat, or known limitation — in the PR body or in docs this PR changed — carrying no `absorb` / `file` / `drop` / `blocked` label. A labeled caveat is fine and produces no finding. A limitation may exist; it may not exist unlabeled.
+
+**Conditional correction-code charge.** If the runtime packet contains
+`correction_manifest`, the same independent worker also performs code review using
+the `notion-dev:local-code-review` rubric on that exact before/after patch and its
+affected callers/tests. This is an explicit additional task, not an implication of
+reading the full PR diff for completeness. Do not spawn another reviewer. Read the
+manifest/patch by path, retrieve relevant code on demand, and return the separate
+`correction_review` object specified in `references/runtime.md`, in addition to all
+three charges and every requirement verdict. A broad or uncertain correction cannot
+receive `clean`; stop/escalate within the existing full/delta budgets. The first full
+worker can perform this task with **no previous completeness receipt**.
 
 **The anti-circularity rule: the verifier may never cite the deliverable's own claims as evidence.** The PR body, the spec, and the changed docs are what charge 2 is auditing. Admitting them as proof under charge 1 would let a false claim validate itself, and charges 1 and 2 would confirm each other instead of checking anything.
 
@@ -1066,15 +1077,22 @@ round terminal:
    deferred six lines of markdown into a follow-up pull request: precisely the cost the sweep
    exists to remove, reintroduced by the sweep's own rule.
 
+   Before any post-round edit (including a revert), register the clean committed
+   pre-edit revision with `runtime.py --state "$RUNTIME_STATE" correction-needed
+   --worktree <worktree>`. Preserve this obligation through resume and every later
+   correction; never reinitialize state to clear it. The helper keeps the earliest
+   baseline and binds the patch to the next completeness worker. If already dirty,
+   stop and recover the actual pre-edit revision; do not commit first and register
+   after the fix, which would erase the code needing review.
+
    So a non-blocking finding from the sweep round **may be fixed**, under Rule 3 (minimal patch)
    and Rule 4 (verify before push), when the fix is small and inside files this pull request
    already touches. What it must never do is trigger **another review round**. Such a fix
-   therefore reaches the merge with CI and the gate stack as its only checks, and the report must
-   name which findings took it. **The Completeness gate's correction-review requirement cannot
-   reach this patch**, and that gap is real rather than a disclosure: the sweep runs before that
-   gate, so no accepted completeness baseline exists yet for its delta path to build on. Closing
-   the ordering is tracked in https://github.com/forhas/pure-dev/issues/66 — do not read the
-   delta path as available here.
+   therefore uses CI and the gate stack, including the explicit code check below;
+   the report must name which findings took it. The first full completeness worker performs the
+   explicit correction-code charge above; a prior receipt and `--previous` are not
+   needed. Its hash-bound code verdict is enforced by the runtime merge gate, not
+   replaced by CI or an all-criteria-met report.
 
    **`file`, `drop`, or `blocked` remains the answer for anything larger.** A finding needing a new
    public
@@ -1086,18 +1104,17 @@ round terminal:
    `file` here would mint precisely the permanent, unactionable backlog entry this disposition was
    added to prevent. Its external-cause requirement is unchanged: this is not a softer `drop`. That
    boundary — not a blanket ban on fixing — is what keeps the sweep terminal, since no second
-   batch can form out of edits required to stay small and reviewless.
+   batch can form out of edits required to stay small and use the already-budgeted verifier.
 2. **A `blocking` finding the sweep induced is reverted, not fixed.** Compute `induced` exactly
    as Rule 2 does — the sweep commits sit inside `$R1_SHA..$REVIEW_SHA` like any other fix.
    Revert the sweep commit blame names, re-triage that item back to `file` with the sweep revert
    as its rationale, and post the PR-level note Rule 2's revert branch already mandates. Fixing
    it instead would need a round to review the fix, and there is no round left to give it.
 3. **A `blocking` finding the sweep did *not* induce** is a defect the earlier rounds missed in
-   pre-sweep code. It is fixed, not filed — the Absorb gate would demand that anyway — and it is
-   the one thing in this round that gets a patch. That patch reaches the merge with CI and the
-   gate stack as its only independent check, under the same unclosed ordering gap branch 1 names,
-   and it stays bounded to a defect the loop had already agreed was blocking rather than to any
-   new scope.
+   pre-sweep code. It is fixed, not filed — the Absorb gate would demand that anyway.
+   The same registered correction-code charge covers this patch. It stays bounded to a
+   defect the loop had already agreed was blocking rather than to new scope; CI and
+   completeness alone cannot clear it. All three branches register before editing.
 
 **If the bound reviewer is unavailable** for the sweep round, run one local review round instead
 (`### Local review loop (reviewer unavailable)`), under those same three rules. If neither is
@@ -1107,9 +1124,11 @@ dispatch rule above stops before the merge and this branch does not override it:
 request unmerged and report the prohibition. `SWEEP-ROUND: unreviewed` records a reviewer that
 could not be reached, never one that was forbidden.
 
-**Bound.** One sweep, one batch, one round. The sweep round can only file, drop, or block — none
-of which produces work for this run — so no second batch can form, and no gate in `## 5`
-re-enters it.
+**Bound.** One sweep, one batch, one round. The three terminal branches above permit
+bounded fixes/reverts but no second sweep or reviewer round. Their code check is an
+explicit task inside the already-budgeted completeness worker. Findings from it use
+the same bounded correction/full-pass path in `## 5`; exhaustion stops merging, never
+re-enters the sweep or waives the code check.
 
 **The sweep round is a single allowance *on top of* `reviewsCap`, not a round drawn from it** —
 and the Safety rules say so too, because stating it in only one place is what made a
@@ -1264,7 +1283,9 @@ Then freeze the input files and proceed through the gates below.
    ticket, not three.
 
    **Full completeness verification is not code review.** Corrective code changes also
-   require the independent correction review below; CI alone is not that review.
+   require an explicit independent code verdict: the conditional correction-code
+   charge handles registered pre-completeness sweep edits; the bounded correction
+   review below handles changes after an accepted receipt. CI alone is not that review.
    Substantial new implementation needs full independent code review before merge,
    not an expanding correction check. If the remaining budget cannot establish that,
    stop with the actual defect and evidence; never file a mandatory requirement merely
@@ -1286,7 +1307,9 @@ Then freeze the input files and proceed through the gates below.
 ### Bounded correction review
 
 A small correction, claim reconciliation, or late base advance must not silently invalidate
-a completed review. After committing the correction and running applicable validation,
+a completed review. Before a corrective code edit or rebase, register `correction-needed`
+on the clean committed tree as above (an existing obligation keeps its original baseline).
+After committing the correction and running applicable validation,
 prepare a fresh independent completeness worker with `--previous <latest-accepted-worker>`
 under `references/runtime.md`. This is the **delta path**, not another full pass. Use it
 for a bounded follow-up even if the two full passes are spent. It consumes one of **two

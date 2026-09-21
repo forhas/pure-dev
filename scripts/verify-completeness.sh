@@ -98,7 +98,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # only thing standing behind the decision to state this limitation rather than fix it.
   # So the rule gets its own anchor, on the sentence that carries it.
   if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
-    assert_has "$n independently reviews corrective code" "$RM" 'require the independent correction review below'
+    assert_has "$n independently reviews corrective code" "$RM" 'require an explicit independent code verdict'
     assert_has "$n bounds delta attempts" "$RM" 'delta attempts per invocation'
   else
     assert_has "$n states that completeness-absorb work is not code-reviewed" "$RM" '`absorb` work is not code-reviewed'

@@ -17,6 +17,16 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_runtime_convergence.py; t
 else
   bad "offline context packets, independent deltas, and workflow ordering"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_runtime_corrections.py; then
+  ok "terminal-sweep code verdicts without a prior completeness receipt"
+else
+  bad "terminal-sweep code verdicts without a prior completeness receipt"
+fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_dependencies.py; then
+  ok "live dependency diagnostics and local disablement"
+else
+  bad "live dependency diagnostics and local disablement"
+fi
 ND=plugins/notion-dev
 TICKET=$ND/commands/ticket.md
 REVIEW=$ND/skills/review-and-merge/SKILL.md

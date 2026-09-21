@@ -8,6 +8,7 @@ gate/pending wait; exit 2 is invalid input or an operational error.
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import errno
 import hashlib
 import json
 import math
@@ -165,25 +166,54 @@ def revision(worktree):
             "clean": not diff and not untracked}
 
 
+def try_state_lock(descriptor):
+    """Nonblocking kernel lock. Closing the descriptor (including process death) releases it."""
+    if os.name == "nt":
+        import msvcrt
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        # Windows permits a locked region beyond EOF; no pre-lock write is needed.
+        msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+@contextmanager
+def state_lock(path, timeout):
+    require(not path.is_dir(), "legacy runtime lock directory has no recorded owner; "
+            "confirm all old runtime processes are stopped before retiring this empty directory")
+    require(not path.is_symlink(), "runtime lock must not be a symlink")
+    descriptor = os.open(str(path), os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
+    try:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                try_state_lock(descriptor)
+                break
+            except OSError as error:
+                if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                    raise
+                require(time.monotonic() < deadline,
+                        "runtime OS-managed lock is held by another process; retry after it exits; "
+                        "never delete the lock file")
+                time.sleep(0.05)
+        yield
+    finally:
+        # Keep the file/inode: unlinking permits waiters to lock different files.
+        os.close(descriptor)
+
+
 class Runtime:
-    def __init__(self, path, clock=None):
+    def __init__(self, path, clock=None, lock_timeout=5):
         self.path = Path(path).resolve()
         self.clock = clock or Clock()
+        require(math.isfinite(lock_timeout) and lock_timeout > 0, "positive lock timeout required")
+        self.lock_timeout = lock_timeout
 
     @contextmanager
     def transaction(self, create=False):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        lock = self.path.with_suffix(".lock")
-        deadline = time.monotonic() + 5
-        while True:
-            try:
-                lock.mkdir()
-                break
-            except FileExistsError:
-                require(time.monotonic() < deadline,
-                        "runtime lock busy; inspect its owner before recovery, never break it automatically")
-                time.sleep(0.05)
-        try:
+        with state_lock(self.path.with_suffix(".lock"), self.lock_timeout):
             if self.path.exists():
                 state = read_json(self.path)
                 require(state.get("schema") == 1, "unsupported runtime schema")
@@ -194,8 +224,6 @@ class Runtime:
             yield state
             if json.dumps(state, sort_keys=True) != original:
                 atomic_json(self.path, state)
-        finally:
-            lock.rmdir()
 
     def event(self, state, kind, **values):
         event = {"seq": len(state["events"]) + 1, "kind": kind,
@@ -269,6 +297,31 @@ class Runtime:
             self.event(state, "readiness_checked", passed=not reasons)
         return {"passed": not reasons, "reasons": reasons}
 
+    def correction_needed(self, worktree):
+        """Register BEFORE post-round edits. A repeated call cannot erase their history."""
+        current = revision(worktree)
+        with self.transaction() as state:
+            if state.get("correction"):
+                require(state["correction"]["before"]["worktree"] == current["worktree"],
+                        "correction belongs to a different worktree")
+                return state["correction"]
+            require(current["clean"], "register correction before editing a clean committed worktree")
+            state["correction"] = {"id": uuid.uuid4().hex, "before": current}
+            self.event(state, "correction_needed", correction=state["correction"]["id"], revision=current)
+            return state["correction"]
+
+    @staticmethod
+    def correction_manifest(obligation, current):
+        before = obligation["before"]
+        require(current["clean"] and before["worktree"] == current["worktree"],
+                "correction review requires the same clean committed worktree")
+        args = ["git", "-C", current["worktree"], "diff", "--no-ext-diff", "--no-textconv",
+                "--no-renames", before["head"], current["head"]]
+        names = subprocess.check_output(args + ["--name-only", "-z"]).decode("utf-8").split("\0")
+        return {"id": obligation["id"], "before": before, "after": current,
+                "changed_paths": [name for name in names if name],
+                "patch": subprocess.check_output(args + ["--binary"])}
+
     def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None):
         require(role in {"plan", "scout", "implementation", "branch-review", "local-review",
                          "completeness", "record"}, "invalid worker role")
@@ -306,6 +359,8 @@ class Runtime:
             key = uuid.uuid4().hex
             directory = self.path.parent / ("worker-" + key)
             delta = self.delta_manifest(state, previous, current, snapshots) if previous else None
+            correction = state.get("correction") if role == "completeness" else None
+            correction_manifest = self.correction_manifest(correction, current) if correction else None
             # Owned snapshots preserve old PR claims/evidence without transporting them
             # through every parent/tool response. Artifact names are never used as paths.
             for index, source in enumerate(snapshots.values()):
@@ -327,6 +382,14 @@ class Runtime:
                 delta_path = directory / "delta.json"
                 atomic_json(delta_path, delta)
                 packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path)}
+            if correction_manifest is not None:
+                patch_path = directory / "correction.patch"
+                patch_path.write_bytes(correction_manifest.pop("patch"))
+                correction_manifest["patch"] = {"path": str(patch_path), "sha256": digest(patch_path),
+                                                "bytes": patch_path.stat().st_size}
+                manifest_path = directory / "correction.json"
+                atomic_json(manifest_path, correction_manifest)
+                packet["correction_manifest"] = {"path": str(manifest_path), "sha256": digest(manifest_path)}
             packet_path = directory / "context.json"
             atomic_json(packet_path, packet)
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
@@ -336,7 +399,8 @@ class Runtime:
                       "requirements": state["requirements"], "slot": slot,
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
                       "inventory_snapshot": packet["requirements"], "previous": previous,
-                      "delta": packet.get("delta")}
+                      "delta": packet.get("delta"), "correction": correction,
+                      "correction_manifest": packet.get("correction_manifest")}
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role)
         return {"worker": key, "state": str(self.path), "role": role,
@@ -398,6 +462,26 @@ class Runtime:
         require(digest(worker["packet"]) == worker["packet_sha256"], "context packet changed")
         inventory = worker["inventory_snapshot"]
         require(digest(inventory["path"]) == inventory["sha256"], "requirement snapshot changed")
+        correction = worker.get("correction_manifest")
+        if correction:
+            require(digest(correction["path"]) == correction["sha256"], "correction manifest changed")
+            patch = read_json(correction["path"])["patch"]
+            require(digest(patch["path"]) == patch["sha256"], "correction patch changed")
+
+    @staticmethod
+    def correction_reviewed(state, worker, result):
+        if state.get("correction") != worker.get("correction"):
+            return False
+        if not state.get("correction"):
+            return True
+        review = result.get("correction_review")
+        if not isinstance(review, dict) or not isinstance(review.get("report"), str):
+            return False
+        verdicts = re.findall(r"^VERDICT:[ \t]*([^\r\n]*)$", review["report"], re.M)
+        return (review.get("id") == worker["correction"]["id"]
+                and review.get("manifest_sha256") == worker["correction_manifest"]["sha256"]
+                and review.get("verdict") == "clean" and review.get("blocking_findings") == []
+                and len(verdicts) == 1 and verdicts[0].strip() == "CLEAN")
 
     @staticmethod
     def validate_delta(worker, result):
@@ -580,6 +664,8 @@ class Runtime:
                 if source.get("snapshot") and digest(source["snapshot"]) != source["sha256"]:
                     reasons.append(f"review snapshot changed: {name}")
             result = worker["result"] or {}
+            if not self.correction_reviewed(state, worker, result):
+                reasons.append("corrective code needs an independent clean correction review of the exact manifest")
             if worker.get("previous"):
                 self.validate_delta(worker, result)
                 if result["delta_review"]["disposition"] != "sufficient":
@@ -678,6 +764,7 @@ def main():
     p = commands.add_parser("stage"); p.add_argument("name")
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
     commands.add_parser("ready")
+    p = commands.add_parser("correction-needed"); p.add_argument("--worktree", required=True)
     p = commands.add_parser("prepare"); p.add_argument("--role", required=True); p.add_argument("--file", action="append", default=[])
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--previous"); p.add_argument("--slot")
@@ -702,6 +789,7 @@ def main():
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
     elif name == "ready": result = runtime.ready()
+    elif name == "correction-needed": result = runtime.correction_needed(args.worktree)
     elif name == "prepare":
         files = {}
         for item in args.file:

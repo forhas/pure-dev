@@ -93,7 +93,7 @@ rm -f "$GUARDCODE"
 
 # Runtime/telemetry use the same interpreter contract; behavioral fixtures are
 # discovered by the existing Windows job through verify-runtime.sh.
-for helper in runtime telemetry; do
+for helper in runtime telemetry dependencies; do
   assert_has "$helper forces UTF-8 and LF output" "$ND/scripts/$helper.py" 'stream.reconfigure(encoding="utf-8", newline="\n")'
 done
 assert_has "runtime protocol uses the configured interpreter" "$ND/references/runtime.md" '`knowledge.python` interpreter'

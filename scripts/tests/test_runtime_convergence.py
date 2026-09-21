@@ -289,7 +289,11 @@ class ConvergenceTests(unittest.TestCase):
         library = (fixtures.ROOT / "scripts/lib/assert.sh").as_posix()
         prefix = 'fails=0; ok() { :; }; bad() { fails=$((fails + 1)); }; . "$1"; '
         for fragment in ("The full verifier runs at most twice.",
-                         "require the independent correction review below",
+                         "require an explicit independent code verdict",
+                         "correction-needed",
+                         "**no previous completeness receipt**",
+                         "hash-bound code verdict is enforced by the runtime merge gate",
+                         "bounded fixes/reverts but no second sweep or reviewer round",
                          "delta attempts per invocation",
                          "exhausted budget or an unmet mandatory",
                          "changed behavior needs independent review"):

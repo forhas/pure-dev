@@ -106,7 +106,11 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # removes another REVIEW, never the ability to name an item's state — and
   # forcing it to `file` mints the unactionable backlog entry this all prevents.
   assert_has "$n lets the sweep round reach a blocked outcome" "$RM" 'sweep-round finding that cannot be acted on until a named external cause changes is `blocked`'
-  assert_has "$n keeps the sweep bounded across all three outcomes" "$RM" 'The sweep round can only file, drop, or block'
+  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+    assert_has "$n keeps corrective sweep edits bounded" "$RM" 'bounded fixes/reverts but no second sweep or reviewer round'
+  else
+    assert_has "$n keeps the sweep bounded across all three outcomes" "$RM" 'The sweep round can only file, drop, or block'
+  fi
 done
 
 echo "== reporting keeps BLOCKED separate from FILED =="

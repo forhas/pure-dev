@@ -3,7 +3,7 @@
   "$id": "https://raw.githubusercontent.com/forhas/pure-dev/main/plugins/notion-dev/schema/notion-dev.config.schema.json",
   "title": "notion-dev Plugin Config",
   "type": "object",
-  "required": ["project", "ticketSystem", "git", "verify", "dependencies"],
+  "required": ["project", "ticketSystem", "git", "verify"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -139,15 +139,15 @@
     "dependencies": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["superpowers", "featureDev"],
+      "description": "Optional setup-time hints. Current host skills, not these cached booleans, determine build-flow availability.",
       "properties": {
         "superpowers": {
           "type": "boolean",
-          "description": "Set true by /notion-dev:init after verifying the superpowers plugin is installed. Required for /notion-dev:ticket."
+          "description": "Setup-time snapshot from /notion-dev:init. Not an availability gate; commands verify live superpowers skills."
         },
         "featureDev": {
           "type": "boolean",
-          "description": "Set true by /notion-dev:init after verifying the feature-dev plugin is installed. Required for /notion-dev:ticket."
+          "description": "Setup-time snapshot from /notion-dev:init. Not an availability gate; commands verify live feature-dev skills."
         }
       }
     },
