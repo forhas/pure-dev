@@ -2,7 +2,18 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.33.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.34.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+
+## Reliability fixes (0.34.0)
+
+Commands check live build-flow skills, with read-only diagnostics for stale setup flags
+and disabled local plugins; init does not reinstall over intentional disablement.
+Runtime state locks release on process death without stale-PID guessing, while live
+holders remain protected. Terminal-sweep corrections receive an explicit hash-bound
+code verdict from the already-budgeted independent completeness worker, including on
+its first pass. No extra agent round or weaker requirement gate is introduced.
+See [dependency diagnostics](references/dependencies.md) and
+[runtime protocol and legacy lock recovery](references/runtime.md).
 
 ## Review convergence and scoped handoffs (0.33.0)
 
@@ -232,7 +243,7 @@ Key fields:
 - `knowledge.python` — the Python 3 interpreter every notion-dev command runs `scripts/knowledge.py` with (default `python3`). Written by `/notion-dev:init` from its probe: `python3`, `python`, or `py -3` on Windows, where `python3` does not resolve.
 - `inputSources` — enabled source adapters: any of `"prompt"`, `"existing-ticket"`, `"notion-page"`.
 - `git.{baseBranch, prTargetBranch, mergeStrategy, preMergeChecks, postMergeHooks}` — git-flow config; `preMergeChecks` runs as a merge gate inside the review loop (`notion-dev:review-and-merge`). `postMergeHooks` is set to `["notion-dev:knowledge"]` by `/notion-dev:init` (the knowledge-bundle capture hook); additional phase-2 hooks (e.g. `hotfix-sync`, `epic-progress-report`) will be appended to it.
-- `dependencies.{superpowers, featureDev}` — set by `/notion-dev:init` after verifying both build-flow plugins are installed. Both must be `true` for `/notion-dev:ticket` to run.
+- `dependencies.{superpowers, featureDev}` — optional setup-time hints written by `/notion-dev:init`. Commands require current live skills, not cached booleans; mismatches are diagnosed without changing enablement. See [dependency diagnostics](references/dependencies.md).
 - `worktree.prefix` — template for worktree directory names. Tokens: `{name}`, `{key}`, `{id}`. Default: `"{name}-{key}-{id}"`. Worktrees are created at `<parent-of-repo>/<repo-name>-worktrees/<prefix>`; the `-worktrees` container is what cleanup's `rmdir` removes once the last worktree is gone.
 
   **Changed in 0.20.0.** Before that, worktrees were created directly under the repository's parent directory, with no container — which made cleanup's "remove the worktrees parent directory" step name the directory holding the primary checkout, so it could never succeed. If you have a worktree from an in-flight pre-0.20 run, it is at the old path (`<parent-of-repo>/<prefix>`); finish or remove it by hand (`git worktree remove <path>`), since `/notion-dev:finalize` now resolves the new location.

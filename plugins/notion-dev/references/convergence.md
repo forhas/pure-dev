@@ -76,5 +76,17 @@ and reduced median total tokens/time. Keep <200K peak context and roughly <1h as
 not achieved measurements. If parent context still dominates, the next measured slice
 is knowledge retrieval and command/stage separation, not weaker completeness checks.
 
-Runtime lock crash recovery remains separately tracked in
-[issue #64](https://github.com/forhas/pure-dev/issues/64); this slice does not alter it.
+## Reliability follow-through (0.34.0)
+
+Issues #61, #64 and #66 add live dependency diagnostics, OS-released state locks, and
+an explicit code-review obligation for terminal-sweep corrections. The first full
+completeness worker can review that patch without an earlier completeness baseline;
+the runtime gate requires a separate exact-manifest code verdict. No extra worker
+round is introduced. Use `references/runtime.md` for lock migration and host boundaries.
+
+Offline coverage includes local disablement over project enablement, stale hints in
+both directions, real killed/live lock holders, and sweep-correction rejection when
+the independent code verdict is absent, not clean, stale, or mismatched. Extend the
+synthetic canary with those three cases on each host; offline tests cannot establish
+host prompt compliance or measured token savings. The existing release validation
+boundary above remains; these fixes do not claim a new measured token/time baseline.

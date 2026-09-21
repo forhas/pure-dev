@@ -467,8 +467,89 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(result["usage"]["cache_read_input_tokens"], 1800)
 
 
+class RuntimeLockTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="runtime-lock-")
+        self.addCleanup(self.temp.cleanup)
+        self.state = Path(self.temp.name) / "state.json"
+        self.rt = runtime.Runtime(self.state, lock_timeout=0.1)
+        self.rt.init("lock-test", "TEST-1")
+
+    def holder(self, persist=False):
+        script = '''import importlib.util, sys
+spec = importlib.util.spec_from_file_location("runtime", sys.argv[1])
+runtime = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runtime)
+rt = runtime.Runtime(sys.argv[2])
+with rt.transaction() as state:
+    state["stage"] = "committed" if sys.argv[3] == "yes" else "uncommitted"
+    if sys.argv[3] == "yes":
+        runtime.atomic_json(rt.path, state)
+    print("locked", flush=True)
+    sys.stdin.read()
+'''
+        child = subprocess.Popen([sys.executable, "-c", script,
+            str(ROOT / "plugins/notion-dev/scripts/runtime.py"), str(self.state),
+            "yes" if persist else "no"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, encoding="utf-8")
+        self.addCleanup(self.stop_holder, child)
+        self.assertEqual(child.stdout.readline().strip(), "locked")
+        return child
+
+    @staticmethod
+    def stop_holder(child):
+        if child.poll() is None:
+            child.kill()
+        child.communicate(timeout=10)
+
+    def test_dead_holder_releases_lock_without_losing_committed_state(self):
+        child = self.holder(persist=True)
+        self.stop_holder(child)
+        self.assertEqual(self.rt.summary()["stage"], "committed")
+        self.rt.stage("recovered")
+        self.assertEqual(self.rt.summary()["stage"], "recovered")
+        self.assertTrue(self.state.with_suffix(".lock").is_file())
+
+    def test_death_before_commit_preserves_previous_state(self):
+        child = self.holder()
+        self.stop_holder(child)
+        self.assertIsNone(self.rt.summary()["stage"])
+
+    def test_live_holder_is_never_broken(self):
+        child = self.holder()
+        before = self.state.read_bytes()
+        with self.assertRaisesRegex(runtime.Invalid, "OS-managed"):
+            self.rt.stage("must not write")
+        self.assertIsNone(child.poll())
+        self.assertEqual(self.state.read_bytes(), before)
+        self.stop_holder(child)
+        self.rt.stage("safe now")
+
+    def test_legacy_unowned_directory_fails_closed(self):
+        lock = self.state.with_suffix(".lock")
+        lock.unlink()
+        lock.mkdir()
+        with self.assertRaisesRegex(runtime.Invalid, "legacy.*directory"):
+            self.rt.summary()
+        self.assertTrue(lock.is_dir())
+
+    def test_exception_releases_lock_without_committing(self):
+        with self.assertRaisesRegex(ValueError, "abort"):
+            with self.rt.transaction() as state:
+                state["stage"] = "not saved"
+                raise ValueError("abort")
+        self.assertIsNone(self.rt.summary()["stage"])
+
+
 class MutationProofTests(unittest.TestCase):
     """Mutations are in-memory, never edits/resets to the user's worktree."""
+    def test_removed_state_lock_is_detected(self):
+        with patch.object(runtime, "try_state_lock", return_value=None):
+            result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                RuntimeLockTests("test_live_holder_is_never_broken"))
+        self.assertEqual(len(result.failures), 1)
+        self.assertEqual(len(result.errors), 0)
+
     def test_false_pass_gate_is_detected(self):
         test = RuntimeTests("test_omitted_prerequisite_verdict_blocks_even_with_all_acs_met")
         with patch.object(runtime.Runtime, "merge_gate", return_value={"passed": True}):

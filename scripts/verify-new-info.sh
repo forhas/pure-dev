@@ -55,6 +55,12 @@ if [ -f "$NI" ]; then
     # preconditions
     assert_has "new-info does not require \`dependencies.superpowers\`" \
       "$NI" '`dependencies.superpowers` and `dependencies.featureDev` are **not** required'
+    # The schema makes `dependencies` optional, so a gate on its boolean can block a build
+    # whose skill is live and pass one whose skill is gone. Pin the live probe, not prose.
+    assert_has "new-info: the dependency is probed via \`references/dependencies.md\` in \`review\` mode" \
+      "$NI" 'references/dependencies.md` in `review` mode'
+    assert_has "new-info: \`dependencies.superpowers\` is a cached hint only" \
+      "$NI" '`dependencies.superpowers` is a cached hint only'
     assert_present "apply: fast-forwards the epic branch after the lock, not in preconditions (\`pull --ff-only\`)" \
       "$NI" "$P0" "$PR" 'pull --ff-only origin <epicBranch>'
     assert_present "preconditions: a non-epic id stops the run (\`is not an epic container\`)" \

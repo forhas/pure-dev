@@ -25,7 +25,15 @@ Read project state:
     `superpowers:receiving-code-review`
   - feature-dev: `feature-dev:feature-dev`
 
-  For each plugin whose skills are missing, install at project scope:
+  Follow `${CLAUDE_PLUGIN_ROOT}/references/dependencies.md` using the probed
+  `PYTHON_CMD` and primary checkout. Live skills are authoritative; existing
+  `dependencies` flags are setup hints only. Diagnose missing skills **before** any
+  install: an effective `enabledPlugins: false` (especially in
+  `.claude/settings.local.json`) requires the user's enable/reload decision, never a
+  reinstall. Installed-but-unloaded plugins require reload/repair, not installation.
+  Stop once with all diagnoses; do not write partial config on either path.
+
+  For each plugin **confirmed not installed**, install at project scope:
   `claude plugin install superpowers@claude-plugins-official --scope project` and/or
   `claude plugin install feature-dev@claude-plugins-official --scope project`. The
   installs write enablement to `.claude/settings.json` — commit that change once with
@@ -358,7 +366,7 @@ Select a template based on Step 1 detection; show the proposed list to the user 
 
 ### 9. Write files
 
-Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` with the collected values, this first key, and the recorded build-flow dependencies (verified in step 1):
+Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` with the collected values, this first key, and the recorded build-flow dependencies (verified live in step 1). These booleans are setup-time hints only; future commands check their current host's skills, not this snapshot:
 
 ```json
 {
