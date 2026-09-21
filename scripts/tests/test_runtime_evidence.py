@@ -134,6 +134,16 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse(self.rt.merge_gate(key, self.repo)["passed"])
             self.rt.end_worker(key, "contract invalid", confirmed=True, invalid_result=True)
 
+    def test_a_malformed_requirements_value_does_not_break_the_summary(self):
+        """The summary has to survive exactly the paths it exists to measure."""
+        key = self.prepare()
+        self.rt.publish(key, {"report": "COMPLETENESS: blocked", "requirements": None})
+        self.rt.consume(key)
+        end = self.rt.summary()["end_to_end"]
+        self.assertEqual(end["evidence_by_worker"][key],
+                         {"current": 0, "stale": 0, "blocked": 0,
+                          "unresolved": len(self.ids())})
+
     def test_evidence_index_separates_current_stale_blocked_and_unresolved(self):
         key = self.prepare()
         outcome = self.result()

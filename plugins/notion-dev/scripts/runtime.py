@@ -912,7 +912,14 @@ class Runtime:
         """
         expected = [item["id"] for item in worker["requirements"]["items"]]
         cited = {c["id"]: c for c in worker.get("citation_resolutions", [])}
-        verdicts = {v.get("id"): v.get("verdict") for v in (worker.get("result") or {}).get("requirements", [])
+        # `or []`, not `.get(…, [])`: a present-but-null `requirements` returns None from
+        # the latter, and iterating it raised a TypeError out of `summary()` — breaking
+        # the report on exactly the invalid-result path the report exists to record. Any
+        # non-list value normalizes to no verdicts, which the strict check below then
+        # reads as `blocked` for every requirement. Fail closed and keep reporting.
+        recorded = (worker.get("result") or {}).get("requirements")
+        verdicts = {v.get("id"): v.get("verdict")
+                    for v in (recorded if isinstance(recorded, list) else [])
                     if isinstance(v, dict)}
         worktree = (worker.get("revision") or {}).get("worktree")
         touched = set()
