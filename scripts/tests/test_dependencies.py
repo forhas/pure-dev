@@ -15,7 +15,14 @@ class DependencyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="dependency café ")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Resolve the temp root. dependencies.check() resolves every settings path it
+        # reports (dependencies.py, `Path(path).resolve()`), matching runtime.py's
+        # convention, so an unresolved root makes the path assertion below compare a
+        # resolved string against an unresolved one. On Windows that is not cosmetic:
+        # tempfile hands back the 8.3 short form, so the test read
+        # C:\Users\RUNNER~1\... against the product's C:\Users\runneradmin\... and
+        # failed on windows-latest only. No-op on Linux.
+        self.root = Path(self.temp.name).resolve()
         self.local = self.root / ".claude/settings.local.json"
         self.project = self.root / ".claude/settings.json"
         self.config = self.root / ".claude/notion-dev.config.json"
