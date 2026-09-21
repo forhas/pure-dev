@@ -142,8 +142,14 @@ assert_has  "the protocol requires an LF expectation file for the probe" \
   "$ND/references/runtime.md" '**Write the expectation file as UTF-8 with LF**'
 assert_has  "the probe regression writes its expectation without newline translation" \
   scripts/tests/test_runtime_evidence.py 'with path.open("w", encoding="utf-8", newline="") as stream'
-# `tempfile` hands back Windows' 8.3 short path while `Path.resolve()` returns the long
-# one, so a citation's stored path compares equal only when both sides are resolved.
+# `tempfile` hands back Windows' 8.3 short path (`C:\Users\RUNNER~1\...`) while
+# `Path.resolve()` — which the runtime applies to every path it stores — returns the long
+# one, so any test comparing a raw fixture path against a stored one fails on the Windows
+# leg alone against correct code. Fixing it per-site did not hold: it recurred in the next
+# test that stored a path. Resolving the fixture root kills the whole class at its source,
+# so this pins the ROOT, not the individual comparisons.
+assert_has  "the shared fixture root is resolved, so no derived path is a short name" \
+  scripts/tests/test_runtime.py 'Path(self.temp.name).resolve()'
 assert_has  "the citation regression compares resolved paths on both platforms" \
   scripts/tests/test_runtime_evidence.py 'str(Path(second).resolve())'
 
