@@ -338,6 +338,24 @@ class VerificationIndexTests(unittest.TestCase):
                     if v["verification"] == passing["verification"]]
         self.assertIn("verification log changed after the run", tampered[0]["reasons"])
 
+    def test_a_receipt_from_another_worktree_at_the_same_commit_is_not_reused(self):
+        """Identical fingerprints, different trees: ignored files are outside the hash."""
+        first = self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True)
+        other = self.root / "second worktree"
+        self.run_git("worktree", "add", "--detach", str(other), "HEAD")
+        self.addCleanup(lambda: subprocess.run(
+            ["git", "-C", str(self.repo), "worktree", "remove", "--force", str(other)],
+            capture_output=True))
+        self.assertEqual(runtime.revision(other)["fingerprint"],
+                         runtime.revision(self.repo)["fingerprint"])
+        elsewhere = self.rt.verify(other, "printf 'ok\\n'", reuse=True)
+        self.assertFalse(elsewhere["reused"])
+        self.assertNotEqual(elsewhere["verification"], first["verification"])
+        self.assertIn("receipt was produced in a different worktree",
+                      self.rt.verifications(other)["verifications"][0]["reasons"])
+        # And the original worktree still reuses its own receipt.
+        self.assertTrue(self.rt.verify(self.repo, "printf 'ok\\n'", reuse=True)["reused"])
+
     def test_a_command_that_modified_the_tree_is_not_a_reusable_receipt(self):
         receipt = self.rt.verify(self.repo, "printf 'x\\n' >> code.txt")
         self.assertTrue(receipt["changed_during_verification"])

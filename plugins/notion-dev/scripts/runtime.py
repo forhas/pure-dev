@@ -989,6 +989,16 @@ class Runtime:
         never described a state that survived its own run.
         """
         reasons = []
+        # The fingerprint covers tracked and untracked content, but `revision` builds it
+        # with `--exclude-standard`, so IGNORED files are invisible to it — and two
+        # worktrees at the same commit routinely differ in exactly those: local config,
+        # installed dependencies, this plugin's own state directory. A `--shell-command`
+        # is arbitrary and may read any of them, or `$PWD` itself, so a receipt earned in
+        # worktree A can be handed back in worktree B for a command that would fail there.
+        # `delta_baseline` and `merge_gate` already require the same worktree; this one
+        # did not, and it is the only one of the three that skips real work on the answer.
+        if receipt["revision"].get("worktree") != revision_now["worktree"]:
+            reasons.append("receipt was produced in a different worktree")
         if receipt["revision"]["fingerprint"] != revision_now["fingerprint"]:
             reasons.append("revision changed since this receipt")
         if receipt.get("environment", {}).get("signature") != signature["signature"]:
