@@ -43,7 +43,14 @@ class RuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="notion-runtime-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # RESOLVED once, here, so every path derived from it is the long form. Windows
+        # hands `tempfile` the 8.3 short name (`C:\Users\RUNNER~1\...`) while
+        # `Path.resolve()` — which the runtime applies to every path it stores — returns
+        # the long one, so any test comparing a raw fixture path against a stored one
+        # fails on the Windows leg alone against correct code. That trap was fixed
+        # per-site once and immediately recurred in a new test; killing it at the source
+        # is what stops the next one.
+        self.root = Path(self.temp.name).resolve()
         self.repo = self.root / "repo with space"
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)

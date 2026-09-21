@@ -1304,6 +1304,21 @@ Then freeze the input files and proceed through the gates below.
    met**" while the gate, the ledger, and the run's own final report all recorded 3 met and
    1 unverified — the claim the gate exists to catch, published by the gate's own run.
 
+### Resolve evidence at the review boundary, not at the merge
+
+**The moment a full or delta result is consumed, resolve every citation it supports** —
+before preparing anything else, and before any correction edit. Ingestion is per item:
+run `resolve-citations` with whatever the report actually supports, name each citation's
+`depends_on` source files, and read the returned `unresolved` list. Exit 1 there means
+the evidence is recorded and the gap is named; it is not a failure to retry blindly and
+not a reason to discard what resolved.
+
+Deferring this to the merge gate is what made the following delta expensive: with an
+empty evidence set the delta reviewer had no reuse candidates, so an "incremental" pass
+re-investigated everything. Run `evidence --worker <worker>` after resolving; its
+`reuse_applicable`, `recheck_needed`, `blocked` and `unresolved` lists are what the
+delta index is built from. `reuse_applicable` is a candidate set, never a verdict.
+
 ### Bounded correction review
 
 A small correction, claim reconciliation, or late base advance must not silently invalidate
@@ -1316,9 +1331,14 @@ for a bounded follow-up even if the two full passes are spent. It consumes one o
 delta attempts per invocation**, including failed attempts. Never reset the invocation
 or select an older baseline to replenish that budget.
 
-The helper supplies the exact before/after diff (including incoming base changes), frozen
-old/new input references, changed citation dependencies, and the prior independent result.
-The reviewer reads that packet, the authoritative source and current claims, reviews the
+The helper supplies a **bounded index** — the exact before/after diff, frozen old/new
+input references and the prior independent result all by hash-bound reference, never
+inlined, plus each requirement classified as reuse-applicable, recheck-needed, blocked or
+unresolved. The reviewer reads that index first, retrieves only what it needs, and pages
+any list the index marks incomplete with `section --name <list> --page <n>`; **a truncated
+section or an unread page is not complete input**, and reasoning from one is an unbounded
+scope to declare rather than a shortcut to take. It reads the authoritative source and
+current claims, reviews the
 correction's code for defects, and checks indirect effects on **every** requirement. It
 returns the complete current-head verdict set for every inventory ID, with current citations,
 not just changed IDs. Unchanged file hashes alone never establish semantic validity. Broader

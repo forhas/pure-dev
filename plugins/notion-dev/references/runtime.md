@@ -44,10 +44,55 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" veri
 
 The Bash runner enables `errexit` and `pipefail`. The result carries real exit status, elapsed seconds, revision/fingerprint and log
 path; use that log as verification evidence. Exit 1 means failed or modified-during-
-verification, never success. This milestone measures duplicate runs; it does not
-cache or skip them. Read relevant failure output from the log; do not pipe the runner
+verification, never success. Read relevant failure output from the log; do not pipe the runner
 through a success-masking command. Missing state/invalid input returns exit 2 and
 must be repaired, not interpreted as a passed gate.
+
+### The verification index
+
+Every run appends a receipt: command hash, exit status, log path and log hash, elapsed
+seconds, the revision it ran against, and an **environment signature** over the four
+toolchain facts the outcome depends on (`os.name`, platform, Python minor version, shell
+basename). The signature is those facts and nothing else — never a copy of the
+environment, which would put credentials into durable state and invalidate every receipt
+on an unrelated variable.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" verifications --worktree <absolute-worktree>
+```
+
+Each entry carries **two** verdicts, because they answer different questions.
+`applicable` says the receipt is intact and still describes this tree; when false, the
+reasons are the revision moved, the worktree differs, a declared input changed or is
+missing, the toolchain signature differs, the log is missing or was edited after the
+run, or the command modified the tree it verified. `reusable` says it is applicable
+**and** it passed — a failed receipt is perfectly applicable evidence that this command
+fails here, and is never a pass to stand in for one. Read this index before rerunning a
+command.
+
+`verify --reuse` returns a reusable receipt instead of running again, and records a
+`verification_reused` event. It uses exactly the index's `reusable` predicate, so the
+two can never disagree. Reuse is a stated choice at the call site, never a silent cache
+— omit the flag and the command always runs. A reviewer may still run its own
+independent probes when the evidence or the risk warrants it; a receipt is a floor, not
+a ceiling.
+
+**What reuse warrants is narrower than "the command's inputs", and the gap is yours to
+declare.** The fingerprint is built with `--exclude-standard`, so **ignored** files are
+outside it, and the signature is four toolchain facts with no environment values. A
+`--shell-command` is arbitrary and may read either. So name the rest:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" verify --worktree <absolute-worktree> --shell-command '<configured command>' --reuse --depends <ignored-config> --depends <generated-artifact>
+```
+
+Declared inputs are hashed into the receipt and rechecked before any reuse, exactly as a
+citation's `depends_on` is. The declared **set** must match too: a call that declares an
+input the receipt did not is asking a wider question than that receipt answered, and is
+rerun. A command with an input that cannot be declared — an environment value, a clock,
+a network service — must simply not be given `--reuse`. Omitting the flag always runs
+the command, and that is the honest answer for that case rather than a warranty this
+runtime cannot give.
 
 ### State-lock recovery
 
@@ -128,7 +173,8 @@ to retroactively merge or bypass a gate.
 ## Workers: prepare → attach → result_ready → consumed → accepted
 
 Before each actual dispatch, prepare a distinct worker with role `scout`, `plan`,
-`implementation`, `branch-review`, `local-review`, `completeness`, or `record`. Supply the necessary input files (not a
+`implementation`, `branch-review`, `local-review`, `completeness`, `record`, or `probe`.
+Supply the necessary input files (not a
 whole conversational history). Review roles also require the worktree. For example:
 
 ```bash
@@ -221,13 +267,42 @@ which exit to record, rather than silently permitted. `merge-gate` counts a cons
 unjudged worker as an outstanding outcome for the same reason.
 
 For completeness, the parent must also resolve each citation under the existing
-citation rules. Write a list of `{id, artifact, quote}` objects: a real evidence/log
-path and the exact supporting text for each requirement, not the deliverable's own
-unsupported claims. Run `resolve-citations --worker <worker> --citations <file.json>`.
+citation rules. Write a list of `{id, artifact, quote, depends_on}` objects: a real
+evidence/log path, the exact supporting text for each requirement, and the source files
+that receipt's conclusion rests on — not the deliverable's own unsupported claims. Run
+`resolve-citations --worker <worker> --citations <file.json>`.
 The runtime checks quotes against files, records their hashes, and rejects missing or
 changed evidence at merge. Semantic sufficiency still requires independent judgment.
 A citation that cannot be resolved stops merge; neither consumption nor a child saying
 `met` substitutes for this check. Never rewrite the child's immutable verdict to pass.
+
+**Resolve immediately after consuming a result, with whatever the report supports.**
+Ingestion is per item: a call may cover a subset, later calls add the rest, and
+re-resolving an ID replaces that one entry rather than duplicating it. The call returns
+`resolved`, `unresolved` and `complete`, and **exits 1 while anything is unresolved** —
+the evidence is durable, the gap is named, and neither is mistakable for the other.
+Partial ingestion relaxes *when* evidence becomes durable, never whether it is complete:
+`merge-gate` still requires every requirement resolved. An ID outside the inventory is
+rejected rather than stored. Do not defer resolution until the end of a review round —
+that is what left a following delta with an empty evidence set and no basis for reuse.
+
+`depends_on` is how a receipt goes stale without its own bytes changing. A cited test
+log does not change when the helper it exercised does, so the sources a verdict rests
+on are named explicitly; `merge-gate` blocks on a changed or missing dependency exactly
+as it does on changed evidence. Declaring nothing means claiming the receipt depends on
+nothing, so declare the files a rechecking reviewer would have to read.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" evidence --worker <worker>
+```
+
+The evidence index classifies every requirement into one of four states, never two:
+`current` (artifact and dependencies intact), `stale` (something it rests on changed,
+is missing, or is inside the pending change), `blocked` (the reviewer's own verdict was
+not `met`, however intact the bytes are), and `unresolved` (no evidence recorded). It
+exits 1 while anything is unresolved. `current` marks a **reuse candidate**, not a
+verdict: unchanged bytes identify what need not be re-derived, and never establish that
+behavior is unchanged.
 
 If mailbox delivery needs a parent-turn yield, `yield --worker <worker> --marker
 <owned-run-marker> --session "$NOTION_DEV_SESSION_ID"` grants the Stop hook one
@@ -260,10 +335,13 @@ record-unit lock/unknown-hook-outcome rules if termination cannot be confirmed.
 Before post-round sweep edits/reverts, on the clean committed worktree, register:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" correction-needed --worktree <worktree>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" correction-needed --worktree <worktree> --reason "<what made this necessary>"
 ```
 
-This records the pre-edit revision, not a review verdict. Register before editing,
+This records the pre-edit revision, not a review verdict. `--reason` is recorded, never
+inferred; `summary` reports the causes. A repeat registration keeps the original
+baseline and only adds a new cause — and adding one invalidates an existing completeness
+receipt, because a new cause means new corrective code is coming. Register before editing,
 never after committing the fix. Repeated registration preserves the original baseline;
 it cannot clear an obligation. All terminal sweep branches that change code use it.
 If registration was missed, stop and recover the true baseline through independent
@@ -317,17 +395,60 @@ and prepare an independent worker with the same role and the latest baseline:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" prepare --role completeness --previous <latest-accepted-worker> --worktree <worktree> --file ticket=<ticket.md> --file inventory=<requirements.json> --file criteria=<criteria-file> --file diff=<current-full-diff> --file pr=<current-PR-body> --file verify=<current-verification-log>
 ```
 
-The delta manifest references a separate, byte-preserving before/after committed-tree patch, lists changed
-input names, prior immutable report and citation hashes, and old/new input references.
 It requires clean trees, unchanged requirements, a complete accepted baseline, and
 **at most two delta attempts per invocation**, including failed attempts. The two full
 passes remain the workflow's separate bound. Older states without clean-tree/snapshot
 metadata require a full review, not an inferred baseline. Failure/rejection never resets
 either budget. If full review is needed and its budget is spent, stop.
 
-Read the manifest first to assess scope; inspect the patch/code by relevant section rather
-than dumping a large patch into the parent context. The patch hash is verified at publication
-and merge. A large/broad patch calls for honest escalation, never silent truncation.
+#### The delta index is a table of contents, not the material
+
+`delta.json` is a **bounded index**, kept at or under 2KB — measured as the bytes of the
+file itself, which is written compactly for exactly that reason: indentation is a fifth
+of this file and buys a JSON parser nothing, and the budget exists to bound a reviewer's
+read. Its sibling artifacts stay indented; they are not budgeted, and they are the ones
+a person opens when a receipt is disputed. It names one
+`directory` and one `worktree`, and every artifact it references is a `{file, sha256,
+bytes}` triple **relative to that directory** — join the two to open one. It carries:
+
+| Key | What it references |
+|---|---|
+| `patch` | The byte-preserving before/after committed-tree diff, in its own file |
+| `inputs` | Before/after input names, hashes and snapshot paths |
+| `previous_report` | The prior immutable report, **by reference** — never inlined |
+| `evidence` | Per-requirement applicability counts plus the full evidence index file |
+| `sections_file` | The complete lists, whole, for paged retrieval |
+| `reuse_applicable` / `recheck_needed` / `blocked` / `unresolved` | Requirement IDs by state |
+| `changed_paths` / `changed_inputs` | What moved since the baseline |
+
+Lists are inlined while they fit the budget; the largest is shortened first, and every
+shortened list is named in `sections.incomplete` with its true count in
+`sections.counts`. `complete` and `within_budget` say so at the top level, and `index_bytes` is the file's
+real size rather than a figure for a form nobody writes. An inlined
+list is always a **prefix of page 1**, never a sample, and a short one is never the
+whole section. Retrieve the rest a page at a time:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" section --worker <worker> --name changed_paths --page 2
+```
+
+**No truncated section and no unread page is complete input, and the merge gate enforces
+it.** A `sufficient` disposition is a claim that the scope was bounded, so every page of
+every section named in `sections.incomplete` must actually have been retrieved — the
+runtime records which pages this worker read and blocks the merge naming any section it
+never finished. Reading them is the floor, never the judgement: what the reviewer
+concludes from a complete list remains its own independent call. An honest
+`full-review-required` escalation needs no complete input, because it claims the
+opposite — that the scope was *not* bounded. Read the index first to assess scope, then only what it references,
+by relevant section rather than dumping a large patch into the parent context. Every
+referenced artifact's hash is verified at publication and at merge. A large or broad
+patch calls for honest escalation, never silent truncation.
+
+Classify each requirement before investigating: `reuse_applicable` is the candidate
+set, `recheck_needed` and `unresolved` are the work, `blocked` needs the baseline's own
+unmet verdict resolved. Deeply investigate the affected and unresolved subset, and widen
+the dependency closure the moment an indirect effect appears. Every current verdict is
+tied to the current reviewed state even where its evidence came from an earlier receipt.
 
 The fresh reviewer checks the source/inventory, corrected code for defects, current
 claims/caveats, all changed dependencies, and indirect effects on every requirement.
@@ -367,14 +488,69 @@ within the bounded full/delta passes; exhaustion stops rather than waiving the g
 This guard takes precedence over legacy prose that allowed filing an unmet criterion
 or merging with degraded completeness. Non-required follow-ups remain permissible.
 
+## Host publication probe
+
+Before trusting the durable-result path on a host for the first time, prove it on that
+host. Prepare a worker with role `probe`, dispatch a disposable agent, have it publish
+a result carrying the exact bytes it was given as `payload`, and check what landed:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" probe --worker <worker> --expect <payload-file>
+```
+
+The finding is `delivered`, `truncated`, `mangled` or `missing`, with both hashes and
+the delivery lag; exit 1 for anything but `delivered`. Use a payload with non-ASCII
+text and enough length to cross the host's own limits — a short ASCII round trip proves
+nothing about the case that fails. **Write the expectation file as UTF-8 with LF**: the
+probe compares bytes on purpose, so a CRLF expectation makes every delivery `mangled` on
+Windows against a host that is working correctly. A schema test that only shows a valid result object
+exists cannot distinguish these four outcomes, which is why this compares bytes.
+
+An unsupported host stops honestly. Do not route around a refused write by asking the
+worker to perform the same prohibited action through shell commands, and do not claim
+a notification or resume API the probe has not exercised on that host.
+
+## Recording provider operation outcomes
+
+The runtime performs no provider call and holds no credential; the host's authorized
+tools do that. What it records is the outcome, so an interrupted operation is visible
+to whoever resumes rather than retried blind:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" record-op --operation <stable-logical-id> --target <what> --outcome attempted
+```
+
+Outcomes are `planned`, `attempted`, `confirmed`, `unknown-outcome` and `failed` —
+there is no sixth, and an unacknowledged create is `unknown-outcome`, never `failed`
+and never omitted. Reconcile an `unknown-outcome` create by provenance or readback
+**before** any retry. `summary` lists every operation that is not `confirmed`, so a
+provider outage cannot end a run as "fully recorded".
+
 ## Usage snapshot and final reporting
 
 At completion/stopping call `stage complete` or `stage stopped`, then `summary`.
 Report measured stage times, worker states/delivery lag, validation runs and repeated
-signatures. Token counters are not inferred from text length. When the host exposes
+signatures. Token counters are not inferred from text length.
+
+`summary`'s `end_to_end` block adds worker counts by role, workers still neither
+accepted nor confirmed terminated, verification reuses, per-worker evidence
+applicability, record-operation outcomes and correction causes. Its `scope` field is
+part of the report: these counters cover **what this runtime observed** — registered
+workers, measured stages, commands run through `verify`. A command run outside the
+runner and an agent never registered as a worker are unknown, not zero. The older
+narrow counters are unchanged and still present; they were never whole-run totals.
+
+When the host exposes
 the raw session path, run `scripts/telemetry.py <parent.jsonl> --runtime "$RUNTIME_STATE"`;
 it includes available sibling subagent logs, deduplicates streamed messages, separates
 cache reads/writes/uncached input/output, and counts actual compaction boundaries.
+With `--runtime` it also **correlates each child log to its worker** by host agent ID,
+labelling every child with its role, slot and the stage it was prepared in, and
+aggregating usage per role. `correlation` reports both directions: workers whose log is
+absent (unknown cost, never zero), workers never attached, and logs that match no
+worker (real cost this run cannot attribute). `peak_context` reports the parent's peak
+and the largest child's peak separately, because peaks are concurrent scopes and adding
+them would describe a context window no single request ever held.
 Report unavailable/missing child logs and the last observed request cutoff. The final
 response may not yet be in the live log; refresh the snapshot afterward for benchmark
 comparison. Do not call a live partial snapshot a complete invoice.

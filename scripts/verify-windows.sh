@@ -112,5 +112,46 @@ assert_has  "runtime rejects the System32 stub through \`_wsl_stub\`" "$ND/scrip
 assert_has  "runtime walks PATH itself when the stub is what PATH resolved to" "$ND/scripts/runtime.py" 'os.environ.get("PATH", "").split(os.pathsep)'
 assert_has  "runtime falls back to the bare name, never to the rejected stub" "$ND/scripts/runtime.py" '_BASH_EXE = found or "bash"'
 
+# A verification receipt is reusable only under the same toolchain, so the signature is
+# computed in Python from values both platforms have. Shelling out to `uname` would make
+# the signature depend on a tool Windows does not ship, and `stat -c`/`date -d` would
+# make it depend on GNU coreutils; neither is available in Git Bash's minimal set the way
+# it is on Ubuntu, and a receipt that cannot be fingerprinted is a receipt reused blind.
+assert_has  "the environment signature is computed in Python, not by shelling out" \
+  "$ND/scripts/runtime.py" '"platform": sys.platform'
+assert_has  "the signature names the shell by basename, so an absolute path never splits it" \
+  "$ND/scripts/runtime.py" 'os.path.basename(bash_exe())'
+assert_lacks "the runtime takes no \`uname\` dependency" "$ND/scripts/runtime.py" 'uname'
+assert_lacks "the runtime takes no \`stat -c\`" "$ND/scripts/runtime.py" 'stat -c'
+assert_lacks "the runtime takes no \`date -d\`" "$ND/scripts/runtime.py" 'date -d'
+# Delta artifacts are named relative to one directory, which is also what keeps a
+# Windows absolute path (drive letter, backslashes) out of five separate index entries.
+assert_has  "delta artifacts resolve against the index's own directory" \
+  "$ND/scripts/runtime.py" 'Path(index["directory"]) / reference["file"]'
+# The evaluation fixture's oracle is plain Python run through the configured interpreter:
+# a fixture that only reproduces its defects on one platform cannot be the thing both
+# CI legs compare against.
+assert_has  "the evaluation oracle is selected by an environment variable, not a shell path" \
+  scripts/fixtures/evaluation/oracle/test_scheduler.py 'os.environ["EVAL_SCHEDULER"]'
+assert_has  "verify-evidence.sh supports Windows interpreter selection" \
+  scripts/verify-evidence.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
+# The probe compares BYTES, so the expectation file it is given must be LF. Python's
+# default text mode writes CRLF on Windows, which would make a correctly delivered
+# payload read as `mangled` on that leg alone -- it did, on this change's first CI run.
+assert_has  "the protocol requires an LF expectation file for the probe" \
+  "$ND/references/runtime.md" '**Write the expectation file as UTF-8 with LF**'
+assert_has  "the probe regression writes its expectation without newline translation" \
+  scripts/tests/test_runtime_evidence.py 'with path.open("w", encoding="utf-8", newline="") as stream'
+# `tempfile` hands back Windows' 8.3 short path (`C:\Users\RUNNER~1\...`) while
+# `Path.resolve()` — which the runtime applies to every path it stores — returns the long
+# one, so any test comparing a raw fixture path against a stored one fails on the Windows
+# leg alone against correct code. Fixing it per-site did not hold: it recurred in the next
+# test that stored a path. Resolving the fixture root kills the whole class at its source,
+# so this pins the ROOT, not the individual comparisons.
+assert_has  "the shared fixture root is resolved, so no derived path is a short name" \
+  scripts/tests/test_runtime.py 'Path(self.temp.name).resolve()'
+assert_has  "the citation regression compares resolved paths on both platforms" \
+  scripts/tests/test_runtime_evidence.py 'str(Path(second).resolve())'
+
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

@@ -70,9 +70,13 @@ class ConvergenceTests(unittest.TestCase):
         self.assertFalse(self.rt.merge_gate(previous, self.repo)["passed"])
         key, result, manifest = self.delta(previous)
         self.assertEqual(manifest["changed_paths"], ["code.txt"])
-        self.assertIn("+clarification", Path(manifest["patch"]["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(set(manifest["changed_evidence_ids"]),
+        self.assertIn("+clarification", Path(runtime.Runtime.ref_path(manifest, manifest["patch"])).read_text(encoding="utf-8"))
+        # The index classifies rather than dumping: every requirement's cited evidence
+        # is the changed file, so all of them need a recheck and none is reusable.
+        self.assertEqual(set(manifest["recheck_needed"]),
                          {item["id"] for item in self.inventory["items"]})
+        self.assertEqual(manifest["reuse_applicable"], [])
+        self.assertEqual(manifest["evidence"]["recheck_needed"], len(self.inventory["items"]))
         self.assertTrue(self.finish(key, result)["passed"])
         self.code.write_text("original\nlater edit\n", encoding="utf-8")
         self.assertFalse(self.rt.merge_gate(key, self.repo)["passed"])
@@ -118,8 +122,9 @@ class ConvergenceTests(unittest.TestCase):
         packet = runtime.read_json(receipt["packet"])
         manifest = runtime.read_json(packet["delta"]["path"])
         self.assertEqual(manifest["changed_inputs"], ["pr"])
-        self.assertEqual(Path(manifest["before_inputs"]["pr"]["snapshot"]).read_text(), "Old factual claim")
-        self.assertEqual(Path(manifest["after_inputs"]["pr"]["snapshot"]).read_text(), "Corrected factual claim")
+        inputs = runtime.read_json(runtime.Runtime.ref_path(manifest, manifest["inputs"]))
+        self.assertEqual(Path(inputs["before"]["pr"]["snapshot"]).read_text(), "Old factual claim")
+        self.assertEqual(Path(inputs["after"]["pr"]["snapshot"]).read_text(), "Corrected factual claim")
 
     def test_content_equivalent_new_head_still_needs_delta_receipt(self):
         previous = self.baseline()
@@ -132,7 +137,8 @@ class ConvergenceTests(unittest.TestCase):
     def test_snapshot_tampering_is_not_carried_forward(self):
         previous = self.baseline()
         key, result, manifest = self.delta(previous)
-        Path(manifest["before_inputs"]["ticket"]["snapshot"]).write_text("corrupted", encoding="utf-8")
+        inputs = runtime.read_json(runtime.Runtime.ref_path(manifest, manifest["inputs"]))
+        Path(inputs["before"]["ticket"]["snapshot"]).write_text("corrupted", encoding="utf-8")
         with self.assertRaisesRegex(runtime.Invalid, "snapshot"):
             self.rt.publish(key, result)
 
@@ -140,8 +146,10 @@ class ConvergenceTests(unittest.TestCase):
         previous = self.baseline()
         self.change()
         key, result, manifest = self.delta(previous)
-        self.assertEqual(set(manifest["patch"]), {"path", "sha256", "bytes"})
-        Path(manifest["patch"]["path"]).write_bytes(b"corrupted")
+        # A reference and a digest, never the bytes; the file name is relative to the
+        # index's own `directory`, so the index does not pay for a sixth absolute path.
+        self.assertEqual(set(manifest["patch"]), {"file", "sha256", "bytes"})
+        Path(runtime.Runtime.ref_path(manifest, manifest["patch"])).write_bytes(b"corrupted")
         with self.assertRaisesRegex(runtime.Invalid, "patch changed"):
             self.rt.publish(key, result)
 
@@ -162,7 +170,7 @@ class ConvergenceTests(unittest.TestCase):
         self.run_git("commit", "-qam", "remove fixture")
         _, _, manifest = self.delta(previous)
         self.assertEqual(manifest["changed_paths"], [path.name])
-        self.assertIn("deleted file mode", Path(manifest["patch"]["path"]).read_text(encoding="utf-8"))
+        self.assertIn("deleted file mode", Path(runtime.Runtime.ref_path(manifest, manifest["patch"])).read_text(encoding="utf-8"))
 
     def test_cli_packet_is_compact_utf8_json_with_lf(self):
         output = subprocess.check_output([sys.executable, str(fixtures.ROOT / "plugins/notion-dev/scripts/runtime.py"),

@@ -1,0 +1,54 @@
+{
+  "fixture": "EVAL-1",
+  "note": "What a competent independent review of project/ must report. Each id is proved by the oracle test whose method name ends in that id; scripts/tests/test_evaluation_fixture.py enforces that link in both directions.",
+  "findings": [
+    {
+      "id": "concurrency-limit",
+      "class": "concurrency",
+      "requirement": "AC1",
+      "summary": "Admission recomputes the whole limit each round instead of the remaining capacity, so a graph whose nodes outlive their starting round exceeds the cap.",
+      "detectable_by": "oracle",
+      "why_it_survives_a_weak_review": "The cap holds for every single-round node, so a smoke test on a trivial graph passes."
+    },
+    {
+      "id": "memoization-key",
+      "class": "correctness",
+      "requirement": "AC2",
+      "summary": "The cache is keyed on the name alone, so the second version of a name is served the first version's value.",
+      "detectable_by": "oracle",
+      "why_it_survives_a_weak_review": "The wrong value is returned rather than raised, so nothing downstream reports an error."
+    },
+    {
+      "id": "config-validation",
+      "class": "configuration",
+      "requirement": "AC3",
+      "summary": "A limit below 1 is reinterpreted as unlimited rather than refused, and a negative retries value is accepted, removing the guarantee the caller configured.",
+      "detectable_by": "oracle",
+      "why_it_survives_a_weak_review": "AC3's checkbox is already ticked in the ticket, and the function does raise for some inputs."
+    },
+    {
+      "id": "lookup-reduction-claim",
+      "class": "false-quantitative-claim",
+      "requirement": "Notes",
+      "summary": "The pull request body states 60% of registry lookups are removed; the fixture workload's actual figure is 50%, and no derivation exists.",
+      "detectable_by": "oracle",
+      "why_it_survives_a_weak_review": "The claim is plausible, sits under a Measurements heading, and no test asserts it."
+    },
+    {
+      "id": "misleading-checkbox",
+      "class": "misleading-contract",
+      "requirement": "AC3",
+      "summary": "AC3 is ticked in the authoritative source while the behaviour it claims is absent; a ticked box is not evidence.",
+      "detectable_by": "review",
+      "why_it_survives_a_weak_review": "An intake that trusts the checkboxes records AC3 as already satisfied and never inventories it."
+    },
+    {
+      "id": "constraint-outside-acceptance",
+      "class": "requirement-extraction",
+      "requirement": "Notes",
+      "summary": "The retries constraint and the derived-figure constraint are mandatory but sit in Notes, outside the acceptance list.",
+      "detectable_by": "review",
+      "why_it_survives_a_weak_review": "An intake that reads only the acceptance section produces a complete-looking inventory that is missing two mandatory items."
+    }
+  ]
+}

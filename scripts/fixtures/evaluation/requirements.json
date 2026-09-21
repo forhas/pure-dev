@@ -1,0 +1,50 @@
+{
+  "source_sha256": "d4419db0767f7a0a345df66c9617edcaa62d96bb4aba34b4de9a5aef84250dd3",
+  "reviewed_whole_ticket": true,
+  "note": "AC3 is ticked in the source and still inventoried: a ticked box is a claim, not evidence. C1 and C2 are mandatory and live in Notes, outside the acceptance list.",
+  "items": [
+    {
+      "id": "P1",
+      "kind": "prerequisite",
+      "text": "The cap semantics were confirmed with the calling team",
+      "readiness": "ready",
+      "evidence": "Ticked in the source AND stated verbatim: the cap is a global maximum, not a per-round quota."
+    },
+    {
+      "id": "AC1",
+      "kind": "acceptance",
+      "text": "A walk never has more than `limit` nodes running at the same time",
+      "readiness": "ready"
+    },
+    {
+      "id": "AC2",
+      "kind": "acceptance",
+      "text": "The registry cache distinguishes two versions of the same name",
+      "readiness": "ready"
+    },
+    {
+      "id": "AC3",
+      "kind": "acceptance",
+      "text": "`validate_config` refuses a configuration it cannot honour",
+      "readiness": "ready"
+    },
+    {
+      "id": "AC4",
+      "kind": "acceptance",
+      "text": "Every reachable node is visited exactly once.",
+      "readiness": "ready"
+    },
+    {
+      "id": "C1",
+      "kind": "constraint",
+      "text": "Any figure quoted in the pull request body about lookups avoided must be derived from",
+      "readiness": "ready"
+    },
+    {
+      "id": "C2",
+      "kind": "constraint",
+      "text": "The `retries` value is part of the accepted configuration surface: a negative value is",
+      "readiness": "ready"
+    }
+  ]
+}

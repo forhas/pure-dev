@@ -46,9 +46,16 @@ current independent completeness result with resolved evidence for every mandato
 requirement; degraded or stale checks stop with the work preserved.
 
 The standard-library helpers `scripts/runtime.py` and `scripts/telemetry.py` use
-`knowledge.python`. Verification records real exit status and duplicate signatures,
-but does not skip checks. Raw JSONL telemetry separates cache reads, cache creation,
-uncached input, output and peak context; missing logs remain unknown. See
+`knowledge.python`. Verification records real exit status, a log hash and a toolchain
+signature, and indexes every receipt with why it is or is not reusable now; reuse is an
+explicit `--reuse`, never a silent cache, and a moved revision, an edited log or a
+failure is always rerun. Evidence is recorded per requirement as each review result is
+consumed, with the source files each receipt depends on, so a second review round reuses
+what still applies instead of re-deriving it — the merge gate still requires every
+mandatory requirement resolved with intact evidence. Raw JSONL telemetry separates cache
+reads, cache creation, uncached input, output and peak context, correlates each child
+log to its worker's role, and reports missing and unattributable logs as unknown rather
+than absorbing them. See
 [the runtime protocol](references/runtime.md). This changes notion-dev's gates;
 quick-dev's independent workflow is not opted into this protocol.
 
