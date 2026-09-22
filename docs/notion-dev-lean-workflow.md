@@ -72,7 +72,7 @@ requirements, unresolved findings, and correct Notion/knowledge/epic outcomes.
 **Disposition: `blocked`.** Do not claim ticket-level token/time savings from reduced prompt
 bytes or passing unit tests. External cause: a real token/time figure needs a representative
 live ticket run against a client repository, which no offline test can substitute for. The
-real-ticket run below is what unblocks it, and it determines whether this structural change
-improves the baseline. Stop and
-diagnose unexpected repeated reviews, stale-evidence reuse or replayed provider effects; preserve
-the existing invocation rather than resetting its budget.
+real-ticket run described above is what unblocks it, and it determines whether this structural
+change improves the baseline. Stop and diagnose unexpected repeated reviews, stale-evidence
+reuse or replayed provider effects; preserve the existing invocation rather than resetting
+its budget.
