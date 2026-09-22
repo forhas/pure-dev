@@ -16,4 +16,9 @@ assert_has "closeout reuses current evidence" plugins/notion-dev/skills/session-
 assert_has "new ticket delegates intake" plugins/notion-dev/commands/ticket.md 'references/lean-intake.md'
 assert_has "review has code quality and requirements in one seat" plugins/notion-dev/skills/review-and-merge/SKILL.md 'One combined independent internal review'
 assert_has "record uses operation planning" plugins/notion-dev/references/record.md 'workflow.py" record-plan'
+# The frozen ticket and the merge gate agree with each other whatever upstream now says, so
+# without this re-fetch a requirement added during review is merged past in silence. The
+# legacy flow carried the rule; the lean rewrite dropped it.
+assert_has "merge re-fetches the authoritative ticket, not only PR state" \
+  plugins/notion-dev/skills/review-and-merge/SKILL.md 'Re-fetch the authoritative ticket and refresh its source file'
 exit $(( fails > 0 ))

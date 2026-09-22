@@ -124,18 +124,23 @@ the phase changed. Any check that changes source/claims invalidates relevant evi
 through review. On plugin repos ensure the manifest version still exceeds the current base.
 
 Immediately before merge:
-1. Re-fetch live PR HEAD/base/body and require equality with reviewed inputs. Base movement
+1. Re-fetch the authoritative ticket and refresh its source file. Changed bytes invalidate the
+   inventory and the review even when the criterion count is unchanged: return through
+   inventory, readiness and review, never a local waiver. The frozen copy and `merge-gate`
+   agree with each other whatever upstream now says, so only this re-fetch can see a mandatory
+   requirement added during implementation or review. Do not edit the ticket to pass the gate.
+2. Re-fetch live PR HEAD/base/body and require equality with reviewed inputs. Base movement
    triggers safe stabilization and applicable rechecks, not silent retargeting.
-2. `gh pr checks <pr> --required`: all required checks pass, none pending. No checks reported
+3. `gh pr checks <pr> --required`: all required checks pass, none pending. No checks reported
    is different from a read failure. Also check all checks: a failing optional check blocks;
    a pending optional check alone does not. Required-check timeout (~15m) stops.
-3. Re-query ALL GraphQL thread pages in a standalone command. Every thread resolved.
+4. Re-query ALL GraphQL thread pages in a standalone command. Every thread resolved.
    Also fetch new review bodies and issue comments, including late external responses during
    fallback. Triage new substantive feedback. Empty/failed output is not proof. Every absorbed
    finding has an actual fix.
-4. `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
+5. `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
    must pass. It covers requirements, code review, citations, snapshots, corrections and workers.
-5. Respect explicit user merge approval conditions. Merge using configured strategy and
+6. Respect explicit user merge approval conditions. Merge using configured strategy and
    `gh pr merge <pr> --<strategy> --match-head-commit <reviewed-head>`.
    On error re-read state before retrying; the merge may already have happened.
 
