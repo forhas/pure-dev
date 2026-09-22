@@ -110,4 +110,3 @@ Print, in this order:
 - The brief's final `## Next` section verbatim, with its path — this is the hand-off to whoever runs this command next.
 - Non-interactive decisions this command made (fallback picks, skipped `In Progress` tickets).
 - The `CLOSEOUT:` block from the **last** delegated run verbatim, followed by its `tracked:` and `blocked:` lines. This command creates no artifacts of its own beyond the bootstrap commit, which that run's closeout already saw pushed.
-

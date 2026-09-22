@@ -1494,4 +1494,3 @@ The report also carries a **`COMPLETENESS-REPORT`** section: the verifier's keye
 ## Additional Resources
 
 - **`references/github-api.md`** — exact `gh` commands: paginated comment reads, the GraphQL reviewThreads query and its cursor rules, thread-to-comment mapping, reply and resolve mutations.
-

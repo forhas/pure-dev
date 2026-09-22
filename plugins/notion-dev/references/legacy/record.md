@@ -165,4 +165,3 @@ Losing it would make the brief's own recommendation reachable only by opening th
 `failed` half is load-bearing for a different reason: the caller's closeout has to force an
 unpushed local commit into `blocked:` with its cause (see the epic-doc step above), and it cannot
 name a commit it was never told about. Carry both lines verbatim rather than summarising them.
-
