@@ -13,7 +13,7 @@ import subprocess
 import sys
 import uuid
 
-from runtime import Runtime, Invalid, atomic_json, git, read_json, require, state_lock
+from runtime import Runtime, Invalid, atomic_json, digest, git, read_json, require, state_lock
 
 
 def primary(project):
@@ -190,9 +190,25 @@ def record_plan(state, facts_file):
     require(re.fullmatch(r"[0-9a-f]{40}", facts["merge_sha"]), "full verified merge SHA required")
     output = Path(state).resolve().parent / "record"
     output.mkdir(exist_ok=True)
+    # `requirements`, `verification` and `review` are documented as PATHS (or embedded
+    # objects). A path stored as a bare string puts only its NAME in the payload digest,
+    # so repairing or re-running the artifact it points at leaves the digest identical —
+    # and `record_check` then answers `skip` for a confirmed operation whose evidence has
+    # since changed, which is exactly the drift this contract's "changed intent needs
+    # explicit reconciliation" rule exists to catch. Bind the content, not the name.
+    # A non-file string is left alone: the contract allows an explicit `unknown` here on
+    # merged-PR recovery, and an embedded object already carries its own bytes.
+    def bound(value):
+        source = Path(value) if isinstance(value, str) else None
+        if source is not None and source.is_file():
+            return {"path": str(source.resolve()), "sha256": digest(source)}
+        return value
+
+    evidence = ("requirements", "verification", "review")
     payloads = {
         "ticket-status": {"status": "implemented"},
-        "ticket-resolution": {k: facts[k] for k in required if k != "ticket"},
+        "ticket-resolution": {k: (bound(facts[k]) if k in evidence else facts[k])
+                              for k in required if k != "ticket"},
         "epic-record": {"ticket": facts["ticket"], "epic": facts.get("epic"), "followups": facts.get("followups", [])},
         "cleanup": {"merge_sha": facts["merge_sha"], "worktree": facts.get("worktree"), "branch": facts.get("branch"), "base": facts["base"]},
         "knowledge-delta": {"merge_sha": facts["merge_sha"], "facts": facts.get("knowledge_delta", [])},

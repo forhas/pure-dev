@@ -30,6 +30,10 @@ Save immutable `record-facts.json` beside runtime state with:
 }
 ```
 Requirements, verification and review may be embedded structured objects instead of paths.
+A path-valued one is recorded in the payload as `{"path":…,"sha256":…}` — its **content**, not
+its name, is the operation's identity, so repairing or re-running the artifact it points at
+forces reconciliation instead of a silent `skip`. Read the payload's `path` to load it. A
+non-file string, such as the explicit `unknown` above, stays a plain string.
 An empty knowledge delta is legitimate; do not invent a knowledge change to fill a field.
 Store additional approved filing decisions and existing outcome reports by reference.
 Fields describe observed facts, not fabricated placeholders.

@@ -281,6 +281,35 @@ class LeanTests(unittest.TestCase):
         self.assertTrue(summary["passed"])
         self.assertEqual(set(summary["record"]), set(runtime.RECORD_FIELDS))
 
+    def test_referenced_evidence_content_drift_is_not_a_skippable_identity(self):
+        """A path-valued fact must put its BYTES in the digest, not just its name.
+
+        The contract says a changed intent needs explicit reconciliation. Hashing only
+        the path string let a repaired or re-run artifact keep the old digest, so a
+        confirmed operation answered `skip` while the provider record and the evidence
+        had diverged.
+        """
+        review = self.root / "review.json"
+        runtime.atomic_json(review, {"verdict": "clean", "criteria": 4})
+        body = runtime.read_json(self.facts())
+        # `requirements` stays the explicit `unknown` the contract allows on merged
+        # recovery: a non-file string is a fact, not a reference, and is left alone.
+        body.update(requirements="unknown", verification=str(review), review=str(review))
+        facts = self.root / "facts-referenced.json"
+        runtime.atomic_json(facts, body)
+        planned = workflow.record_plan(self.state, facts)
+        resolution = next(o for o in planned["operations"] if o["kind"] == "ticket-resolution")
+        payload = runtime.read_json(resolution["payload"])
+        self.assertEqual(payload["requirements"], "unknown")
+        self.assertEqual(payload["review"], {"path": str(review), "sha256": runtime.digest(review)})
+        for item in planned["operations"]:
+            self.rt.record_op(item["operation"], item["target"], "confirmed", "readback", item["data_sha256"])
+        self.assertEqual({o["action"] for o in workflow.record_plan(self.state, facts)["operations"]},
+                         {"skip"})
+        runtime.atomic_json(review, {"verdict": "clean", "criteria": 3})   # same path, new bytes
+        with self.assertRaisesRegex(ValueError, "payload changed"):
+            workflow.record_plan(self.state, facts)
+
     def test_record_payload_drift_cannot_replay_under_old_identity(self):
         facts = self.facts(); workflow.record_plan(self.state, facts)
         changed = runtime.read_json(facts); changed["base"] = "other"
