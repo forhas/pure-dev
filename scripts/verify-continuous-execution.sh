@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Non-interactive runs must not hand the turn back.
 #
 # `--non-interactive` was specified in both plugins as "never pause for user
@@ -35,13 +36,13 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 QD=plugins/quick-dev
-TK=$ND/commands/ticket.md
-NT=$ND/commands/next-task.md
+TK=$ND/references/legacy/ticket.md
+NT=$ND/references/legacy/next-task.md
 NI=$ND/commands/new-info.md
 CT=$ND/commands/create-task.md
-FIN=$ND/commands/finalize.md
+FIN=$ND/references/legacy/finalize.md
 RM=$QD/skills/review-and-merge/SKILL.md
-NRM=$ND/skills/review-and-merge/SKILL.md
+NRM=$ND/references/legacy/review-and-merge.md
 DEV=$QD/skills/develop/SKILL.md
 SIG=$ND/skills/issue-log/references/signatures.md
 NDREADME=$ND/README.md

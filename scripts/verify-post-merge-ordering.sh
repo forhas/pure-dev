@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Post-merge cleanup ordering — the contract PRs #20 and #23 shipped.
 #
 # A ticket run merges a PR, then cleans up: remove the worktree, delete the
@@ -31,9 +32,9 @@ ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # The two flows that own a worktree and clean it up.
-TICKET=plugins/notion-dev/commands/ticket.md
-RECORD=plugins/notion-dev/references/record.md
-FINALIZE=plugins/notion-dev/commands/finalize.md
+TICKET=plugins/notion-dev/references/legacy/ticket.md
+RECORD=plugins/notion-dev/references/legacy/record.md
+FINALIZE=plugins/notion-dev/references/legacy/finalize.md
 DEVELOP=plugins/quick-dev/skills/develop/SKILL.md
 
 # Every copy of the merge-and-delete sequence. The .claude/ mirror is included
@@ -41,7 +42,7 @@ DEVELOP=plugins/quick-dev/skills/develop/SKILL.md
 # thing it matches is still correct, and the mirror is the copy this repo drives
 # its own PRs with.
 MERGE_DOCS=(
-  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/references/legacy/review-and-merge.md
   plugins/notion-dev/skills/review-and-merge/references/github-api.md
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   plugins/quick-dev/skills/review-and-merge/references/github-api.md
@@ -55,7 +56,7 @@ MERGE_DOCS=(
 # the mapping table, so this is one list rather than the two it needed while they
 # diverged.
 HEADREPO_DOCS=(
-  plugins/notion-dev/skills/review-and-merge/SKILL.md
+  plugins/notion-dev/references/legacy/review-and-merge.md
   plugins/notion-dev/skills/review-and-merge/references/github-api.md
   plugins/quick-dev/skills/review-and-merge/SKILL.md
   plugins/quick-dev/skills/review-and-merge/references/github-api.md

@@ -226,9 +226,13 @@ Do not recall what is outstanding; **query it**. Recall is what produces "one th
    creation outside the filing skill, bypassing its epic association and idempotency bookkeeping.
 6. *(completion)* **Work already recorded as deferred** — `git log --grep '^Deferred:' --grep '^Unmet:'` across
    this session's commits.
-7. *(completion)* **Verification** — run the project's full test / build / lint suite *now*. A failing check is
-   a tail; so is never having run it. Do not report a session as done on the strength of a suite
-   that last passed several commits ago.
+7. *(completion)* **Verification** — require passing evidence for the full configured suite on
+   the current source, command and environment. With RUNTIME_STATE, use `workflow.py verify`
+   (configured `knowledge.python`): it reuses applicable receipts and executes missing/stale
+   checks. Inspect retained full logs rather than rerunning to generate a report. Declare
+   ignored/non-Git inputs; external-state checks without complete freshness evidence rerun.
+   With no runtime/receipts, run the suite now. A failing or never-run check is a tail;
+   a receipt from different code is not a pass. A phase boundary alone is not invalidation.
 8. *(workspace, on the finished draft)* **Your own draft report.** Every caveat, limitation,
    "note that", and unverified claim in it is a tail that has not been assigned a state.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Structural verification for the absorb-by-default triage change.
 # This repo ships markdown instruction files, not code — these greps and
 # diffs are the test suite. Run from anywhere: ./scripts/verify-convergence.sh
@@ -50,6 +51,7 @@ done
 echo "== Task 3: review-and-merge =="
 for P in "$ND" "$QD"; do
   S=$P/skills/review-and-merge/SKILL.md
+  [ "$P" != "$ND" ] || S=$ND/references/legacy/review-and-merge.md
   n=$(basename "$P")
   assert_has "$n r&m has the absorb merge gate"  "$S" 'No `absorb` item may be outstanding at merge'
   assert_has "$n r&m has the reclassify escape"  "$S" 'reclassification, not a bypass'
@@ -65,7 +67,7 @@ assert_has "develop reports FILED items"      "$D" 'FILED'
 assert_lacks "develop drops stale NOT-IN-SCOPE key" "$D" 'NOT-IN-SCOPE'
 
 echo "== Task 5: REVIEW_REPORT three lists =="
-for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
+for F in $ND/references/legacy/ticket.md $ND/references/legacy/finalize.md; do
   n=$(basename "$F")
   assert_has "$n records ABSORBED" "$F" 'ABSORBED'
   assert_has "$n records DROPPED"  "$F" 'DROPPED'
@@ -73,10 +75,10 @@ for F in $ND/commands/ticket.md $ND/commands/finalize.md; do
 done
 assert_has "ticket-system renders Absorbed" "$ND/skills/ticket-system/references/styling.md" 'Absorbed'
 assert_has "ticket-system renders Dropped"  "$ND/skills/ticket-system/references/styling.md" 'Dropped'
-assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/commands/ticket.md" 'NOT-IN-SCOPE'
+assert_lacks "ticket.md drops stale NOT-IN-SCOPE key" "$ND/references/legacy/ticket.md" 'NOT-IN-SCOPE'
 
 echo "== Task 6: epic-update =="
-E=$ND/skills/epic-update/SKILL.md
+E=$ND/skills/epic-update/references/with-followups.md
 assert_has   "epic-update sources FILED only"        "$E" 'only the `FILED` list'
 assert_has   "epic-update gate offers Drop"          "$E" 'Drop (with rationale)'
 assert_has   "epic-update records DROPPED"           "$E" 'DROPPED'
@@ -93,15 +95,15 @@ assert_version_above "notion-dev version bumped" "$ND/.claude-plugin/plugin.json
 assert_version_above "quick-dev version bumped"  "$QD/.claude-plugin/plugin.json" 0.7.2
 assert_has   "spec carries a worked trace"     docs/superpowers/specs/2026-08-28-convergence-design.md 'Appendix: worked trace'
 assert_lacks "issue-log signature drops SKIPPED" "$ND/skills/issue-log/references/signatures.md" 'SKIPPED'
-assert_lacks "ticket.md has no stale SKIPPED"   "$ND/commands/ticket.md"   'SKIPPED'
-assert_lacks "finalize.md has no stale SKIPPED" "$ND/commands/finalize.md" 'SKIPPED'
+assert_lacks "ticket.md has no stale SKIPPED"   "$ND/references/legacy/ticket.md"   'SKIPPED'
+assert_lacks "finalize.md has no stale SKIPPED" "$ND/references/legacy/finalize.md" 'SKIPPED'
 
 # The spec requires that no plugin invent a synonym for the vocabulary.
 for S in $ND/skills/plan-review/SKILL.md $QD/skills/plan-review/SKILL.md \
          $ND/skills/plan-review/references/reviewer-rubric.md \
          $QD/skills/plan-review/references/reviewer-rubric.md \
-         $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md \
-         $ND/skills/epic-update/SKILL.md; do
+         $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md \
+         $ND/skills/epic-update/references/with-followups.md; do
   n=${S#plugins/}
   assert_lacks "$n avoids synonym 'fold in'"   "$S" 'fold in'
   assert_lacks "$n avoids synonym 'inline it'" "$S" 'inline it'
@@ -120,11 +122,11 @@ for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/refe
   assert_has "$n documents triage_reclassified" "$L" 'triage_reclassified'
   assert_has "$n documents triage_filed"        "$L" 'triage_filed'
 done
-assert_has "ticket.md writes triage counts"    "$ND/commands/ticket.md"   'triage_reclassified'
-assert_has "finalize.md writes triage counts"  "$ND/commands/finalize.md" 'triage_reclassified'
+assert_has "ticket.md writes triage counts"    "$ND/references/legacy/ticket.md"   'triage_reclassified'
+assert_has "finalize.md writes triage counts"  "$ND/references/legacy/finalize.md" 'triage_reclassified'
 assert_has "develop writes triage counts"      "$QD/skills/develop/SKILL.md" 'triage_reclassified'
 assert_has "develop surfaces the reclassify rate" "$QD/skills/develop/SKILL.md" 'reclassified to `file`'
-assert_has "ticket.md surfaces the reclassify rate" "$ND/commands/ticket.md" 'reclassified to `file`'
+assert_has "ticket.md surfaces the reclassify rate" "$ND/references/legacy/ticket.md" 'reclassified to `file`'
 
 echo "== legacy skip disclosure =="
 assert_has "epic-update discloses legacy skips" "$E" 'recorded before `0.13.0`'
@@ -135,6 +137,7 @@ assert_has "epic-update reads its legacy line back" "$E" 'unioned with what the 
 echo "== review-loop convergence =="
 for P in "$ND" "$QD"; do
   S=$P/skills/review-and-merge/SKILL.md
+  [ "$P" != "$ND" ] || S=$ND/references/legacy/review-and-merge.md
   n=$(basename "$P")
   assert_has "$n r&m has the convergence controls" "$S" '### Convergence controls'
   assert_has "$n r&m has the findings ledger"      "$S" '**The findings ledger.**'

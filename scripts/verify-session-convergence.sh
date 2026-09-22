@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Standing-invariant checks for the session-convergence design:
 #   1. the narrowed blast-radius `file` criteria (widening a PR beats splitting it)
 #   2. `review-and-merge`'s final sweep, and its terminality
@@ -35,7 +36,7 @@ MIRROR=.claude/skills
 
 # Every copy of the review-and-merge skill that ships or drives this repo.
 RAM_DOCS="$QD/skills/review-and-merge/SKILL.md
-$ND/skills/review-and-merge/SKILL.md
+$ND/references/legacy/review-and-merge.md
 $MIRROR/review-and-merge/SKILL.md"
 
 # Every document carrying the blast-radius triage criteria.
@@ -328,21 +329,21 @@ assert_present "develop does not claim the sweep covered plan-review or local-mo
 assert_present "develop local mode runs the completion pass before its own squash" \
   "$QD/skills/develop/SKILL.md" 1 "$(total_lines "$QD/skills/develop/SKILL.md")" \
   'Local mode never enters .quick-dev:review-and-merge'
-check_premerge "ticket"   "$ND/commands/ticket.md"
-check_premerge "finalize" "$ND/commands/finalize.md"
+check_premerge "ticket"   "$ND/references/legacy/ticket.md"
+check_premerge "finalize" "$ND/references/legacy/finalize.md"
 # Phase 2 is the only place the pre-merge hook is wired, and the MERGED recovery
 # path skips Phase 2 — so that path needs its own wire-in or Phase 5 asserts a
 # pass that never ran.
 assert_present "finalize's MERGED recovery path still runs the completion pass" \
-  "$ND/commands/finalize.md" 1 "$(total_lines "$ND/commands/finalize.md")" \
+  "$ND/references/legacy/finalize.md" 1 "$(total_lines "$ND/references/legacy/finalize.md")" \
   'The .MERGED. recovery path must still run the completion pass'
 
 check_caller "develop Phase 6" \
   "$QD/skills/develop/SKILL.md" '^## Phase 6 ' 'quick-dev:session-closeout'
 check_caller "ticket Phase 10" \
-  "$ND/commands/ticket.md" '^## Phase 10 ' 'notion-dev:session-closeout'
+  "$ND/references/legacy/ticket.md" '^## Phase 10 ' 'notion-dev:session-closeout'
 check_caller "finalize Phase 5" \
-  "$ND/commands/finalize.md" '^## Phase 5 ' 'notion-dev:session-closeout'
+  "$ND/references/legacy/finalize.md" '^## Phase 5 ' 'notion-dev:session-closeout'
 
 echo "== one pull request per session =="
 
@@ -363,7 +364,7 @@ check_one_pr() {
 }
 
 check_one_pr "develop Phase 3" "$QD/skills/develop/SKILL.md" '^## Phase 3 ' '^## Phase 4 '
-check_one_pr "ticket 6.4"      "$ND/commands/ticket.md"      '^### 6[.]4 Open PR' '^### 6[.]5 '
+check_one_pr "ticket 6.4"      "$ND/references/legacy/ticket.md"      '^### 6[.]4 Open PR' '^### 6[.]5 '
 
 echo "== this repo's own development rules =="
 

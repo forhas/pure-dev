@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Offline runtime fixtures; shared assertions pin integration mechanisms below.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -28,14 +29,17 @@ else
   bad "live dependency diagnostics and local disablement"
 fi
 ND=plugins/notion-dev
-TICKET=$ND/commands/ticket.md
-REVIEW=$ND/skills/review-and-merge/SKILL.md
-PROTOCOL=$ND/references/runtime.md
-assert_has "ticket establishes the runtime lifecycle" "$TICKET" 'references/runtime.md'
+TICKET=$ND/references/legacy/ticket.md
+REVIEW=$ND/references/legacy/review-and-merge.md
+PROTOCOL=$ND/references/legacy/runtime.md
+# The legacy entrypoints must load the LEGACY contract: `prepare` omits `result_contract`
+# for schema 1/2, so pointing them at the lean one dispatches workers against a contract
+# their packet does not carry. Pinning the legacy path is what this assertion now asserts.
+assert_has "ticket establishes the legacy runtime lifecycle" "$TICKET" '**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`'
 assert_has "ticket gates readiness before implementation" "$TICKET" 'runtime.py --state "$RUNTIME_STATE" ready'
-assert_has "finalize shares the runtime lifecycle" "$ND/commands/finalize.md" 'references/runtime.md'
-assert_has "next-task does not advance while a worker is pending" "$ND/commands/next-task.md" 'never increment `DONE`'
-assert_has "record worker publishes before final reply" "$ND/references/record.md" 'publish the complete `RECORD:` block'
+assert_has "finalize shares the legacy runtime lifecycle" "$ND/references/legacy/finalize.md" '**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`'
+assert_has "next-task does not advance while a worker is pending" "$ND/references/legacy/next-task.md" 'never increment `DONE`'
+assert_has "record worker publishes before final reply" "$ND/references/legacy/record.md" 'publish the complete `RECORD:` block'
 assert_has "protocol resolves citations before merge" "$PROTOCOL" 'resolve-citations --worker'
 assert_has "protocol tracks the entire requirement" "$PROTOCOL" 'reviewed_whole_ticket'
 

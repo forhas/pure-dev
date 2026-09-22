@@ -1,5 +1,11 @@
 # Live build-flow dependencies
 
+The default **lean** ticket/next-task/finalize/review path has no external build-flow
+dependency. `dependencies.py --mode lean` checks that path without requiring either
+framework. Init records availability as hints but does not install frameworks unless
+the user explicitly chooses an optional legacy flow. The requirements below apply
+only to explicit legacy flows and old-run recovery; missing frameworks do not block lean.
+
 Read once at command preflight. The **current host's available skills are authoritative**;
 `dependencies.{superpowers,featureDev}` in notion-dev config are cached setup hints, not
 permission or availability gates. Do not send skill bodies to this probe or to children.

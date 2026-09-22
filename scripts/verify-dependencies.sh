@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Standing invariant: a command that needs a build-flow skill probes the HOST for
 # it, and never gates on the cached `dependencies.*` booleans in the config.
 #
@@ -39,6 +40,7 @@ echo "== every command that needs a build-flow skill probes live =="
 # absence nobody notices.
 for C in ticket next-task finalize new-info init; do
   F="$ND/commands/$C.md"
+  case "$C" in ticket|next-task|finalize) F="$ND/references/legacy/$C.md" ;; esac
   assert_has "commands/$C.md references references/dependencies.md" "$F" 'references/dependencies.md'
 done
 
@@ -47,9 +49,9 @@ echo "== the cached booleans are hints, never gates =="
 # may legitimately not mention them at all; what it may not do is read one as
 # permission.
 assert_has "commands/ticket.md calls the flags cached hints only" \
-  "$ND/commands/ticket.md" 'cached hints only'
+  "$ND/references/legacy/ticket.md" 'cached hints only'
 assert_has "commands/finalize.md calls the flags hints only" \
-  "$ND/commands/finalize.md" 'Cached config flags are hints only'
+  "$ND/references/legacy/finalize.md" 'Cached config flags are hints only'
 assert_has "commands/new-info.md calls dependencies.superpowers a cached hint only" \
   "$ND/commands/new-info.md" '`dependencies.superpowers` is a cached hint only'
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Structural verification for the completeness gate.
 # This repo ships markdown instruction files, not code — these greps are the
 # test suite. Run from anywhere: ./scripts/verify-completeness.sh
@@ -35,7 +36,7 @@ assert_has "it renders from the criteria file"              "$TS" 'never from th
 assert_has "it owns the Acceptance Criteria format"         "$TS" 'single owner of the `Acceptance Criteria` section'
 
 echo "== Task 2: completeness gate =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n documents --criteria-file"          "$RM" '--criteria-file'
   assert_has "$n dispatches the verifier"            "$RM" 'the gate needs the verdict before it can decide'
@@ -80,7 +81,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   assert_has "$n specifies the VERDICTS line shape"              "$RM" '- [<met|not-met|unverified>] <criterion verbatim>'
   # The four rules that were deletable with both harnesses green.
   assert_has "$n re-runs the gate stack unconditionally" "$RM" 'The gate stack then re-runs on the new HEAD,'
-  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+  if [ "$RM" = "$ND/references/legacy/review-and-merge.md" ]; then
     assert_has "$n caps full verification at two passes" "$RM" 'The full verifier runs at most twice.'
   else
     assert_has "$n caps the verifier at two passes" "$RM" 'The verifier runs at most twice.'
@@ -97,7 +98,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # literal below is a NEGATION — it survives the removal of the triage rule that is the
   # only thing standing behind the decision to state this limitation rather than fix it.
   # So the rule gets its own anchor, on the sentence that carries it.
-  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+  if [ "$RM" = "$ND/references/legacy/review-and-merge.md" ]; then
     assert_has "$n independently reviews corrective code" "$RM" 'require an explicit independent code verdict'
     assert_has "$n bounds delta attempts" "$RM" 'delta attempts per invocation'
   else
@@ -149,7 +150,7 @@ assert_has "a reclassified criterion item takes an Unmet: trailer, not a Deferre
 assert_lacks "develop drops the resume case the flow does not have" "$D" 'a resumed run that skipped 2a'
 
 echo "== Task 5: notion-dev caller wiring =="
-for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
+for C in $ND/references/legacy/ticket.md $ND/references/legacy/finalize.md; do
   n=${C#plugins/}
   assert_has "$n writes a criteria file"          "$C" 'criteria-<KEY>-<id>.md'
   assert_has "$n passes --criteria-file"          "$C" '--criteria-file'
@@ -161,8 +162,8 @@ for C in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # For ticket.md, the tick call and the Completeness-block append are both in 8.3,
   # which moved into references/record.md with the rest of the record unit (Task 8).
   RC=$C; rn=$n
-  if [ "$C" = "$ND/commands/ticket.md" ]; then
-    RC=$ND/references/record.md; rn=${RC#plugins/}
+  if [ "$C" = "$ND/references/legacy/ticket.md" ]; then
+    RC=$ND/references/legacy/record.md; rn=${RC#plugins/}
   fi
   assert_has "$rn ticks the acceptance criteria"   "$RC" 'refreshAcceptanceCriteria(id, verdicts)'
   assert_has "$rn appends (never upserts) the Completeness block" \
@@ -171,9 +172,9 @@ done
 assert_lacks "quick-dev's review-and-merge drops the resume case the flow does not have" \
   "$QD/skills/review-and-merge/SKILL.md" 'resumed after its criteria file went missing'
 assert_has "finalize splits the persisted report at ## Completeness on recovery" \
-  "$ND/commands/finalize.md" 'Split its contents at the `## Completeness` heading Phase 2 appends'
+  "$ND/references/legacy/finalize.md" 'Split its contents at the `## Completeness` heading Phase 2 appends'
 assert_has "finalize degrades to today's behaviour when there is no such heading" \
-  "$ND/commands/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
+  "$ND/references/legacy/finalize.md" 'the whole file becomes `REVIEW_REPORT`, unchanged, and `COMPLETENESS_REPORT` is simply absent'
 
 echo "== Task 6: completeness metrics =="
 for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/references/ledger.md; do
@@ -184,20 +185,20 @@ for L in $ND/skills/flow-triage/references/ledger.md $QD/skills/flow-triage/refe
 done
 # ticket.md's ledger append moved into references/record.md with the rest of the
 # record unit (Task 8).
-assert_has "record.md writes completeness counts"   "$ND/references/record.md" 'completeness_criteria'
-assert_has "finalize.md writes completeness counts" "$ND/commands/finalize.md"    'completeness_criteria'
+assert_has "record.md writes completeness counts"   "$ND/references/legacy/record.md" 'completeness_criteria'
+assert_has "finalize.md writes completeness counts" "$ND/references/legacy/finalize.md"    'completeness_criteria'
 assert_has "develop writes completeness counts"     "$QD/skills/develop/SKILL.md" 'completeness_criteria'
 assert_has "develop's ledger site distinguishes a real completeness 0 from the null case" "$QD/skills/develop/SKILL.md" 'a check that ran and found nothing, not one that never ran'
 # An unset CRITERIA_FILE must NOT skip the whole record: the gate still runs charges 2
 # and 3 without a criteria file, so CLAIMS/CAVEATS/TRIAGE can carry real findings.
 # ticket.md's 8.3 (the paragraph this pins) moved into references/record.md with the
 # rest of the record unit (Task 8); finalize.md carries its own copy unmoved.
-for C in $ND/references/record.md $ND/commands/finalize.md; do
+for C in $ND/references/legacy/record.md $ND/references/legacy/finalize.md; do
   n=${C#plugins/}
   assert_has "$n records claims/caveats even with no criteria file" "$C" 'An unset `CRITERIA_FILE` is not that case'
 done
-assert_has "record.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/references/record.md"   'a check that ran and found nothing, not one that never ran'
-assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/commands/finalize.md" 'a check that ran and found nothing, not one that never ran'
+assert_has "record.md's ledger site distinguishes a real completeness 0 from the null case"   "$ND/references/legacy/record.md"   'a check that ran and found nothing, not one that never ran'
+assert_has "finalize.md's ledger site distinguishes a real completeness 0 from the null case" "$ND/references/legacy/finalize.md" 'a check that ran and found nothing, not one that never ran'
 
 echo "== Task 6b: the spec documents what the implementation does =="
 SPEC=docs/superpowers/specs/2026-08-28-completeness-design.md
@@ -221,7 +222,7 @@ assert_version_above "quick-dev version bumped"  "$QD/.claude-plugin/plugin.json
 # Parity guard: the completeness-report bullet is near-verbatim shared between the two
 # plugins' review-and-merge skills, and nothing else asserts the two copies stay in sync.
 SHARED_COMPLETENESS_REPORT_BULLET='The report also carries a **`COMPLETENESS-REPORT`** section: the verifier'"'"'s keyed block, with the four `CRITERIA-*` counts restated after citation resolution and each `met` verdict'"'"'s citation replaced by the gate'"'"'s resolution of it — the counts a caller consumes are always the gate'"'"'s, never the verifier'"'"'s raw ones, because the verifier cannot know which of its own citations resolved.'
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n keeps the completeness-report bullet in parity with its sibling plugin" "$RM" "$SHARED_COMPLETENESS_REPORT_BULLET"
 done

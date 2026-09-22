@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Context split — progressive disclosure and the delegated record unit.
 #
 # Spec: docs/superpowers/specs/2026-09-16-notion-dev-context-reduction-design.md
@@ -25,8 +26,8 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 ND=plugins/notion-dev
 IL=$ND/skills/issue-log/SKILL.md
 TS=$ND/skills/ticket-system/SKILL.md
-TICKET=$ND/commands/ticket.md
-RECORD=$ND/references/record.md
+TICKET=$ND/references/legacy/ticket.md
+RECORD=$ND/references/legacy/record.md
 
 # ---------------------------------------------------------------------------
 echo "== issue-log: the signature catalogue is read on first record =="
@@ -235,9 +236,9 @@ assert_order "Phase 8 asks, locks, leaves the worktree, then dispatches" \
   "cd REPO_ROOT" 'Leave the worktree: .cd \$REPO_ROOT' \
   "dispatch"     'Dispatch one .general-purpose. agent using the runtime protocol'
 
-assert_present "the dispatch names \`\${CLAUDE_PLUGIN_ROOT}/references/record.md\` as the agent's instructions" \
+assert_present "the dispatch names \`\${CLAUDE_PLUGIN_ROOT}/references/legacy/record.md\` as the agent's instructions" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
-  'instruction to read .\${CLAUDE_PLUGIN_ROOT}/references/record\.md. and follow it exactly'
+  'instruction to read .\${CLAUDE_PLUGIN_ROOT}/references/legacy/record\.md. and follow it exactly'
 
 assert_present "the wait is bounded at ~15 minutes" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
@@ -247,9 +248,9 @@ assert_present "a lost dispatch records \`unexpected:record-unit-not-dispatched\
   "$TICKET" 1 "$(total_lines "$TICKET")" \
   'Record .unexpected:record-unit-not-dispatched. per .notion-dev:issue-log.'
 
-assert_present "the fallback runs \`\${CLAUDE_PLUGIN_ROOT}/references/record.md\` inline rather than stopping" \
+assert_present "the fallback runs \`\${CLAUDE_PLUGIN_ROOT}/references/legacy/record.md\` inline rather than stopping" \
   "$TICKET" 1 "$(total_lines "$TICKET")" \
-  '\*\*read .\${CLAUDE_PLUGIN_ROOT}/references/record\.md. and run it inline yourself\*\*'
+  '\*\*read .\${CLAUDE_PLUGIN_ROOT}/references/legacy/record\.md. and run it inline yourself\*\*'
 
 assert_present "\`references/record.md\` is told the lock is already held" \
   "$RECORD" 1 "$(total_lines "$RECORD")" 'taken the primary lock.*LOCK_HELD: true'

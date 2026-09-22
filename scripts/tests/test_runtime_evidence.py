@@ -617,7 +617,7 @@ class ProbeAndJournalTests(unittest.TestCase):
     def test_the_end_to_end_summary_names_its_own_scope(self):
         end = self.rt.summary()["end_to_end"]
         self.assertIn("unknown, not zero", end["scope"])
-        self.assertEqual(end["schema"], runtime.SCHEMA)
+        self.assertEqual(end["schema"], 2)  # legacy invocation fixture must not be silently upgraded
 
 
 class SchemaCompatibilityTests(unittest.TestCase):

@@ -2,7 +2,35 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.34.0). MVP = the full ticket pipeline for Notion: dual build flow (feature-dev / superpowers, chosen by flow-triage) and a PR review loop (configurable reviewer — Codex or Copilot — with local fallback), including multi-task mission breakdown, epic containers with a resolution log, and optional ticket assignee. Phase 2 will add develop-branch / release-freeze / hotfix commands.
+**Status**: pre-release (0.36.0). The default ticket pipeline is now **lean**: one cohesive
+implementation owner, one combined independent code/completeness review, configured external
+review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
+remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Lean workflow (0.36.0)
+
+`next-task → ticket → implementation/validation → review-and-merge → shared record`.
+`finalize` resumes that same sequence at its first incomplete stage. Superpowers/feature-dev
+are optional explicit `--flow` overrides, not prerequisites of the default path. Older runs
+retain their runtime contract and legacy recovery path; their budgets are not reset.
+
+New workers receive a generated result contract; invalid output is repaired before publication.
+Questions use durable runtime state, one waiter owns each worker, and safe yield permits host
+delivery. Current-head verification receipts are shared across validation, review and closeout.
+The reviewer returns both code-quality and whole-ticket requirement evidence; scoped deltas
+reuse unaffected evidence. Two full/two delta attempts are enforced; unresolved mandatory work
+still blocks merge. The lean external-review default is three rounds (explicit reviewsCap wins).
+
+Recording uses immutable payloads and a journal: confirmed work skips, uncertain writes reconcile
+before retry, and malformed reports never re-execute provider operations. Follow-up creation
+instructions load only when filing/recovery requires them. No disposable client project is needed
+to update; actual speed/token improvement must be measured on real tickets, not inferred from
+instruction size or unit tests. See [runtime](references/runtime.md) and
+[recording](references/record.md).
+
+The historical release notes and dual-flow details below describe the opt-in legacy paths where
+they differ from this default. Legacy instruction contracts remain regression-tested separately;
+the lean path has behavioral lifecycle, reuse, recording and command-routing tests.
 
 ## Reliability fixes (0.34.0)
 
@@ -61,7 +89,7 @@ quick-dev's independent workflow is not opted into this protocol.
 
 ## Prerequisites
 
-- **`superpowers` and `feature-dev` plugins** — **both required**. `/notion-dev:ticket` triages each ticket to one of two build flows: `superpowers` (`superpowers:writing-plans` + `superpowers:subagent-driven-development`) or `feature-dev` (`feature-dev:feature-dev`); the review loop also uses `superpowers:receiving-code-review`. `/notion-dev:init` verifies both are installed and auto-installs whichever is missing at project scope (requires a `/reload-plugins` before continuing).
+- **`superpowers` and `feature-dev` plugins** — optional for explicit legacy build flows only. The default lean flow does not need them; init does not auto-install them unless you select legacy setup.
 - **`gh` CLI, authenticated** (`gh auth login`) — **required**. The review loop in `/notion-dev:ticket` and `/notion-dev:finalize` uses `gh` for paginated comment reads and GraphQL review-thread resolution, which the GitHub MCP cannot perform.
 - **`jq` on `PATH`** — **required**. The same review loop parses `gh api` JSON responses with it (`gh api`'s own `--jq` flag does not substitute for the standalone binary). Not preinstalled on Windows: `winget install jqlang.jq` (or `choco install jq` / `scoop install jq`). Usually already present on macOS/Linux; if not, `brew install jq` / `apt install jq`.
 - **`iwe` ≥ 0.19 on `PATH`** — **required**. `notion-dev:knowledge` uses it for budgeted search-plus-graph retrieval and dedupe over the knowledge bundle. Two install routes: `cargo install iwe --root ~/.local` (works wherever Rust does; required on hosts whose GLIBC is older than 2.39, which includes Ubuntu 22.04 under WSL); or `brew install iwe` / `npm i -g @iwe-org/iwe` where the prebuilt binary runs. On Windows `npm i -g @iwe-org/iwe` (win32-x64 binary).
@@ -159,8 +187,8 @@ Then:
 /notion-dev:ticket STO-42
 # → pass the Notion page id/URL or the ticket key
 #   (the Notion page id/URL, or STO-42)
-# → worktree, triage (feature-dev|superpowers), build, verify, PR,
-#   review loop (Codex or local fallback), merge, status update, clean up
+# → worktree, cohesive implementation, verify, PR,
+#   external + combined independent review, merge, journaled record and cleanup
 
 # If /notion-dev:ticket was interrupted after the PR was opened, resume with:
 /notion-dev:finalize 42
@@ -174,7 +202,7 @@ Then:
 |---|---|
 | `/notion-dev:init` | One-time (or re-runnable) setup. Writes config, patches `.mcp.json`, bootstraps the ticket database. |
 | `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). Flags: `--non-interactive` (answers its own interview via a fresh subagent grounded in `--context-file`), `--context-file=<path>`, `--epic=<name>`, `--parent=<id>`, `--assignee=<id>`. |
-| `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: worktree → triage (feature-dev or superpowers) → plan review (superpowers path) → build → verify → PR → review loop (Codex or local fallback) → merge → status update → clean up. Also accepts the Notion page id/URL. |
+| `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: intake/readiness → worktree → cohesive implementation → verify → PR → external + combined independent review → merge → journaled record. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
 | `/notion-dev:next-task <epic-id>` | Drive an epic from its markdown brief: read `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket, run `/notion-dev:ticket` on it, re-read, repeat. Flags: `--depth all|N` (default 1), `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. So it can chain into `/notion-dev:ticket`, that command is no longer marked user-only in its frontmatter; its body carries an invocation guard instead. |
 | `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). |
@@ -250,14 +278,14 @@ Key fields:
 - `knowledge.python` — the Python 3 interpreter every notion-dev command runs `scripts/knowledge.py` with (default `python3`). Written by `/notion-dev:init` from its probe: `python3`, `python`, or `py -3` on Windows, where `python3` does not resolve.
 - `inputSources` — enabled source adapters: any of `"prompt"`, `"existing-ticket"`, `"notion-page"`.
 - `git.{baseBranch, prTargetBranch, mergeStrategy, preMergeChecks, postMergeHooks}` — git-flow config; `preMergeChecks` runs as a merge gate inside the review loop (`notion-dev:review-and-merge`). `postMergeHooks` is set to `["notion-dev:knowledge"]` by `/notion-dev:init` (the knowledge-bundle capture hook); additional phase-2 hooks (e.g. `hotfix-sync`, `epic-progress-report`) will be appended to it.
-- `dependencies.{superpowers, featureDev}` — optional setup-time hints written by `/notion-dev:init`. Commands require current live skills, not cached booleans; mismatches are diagnosed without changing enablement. See [dependency diagnostics](references/dependencies.md).
+- `dependencies.{superpowers, featureDev}` — optional setup-time hints written by `/notion-dev:init`. Only opt-in legacy flows require those current live skills; lean does not. Cached booleans are not availability checks; mismatches are diagnosed without changing enablement. See [dependency diagnostics](references/dependencies.md).
 - `worktree.prefix` — template for worktree directory names. Tokens: `{name}`, `{key}`, `{id}`. Default: `"{name}-{key}-{id}"`. Worktrees are created at `<parent-of-repo>/<repo-name>-worktrees/<prefix>`; the `-worktrees` container is what cleanup's `rmdir` removes once the last worktree is gone.
 
   **Changed in 0.20.0.** Before that, worktrees were created directly under the repository's parent directory, with no container — which made cleanup's "remove the worktrees parent directory" step name the directory holding the primary checkout, so it could never succeed. If you have a worktree from an in-flight pre-0.20 run, it is at the old path (`<parent-of-repo>/<prefix>`); finish or remove it by hand (`git worktree remove <path>`), since `/notion-dev:finalize` now resolves the new location.
 - `verify.steps[]` — ordered list of `{ name, cmd, retries }` commands run after implementation and before PR.
 - `reviewer` — PR reviewer selection: `"codex"` (default) or `"copilot"`. Set during `/notion-dev:init`; can be changed by re-running that command.
 - `ticketSystem.statusMap.{done, cancelled}` — **read-only** entries (defaults `"Done"` / `"Cancelled"`). Together with `implemented` they form the *resolved set*: the statuses that count as finished when deciding whether an Epic's children are all done and the Epic should close. No plugin command ever moves a ticket into these states — they exist purely so the Epic-close check understands your board. `/notion-dev:init` asks which of your live Status options belong in the set.
-- `reviewsCap` — maximum review rounds the PR review loop runs; default **15** when absent or invalid. Hand-edited (`/notion-dev:init` does not write it). Applies to the configured-reviewer loop and the local fallback loop independently, so a run that falls back can perform up to twice that number in total. It is a runaway backstop — the loop normally ends far earlier.
+- `reviewsCap` — maximum external review rounds on the lean path; default **3**, with explicit positive values honored. Internal review has two full/two delta attempts per invocation, including failed attempts. No budget waives required work. Legacy workflows retain their documented 15-round default. Init and review never rewrite this key.
 
 ### Reviewer configuration
 
@@ -270,9 +298,10 @@ Projects upgraded from earlier versions of notion-dev (whose config predates the
 
 Secrets never belong in this file; MCP auth handles credentials.
 
-The number of rounds either loop will run is capped by `reviewsCap` (default 15). Raise it
-for repos where reviews routinely need more iterations; lower it to fail fast. The review
-loop never writes this key — edit `.claude/notion-dev.config.json` directly.
+External review waits at most 15 minutes per lean round before authorized local fallback;
+late feedback is still checked before merge. Required approvals are never waived. The same
+combined independent code/completeness seat performs fallback, without another overlapping
+reviewer. Edit `.claude/notion-dev.config.json` only when you want an explicit `reviewsCap`.
 
 ## Runtime issue log
 
@@ -309,8 +338,8 @@ This marker exists because shape alone is ambiguous: on a database upgraded to u
 
 - **Missions always get one.** When `/notion-dev:create-task` breaks a request into multiple tickets, it reuses a matching Epic page or creates one, and parents every task to it.
 - **Single tickets are offered attachment only when an existing Epic plausibly matches** the work — an incident, feature, or investigation already underway. With no plausible match there is no prompt, so routine single-ticket runs stay quiet.
-- **Most review findings never become tickets.** When a review turns up work the ticket did not plan for, the flow triages it: `absorb` (do it now, in this PR — the default), `file` (its own ticket, only when it reaches code outside the PR, needs a new interface/dependency/config/migration, or needs a decision the acceptance criteria do not settle), or `drop` (recorded with a rationale, never built). Absorbed work is gated: `/notion-dev:ticket` will not merge while an `absorb` item is outstanding. Only `file` items become real tickets, and they land under the same Epic.
-- **A ticket closes against what it said it would do.** The `## Acceptance Criteria` you wrote are checked at merge, not assumed: each is `met` with a citation the gate itself resolves — running the command, matching the quoted code against the diff — or it becomes an item in the same `absorb` / `file` / `drop` triage. Met criteria get their Notion to-do boxes ticked; escaped ones stay unticked with the rationale recorded on the ticket, because reducing a ticket's criteria is a scope change and belongs where the work is tracked. The same completeness gate reports any claim in the change that names something absent, and any stated caveat carrying no triage label.
+- **Most review findings never become tickets.** When a review turns up work the ticket did not plan for, the flow triages it: `absorb` (do it now, in this PR — the default), `file` (its own ticket, only for genuinely separate work meeting the documented filing criteria), or `drop` (recorded with a rationale, never built). Absorbed work is gated: `/notion-dev:ticket` will not merge while an `absorb` item is outstanding. Only `file` items become real tickets, and they land under the same Epic.
+- **A ticket closes against what it said it would do.** The `## Acceptance Criteria` you wrote are checked at merge, not assumed: each needs independent evidence, resolved against current source/test artifacts. Unmet mandatory criteria block merge; `file` or `drop` never waive them. Verified met criteria get their Notion to-do boxes ticked; unknown/unmet ones remain unticked. Reducing criteria requires an explicit authorized scope change. The same completeness gate reports any claim in the change that names something absent, and any stated caveat carrying no triage label.
 - **`/notion-dev:ticket` refuses to implement an Epic** and lists its children instead — a container is not implementable work.
 - **`/notion-dev:ticket` reads its Epic's brief before planning.** A starting ticket reads the brief at `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md` — the epic's root concept in the knowledge bundle — via the `notion-dev:knowledge` skill's `retrieve`, once per run: why the epic exists, where it stands, what is waiting on whom, what is next, and any linked concepts iwe expands in. This is context: background for its reasoning, never requirements; the ticket body stays the single source of truth for what to build. The Notion epic page is written on every resolution but no longer read. See "Knowledge bundle" below.
 
@@ -401,15 +430,15 @@ No v1 refactor required to adopt phase 2.
 │   └── marketplace.json      # self-contained single-plugin marketplace
 ├── commands/                 # slash commands (init, create-task, ticket, finalize, next-task, new-info, knowledge)
 ├── references/               # command reference files — deliberately NOT under commands/, where every .md registers as a slash command
-│   └── record.md             # /notion-dev:ticket's Phases 8-10 (record unit), dispatched to a subagent or read inline on recovery
+│   └── record.md             # shared inline journaled recording for ticket/finalize
 ├── skills/
 │   ├── ticket-system/        # Notion ticket operations: SKILL.md dispatcher + references/ (config, read-ops, write-ops, styling, create-ops)
 │   ├── input-source/         # input adapters (SKILL.md + prompt.md + existing-ticket.md + notion-page.md)
 │   ├── ticket-interviewer/   # depth-calibrated requirements interview (used by create-task)
 │   ├── task-breakdown/       # single-vs-mission split analysis (used by create-task)
-│   ├── flow-triage/          # build-flow chooser: bug hard rule, scorecard, ledger (used by ticket)
+│   ├── flow-triage/          # legacy build-flow chooser, scorecard and ledger
 │   ├── review-and-merge/     # PR review loop: Codex rounds, local fallback, merge gates
-│   ├── local-code-review/    # fallback reviewer contract (used by review-and-merge)
+│   ├── local-code-review/    # legacy fallback reviewer contract
 │   ├── plan-review/          # pre-implementation plan review: fresh agent vs. the codebase (used by ticket)
 │   ├── epic-update/          # records a resolved ticket against its epic (used by ticket, finalize)
 │   ├── epic-doc/             # per-epic markdown brief: rewritten at resolution, noted by new-info (used by ticket, finalize, next-task, new-info)

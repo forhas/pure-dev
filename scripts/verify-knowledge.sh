@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # The knowledge bundle — one shared implementation of the OKF v0.2 bundle,
 # consumed by every notion-dev client through config alone.
 #
@@ -31,12 +32,12 @@ ND=plugins/notion-dev
 KS=$ND/skills/knowledge/SKILL.md
 KC=$ND/commands/knowledge.md
 ED=$ND/skills/epic-doc/SKILL.md
-TK=$ND/commands/ticket.md
-RK=$ND/references/record.md
-NT=$ND/commands/next-task.md
+TK=$ND/references/legacy/ticket.md
+RK=$ND/references/legacy/record.md
+NT=$ND/references/legacy/next-task.md
 NI=$ND/commands/new-info.md
 IN=$ND/commands/init.md
-FZ=$ND/commands/finalize.md
+FZ=$ND/references/legacy/finalize.md
 TS=$ND/skills/ticket-system/SKILL.md
 SG=$ND/skills/issue-log/references/signatures.md
 SCHEMA=$ND/schema/notion-dev.config.schema.json

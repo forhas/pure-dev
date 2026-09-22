@@ -223,8 +223,8 @@
     "reviewsCap": {
       "type": "integer",
       "minimum": 1,
-      "default": 15,
-      "description": "Maximum review rounds the PR review loop will run. Default 15 when absent or invalid. Applies to the configured-reviewer loop and the local fallback loop independently, so a run that falls back can perform up to twice this number of rounds in total. Hand-edited: /notion-dev:init does not write this key and the review loop never writes the config."
+      "default": 3,
+      "description": "Maximum external review rounds on the lean path; default 3. Explicit positive values are honored. Independent internal review uses runtime full/delta budgets, not a second copy of this cap. Legacy workflows retain their documented 15-round default. Hand-edited: init and review do not rewrite this key. A cap never authorizes merging unmet mandatory work."
     }
   }
 }

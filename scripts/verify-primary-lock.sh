@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # The primary-checkout lock — every section that commits from the primary checkout or rewrites
 # the Notion epic page takes `knowledge.py lock take` and releases it, with the wait spec §4
 # assigns; `read` never takes it.
@@ -15,10 +16,10 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 
 ND=plugins/notion-dev
-TICKET=$ND/commands/ticket.md
-RECORD=$ND/references/record.md
-FINALIZE=$ND/commands/finalize.md
-NT=$ND/commands/next-task.md
+TICKET=$ND/references/legacy/ticket.md
+RECORD=$ND/references/legacy/record.md
+FINALIZE=$ND/references/legacy/finalize.md
+NT=$ND/references/legacy/next-task.md
 NI=$ND/commands/new-info.md
 KC=$ND/commands/knowledge.md
 CT=$ND/commands/create-task.md
@@ -104,7 +105,7 @@ assert_order "finalize record section: the filing gate is resolved before the lo
 assert_present "finalize record section: the answers reach epic-update as FILING_DECISIONS" "$FINALIZE" "$FR0" "$FR1" \
   'pass the result into the invocation below as.*FILING_DECISIONS'
 echo "== epic-update: the gate is silent under the lock =="
-EU=$ND/skills/epic-update/SKILL.md; LEU=$(total_lines "$EU")
+EU=$ND/skills/epic-update/references/with-followups.md; LEU=$(total_lines "$EU")
 assert_present "epic-update: FILING_DECISIONS in context means the gate asks nothing" "$EU" 1 "$LEU" \
   'With `FILING_DECISIONS` in context this gate asks nothing'
 
