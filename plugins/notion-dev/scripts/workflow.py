@@ -188,6 +188,9 @@ def verify_config(state, project, worktree, depends=()):
     return {"passed": True, "receipts": receipts}
 
 
+UNKNOWN_EVIDENCE = "unknown"
+
+
 def record_plan(state, facts_file):
     """Prepare immutable payloads; execute with provider tools, then journal readback."""
     facts = read_json(facts_file)
@@ -202,13 +205,22 @@ def record_plan(state, facts_file):
     # and `record_check` then answers `skip` for a confirmed operation whose evidence has
     # since changed, which is exactly the drift this contract's "changed intent needs
     # explicit reconciliation" rule exists to catch. Bind the content, not the name.
-    # A non-file string is left alone: the contract allows an explicit `unknown` here on
-    # merged-PR recovery, and an embedded object already carries its own bytes.
+    # Exactly one string survives as a string: the `unknown` sentinel the contract allows
+    # on merged-PR recovery. Any OTHER unresolvable string is a misspelt, deleted, or
+    # caller-relative path, and silently keeping it would record the path TEXT as though
+    # it were embedded evidence -- confirming and then skipping a `ticket-resolution`
+    # with no requirements, verification or review bytes bound to it at all. Refuse it
+    # here, where the path is still the caller's to correct.
     def bound(value):
-        source = Path(value) if isinstance(value, str) else None
-        if source is not None and source.is_file():
-            return {"path": str(source.resolve()), "sha256": digest(source)}
-        return value
+        if not isinstance(value, str):
+            return value                      # embedded object; carries its own bytes
+        if value == UNKNOWN_EVIDENCE:
+            return value
+        source = Path(value)
+        require(source.is_file(),
+                "recording evidence must be an existing file, an embedded object, or "
+                "exactly '%s'; got %r" % (UNKNOWN_EVIDENCE, value))
+        return {"path": str(source.resolve()), "sha256": digest(source)}
 
     evidence = ("requirements", "verification", "review")
     payloads = {
