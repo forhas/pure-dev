@@ -34,6 +34,15 @@ def check(project, live_skills, mode="ticket", settings=None):
         raise ValueError("live skills must be an array of actual host skill names")
     if mode not in {"lean", "ticket", "review"}:
         raise ValueError("mode must be lean, ticket or review")
+    # Lean needs neither build-flow plugin, so it must not be gated on evidence about
+    # them. Reading the config and settings first meant a malformed or legacy
+    # `dependencies`/`enabledPlugins` entry — irrelevant to this path — raised and exited
+    # 2, blocking the new DEFAULT workflow for a reason that has nothing to do with it.
+    # The result is the one the per-key loop already produced for lean: no plugins, and
+    # `passed` true over an empty set.
+    if mode == "lean":
+        return {"passed": True, "plugins": {}, "settings_are_diagnostic": True,
+                "authority": "current host skills; file settings do not model managed or session overrides"}
     project = Path(project).resolve()
     cache = read_object(project / ".claude/notion-dev.config.json").get("dependencies", {})
     if not isinstance(cache, dict):
@@ -56,8 +65,6 @@ def check(project, live_skills, mode="ticket", settings=None):
             effective[plugin] = {"plugin": plugin, "enabled": enabled, "path": str(path)}
     plugins = {}
     for key, (name, skills) in REQUIRED.items():
-        if mode == "lean":
-            continue
         if mode == "review":
             if key != "superpowers":
                 continue

@@ -40,6 +40,22 @@ class DependencyTests(unittest.TestCase):
         return self.dep.check(self.root, self.live if live is None else live,
                               settings=[self.project, self.local], **kwargs)
 
+    def test_lean_needs_no_plugin_and_reads_no_dependency_evidence(self):
+        """Lean is the default path; irrelevant settings must not be able to block it."""
+        clean = self.probe(mode="lean")
+        self.assertEqual(clean["plugins"], {})
+        self.assertTrue(clean["passed"])
+        # Every shape that makes the ticket/review modes exit 2 — unparseable JSON, a
+        # non-object `enabledPlugins`, a non-boolean value, a non-object `dependencies`.
+        # None of them says anything about a workflow that uses neither plugin.
+        self.project.write_text("{not json", encoding="utf-8")
+        self.write(self.local, {"enabledPlugins": ["feature-dev"]})
+        self.write(self.config, {"dependencies": "legacy-string"})
+        self.assertEqual(self.probe(mode="lean"), clean)
+        for mode in ("ticket", "review"):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                self.probe(mode=mode)
+
     def test_local_false_overrides_project_true_but_never_changes_files(self):
         key = "feature-dev@claude-plugins-official"
         self.write(self.project, {"enabledPlugins": {key: True}})
