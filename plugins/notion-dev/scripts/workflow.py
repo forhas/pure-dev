@@ -220,6 +220,10 @@ def record_plan(state, facts_file):
     return {"plan": str(output / "plan.json"), "operations": operations}
 
 
+# Named best-effort by `references/record.md`; every other operation is required.
+BEST_EFFORT_RECORD = frozenset({"knowledge-delta", "epic-brief"})
+
+
 def record_summary(state):
     path = Path(state).resolve()
     plan = read_json(path.parent / "record/plan.json")
@@ -238,9 +242,21 @@ def record_summary(state):
               "CLEANUP": outcomes["cleanup"], "CLEANUP-STEPS": outcomes["cleanup"],
               "HOOKS": outcomes["post-merge-hooks"], "EPIC-DOC-RECORD": outcomes["epic-brief"],
               "EPIC-DOC-NEXT": outcomes["epic-brief"], "ISSUES": "see unresolved operations"}
+    # `references/record.md`: "Only fully reconciled REQUIRED record operations permit
+    # `OUTCOME: resolved`; best-effort knowledge/brief failures remain explicit in their
+    # outcome fields, never hidden by that label." Counting every operation uniformly made
+    # a persistent optional-hook failure exit 1 forever, blocking the ticket and the
+    # next-task loop over work the contract calls best-effort. Visible, not blocking --
+    # both halves matter, so they stay in `unresolved` and in ISSUES and only lose their
+    # vote on `passed`. An operation the plan does not name is REQUIRED: unknown fails
+    # closed, so this can never quietly downgrade something it did not recognise.
+    kinds = {operation["operation"]: operation["kind"] for operation in plan}
     unresolved = sorted(k for k, entry in latest.items() if entry["outcome"] != "confirmed")
+    blocking = [k for k in unresolved if kinds.get(k) not in BEST_EFFORT_RECORD]
     fields["ISSUES"] = ", ".join(unresolved) if unresolved else "none"
-    result = {"record": fields, "passed": not unresolved, "unresolved": unresolved,
+    result = {"record": fields, "passed": not blocking, "unresolved": unresolved,
+              "blocking_unresolved": blocking,
+              "best_effort_unresolved": [k for k in unresolved if k not in blocking],
               "report": "RECORD:\n" + "\n".join(k + ": " + v for k, v in fields.items())}
     atomic_json(path.parent / "record-result.json", result)
     return result

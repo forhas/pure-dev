@@ -302,6 +302,32 @@ class LeanTests(unittest.TestCase):
         self.assertTrue(summary["passed"])
         self.assertEqual(set(summary["record"]), set(runtime.RECORD_FIELDS))
 
+    def test_a_best_effort_failure_stays_visible_without_blocking_the_gate(self):
+        """`record.md`: only REQUIRED operations gate `OUTCOME: resolved`."""
+        facts = self.facts()
+        planned = workflow.record_plan(self.state, facts)
+        kinds = {item["kind"]: item for item in planned["operations"]}
+        for kind, item in kinds.items():
+            outcome = {"knowledge-delta": "failed", "ticket-status": "unknown-outcome"}.get(kind, "confirmed")
+            self.rt.record_op(item["operation"], item["target"], outcome,
+                              "readback" if outcome == "confirmed" else None, item["data_sha256"])
+        summary = workflow.record_summary(self.state)
+        # A REQUIRED operation left unconfirmed still blocks, so this is no blanket
+        # relaxation: `ticket-status` is journalled `unknown-outcome` above.
+        self.assertEqual(summary["blocking_unresolved"], [kinds["ticket-status"]["operation"]])
+        self.assertFalse(summary["passed"])
+        # Reconcile the required one; only the best-effort failure is left.
+        self.rt.record_op(kinds["ticket-status"]["operation"], kinds["ticket-status"]["target"],
+                          "confirmed", "readback", kinds["ticket-status"]["data_sha256"])
+        summary = workflow.record_summary(self.state)
+        # Visible in the structured field AND the human ISSUES line...
+        self.assertEqual(summary["best_effort_unresolved"], [kinds["knowledge-delta"]["operation"]])
+        self.assertIn(kinds["knowledge-delta"]["operation"], summary["unresolved"])
+        self.assertIn(kinds["knowledge-delta"]["operation"], summary["record"]["ISSUES"])
+        # ...never hidden, and it does not block the ticket or the next-task loop.
+        self.assertEqual(summary["blocking_unresolved"], [])
+        self.assertTrue(summary["passed"])
+
     def test_record_payload_drift_cannot_replay_under_old_identity(self):
         facts = self.facts(); workflow.record_plan(self.state, facts)
         changed = runtime.read_json(facts); changed["base"] = "other"
