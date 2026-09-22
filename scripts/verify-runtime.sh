@@ -35,9 +35,9 @@ PROTOCOL=$ND/references/legacy/runtime.md
 # The legacy entrypoints must load the LEGACY contract: `prepare` omits `result_contract`
 # for schema 1/2, so pointing them at the lean one dispatches workers against a contract
 # their packet does not carry. Pinning the legacy path is what this assertion now asserts.
-assert_has "ticket establishes the legacy runtime lifecycle" "$TICKET" 'references/legacy/runtime.md'
+assert_has "ticket establishes the legacy runtime lifecycle" "$TICKET" '**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`'
 assert_has "ticket gates readiness before implementation" "$TICKET" 'runtime.py --state "$RUNTIME_STATE" ready'
-assert_has "finalize shares the legacy runtime lifecycle" "$ND/references/legacy/finalize.md" 'references/legacy/runtime.md'
+assert_has "finalize shares the legacy runtime lifecycle" "$ND/references/legacy/finalize.md" '**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`'
 assert_has "next-task does not advance while a worker is pending" "$ND/references/legacy/next-task.md" 'never increment `DONE`'
 assert_has "record worker publishes before final reply" "$ND/references/legacy/record.md" 'publish the complete `RECORD:` block'
 assert_has "protocol resolves citations before merge" "$PROTOCOL" 'resolve-citations --worker'
