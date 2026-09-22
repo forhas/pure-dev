@@ -92,7 +92,8 @@ general-purpose worker with the generated runtime context/contract and these cha
 - Return met / not-met / unverified with evidence for every inventory ID.
 - Audit claims and caveats in changed code/docs/PR body. Preserve release-only obligations
   without making up a merge prerequisite or claiming approval that was never given.
-- Return code_review, requirements_complete, requirement verdicts and blocking_findings in
+- Return code_review, requirements_complete, requirement verdicts, blocking_findings and
+  structured claims/caveats/triage audits (including evidence and finding dispositions) in
   the generated JSON contract. A failed check is a valid nonpassing report, not malformed output.
 
 The reviewer gets no author conversation, plan, or conclusions. It may run targeted tests when
@@ -104,8 +105,9 @@ Resolve the returned citations against real artifacts and dependencies. Retain t
 result as canonical; render reports from it. Missing fields never trigger a fresh investigation.
 Keep the persisted compatibility report's triage lists for ticket/epic consumers.
 Render COMPLETENESS_REPORT with runtime-derived counts, VERDICTS from the structured requirement
-objects, and the reviewer's CLAIMS / CAVEATS / TRIAGE evidence. The report summary must include
-those three charges, explicitly NONE when checked and empty; missing is unknown, never NONE.
+objects, and runtime-rendered CLAIMS / CAVEATS / TRIAGE evidence. A checked audit with empty
+findings explicitly means NONE; unverified stays unknown and blocks merge, never inferred NONE.
+Honor an in-flight worker's original packet contract; do not require it to republish as version 2.
 Keep REVIEW_REPORT's ABSORBED / FILED / DROPPED / BLOCKED lists from the findings ledger.
 Persist both named objects in one review artifact; do not paste the completeness report twice.
 

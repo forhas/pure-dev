@@ -5,6 +5,7 @@ Run with knowledge.python. Provider writes remain with the host's authorized too
 """
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,55 @@ import sys
 import uuid
 
 from runtime import Runtime, Invalid, atomic_json, git, read_json, require, state_lock
+
+
+RECORD_PAYLOAD_VERSION = 2
+MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
+CHILD_SEPARATOR = ":child:"
+
+
+def snapshot_evidence(value, field, facts_dir):
+    """Embed the named evidence, not a reference a later write would dereference.
+
+    No recursive file crawling: nested references in a receipt are provenance, not
+    instructions to copy project files/secrets. Large material stays out of plan stdout.
+    """
+    if isinstance(value, (dict, list)):
+        return value
+    require(isinstance(value, str) and value.strip(), field + " requires evidence or an existing file")
+    if field == "requirements" and value == "unknown":
+        return {"status": "unknown"}
+    source = Path(value)
+    if not source.is_absolute():
+        source = facts_dir / source
+    require(source.is_file(), field + " evidence path is missing: " + str(source))
+    with source.open("rb") as stream:
+        data = stream.read(MAX_EVIDENCE_BYTES + 1)
+    require(len(data) <= MAX_EVIDENCE_BYTES, field + " evidence exceeds 4 MiB; supply scoped evidence, never truncate")
+    return {"format": "utf-8", "content": data.decode("utf-8"), "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def record_kind(operation, kinds):
+    if operation in kinds:
+        return kinds[operation]
+    parent, separator, name = operation.rpartition(CHILD_SEPARATOR)
+    if separator and parent in kinds and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", name):
+        return kinds[parent]
+    return None  # Unknown/legacy ids remain required; never guess ancestry.
+
+
+def save_record_payload(path, kind, data):
+    payload = {"record_payload_version": RECORD_PAYLOAD_VERSION, "kind": kind, "data": data}
+    if path.exists():
+        require(read_json(path) == payload,
+                "record payload changed or legacy payload: reconcile before an explicit operation revision")
+    else:
+        atomic_json(path, payload)
+
+
+def child_payload_path(directory, operation):
+    return directory / ("child-" + hashlib.sha256(operation.encode("utf-8")).hexdigest() + ".json")
 
 
 def primary(project):
@@ -194,6 +244,8 @@ def record_plan(state, facts_file):
     required = ("ticket", "ticket_url", "pr_url", "merge_sha", "base", "merged_at", "strategy", "requirements", "verification", "review")
     require(all(facts.get(k) for k in required), "record facts are incomplete")
     require(re.fullmatch(r"[0-9a-f]{40}", facts["merge_sha"]), "full verified merge SHA required")
+    facts = {**facts, **{name: snapshot_evidence(facts[name], name, Path(facts_file).resolve().parent)
+                         for name in ("requirements", "verification", "review")}}
     output = Path(state).resolve().parent / "record"
     output.mkdir(exist_ok=True)
     payloads = {
@@ -209,15 +261,70 @@ def record_plan(state, facts_file):
     operations = []
     for name, payload in payloads.items():
         path = output / (name + ".json")
-        if path.exists():
-            require(read_json(path) == payload, "record payload changed; reconcile the recorded operation before revising facts")
-        else:
-            atomic_json(path, payload)
+        save_record_payload(path, name, payload)
         operation = facts["ticket"] + ":" + facts["merge_sha"] + ":" + name
         check = runtime.record_check(operation, facts["ticket_url"], path)
         operations.append({**check, "kind": name, "payload": str(path)})
     atomic_json(output / "plan.json", operations)
     return {"plan": str(output / "plan.json"), "operations": operations}
+
+
+def record_child(state, parent, name, target, payload_file):
+    """One level of stable, explicitly registered child operations per planned parent."""
+    directory = Path(state).resolve().parent / "record"
+    plan = read_json(directory / "plan.json")
+    kinds = {op["operation"]: op["kind"] for op in plan}
+    require(parent in kinds, "child parent must be a planned operation")
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", name), "invalid child name")
+    operation = parent + CHILD_SEPARATOR + name
+    path = child_payload_path(directory, operation)
+    data = read_json(payload_file)
+    require(isinstance(data, dict), "child payload must be a self-contained object, not a live file reference")
+    save_record_payload(path, kinds[parent], data)
+    check = Runtime(state).record_check(operation, target, path)
+    return {**check, "payload": str(path), "parent": parent, "kind": kinds[parent]}
+
+
+def record_input(state, operation, begin=False, field=None):
+    """Read/hash ONCE, then return those exact bytes as data for the authorized host.
+
+    The provider must consume this result, not reopen original evidence paths. A
+    source file changing after planning therefore cannot change the provider input.
+    """
+    require(not (begin and field is not None), "--field is inspection-only; --begin returns the full operation input")
+    directory = Path(state).resolve().parent / "record"
+    plan = read_json(directory / "plan.json")
+    parents = {op["operation"]: op for op in plan}
+    kind = record_kind(operation, {key: op["kind"] for key, op in parents.items()})
+    require(kind is not None, "unknown recording operation")
+    path = directory / (kind + ".json") if operation in parents else child_payload_path(directory, operation)
+    raw = path.read_bytes()
+    payload_hash = hashlib.sha256(raw).hexdigest()
+    payload = json.loads(raw.decode("utf-8"))
+    require(isinstance(payload, dict) and payload.get("record_payload_version") == RECORD_PAYLOAD_VERSION and payload.get("kind") == kind
+            and isinstance(payload.get("data"), dict), "legacy/invalid payload; reconcile before recording")
+    if operation in parents:
+        require(parents[operation]["data_sha256"] == payload_hash, "planned payload changed")
+    rt = Runtime(state)
+    with rt.transaction() as data:
+        entries = [entry for entry in data["record_journal"] if entry["operation"] == operation]
+        require(entries, "record operation must be planned first")
+        latest = entries[-1]
+        require(latest.get("data_sha256") == payload_hash, "journal payload changed")
+        if operation in parents:
+            require(latest["target"] == parents[operation]["target"], "planned target changed")
+    content = payload["data"]
+    if field is not None:
+        require(field in content, "requested payload field does not exist")
+        content = {field: content[field]}
+    action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
+              if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
+    if begin and action == "execute":
+        # record_op rechecks the latest journal state under its own lock, so a
+        # concurrent begin cannot dispatch the same provider mutation twice.
+        rt.record_op(operation, latest["target"], "attempted", data_sha256=payload_hash)
+    return {"operation": operation, "action": action, "target": latest["target"],
+            "data_sha256": payload_hash, "data": content if action != "skip" or field is not None else None}
 
 
 # Named best-effort by `references/record.md`; every other operation is required.
@@ -248,11 +355,11 @@ def record_summary(state):
     # a persistent optional-hook failure exit 1 forever, blocking the ticket and the
     # next-task loop over work the contract calls best-effort. Visible, not blocking --
     # both halves matter, so they stay in `unresolved` and in ISSUES and only lose their
-    # vote on `passed`. An operation the plan does not name is REQUIRED: unknown fails
-    # closed, so this can never quietly downgrade something it did not recognise.
+    # vote on `passed`. Only explicitly named parents and their well-formed children
+    # inherit policy; unknown identities remain REQUIRED.
     kinds = {operation["operation"]: operation["kind"] for operation in plan}
     unresolved = sorted(k for k, entry in latest.items() if entry["outcome"] != "confirmed")
-    blocking = [k for k in unresolved if kinds.get(k) not in BEST_EFFORT_RECORD]
+    blocking = [k for k in unresolved if record_kind(k, kinds) not in BEST_EFFORT_RECORD]
     fields["ISSUES"] = ", ".join(unresolved) if unresolved else "none"
     result = {"record": fields, "passed": not blocking, "unresolved": unresolved,
               "blocking_unresolved": blocking,
@@ -277,6 +384,10 @@ def main():
     p = commands.add_parser("verify"); p.add_argument("--project", required=True); p.add_argument("--state", required=True)
     p.add_argument("--worktree", required=True); p.add_argument("--depends", action="append", default=[])
     p = commands.add_parser("record-plan"); p.add_argument("--state", required=True); p.add_argument("--facts", required=True)
+    p = commands.add_parser("record-child"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
+    p.add_argument("--name", required=True); p.add_argument("--target", required=True); p.add_argument("--payload", required=True)
+    p = commands.add_parser("record-input"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--begin", action="store_true"); p.add_argument("--field")
     p = commands.add_parser("record-summary"); p.add_argument("--state", required=True)
     args = parser.parse_args()
     if args.command == "preflight": result = preflight(args.project, args.session, args.non_interactive)
@@ -285,6 +396,8 @@ def main():
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends)
     elif args.command == "record-plan": result = record_plan(args.state, args.facts)
+    elif args.command == "record-child": result = record_child(args.state, args.parent, args.name, args.target, args.payload)
+    elif args.command == "record-input": result = record_input(args.state, args.operation, args.begin, args.field)
     else: result = record_summary(args.state)
     print(json.dumps(result, ensure_ascii=False))
     return 1 if result.get("passed") is False else 0

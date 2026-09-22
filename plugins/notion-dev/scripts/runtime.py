@@ -37,11 +37,19 @@ PAGE_ITEMS = 50
 RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
 RECORD_FIELDS = ("EPIC-REPORT", "TICKET-RECORD", "CLEANUP", "CLEANUP-STEPS",
                  "HOOKS", "EPIC-DOC-RECORD", "EPIC-DOC-NEXT", "ISSUES")
+RESULT_CONTRACT_VERSION = 2
+AUDIT_FIELDS = ("claims", "caveats", "triage")
+
+
+def audits_pass(result):
+    return all(result.get(name, {}).get("status") == "checked"
+               and not any(item["blocking"] for item in result[name]["findings"])
+               for name in AUDIT_FIELDS)
 
 
 def result_contract(role, items):
     """One machine-readable contract, supplied to the worker and checked at publication."""
-    contract = {"version": 1, "required": {"report": "nonempty summary string"}}
+    contract = {"version": RESULT_CONTRACT_VERSION, "required": {"report": "nonempty summary string"}}
     if role == "completeness":
         contract["required"].update(
             requirements_complete="boolean: independently checked the whole authoritative source",
@@ -49,6 +57,12 @@ def result_contract(role, items):
                            "citation": "nonempty evidence reference"} for item in items],
             blocking_findings="list of unresolved mandatory findings; empty only if none",
             code_review={"verdict": "clean|findings|unverified", "citation": "code/test evidence"})
+        for name in AUDIT_FIELDS:
+            contract["required"][name] = {
+                "status": "checked|unverified", "evidence": "nonempty audit scope/evidence or reason unverified",
+                "findings": [{"finding": "nonempty description", "disposition": "absorb|file|drop|blocked",
+                              "rationale": "nonempty decision/evidence", "blocking": "boolean: unresolved merge obligation"}]}
+        contract["audit_rules"] = "All three audits required. Checked with findings=[] means NONE. Missing is unknown. Unverified or blocking=true prevents merge. Mandatory work cannot be waived with file/drop."
     elif role == "record":
         contract["required"]["record"] = {field: "nonempty outcome, including skipped reason" for field in RECORD_FIELDS}
     contract["delivery"] = "Publish this object, repair rejected fields in the same worker, then return only its artifact reference. Never rerun completed work to repair a report."
@@ -80,6 +94,20 @@ def validate_result(worker, result):
         require(isinstance(review, dict) and review.get("verdict") in {"clean", "findings", "unverified"}
                 and isinstance(review.get("citation"), str) and review["citation"].strip(),
                 "code_review requires verdict and evidence citation")
+        if worker["contract_version"] >= 2:
+            for name in AUDIT_FIELDS:
+                audit = result.get(name)
+                require(isinstance(audit, dict) and audit.get("status") in {"checked", "unverified"}
+                        and isinstance(audit.get("evidence"), str) and audit["evidence"].strip()
+                        and isinstance(audit.get("findings"), list),
+                        name + " audit requires status, evidence and findings (explicit [] for NONE)")
+                for finding in audit["findings"]:
+                    require(isinstance(finding, dict)
+                            and all(isinstance(finding.get(k), str) and finding[k].strip()
+                                    for k in ("finding", "rationale"))
+                            and finding.get("disposition") in {"absorb", "file", "drop", "blocked"}
+                            and isinstance(finding.get("blocking"), bool),
+                            name + " finding requires finding/disposition/rationale/blocking")
         if worker.get("correction_manifest"):
             correction = result.get("correction_review")
             require(isinstance(correction, dict)
@@ -107,11 +135,19 @@ def render_result(worker, result):
         counts = Counter(verdicts[i["id"]] for i in worker["requirements"]["items"] if i["kind"] == "acceptance")
         clean = (result["requirements_complete"] and not result["blocking_findings"]
                  and result["code_review"]["verdict"] == "clean" and all(v == "met" for v in verdicts.values()))
+        if worker["contract_version"] >= 2:
+            clean = clean and audits_pass(result)
         header = ["COMPLETENESS: " + ("clean" if clean else "blocked"),
                   "CRITERIA-TOTAL: " + str(sum(counts.values())), "CRITERIA-MET: " + str(counts["met"]),
                   "CRITERIA-NOT-MET: " + str(counts["not-met"]), "CRITERIA-UNVERIFIED: " + str(counts["unverified"])]
         narrative = re.sub(r"^(?:COMPLETENESS|CRITERIA-(?:TOTAL|MET|NOT-MET|UNVERIFIED)):[^\r\n]*\r?\n?",
                            "", result["report"], flags=re.M)
+        if worker["contract_version"] >= 2:
+            # Render one-line JSON per charge, so repeated publication is idempotent
+            # and prose claiming NONE cannot override structured findings.
+            narrative = re.sub(r"^(?:CLAIMS|CAVEATS|TRIAGE):[^\r\n]*\r?\n?", "", narrative, flags=re.M)
+            header.extend(name.upper() + ": " + json.dumps(result[name], ensure_ascii=False, sort_keys=True)
+                          for name in AUDIT_FIELDS)
         rendered["report"] = "\n".join(header) + "\n" + narrative
     return rendered
 
@@ -519,7 +555,7 @@ class Runtime:
             packet = {"worker": key, "role": role, "slot": slot, "revision": current,
                       "inputs": snapshots, "requirements": {"path": str(inventory_path),
                       "sha256": digest(inventory_path)}}
-            contract_version = 1 if state["schema"] >= 3 else None
+            contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 3 else None
             if contract_version:
                 packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []))
             if baseline is not None:
@@ -1159,6 +1195,8 @@ class Runtime:
                 validate_result(worker, result) if result else None
                 if result.get("code_review", {}).get("verdict") != "clean":
                     reasons.append("independent code-quality review is not clean")
+                if worker["contract_version"] >= 2 and result and not audits_pass(result):
+                    reasons.append("claims/caveats/triage audits are unverified or have blocking findings")
             if not self.correction_reviewed(state, worker, result):
                 reasons.append("corrective code needs an independent clean correction review of the exact manifest")
             if worker.get("previous"):

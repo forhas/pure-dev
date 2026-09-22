@@ -108,7 +108,14 @@ A full completeness worker receives authoritative source/inventory, current diff
 test receipts and relevant source references—not the author's plan or conclusions.
 It checks code quality, contracts, regression/edge cases, full-source coverage, every requirement,
 unsupported claims and untriaged caveats. Generated output requires code_review, all requirement
-verdicts/citations, requirements_complete and blocking_findings. Never mark a filed/dropped
+verdicts/citations, requirements_complete and blocking_findings. Contract version 2 also requires
+`claims`, `caveats` and `triage`, each with `status` (checked/unverified), nonempty `evidence`
+and `findings`. An explicitly checked empty list means NONE; missing is invalid, not NONE.
+Each finding carries finding/disposition/rationale/blocking. Unverified audits or a blocking
+finding prevent merge even if the report says clean or its disposition is file/drop.
+Publication may accept an honest nonpassing result; acceptance does not make it mergeable.
+The runtime renders these three report headings from structured data, not separate prose.
+Never mark a filed/dropped
 mandatory requirement met. Release obligations remain explicit.
 
 Resolve citations with `resolve-citations --worker <id> --citations <citations.json>`:
@@ -139,13 +146,16 @@ live PR claims, HEAD, required checks and review threads. Changed source/inputs 
 
 ## Recording and measurement
 
-`record-check --operation <stable-id> --target <target> --payload <file>` returns execute, skip
-or reconcile plus data_sha256. Before an authorized provider write, record `record-op` with
-outcome attempted and that digest; confirm only after a successful response/readback. A lost
-response is unknown-outcome, never a blind retry. Confirmed operations skip only when their
-identity and payload match. `workflow.py record-plan` generates the normal operation list.
+`workflow.py record-plan` snapshots named evidence into immutable versioned payloads.
+`workflow.py record-input --state <state> --operation <id> --begin` verifies and returns frozen
+provider input, journaling attempted before an execute. Consume that returned data, not the
+original source paths. Confirm with `record-op` only after a successful response/readback.
+A lost response is unknown-outcome, never a blind retry. Confirmed operations skip only when
+their identity and payload match. `record-child` registers stable, parent-scoped suboperations.
 Read `references/record.md` only at recording time.
 
 `summary` reports stages, attempts, outstanding workers, verification reuse and record outcomes.
 Import raw parent/child JSONL with telemetry.py for token counts. Unknown telemetry is not zero.
 Schema 1/2 resumes retain original contracts; do not rewrite them to obtain new attempt budgets.
+Already-prepared schema-3 version-1 workers also retain their packet/validation contract.
+Newly prepared workers use version 2, including on resume; no budget or invocation reset.

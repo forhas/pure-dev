@@ -43,6 +43,15 @@ independent reviewer retains full-ticket coverage, code quality, claims/caveats 
 
 ## Safety and compatibility
 
+0.36.1 hardens the same lean flow, without extra agents or review rounds. New workers carry
+result-contract v2 with required structured claims/caveats/triage audits; existing v1 workers
+retain their original contract. Recording payload v2 embeds the three named evidence files
+and record-input supplies the same hash-checked data it journals before a write. Existing
+path-only payloads require explicit reconciliation, never silent rebinding. Child operations
+use `<parent>:child:<name>` and inherit known parent policy; unknown identities fail closed.
+Local and CI aggregate checks share `bash scripts/run-verifications.sh`, which cannot announce
+success after a failed harness. Performance still needs measurement on a real ticket.
+
 - Authoritative requirements, prerequisite readiness, independent review, real evidence,
   current HEAD/base/body, CI, thread resolution and explicit merge authorization remain gates.
 - Git and provider actions retain existing ownership, exact-target, primary-lock and readback

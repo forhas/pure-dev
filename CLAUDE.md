@@ -11,8 +11,11 @@ alone do not validate agent lifecycle behavior.
 Run **all** of them before reporting any work as done:
 
 ```bash
-for h in scripts/verify-*.sh; do "$h" || echo "FAILED: $h"; done
+bash scripts/run-verifications.sh
 ```
+
+Use this aggregate runner locally and in CI: it runs every harness, fails on any failure
+or an empty harness set, and prints the overall success line only when all passed.
 
 Every assertion comes from `scripts/lib/assert.sh`. Never hand-roll one in a harness —
 `verify-assertions.sh` fails a harness that sources anything else or defines its own helper, and

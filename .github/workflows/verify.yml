@@ -42,31 +42,7 @@ jobs:
         # back to `sh` if bash were ever absent, failing obscurely rather than
         # loudly — and a job-level `defaults.run.shell` could change it silently.
         shell: bash
-        run: |
-          set -uo pipefail
-          shopt -s nullglob
-          scripts=(scripts/verify-*.sh)
-          if [ ${#scripts[@]} -eq 0 ]; then
-            echo "No verification harnesses found — expected at least one."
-            exit 1
-          fi
-          failed=0
-          for s in "${scripts[@]}"; do
-            echo "::group::$s"
-            if bash "$s"; then
-              echo "$s: OK"
-            else
-              echo "$s: FAILED"
-              failed=$((failed + 1))
-            fi
-            echo "::endgroup::"
-          done
-          echo
-          if [ "$failed" -gt 0 ]; then
-            echo "$failed harness(es) failed."
-            exit 1
-          fi
-          echo "All ${#scripts[@]} harness(es) passed."
+        run: bash scripts/run-verifications.sh
 
   # The EXECUTION half of the Python floor (issue #69). scripts/verify-python-floor.sh
   # proves every shipped script PARSES at the floor the README declares, on every runner.
@@ -171,28 +147,4 @@ jobs:
         shell: bash
         env:
           KNOWLEDGE_PY: python
-        run: |
-          set -uo pipefail
-          shopt -s nullglob
-          scripts=(scripts/verify-*.sh)
-          if [ ${#scripts[@]} -eq 0 ]; then
-            echo "No verification harnesses found — expected at least one."
-            exit 1
-          fi
-          failed=0
-          for s in "${scripts[@]}"; do
-            echo "::group::$s"
-            if bash "$s"; then
-              echo "$s: OK"
-            else
-              echo "$s: FAILED"
-              failed=$((failed + 1))
-            fi
-            echo "::endgroup::"
-          done
-          echo
-          if [ "$failed" -gt 0 ]; then
-            echo "$failed harness(es) failed."
-            exit 1
-          fi
-          echo "All ${#scripts[@]} harness(es) passed."
+        run: bash scripts/run-verifications.sh

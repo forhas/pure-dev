@@ -1,5 +1,7 @@
 """Generic offline regressions for the lean path; no client data or provider writes."""
 from contextlib import ExitStack, nullcontext
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -17,8 +19,13 @@ import dependencies
 class LeanTests(unittest.TestCase):
     run_git = support.RuntimeTests.run_git
     prepare = support.RuntimeTests.prepare
-    result = support.RuntimeTests.result
     resolve = support.RuntimeTests.resolve
+
+    def result(self):
+        value = support.RuntimeTests.result(self)
+        value.update({name: {"status": "checked", "evidence": "fixture audit: source, diff and PR body",
+                             "findings": []} for name in runtime.AUDIT_FIELDS})
+        return value
 
     def setUp(self):
         support.RuntimeTests.setUp(self)
@@ -49,6 +56,9 @@ class LeanTests(unittest.TestCase):
                          {v["id"] for v in self.inventory["items"]})
         self.assertIn("code_review", contract)
         self.assertIn("blocking_findings", contract)
+        self.assertEqual(packet["result_contract"]["version"], 2)
+        for name in runtime.AUDIT_FIELDS:
+            self.assertEqual(set(contract[name]), {"status", "evidence", "findings"})
 
     def test_report_only_result_repairs_in_same_worker_without_redispatch(self):
         key = self.prepare()
@@ -64,12 +74,87 @@ class LeanTests(unittest.TestCase):
 
     def test_each_required_field_is_checked_at_publication(self):
         key = self.prepare()
-        for field in ("report", "requirements_complete", "requirements", "blocking_findings", "code_review"):
+        worker = runtime.read_json(self.state)["workers"][key]
+        for field in ("report", "requirements_complete", "requirements", "blocking_findings", "code_review",
+                      "claims", "caveats", "triage"):
             with self.subTest(field=field):
                 value = self.result(); del value[field]
                 with self.assertRaises(runtime.Invalid):
+                    runtime.validate_result(worker, value)
+                with self.assertRaises(runtime.Invalid):
                     self.rt.publish(key, value)
                 self.assertFalse(self.rt.inspect(key)["result_available"])
+
+    def test_malformed_audits_repair_in_same_worker(self):
+        key = self.prepare()
+        invalid = [None, {}, {"status": "checked", "findings": [], "evidence": ""},
+                   {"status": "NONE", "findings": [], "evidence": "scope"},
+                   {"status": "checked", "findings": None, "evidence": "scope"},
+                   {"status": "checked", "findings": [{}], "evidence": "scope"}]
+        finding = {"finding": "unsupported claim", "disposition": "file", "rationale": "issue link",
+                   "blocking": False}
+        for field, value in (("finding", ""), ("disposition", "waive"), ("rationale", None), ("blocking", "false")):
+            invalid.append({"status": "checked", "evidence": "scope", "findings": [{**finding, field: value}]})
+        for name in runtime.AUDIT_FIELDS:
+            for audit in invalid:
+                value = self.result(); value[name] = audit
+                with self.subTest(audit=name, value=audit), self.assertRaises(runtime.Invalid):
+                    self.rt.publish(key, value)
+        self.rt.publish(key, self.result())
+        self.assertTrue(self.rt.inspect(key)["result_available"])
+        self.assertEqual(len(runtime.read_json(self.state)["workers"]), 1)
+
+    def test_unverified_and_blocking_audits_are_honest_nonpassing_results(self):
+        # Publication/acceptance can succeed without licensing merge; filing isn't a waiver.
+        for name in runtime.AUDIT_FIELDS:
+            for disposition in (None, "file", "drop", "absorb", "blocked"):
+                case = LeanTests()
+                try:
+                    case.setUp(); key = case.prepare(); value = case.result()
+                    if disposition is None:
+                        value[name]["status"] = "unverified"
+                    else:
+                        value[name]["findings"] = [{"finding": "mandatory claim unresolved",
+                            "disposition": disposition, "rationale": "still outstanding", "blocking": True}]
+                    value["report"] += name.upper() + ": NONE\n"
+                    case.rt.publish(key, value)
+                    report = case.rt.consume(key)["result"]["report"]
+                    self.assertIn("COMPLETENESS: blocked", report)
+                    self.assertNotIn(name.upper() + ": NONE", report)
+                    self.assertIn(name.upper() + ": " + json.dumps(value[name], sort_keys=True), report)
+                    case.rt.accept(key); case.resolve(key)
+                    self.assertFalse(case.rt.merge_gate(key, case.repo)["passed"])
+                finally:
+                    case.doCleanups()
+
+    def test_nonblocking_audit_is_preserved_and_rendering_is_idempotent(self):
+        key = self.prepare(); value = self.result()
+        value["caveats"]["findings"] = [{"finding": "release requires deployment",
+            "disposition": "drop", "rationale": "release-only, not a merge prerequisite", "blocking": False}]
+        worker = runtime.read_json(self.state)["workers"][key]
+        rendered = runtime.render_result(worker, value)
+        self.assertEqual(runtime.render_result(worker, rendered), rendered)
+        self.rt.publish(key, rendered); self.rt.consume(key); self.rt.accept(key); self.resolve(key)
+        self.assertTrue(self.rt.merge_gate(key, self.repo)["passed"])
+
+    def test_version_one_in_flight_worker_retains_contract_and_next_worker_upgrades(self):
+        contract = runtime.result_contract("completeness", self.inventory["items"])
+        contract["version"] = 1
+        del contract["audit_rules"]
+        for name in runtime.AUDIT_FIELDS: del contract["required"][name]
+        with patch.object(runtime, "RESULT_CONTRACT_VERSION", 1), patch.object(runtime, "result_contract", return_value=contract):
+            key = self.prepare()
+        worker = runtime.read_json(self.state)["workers"][key]
+        packet_hash = runtime.digest(worker["packet"])
+        self.rt.publish(key, support.RuntimeTests.result(self))
+        self.rt.consume(key); self.rt.accept(key); self.resolve(key)
+        self.assertTrue(self.rt.merge_gate(key, self.repo)["passed"])
+        self.assertEqual(runtime.digest(worker["packet"]), packet_hash)
+        delta = self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=key)
+        packet = runtime.read_json(delta["packet"])
+        self.assertEqual(packet["result_contract"]["version"], 2)
+        self.assertIn("triage", packet["result_contract"]["required"])
+        self.assertIn("delta_review", packet["result_contract"]["required"])
 
     def test_missing_duplicate_and_null_requirement_verdicts_are_rejected(self):
         key = self.prepare()
@@ -279,6 +364,8 @@ class LeanTests(unittest.TestCase):
                  "pr_url": "https://example.invalid/pr/1", "merge_sha": "a" * 40,
                  "base": "main", "merged_at": "2026-01-01T00:00:00Z", "strategy": "squash",
                  "requirements": "requirements.json", "verification": "verification.json", "review": "review.json"}
+        for name in ("requirements", "verification", "review"):
+            runtime.atomic_json(self.root / facts[name], {"evidence": name})
         path = self.root / "facts.json"; runtime.atomic_json(path, facts)
         return path
 
@@ -334,6 +421,164 @@ class LeanTests(unittest.TestCase):
         runtime.atomic_json(facts, changed)
         with self.assertRaisesRegex(ValueError, "payload changed"):
             workflow.record_plan(self.state, facts)
+
+    def test_record_input_uses_exact_snapshot_after_source_changes_or_disappears(self):
+        facts = self.facts()
+        source = self.root / "review.json"
+        raw = '{"evidence":"résolu"}\r\n'.encode("utf-8")
+        source.write_bytes(raw)
+        plan = workflow.record_plan(self.state, facts)
+        self.assertNotIn("résolu", json.dumps(plan, ensure_ascii=False))
+        op = next(v for v in plan["operations"] if v["kind"] == "ticket-resolution")
+        source.write_text("different evidence", encoding="utf-8")
+        data = workflow.record_input(self.state, op["operation"], begin=True)
+        self.assertEqual(data["data"]["review"], {"format": "utf-8", "content": raw.decode("utf-8"),
+                         "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
+        self.assertEqual(data["action"], "execute")
+        source.unlink()
+        self.assertEqual(workflow.record_input(self.state, op["operation"])["data"], data["data"])
+        self.assertEqual(workflow.record_input(self.state, op["operation"], begin=True)["action"], "reconcile")
+        self.rt.record_op(op["operation"], op["target"], "confirmed", "readback", op["data_sha256"])
+        self.assertEqual(workflow.record_input(self.state, op["operation"])["action"], "skip")
+        self.assertIsNone(workflow.record_input(self.state, op["operation"])["data"])
+        self.assertEqual(workflow.record_input(self.state, op["operation"], field="review")["data"],
+                         {"review": data["data"]["review"]})
+        source.write_bytes(b"changed after confirmation")
+        with self.assertRaisesRegex(ValueError, "payload changed"):
+            workflow.record_plan(self.state, facts)
+
+    def test_payload_change_after_begin_cannot_change_the_returned_provider_data(self):
+        plan = workflow.record_plan(self.state, self.facts())
+        op = next(v for v in plan["operations"] if v["kind"] == "ticket-resolution")
+        original = workflow.Runtime.record_op
+
+        def mutate_after_attempt(instance, *args, **kwargs):
+            result = original(instance, *args, **kwargs)
+            Path(op["payload"]).write_bytes(b"{}")
+            return result
+
+        with patch.object(workflow.Runtime, "record_op", mutate_after_attempt):
+            data = workflow.record_input(self.state, op["operation"], begin=True)
+        self.assertEqual(json.loads(data["data"]["review"]["content"]), {"evidence": "review"})
+        with self.assertRaises(ValueError): workflow.record_input(self.state, op["operation"])
+
+    def test_missing_oversized_or_legacy_evidence_fails_closed(self):
+        facts = self.facts(); value = runtime.read_json(facts)
+        for field in ("requirements", "verification", "review"):
+            runtime.atomic_json(facts, {**value, field: "missing.json"})
+            with self.assertRaisesRegex(ValueError, "missing"):
+                workflow.record_plan(self.state, facts)
+        self.assertEqual(runtime.read_json(self.state)["record_journal"], [])
+        source = self.root / "review.json"
+        source.write_bytes(b"x" * (workflow.MAX_EVIDENCE_BYTES + 1))
+        runtime.atomic_json(facts, value)
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            workflow.record_plan(self.state, facts)
+        self.facts()
+        plan = workflow.record_plan(self.state, facts); op = plan["operations"][0]
+        # Tampering cannot create an attempted entry.
+        runtime.atomic_json(op["payload"], {"status": "implemented"})
+        with self.assertRaisesRegex(ValueError, "legacy/invalid"):
+            workflow.record_input(self.state, op["operation"], begin=True)
+        self.assertFalse(any(v["outcome"] == "attempted" for v in runtime.read_json(self.state)["record_journal"]))
+        with self.assertRaisesRegex(ValueError, "legacy payload"):
+            workflow.record_plan(self.state, facts)
+
+    def test_record_payload_hash_drift_is_rejected_before_attempt(self):
+        plan = workflow.record_plan(self.state, self.facts()); op = plan["operations"][0]
+        value = runtime.read_json(op["payload"]); value["data"]["status"] = "released"
+        runtime.atomic_json(op["payload"], value)
+        with self.assertRaisesRegex(ValueError, "payload changed"):
+            workflow.record_input(self.state, op["operation"], begin=True)
+        self.assertFalse(any(v["outcome"] == "attempted" for v in runtime.read_json(self.state)["record_journal"]))
+
+    def test_explicit_unknown_and_embedded_evidence_do_not_crawl_nested_paths(self):
+        facts = self.facts(); value = runtime.read_json(facts)
+        value.update(requirements="unknown", review={"status": "unknown", "reason": "recovery"},
+                     verification={"log": "missing-private-log-path", "exit_code": 0})
+        runtime.atomic_json(facts, value)
+        plan = workflow.record_plan(self.state, facts)
+        op = next(v for v in plan["operations"] if v["kind"] == "ticket-resolution")
+        data = workflow.record_input(self.state, op["operation"], field="requirements")["data"]
+        self.assertEqual(data, {"requirements": {"status": "unknown"}})
+        with self.assertRaisesRegex(ValueError, "inspection-only"):
+            workflow.record_input(self.state, op["operation"], begin=True, field="requirements")
+        self.assertEqual(workflow.record_input(self.state, op["operation"])["data"]["verification"], value["verification"])
+
+    def test_children_inherit_only_known_parent_policy_and_stay_visible(self):
+        plan = workflow.record_plan(self.state, self.facts())
+        payload = self.root / "child.json"; runtime.atomic_json(payload, {"literal": "frozen input"})
+        children = []
+        for op in plan["operations"]:
+            self.rt.record_op(op["operation"], op["target"], "confirmed", "readback", op["data_sha256"])
+            child = workflow.record_child(self.state, op["operation"], "hook-01", "actual child target", payload)
+            self.assertEqual(child["operation"], op["operation"] + ":child:hook-01")
+            self.assertNotIn(":", Path(child["payload"]).name)
+            self.rt.record_op(child["operation"], child["target"], "failed", data_sha256=child["data_sha256"])
+            children.append(child)
+        summary = workflow.record_summary(self.state)
+        self.assertEqual(len(summary["best_effort_unresolved"]), 2)
+        self.assertEqual(len(summary["blocking_unresolved"]), 5)
+        for child in children:
+            self.assertIn(child["operation"], summary["record"]["ISSUES"])
+            if child["kind"] not in workflow.BEST_EFFORT_RECORD:
+                self.rt.record_op(child["operation"], child["target"], "confirmed", "readback", child["data_sha256"])
+        self.assertTrue(workflow.record_summary(self.state)["passed"])
+        unknown = plan["operations"][-1]["operation"] + ":child:invalid:name"
+        self.rt.record_op(unknown, "target", "failed", data_sha256="a" * 64)
+        self.assertEqual(workflow.record_summary(self.state)["blocking_unresolved"], [unknown])
+
+    def test_children_reject_ambiguous_identity_and_payload_rebinding(self):
+        plan = workflow.record_plan(self.state, self.facts()); parent = plan["operations"][0]["operation"]
+        payload = self.root / "child.json"; runtime.atomic_json(payload, {"literal": "intent"})
+        for name in ("", "../escape", "nested:child:one", "a" * 81):
+            with self.assertRaises(ValueError): workflow.record_child(self.state, parent, name, "target", payload)
+        with self.assertRaises(ValueError): workflow.record_child(self.state, "unknown", "one", "target", payload)
+        child = workflow.record_child(self.state, parent, "one", "target", payload)
+        self.assertEqual(workflow.record_child(self.state, parent, "one", "target", payload)["operation"], child["operation"])
+        self.rt.record_op(child["operation"], "target", "confirmed", "readback", child["data_sha256"])
+        self.assertEqual(workflow.record_child(self.state, parent, "one", "target", payload)["action"], "skip")
+        with self.assertRaises(ValueError): workflow.record_child(self.state, child["operation"], "nested", "target", payload)
+        runtime.atomic_json(payload, {"literal": "new intent"})
+        with self.assertRaisesRegex(ValueError, "payload changed"):
+            workflow.record_child(self.state, parent, "one", "target", payload)
+
+    def test_aggregate_runner_never_announces_success_after_failure_or_empty_suite(self):
+        scripts = self.root / "runner with space" / "scripts"; scripts.mkdir(parents=True)
+        runner = scripts / "run-verifications.sh"
+        runner.write_bytes((ROOT / "scripts/run-verifications.sh").read_bytes())
+
+        def run():
+            return subprocess.run([runtime.bash_exe(), runner.as_posix()], capture_output=True, encoding="utf-8")
+
+        self.assertNotEqual(run().returncode, 0)
+        first = scripts / "verify-a.sh"; last = scripts / "verify-z.sh"
+        first.write_bytes(b'echo first-ran\nexit 1\n')
+        last.write_bytes(b'echo last-ran\nexit 0\n')
+        failed = run()
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertNotIn("harness(es) passed", failed.stdout)
+        self.assertIn("first-ran", failed.stdout); self.assertIn("last-ran", failed.stdout)
+        first.write_bytes(b'exit 0\n')
+        passed = run()
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        self.assertIn("All 2 harness(es) passed", passed.stdout)
+
+    def test_record_cli_freezes_and_consumes_parent_and_child_inputs(self):
+        def command(*args):
+            completed = subprocess.run([sys.executable, str(ROOT / "plugins/notion-dev/scripts/workflow.py"),
+                *args, "--state", str(self.state)], capture_output=True, encoding="utf-8")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            return json.loads(completed.stdout)
+
+        plan = command("record-plan", "--facts", str(self.facts()))
+        parent = plan["operations"][0]["operation"]
+        payload = self.root / "child.json"; runtime.atomic_json(payload, {"literal": "résolu"})
+        child = command("record-child", "--parent", parent, "--name", "one", "--target", "target", "--payload", str(payload))
+        value = command("record-input", "--operation", child["operation"], "--begin")
+        self.assertEqual(value["data"], {"literal": "résolu"})
+        self.assertEqual(value["action"], "execute")
+        self.assertEqual(command("record-input", "--operation", child["operation"], "--begin")["action"], "reconcile")
 
     def test_decorated_agent_names_are_mapped_without_prefix_collisions(self):
         workers = [{"agent_id": name + "@session-a", "worker": name, "role": "completeness"}
@@ -402,6 +647,14 @@ class LeanTests(unittest.TestCase):
             return original_verify(instance, *args, **kwargs)
 
         cases = [
+            ("test_each_required_field_is_checked_at_publication",
+             [patch.object(runtime, "validate_result", return_value=None)]),
+            ("test_unverified_and_blocking_audits_are_honest_nonpassing_results",
+             [patch.object(runtime, "audits_pass", return_value=True)]),
+            ("test_record_input_uses_exact_snapshot_after_source_changes_or_disappears",
+             [patch.object(workflow, "snapshot_evidence", side_effect=lambda value, field, directory: value)]),
+            ("test_children_inherit_only_known_parent_policy_and_stay_visible",
+             [patch.object(workflow, "record_kind", side_effect=lambda operation, kinds: kinds.get(operation))]),
             ("test_report_only_result_repairs_in_same_worker_without_redispatch",
              [patch.object(runtime, "validate_result", return_value=None),
               patch.object(runtime, "render_result", side_effect=lambda worker, result: result)]),

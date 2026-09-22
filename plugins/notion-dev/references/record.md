@@ -30,6 +30,9 @@ Save immutable `record-facts.json` beside runtime state with:
 }
 ```
 Requirements, verification and review may be embedded structured objects instead of paths.
+Paths resolve relative to this facts file. Each must exist; only requirements accepts the
+literal `unknown` on merged recovery. For other unavailable evidence use an explicit object
+such as `{"status":"unknown","reason":"<observed cause>"}`, never a pretend file path.
 An empty knowledge delta is legitimate; do not invent a knowledge change to fill a field.
 Store additional approved filing decisions and existing outcome reports by reference.
 Fields describe observed facts, not fabricated placeholders.
@@ -46,21 +49,56 @@ an unconfirmed live writer could still perform side effects; then preserve the l
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-plan --state "$RUNTIME_STATE" --facts <record-facts.json>
 ```
 
-The helper emits immutable payload files and stable operation IDs. For each operation:
+The helper emits version-2 immutable payload files and stable operation IDs. It embeds the
+exact UTF-8 bytes of the three named evidence files, including their byte counts and hashes;
+it does not recursively open paths inside receipts. Each file is limited to 4 MiB: larger
+inputs require scoped evidence, never silent truncation. Plan output contains references,
+not the evidence text. Keep these private artifacts outside commits; do not copy entire logs
+or secrets into provider pages.
+
+For each operation consume the frozen data, not the original evidence paths:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-input --state "$RUNTIME_STATE" --operation <id> --begin
+```
+This verifies the saved payload against the plan/journal, reads and hashes it once, and returns
+that same data. With `--begin`, execute is durably journaled as `--outcome attempted` BEFORE
+the provider call. Use the returned data for the authorized write; never reopen the source
+files to construct it. Changed sources cannot alter this operation's intended evidence.
+
 - **skip:** the same payload is already confirmed; consume the receipt.
-- **execute:** journal `record-op --operation <id> --target <target> --outcome attempted
-  --digest <data_sha256>` BEFORE the authorized write.
+- **execute:** perform the authorized write using the returned data, target and digest.
 - **reconcile:** a previous response was lost or execution interrupted. Read the affected
   Notion section, merge/hook receipt or Git state. Confirm only when the intended effect exists.
   Record failed only after proving no effect occurred; then a retry may execute. Unknown stays
   unknown-outcome and requires resolution, never a blind retry.
 
-After a response/readback confirms the effect, journal confirmed with the same operation,
-target/digest and actual provider ID or durable receipt path. Use distinct child operations
-for multi-write steps and EACH configured hook so a partial step cannot repeat completed
-side effects. The parent operation confirms only after all children are confirmed or explicitly
-not applicable. Keep payloads stable on resume; changed intent needs explicit reconciliation and
-a new operation revision. A report-format problem does not change any operation's outcome.
+After a response/readback confirms the effect, journal `record-op --operation <id> --target
+<target> --outcome confirmed --digest <data_sha256> --provider-id <receipt>` with that same
+identity and an actual provider ID or durable receipt path. Without `--begin`, record-input
+is read-only; `--field <name>` retrieves one top-level field for inspection/reconciliation,
+including after confirmation. Downstream epic/brief steps use these frozen review/requirements
+fields from ticket-resolution, never reopen the original evidence. Do not combine --field
+with --begin: an attempt must receive its complete input.
+On resume consume existing frozen payloads without regenerating them. Replanning changed
+evidence fails closed, including after confirmation. Legacy path-only payloads are refused:
+reconcile their existing effects and preserve their journal; do not reset or silently rebind
+an attempted/confirmed identity. Changed intent needs an explicitly reconciled new operation
+revision, not a report-format repair.
+
+Use distinct child operations for multi-write steps and EACH configured hook:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-child --state "$RUNTIME_STATE" --parent <planned-id> --name <stable-name> --target <actual-target> --payload <literal-input.json>
+```
+The child ID is `<planned-id>:child:<stable-name>`. Names match
+`[A-Za-z0-9][A-Za-z0-9._-]{0,79}`; choose semantic names (e.g. `merged-section`, `hook-01`)
+once and retain them on resume. No nested children or IDs invented from display names.
+The helper freezes a self-contained JSON object; derive it from frozen record-input data,
+not live evidence paths. Execute it through record-input exactly like its parent. Disk names
+are hashes, so IDs containing colons work on Windows too. Children inherit their parent's
+required/best-effort policy: only knowledge-delta and epic-brief are best-effort. Unknown IDs
+remain required. Failed optional children stay visible in ISSUES and unresolved operations,
+but do not block resolution. The parent confirms only after all children are confirmed or
+explicitly not applicable; never hide partial effects behind a confirmed parent.
 
 ## 3. Operation meanings and order
 

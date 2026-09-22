@@ -380,11 +380,12 @@ else
     CLAUDE.md 1 "$n" 'one thing left'
   assert_present "CLAUDE.md states that widening a PR beats splitting it" \
     CLAUDE.md 1 "$n" '[*]not[*] a reason to defer'
-  # Three sites on purpose: the section heading, the run-them-all snippet under it, and
-  # "Both platforms, always" stating that each CI leg runs the whole suite. The third is what
-  # ties the platform rule to the same suite rather than letting it name a subset.
+  # The section heading and platform rule name the suite. The runnable example uses
+  # the shared fail-closed runner instead of a loop whose trailing echo could mask failure.
   assert_count "CLAUDE.md points at the harness suite" \
-    CLAUDE.md 1 "$n" 'scripts/verify-[*][.]sh' 3
+    CLAUDE.md 1 "$n" 'scripts/verify-[*][.]sh' 2
+  assert_present "CLAUDE.md invokes run-verifications.sh" \
+    CLAUDE.md 1 "$n" '^bash scripts/run-verifications[.]sh$'
   # The assertion-sensitivity rules from issue #30. Without these three lines the
   # mechanism exists but nothing tells the next session it is the rule.
   assert_present "CLAUDE.md routes every assertion through scripts/lib/assert.sh" \

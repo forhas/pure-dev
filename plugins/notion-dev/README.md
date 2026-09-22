@@ -2,12 +2,17 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.36.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.36.1). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
 
-## Lean workflow (0.36.0)
+## Lean workflow (0.36.1)
+
+Patch 0.36.1 closes three recording/review gaps: provider inputs consume frozen evidence,
+new review contracts enforce claims/caveats/triage audits, and stable child operations inherit
+their parent's completion policy. Already-dispatched workers retain their original contract.
+No additional review stage is introduced; live-ticket token/time savings remain unmeasured.
 
 `next-task → ticket → implementation/validation → review-and-merge → shared record`.
 `finalize` resumes that same sequence at its first incomplete stage. Superpowers/feature-dev

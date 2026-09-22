@@ -23,12 +23,15 @@ assert_has "merge re-fetches the authoritative ticket, not only PR state" \
   plugins/notion-dev/skills/review-and-merge/SKILL.md 'Re-fetch the authoritative ticket and refresh its source file'
 # The legacy copies were moved wholesale and kept their internal links, so every one
 # loaded the LEAN contract. That is not a broken link: `prepare` omits `result_contract`
-# for schema 1/2 (`contract_version = 1 if state["schema"] >= 3 else None`) while the lean
+# for schema 1/2 (contract_version is None) while the lean
 # protocol tells the worker its `result_contract` is authoritative, so a supported
 # resumption dispatched workers against a contract their packet does not contain.
 for f in plugins/notion-dev/references/legacy/*.md; do
   assert_lacks "$f loads the legacy runtime contract, never the lean one" "$f" '${CLAUDE_PLUGIN_ROOT}/references/runtime.md'
 done
 assert_has "the lean contract is schema-gated, so legacy packets carry none" \
-  plugins/notion-dev/scripts/runtime.py 'contract_version = 1 if state["schema"] >= 3 else None'
+  plugins/notion-dev/scripts/runtime.py 'contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 3 else None'
+assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 2'
+assert_has "recording consumes frozen input" plugins/notion-dev/references/record.md 'record-input'
+assert_has "child identity is a published contract" plugins/notion-dev/references/record.md ':child:'
 exit $(( fails > 0 ))
