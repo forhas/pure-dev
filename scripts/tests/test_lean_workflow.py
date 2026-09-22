@@ -1,4 +1,5 @@
 """Generic offline regressions for the lean path; no client data or provider writes."""
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 import subprocess
 import sys
@@ -337,6 +338,43 @@ class LeanTests(unittest.TestCase):
                     actual = subprocess.run([runtime.bash_exe(), "-c", command, "--",
                         (ROOT / "scripts/lib/assert.sh").as_posix(), candidate.as_posix(), fragment], capture_output=True)
                     self.assertEqual(actual.returncode, expected, (name, fragment, actual.stderr.decode("utf-8")))
+
+    def test_runtime_guards_fail_under_isolated_mutation(self):
+        # Mutate in memory, in independent temporary fixtures; never restore source
+        # with checkout/reset over someone's working changes.
+        original_record = runtime.Runtime.record_op
+        original_verify = workflow.Runtime.verify
+
+        def unchecked_record(instance, *args, **kwargs):
+            with instance.transaction() as state:
+                state["schema"] = 2  # bypass new-run replay guards deliberately
+            return original_record(instance, *args, **kwargs)
+
+        def no_reuse(instance, *args, **kwargs):
+            kwargs["reuse"] = False
+            return original_verify(instance, *args, **kwargs)
+
+        cases = [
+            ("test_report_only_result_repairs_in_same_worker_without_redispatch",
+             [patch.object(runtime, "validate_result", return_value=None),
+              patch.object(runtime, "render_result", side_effect=lambda worker, result: result)]),
+            ("test_second_waiter_is_refused", [patch.object(runtime, "state_lock", side_effect=lambda *args: nullcontext())]),
+            ("test_record_plan_skips_confirmed_and_reconciles_unknown_without_side_effects",
+             [patch.object(runtime.Runtime, "record_op", unchecked_record)]),
+            ("test_config_verification_reuses_receipts_and_invalidates_changed_code",
+             [patch.object(workflow.Runtime, "verify", no_reuse)]),
+            ("test_new_gate_requires_parent_acceptance_and_rejects_source_drift",
+             [patch.object(runtime.Runtime, "merge_gate", return_value={"passed": True})])]
+        for name, mutations in cases:
+            with self.subTest(mutation=name):
+                case = LeanTests(name)
+                try:
+                    case.setUp()
+                    with ExitStack() as stack:
+                        for mutation in mutations: stack.enter_context(mutation)
+                        with self.assertRaises(AssertionError): getattr(case, name)()
+                finally:
+                    case.doCleanups()
 
 
 if __name__ == "__main__":
