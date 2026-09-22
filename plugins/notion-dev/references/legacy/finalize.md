@@ -31,7 +31,7 @@ Flag parsing: if the arguments contain `--non-interactive`, remove it and set **
 
 ## Phase 1 — Resolve
 
-**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/runtime.md`. When Phase 1 resolves the ticket, resume its recorded `runtime_state` or initialize a new invocation's `RUNTIME_STATE`; pass it to reviewing/recording skills and record phase transitions. For an open PR, establish full-source requirements/readiness before Phase 2. On the already-`MERGED` recovery path, record missing historical evidence honestly without trying to apply a retroactive merge gate. Run configured verification through the measured runtime runner. A protocol-authorized asynchronous yield is unfinished work, not a completion report.
+**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`. When Phase 1 resolves the ticket, resume its recorded `runtime_state` or initialize a new invocation's `RUNTIME_STATE`; pass it to reviewing/recording skills and record phase transitions. For an open PR, establish full-source requirements/readiness before Phase 2. On the already-`MERGED` recovery path, record missing historical evidence honestly without trying to apply a retroactive merge gate. Run configured verification through the measured runtime runner. A protocol-authorized asynchronous yield is unfinished work, not a completion report.
 
 Before anything else — record `RUN_START` = `date -u +%FT%TZ`. (`REPO_ROOT` was already recorded at the preconditions gate, before the first config read.)
 

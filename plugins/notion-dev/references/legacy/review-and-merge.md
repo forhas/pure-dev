@@ -26,7 +26,7 @@ All GitHub interaction uses the `gh` CLI against the current repository. Run `gh
 
 ## Runtime and mandatory completion
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/runtime.md` and use the caller's `RUNTIME_STATE`; initialize it for standalone use from the supplied authoritative intent/spec. Before review, establish the whole-source requirement inventory and run `ready`. All worker dispatches use prepare/attach/wait/consume. Record stage transitions and measured verification. The protocol's final `merge-gate` is mandatory and overrides any legacy permission to merge with unmet requirements, unavailable completeness, or an unconsumed verdict. A runtime-authorized wait/yield is unfinished work, not an abandonment or completion report.
+Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md` and use the caller's `RUNTIME_STATE`; initialize it for standalone use from the supplied authoritative intent/spec. Before review, establish the whole-source requirement inventory and run `ready`. All worker dispatches use prepare/attach/wait/consume. Record stage transitions and measured verification. The protocol's final `merge-gate` is mandatory and overrides any legacy permission to merge with unmet requirements, unavailable completeness, or an unconsumed verdict. A runtime-authorized wait/yield is unfinished work, not an abandonment or completion report.
 
 ## Reviewer
 
@@ -945,7 +945,7 @@ the `notion-dev:local-code-review` rubric on that exact before/after patch and i
 affected callers/tests. This is an explicit additional task, not an implication of
 reading the full PR diff for completeness. Do not spawn another reviewer. Read the
 manifest/patch by path, retrieve relevant code on demand, and return the separate
-`correction_review` object specified in `references/runtime.md`, in addition to all
+`correction_review` object specified in `references/legacy/runtime.md`, in addition to all
 three charges and every requirement verdict. A broad or uncertain correction cannot
 receive `clean`; stop/escalate within the existing full/delta budgets. The first full
 worker can perform this task with **no previous completeness receipt**.
@@ -1326,7 +1326,7 @@ a completed review. Before a corrective code edit or rebase, register `correctio
 on the clean committed tree as above (an existing obligation keeps its original baseline).
 After committing the correction and running applicable validation,
 prepare a fresh independent completeness worker with `--previous <latest-accepted-worker>`
-under `references/runtime.md`. This is the **delta path**, not another full pass. Use it
+under `references/legacy/runtime.md`. This is the **delta path**, not another full pass. Use it
 for a bounded follow-up even if the two full passes are spent. It consumes one of **two
 delta attempts per invocation**, including failed attempts. Never reset the invocation
 or select an older baseline to replenish that budget.

@@ -53,7 +53,7 @@ Flag parsing (modeled on quick-dev's `develop` skill):
 
 ## Phase 1 — Fetch and clarify
 
-**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/runtime.md`. After 1.1 resolves the ticket, initialize or resume `RUNTIME_STATE`, preserve its path as `runtime_state` in the run marker, and pass it through all invoked notion-dev skills. Record phase transitions and run configured verification through its measured runner. A runtime-authorized asynchronous wait/yield is a narrow exception to continuous execution: it is unfinished work, never a final completion report.
+**Runtime lifecycle.** Read `${CLAUDE_PLUGIN_ROOT}/references/legacy/runtime.md`. After 1.1 resolves the ticket, initialize or resume `RUNTIME_STATE`, preserve its path as `runtime_state` in the run marker, and pass it through all invoked notion-dev skills. Record phase transitions and run configured verification through its measured runner. A runtime-authorized asynchronous wait/yield is a narrow exception to continuous execution: it is unfinished work, never a final completion report.
 
 ### 1.1 Fetch the ticket
 
@@ -157,7 +157,7 @@ Ask yourself: do I understand the goal, scope, and acceptance criteria well enou
 
 This gate is **blocking**. Do not proceed to planning until the requirement is unambiguous.
 
-**Whole-ticket readiness gate.** Record the full source and requirement inventory per `references/runtime.md`, including prerequisites outside Acceptance Criteria. Run `runtime.py --state "$RUNTIME_STATE" ready` before Phase 2 or any resumed implementation. Any unmet mandatory prerequisite or unknown authorization stops the run, even when other criteria are buildable; name the condition and what would clear it. Use the existing stop/marker-retirement path. A new resource bound must explicitly account for success, timeout, rejection and still-running work when applicable.
+**Whole-ticket readiness gate.** Record the full source and requirement inventory per `references/legacy/runtime.md`, including prerequisites outside Acceptance Criteria. Run `runtime.py --state "$RUNTIME_STATE" ready` before Phase 2 or any resumed implementation. Any unmet mandatory prerequisite or unknown authorization stops the run, even when other criteria are buildable; name the condition and what would clear it. Use the existing stop/marker-retirement path. A new resource bound must explicitly account for success, timeout, rejection and still-running work when applicable.
 
 Non-interactive mode: if severely under-spec, stop and report — never guess requirements. Interpret implementation details only within the authorized requirement, recording the decision. Never self-answer customer sign-off, override an explicit ordering prerequisite, or weaken an ambiguous acceptance standard to pass readiness.
 
@@ -309,7 +309,7 @@ Blocking when it runs. Do not implement without approval. When `PLAN-REVIEW: blo
 State the explicit deviations from stock superpowers when invoking, so the flows do not fight: skip `superpowers:using-git-worktrees` (Phase 2 already made the worktree); the end-of-branch review that `subagent-driven-development`/`finishing-a-development-branch` would normally run is not a substitute for Phase 7's review loop, which runs identically for both build flows.
 
 **Runtime adapter — both build flows.** Before delegating to either feature-dev or
-superpowers, pass the worker lifecycle from `references/runtime.md` through to every
+superpowers, pass the worker lifecycle from `references/legacy/runtime.md` through to every
 actual dispatch: `scout` for exploration, `plan` for architecture, `implementation`
 (stable `--slot <task-or-seat-id>` for disjoint parallel tasks),
 `local-review` for task review, and `branch-review` for the whole-branch review. Prepare

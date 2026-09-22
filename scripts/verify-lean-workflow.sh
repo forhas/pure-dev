@@ -21,4 +21,14 @@ assert_has "record uses operation planning" plugins/notion-dev/references/record
 # legacy flow carried the rule; the lean rewrite dropped it.
 assert_has "merge re-fetches the authoritative ticket, not only PR state" \
   plugins/notion-dev/skills/review-and-merge/SKILL.md 'Re-fetch the authoritative ticket and refresh its source file'
+# The legacy copies were moved wholesale and kept their internal links, so every one
+# loaded the LEAN contract. That is not a broken link: `prepare` omits `result_contract`
+# for schema 1/2 (`contract_version = 1 if state["schema"] >= 3 else None`) while the lean
+# protocol tells the worker its `result_contract` is authoritative, so a supported
+# resumption dispatched workers against a contract their packet does not contain.
+for f in plugins/notion-dev/references/legacy/*.md; do
+  assert_lacks "$f loads the legacy runtime contract, never the lean one" "$f" '${CLAUDE_PLUGIN_ROOT}/references/runtime.md'
+done
+assert_has "the lean contract is schema-gated, so legacy packets carry none" \
+  plugins/notion-dev/scripts/runtime.py 'contract_version = 1 if state["schema"] >= 3 else None'
 exit $(( fails > 0 ))
