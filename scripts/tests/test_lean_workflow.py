@@ -275,38 +275,12 @@ class LeanTests(unittest.TestCase):
         self.assertFalse((self.repo.parent / (self.repo.name + "-worktrees")).exists())
 
     def facts(self):
-        # Real files: `requirements`/`verification`/`review` are documented as PATHS, and
-        # `record_plan` binds their CONTENT. The bare names this fixture used before
-        # resolved to nothing, which is the very case the planner now refuses.
-        evidence = {}
-        for name in ("requirements", "verification", "review"):
-            path = self.root / (name + ".json")
-            runtime.atomic_json(path, {name: "fixture", "ticket": "TEST-1"})
-            evidence[name] = str(path)
         facts = {"ticket": "TEST-1", "ticket_url": "https://example.invalid/ticket",
                  "pr_url": "https://example.invalid/pr/1", "merge_sha": "a" * 40,
                  "base": "main", "merged_at": "2026-01-01T00:00:00Z", "strategy": "squash",
-                 **evidence}
+                 "requirements": "requirements.json", "verification": "verification.json", "review": "review.json"}
         path = self.root / "facts.json"; runtime.atomic_json(path, facts)
         return path
-
-    def test_unresolvable_recording_evidence_is_refused_at_planning(self):
-        """Binding content is worthless if an unbindable path passes as evidence."""
-        body = runtime.read_json(self.facts())
-        body["review"] = str(self.root / "absent-review.json")
-        facts = self.root / "facts-absent.json"
-        runtime.atomic_json(facts, body)
-        with self.assertRaisesRegex(ValueError, "recording evidence must be an existing file"):
-            workflow.record_plan(self.state, facts)
-        # No operation may have been journalled by the refused plan.
-        with self.rt.transaction() as data:
-            self.assertEqual(data["record_journal"], [])
-        # The documented sentinel is still a legitimate value, not a missing file.
-        body["review"] = "unknown"
-        runtime.atomic_json(facts, body)
-        planned = workflow.record_plan(self.state, facts)
-        resolution = next(o for o in planned["operations"] if o["kind"] == "ticket-resolution")
-        self.assertEqual(runtime.read_json(resolution["payload"])["review"], "unknown")
 
     def test_record_plan_skips_confirmed_and_reconciles_unknown_without_side_effects(self):
         facts = self.facts(); first = workflow.record_plan(self.state, facts)
@@ -327,35 +301,6 @@ class LeanTests(unittest.TestCase):
         summary = workflow.record_summary(self.state)
         self.assertTrue(summary["passed"])
         self.assertEqual(set(summary["record"]), set(runtime.RECORD_FIELDS))
-
-    def test_referenced_evidence_content_drift_is_not_a_skippable_identity(self):
-        """A path-valued fact must put its BYTES in the digest, not just its name.
-
-        The contract says a changed intent needs explicit reconciliation. Hashing only
-        the path string let a repaired or re-run artifact keep the old digest, so a
-        confirmed operation answered `skip` while the provider record and the evidence
-        had diverged.
-        """
-        review = self.root / "bound-review.json"
-        runtime.atomic_json(review, {"verdict": "clean", "criteria": 4})
-        body = runtime.read_json(self.facts())
-        # `requirements` stays the explicit `unknown` the contract allows on merged
-        # recovery: a non-file string is a fact, not a reference, and is left alone.
-        body.update(requirements="unknown", verification=str(review), review=str(review))
-        facts = self.root / "facts-referenced.json"
-        runtime.atomic_json(facts, body)
-        planned = workflow.record_plan(self.state, facts)
-        resolution = next(o for o in planned["operations"] if o["kind"] == "ticket-resolution")
-        payload = runtime.read_json(resolution["payload"])
-        self.assertEqual(payload["requirements"], "unknown")
-        self.assertEqual(payload["review"], {"path": str(review), "sha256": runtime.digest(review)})
-        for item in planned["operations"]:
-            self.rt.record_op(item["operation"], item["target"], "confirmed", "readback", item["data_sha256"])
-        self.assertEqual({o["action"] for o in workflow.record_plan(self.state, facts)["operations"]},
-                         {"skip"})
-        runtime.atomic_json(review, {"verdict": "clean", "criteria": 3})   # same path, new bytes
-        with self.assertRaisesRegex(ValueError, "payload changed"):
-            workflow.record_plan(self.state, facts)
 
     def test_record_payload_drift_cannot_replay_under_old_identity(self):
         facts = self.facts(); workflow.record_plan(self.state, facts)

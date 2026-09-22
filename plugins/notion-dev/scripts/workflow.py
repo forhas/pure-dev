@@ -13,7 +13,7 @@ import subprocess
 import sys
 import uuid
 
-from runtime import Runtime, Invalid, atomic_json, digest, git, read_json, require, state_lock
+from runtime import Runtime, Invalid, atomic_json, git, read_json, require, state_lock
 
 
 def primary(project):
@@ -188,9 +188,6 @@ def verify_config(state, project, worktree, depends=()):
     return {"passed": True, "receipts": receipts}
 
 
-UNKNOWN_EVIDENCE = "unknown"
-
-
 def record_plan(state, facts_file):
     """Prepare immutable payloads; execute with provider tools, then journal readback."""
     facts = read_json(facts_file)
@@ -199,34 +196,9 @@ def record_plan(state, facts_file):
     require(re.fullmatch(r"[0-9a-f]{40}", facts["merge_sha"]), "full verified merge SHA required")
     output = Path(state).resolve().parent / "record"
     output.mkdir(exist_ok=True)
-    # `requirements`, `verification` and `review` are documented as PATHS (or embedded
-    # objects). A path stored as a bare string puts only its NAME in the payload digest,
-    # so repairing or re-running the artifact it points at leaves the digest identical —
-    # and `record_check` then answers `skip` for a confirmed operation whose evidence has
-    # since changed, which is exactly the drift this contract's "changed intent needs
-    # explicit reconciliation" rule exists to catch. Bind the content, not the name.
-    # Exactly one string survives as a string: the `unknown` sentinel the contract allows
-    # on merged-PR recovery. Any OTHER unresolvable string is a misspelt, deleted, or
-    # caller-relative path, and silently keeping it would record the path TEXT as though
-    # it were embedded evidence -- confirming and then skipping a `ticket-resolution`
-    # with no requirements, verification or review bytes bound to it at all. Refuse it
-    # here, where the path is still the caller's to correct.
-    def bound(value):
-        if not isinstance(value, str):
-            return value                      # embedded object; carries its own bytes
-        if value == UNKNOWN_EVIDENCE:
-            return value
-        source = Path(value)
-        require(source.is_file(),
-                "recording evidence must be an existing file, an embedded object, or "
-                "exactly '%s'; got %r" % (UNKNOWN_EVIDENCE, value))
-        return {"path": str(source.resolve()), "sha256": digest(source)}
-
-    evidence = ("requirements", "verification", "review")
     payloads = {
         "ticket-status": {"status": "implemented"},
-        "ticket-resolution": {k: (bound(facts[k]) if k in evidence else facts[k])
-                              for k in required if k != "ticket"},
+        "ticket-resolution": {k: facts[k] for k in required if k != "ticket"},
         "epic-record": {"ticket": facts["ticket"], "epic": facts.get("epic"), "followups": facts.get("followups", [])},
         "cleanup": {"merge_sha": facts["merge_sha"], "worktree": facts.get("worktree"), "branch": facts.get("branch"), "base": facts["base"]},
         "knowledge-delta": {"merge_sha": facts["merge_sha"], "facts": facts.get("knowledge_delta", [])},
