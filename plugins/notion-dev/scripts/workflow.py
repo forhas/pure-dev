@@ -110,7 +110,13 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
         require(Runtime(runtime_path).ready()["passed"], "requirements/readiness must pass before claiming")
         if not old:
             require(not worktree.exists(), "existing unowned worktree; inspect rather than overwrite")
-            base = config["git"]["baseBranch"]
+            # The branch the PR will actually target, which is what the implementation
+            # must be written and tested against. Every other consumer in this plugin
+            # already reads it this way -- `commands/ticket.md`, `epic-doc`, `knowledge`,
+            # `create-task` -- and the legacy flow states the reason outright: with the
+            # two differing, `baseBranch` alone "would misstate the PR's contents". The
+            # lean flow has no unconditional pre-implementation sync to catch it later.
+            base = config["git"].get("prTargetBranch") or config["git"]["baseBranch"]
             git(root, "fetch", "origin")
             git(root, "worktree", "add", str(worktree), "origin/" + base, "-b", branch)
         else:

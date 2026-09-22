@@ -247,6 +247,27 @@ class LeanTests(unittest.TestCase):
         self.assertEqual(resumed["runtime"], str(self.state))
         self.assertEqual(runtime.read_json(resumed["marker"])["phase"], "record")
 
+    def test_a_fresh_worktree_branches_from_the_configured_pr_target(self):
+        """`prTargetBranch` is what the PR targets, so it is what work is built on."""
+        value = self.config()
+        value["git"]["prTargetBranch"] = "epic/TEST"
+        runtime.atomic_json(self.repo / ".claude/notion-dev.config.json", value)
+        self.run_git("branch", "-M", "main")
+        # A commit that exists on the PR target and NOT on baseBranch: branching from
+        # the wrong one is then visible as a missing file rather than as a subtle diff.
+        self.run_git("checkout", "-q", "-b", "epic/TEST")
+        (self.repo / "target-only.txt").write_text("only on the PR target\n", encoding="utf-8")
+        self.run_git("add", "target-only.txt")
+        self.run_git("commit", "-qm", "target-only change")
+        self.run_git("checkout", "-q", "main")
+        remote = self.root / "target-origin.git"
+        subprocess.run(["git", "clone", "--bare", str(self.repo), str(remote)],
+                       check=True, capture_output=True)
+        self.run_git("remote", "add", "origin", str(remote))
+        pending = workflow.preflight(self.repo, "host", True)
+        claimed = workflow.claim(self.repo, pending["marker"], "TEST-1", "TEST-1", self.state)
+        self.assertTrue((Path(claimed["worktree"]) / "target-only.txt").is_file())
+
     def test_claim_rejects_wrong_ticket_before_git_side_effects(self):
         self.config(); pending = workflow.preflight(self.repo, "host", True)
         with self.assertRaisesRegex(ValueError, "another ticket"):
