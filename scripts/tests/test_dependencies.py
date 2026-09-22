@@ -126,7 +126,7 @@ class DependencyTests(unittest.TestCase):
         prefix = 'fails=0; ok() { :; }; bad() { fails=$((fails + 1)); }; . "$1"; '
         command = prefix + 'assert_has contract "$2" "$3"; test "$fails" -eq 0'
         candidate = self.root / "command.md"
-        contracts = [("commands/" + name + ".md", "references/dependencies.md")
+        contracts = [(("commands/" if name == "init" else "references/legacy/") + name + ".md", "references/dependencies.md")
                      for name in ("init", "ticket", "next-task", "finalize")]
         contracts += [("commands/init.md", "**confirmed not installed**"),
                       ("references/dependencies.md", "**Never reinstall over an explicit `false`**"),

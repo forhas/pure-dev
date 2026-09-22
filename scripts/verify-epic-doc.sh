@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Epic docs — the per-epic markdown brief and /notion-dev:next-task.
 #
 # Spec: docs/superpowers/specs/2026-09-13-epic-doc-design.md
@@ -27,10 +28,10 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 ND=plugins/notion-dev
 ED=$ND/skills/epic-doc/SKILL.md
-NT=$ND/commands/next-task.md
-TICKET=$ND/commands/ticket.md
-RECORD=$ND/references/record.md
-FINALIZE=$ND/commands/finalize.md
+NT=$ND/references/legacy/next-task.md
+TICKET=$ND/references/legacy/ticket.md
+RECORD=$ND/references/legacy/record.md
+FINALIZE=$ND/references/legacy/finalize.md
 TS=$ND/skills/ticket-system/SKILL.md
 TSREAD=$ND/skills/ticket-system/references/read-ops.md
 SIG=$ND/skills/issue-log/references/signatures.md

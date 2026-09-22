@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Standing-invariant checks for notion-dev's Notion adapter and the worktree
 # layout its commands depend on.
 #
@@ -25,8 +26,8 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 TS=plugins/notion-dev/skills/ticket-system/SKILL.md
 TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
-TICKET=plugins/notion-dev/commands/ticket.md
-FINALIZE=plugins/notion-dev/commands/finalize.md
+TICKET=plugins/notion-dev/references/legacy/ticket.md
+FINALIZE=plugins/notion-dev/references/legacy/finalize.md
 
 echo "== the ID read back off the page is normalized =="
 
@@ -102,7 +103,7 @@ echo "== a Codex summary comment is not a response until it reads Completed =="
 # watches only for a new comment from that author fires on the placeholder and
 # merges before the review exists. Observed live on two scratch pull requests.
 RAM_DOCS="plugins/quick-dev/skills/review-and-merge/SKILL.md
-plugins/notion-dev/skills/review-and-merge/SKILL.md
+plugins/notion-dev/references/legacy/review-and-merge.md
 .claude/skills/review-and-merge/SKILL.md"
 for f in $RAM_DOCS; do
   if [ ! -f "$f" ]; then bad "$f is missing"; continue; fi

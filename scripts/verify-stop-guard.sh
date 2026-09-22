@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # notion-dev's Stop guard — behavioural, not prose.
 #
 # The rule "a --non-interactive run never hands back" shipped as prose in 0.28.1
@@ -526,7 +527,7 @@ echo "== ticket.md writes and retires the preflight marker =="
 # marker or stop writing one. That contract lives in the command, and a
 # retirement it skips is worse than the gap: the guard then refuses a stop the
 # command itself ordered.
-TK=plugins/notion-dev/commands/ticket.md
+TK=plugins/notion-dev/references/legacy/ticket.md
 TKL=$(total_lines "$TK")
 PRE=$(find_line "$TK" 1 "$TKL" '^## Preconditions$')
 P11=$(find_line "$TK" 1 "$TKL" '^### 1\.1 ')

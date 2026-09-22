@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # The mechanisms the client issue logs forced into these plugins.
 #
 # `notion-dev:issue-log` writes a runtime deviation into every client repo at the
@@ -110,13 +111,15 @@ done
 # above guard a branch the control flow never reaches.
 for S in plugins/*/skills/plan-review/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  L=$(total_lines "$S")
   assert_present "$n plan-review: the degradation trigger names returning nothing at all" \
     "$S" 1 "$L" 'If the agent fails, returns nothing at all, or its output is unusable'
 done
 for S in plugins/*/skills/flow-triage/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  L=$(total_lines "$S")
   assert_present "$n flow-triage: the scout retry trigger names returning nothing at all" \
     "$S" 1 "$L" 'If the scout fails, returns nothing at all, or its output lacks'
 done
@@ -130,7 +133,8 @@ done
 # well-evidenced ticket into the gray zone on a technicality.
 for S in plugins/*/skills/flow-triage/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  L=$(total_lines "$S")
   echo "== $n flow-triage — scout failure with findings in hand =="
 
   assert_present "$n flow-triage: a scout failure with findings in hand is a distinct case" \
@@ -175,7 +179,9 @@ rm_sites=0
 for S in plugins/*/skills/review-and-merge/SKILL.md; do
   [ -f "$S" ] || continue
   rm_sites=$((rm_sites + 1))
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  [ "$n" != notion-dev ] || S=plugins/notion-dev/references/legacy/review-and-merge.md
+  L=$(total_lines "$S")
 
   echo "== $n review-and-merge — completeness degradation =="
 
@@ -446,7 +452,7 @@ if [ -f "$TS" ]; then
     "$TSREAD" 1 "$LREAD" 'ticket-key prefixes are$'
 fi
 
-EU=plugins/notion-dev/skills/epic-update/SKILL.md
+EU=plugins/notion-dev/skills/epic-update/references/with-followups.md
 if [ -f "$EU" ]; then
   L=$(total_lines "$EU")
   assert_present "epic-update: step 1a's parse is the reason the escape tolerance matters" \
@@ -462,8 +468,8 @@ fi
 # repo (3 for 3 in one client), not the incidental leftovers case the text named.
 echo "== worktree provisioning =="
 
-T=plugins/notion-dev/commands/ticket.md
-R=plugins/notion-dev/references/record.md
+T=plugins/notion-dev/references/legacy/ticket.md
+R=plugins/notion-dev/references/legacy/record.md
 if [ -f "$T" ]; then
   L=$(total_lines "$T")
 
@@ -515,7 +521,7 @@ if [ -f "$T" ]; then
     "$T" 1 "$L" 'would stop every run before review'
 fi
 
-F=plugins/notion-dev/commands/finalize.md
+F=plugins/notion-dev/references/legacy/finalize.md
 if [ -f "$F" ]; then
   L=$(total_lines "$F")
   assert_present "finalize.md: the submodule refusal is named alongside untracked leftovers" \
@@ -625,7 +631,9 @@ done
 # paths (one replacement then stop; the Degradation path with its charges item).
 for S in plugins/*/skills/review-and-merge/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  [ "$n" != notion-dev ] || S=plugins/notion-dev/references/legacy/review-and-merge.md
+  L=$(total_lines "$S")
   echo "== $n review-and-merge — a seat that never returns =="
 
   # notion-dev's measured async protocol supersedes the old idle/age heuristic.
@@ -661,7 +669,8 @@ done
 # completed four rounds and the pull request merged normally.
 for S in plugins/*/skills/plan-review/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  L=$(total_lines "$S")
   echo "== $n plan-review — control probe and correlated seats =="
 
   # notion-dev's measured async protocol supersedes the old idle/age heuristic.
@@ -702,7 +711,9 @@ done
 # nowhere at the one gate whose mistake cannot be undone.
 for S in plugins/*/skills/review-and-merge/SKILL.md; do
   [ -f "$S" ] || continue
-  n=$(plugin_of "$S"); L=$(total_lines "$S")
+  n=$(plugin_of "$S")
+  [ "$n" != notion-dev ] || S=plugins/notion-dev/references/legacy/review-and-merge.md
+  L=$(total_lines "$S")
   echo "== $n review-and-merge — gate 2 is its own command =="
 
   assert_present "$n review-and-merge: the thread query never shares a shell invocation with the merge" \
@@ -856,7 +867,7 @@ fi
 # as dirty — measured twice in one client. And a stop report is the one record a
 # resume trusts: measured in a client, a deliberate work-preserving stop asserted
 # a worktree, a branch and an 8-task plan were intact when none existed.
-TK=plugins/notion-dev/commands/ticket.md
+TK=plugins/notion-dev/references/legacy/ticket.md
 if [ -f "$TK" ]; then
   L=$(total_lines "$TK")
   echo "== notion-dev ticket — preconditions, gate 1.3, stop report =="

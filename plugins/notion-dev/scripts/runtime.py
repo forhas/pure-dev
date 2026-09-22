@@ -25,8 +25,8 @@ import time
 import uuid
 
 
-SCHEMA = 2
-SCHEMAS = (1, SCHEMA)
+SCHEMA = 3
+SCHEMAS = (1, 2, SCHEMA)
 
 # A delta index is read by a fresh reviewer as its first act, so it is a table of
 # contents, not the material. Lists that do not fit are paged out to a side file and
@@ -35,6 +35,85 @@ INDEX_BYTES = 2048
 PAGE_ITEMS = 50
 
 RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
+RECORD_FIELDS = ("EPIC-REPORT", "TICKET-RECORD", "CLEANUP", "CLEANUP-STEPS",
+                 "HOOKS", "EPIC-DOC-RECORD", "EPIC-DOC-NEXT", "ISSUES")
+
+
+def result_contract(role, items):
+    """One machine-readable contract, supplied to the worker and checked at publication."""
+    contract = {"version": 1, "required": {"report": "nonempty summary string"}}
+    if role == "completeness":
+        contract["required"].update(
+            requirements_complete="boolean: independently checked the whole authoritative source",
+            requirements=[{"id": item["id"], "verdict": "met|not-met|unverified",
+                           "citation": "nonempty evidence reference"} for item in items],
+            blocking_findings="list of unresolved mandatory findings; empty only if none",
+            code_review={"verdict": "clean|findings|unverified", "citation": "code/test evidence"})
+    elif role == "record":
+        contract["required"]["record"] = {field: "nonempty outcome, including skipped reason" for field in RECORD_FIELDS}
+    contract["delivery"] = "Publish this object, repair rejected fields in the same worker, then return only its artifact reference. Never rerun completed work to repair a report."
+    return contract
+
+
+def validate_result(worker, result):
+    require(isinstance(result, dict) and isinstance(result.get("report"), str)
+            and result["report"].strip(), "result requires a nonempty report, not a launch acknowledgement")
+    if not worker.get("contract_version"):
+        return  # In-flight pre-0.36 workers keep their original contract and merge gate.
+    role = worker["role"]
+    if role == "completeness":
+        require(isinstance(result.get("requirements_complete"), bool), "requirements_complete must be boolean")
+        verdicts = result.get("requirements")
+        expected = {item["id"] for item in worker["requirements"]["items"]}
+        require(isinstance(verdicts, list) and all(isinstance(v, dict) for v in verdicts),
+                "requirements must be a list of verdict objects")
+        require(len(verdicts) == len(expected) and {v.get("id") for v in verdicts} == expected,
+                "requirements must cover every inventory ID exactly once")
+        for verdict in verdicts:
+            require(verdict.get("verdict") in {"met", "not-met", "unverified"}
+                    and isinstance(verdict.get("citation"), str) and verdict["citation"].strip(),
+                    "each verdict needs a valid verdict and nonempty citation")
+        require(isinstance(result.get("blocking_findings"), list)
+                and all(isinstance(f, str) and f.strip() for f in result["blocking_findings"]),
+                "blocking_findings must be a list of nonempty strings")
+        review = result.get("code_review")
+        require(isinstance(review, dict) and review.get("verdict") in {"clean", "findings", "unverified"}
+                and isinstance(review.get("citation"), str) and review["citation"].strip(),
+                "code_review requires verdict and evidence citation")
+        if worker.get("correction_manifest"):
+            correction = result.get("correction_review")
+            require(isinstance(correction, dict)
+                    and correction.get("id") == worker["correction"]["id"]
+                    and correction.get("manifest_sha256") == worker["correction_manifest"]["sha256"]
+                    and correction.get("verdict") in {"clean", "findings", "unverified"}
+                    and isinstance(correction.get("blocking_findings"), list)
+                    and isinstance(correction.get("report"), str) and correction["report"].strip(),
+                    "correction_review must cover the exact correction manifest with verdict/report/findings")
+    elif role == "record":
+        fields = result.get("record")
+        require(isinstance(fields, dict) and all(isinstance(fields.get(k), str) and fields[k].strip()
+                for k in RECORD_FIELDS), "record must contain all eight named outcome fields")
+
+
+def render_result(worker, result):
+    """The human report is a view of the same result, never a competing chat contract."""
+    rendered = dict(result)
+    if not worker.get("contract_version"):
+        return rendered
+    if worker["role"] == "record":
+        rendered["report"] = "RECORD:\n" + "\n".join(k + ": " + result["record"][k] for k in RECORD_FIELDS)
+    elif worker["role"] == "completeness":
+        verdicts = {v["id"]: v["verdict"] for v in result["requirements"]}
+        counts = Counter(verdicts[i["id"]] for i in worker["requirements"]["items"] if i["kind"] == "acceptance")
+        clean = (result["requirements_complete"] and not result["blocking_findings"]
+                 and result["code_review"]["verdict"] == "clean" and all(v == "met" for v in verdicts.values()))
+        header = ["COMPLETENESS: " + ("clean" if clean else "blocked"),
+                  "CRITERIA-TOTAL: " + str(sum(counts.values())), "CRITERIA-MET: " + str(counts["met"]),
+                  "CRITERIA-NOT-MET: " + str(counts["not-met"]), "CRITERIA-UNVERIFIED: " + str(counts["unverified"])]
+        narrative = re.sub(r"^(?:COMPLETENESS|CRITERIA-(?:TOTAL|MET|NOT-MET|UNVERIFIED)):[^\r\n]*\r?\n?",
+                           "", result["report"], flags=re.M)
+        rendered["report"] = "\n".join(header) + "\n" + narrative
+    return rendered
 
 
 class Invalid(ValueError):
@@ -261,7 +340,7 @@ class Runtime:
         with state_lock(self.path.with_suffix(".lock"), self.lock_timeout):
             if self.path.exists():
                 state = read_json(self.path)
-                # Schema 1 runs stay schema 1: an in-flight invocation is never force-
+                # Schema 1/2 runs retain their schema: an in-flight invocation is never force-
                 # rewritten into the new version. The additive records below are read
                 # through `setdefault`, so a schema 1 state gains them only when this
                 # runtime actually writes one, and an old binary still accepts it.
@@ -399,6 +478,9 @@ class Runtime:
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
+            if role == "completeness" and not previous and state["schema"] >= 3:
+                require(sum(w["role"] == role and not w.get("previous") for w in state["workers"].values()) < 2,
+                        "full completeness attempt budget exhausted; preserve unresolved work and escalate")
             # CONSUMPTION IS NOT ACCEPTANCE, and conflating them reopened the exact race
             # this protocol exists to close. A contract-invalid report must be consumed
             # BEFORE it can be judged -- `end_worker(--invalid-result)` is itself gated on
@@ -437,6 +519,9 @@ class Runtime:
             packet = {"worker": key, "role": role, "slot": slot, "revision": current,
                       "inputs": snapshots, "requirements": {"path": str(inventory_path),
                       "sha256": digest(inventory_path)}}
+            contract_version = 1 if state["schema"] >= 3 else None
+            if contract_version:
+                packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []))
             if baseline is not None:
                 delta_path = directory / "delta.json"
                 # `indent=None`: this one file is budgeted, and `bound_index` measured
@@ -445,6 +530,11 @@ class Runtime:
                 atomic_json(delta_path, index, indent=None)
                 packet["delta"] = {"path": str(delta_path), "sha256": digest(delta_path),
                                    "bytes": delta_path.stat().st_size}
+                if contract_version:
+                    packet["result_contract"]["required"]["delta_review"] = {
+                        "previous": previous, "manifest_sha256": packet["delta"]["sha256"],
+                        "checked_requirement_ids": [i["id"] for i in state["requirements"]["items"]],
+                        "disposition": "sufficient|full-review-required"}
             if correction_manifest is not None:
                 patch_path = directory / "correction.patch"
                 patch_path.write_bytes(correction_manifest.pop("patch"))
@@ -453,12 +543,18 @@ class Runtime:
                 manifest_path = directory / "correction.json"
                 atomic_json(manifest_path, correction_manifest)
                 packet["correction_manifest"] = {"path": str(manifest_path), "sha256": digest(manifest_path)}
+                if contract_version:
+                    packet["result_contract"]["required"]["correction_review"] = {
+                        "id": correction["id"], "manifest_sha256": digest(manifest_path),
+                        "verdict": "clean|findings|unverified", "blocking_findings": [],
+                        "report": "VERDICT: CLEAN only after independently reviewing the correction patch"}
             packet_path = directory / "context.json"
             atomic_json(packet_path, packet)
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
                       "started": self.clock.stamp(), "timeout_seconds": timeout,
                       "files": snapshots, "revision": current, "result": None,
                       "terminated": False, "accepted": False,
+                      "contract_version": contract_version,
                       "requirements": state["requirements"], "slot": slot,
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
                       "inventory_snapshot": packet["requirements"], "previous": previous,
@@ -470,6 +566,35 @@ class Runtime:
                        delta_bytes=(packet.get("delta") or {}).get("bytes"))
         return {"worker": key, "state": str(self.path), "role": role,
                 "timeout_seconds": timeout, "revision": current, "packet": str(packet_path)}
+
+    def question(self, key, text):
+        require(isinstance(text, str) and text.strip(), "question text required")
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(worker["status"] in {"pending", "running"} and not worker["terminated"],
+                    "only a live worker can ask a question")
+            require(not worker.get("question") or worker["question"].get("answer"),
+                    "answer the outstanding question before asking another")
+            worker["question"] = {"id": uuid.uuid4().hex, "text": text, "asked": self.clock.stamp(), "answer": None}
+            self.event(state, "worker_question", worker=key, question=worker["question"]["id"])
+            return worker["question"]
+
+    def answer(self, key, question, text):
+        require(isinstance(text, str) and text.strip(), "answer text required")
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            pending = worker.get("question")
+            require(pending and pending["id"] == question, "answer must name the current question")
+            require(not worker["terminated"] and worker["result"] is None, "worker already finished")
+            if pending.get("answer"):
+                require(pending["answer"] == text, "answer is immutable")
+                return pending
+            duration = elapsed(pending["asked"], self.clock.stamp())
+            require(duration is not None, "clock changed while awaiting answer; reconcile before resuming")
+            worker["paused_seconds"] = worker.get("paused_seconds", 0) + duration
+            pending["answer"] = text
+            self.event(state, "worker_answer", worker=key, question=question, paused_seconds=duration)
+            return pending
 
     def delta_baseline(self, state, previous, current):
         baseline = self.worker(state, previous)
@@ -761,6 +886,10 @@ class Runtime:
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(not worker["terminated"], "worker was confirmed terminated; reconcile late output explicitly")
+            require(not worker.get("question") or worker["question"].get("answer"),
+                    "answer the outstanding question before publication")
+            validate_result(worker, result)
+            result = render_result(worker, result)
             self.validate_packet(worker)
             self.validate_delta(worker, result)
             if worker["result"] is not None:
@@ -781,22 +910,33 @@ class Runtime:
         with self.transaction() as state:
             worker = self.worker(state, key)
             duration = elapsed(worker["started"], self.clock.stamp())
-            if worker["status"] in {"pending", "running"} and duration is not None and duration >= worker["timeout_seconds"]:
+            if duration is not None:
+                duration = max(0, duration - worker.get("paused_seconds", 0))
+            question = worker.get("question")
+            needs_input = question and not question.get("answer")
+            if not needs_input and worker["status"] in {"pending", "running"} and duration is not None and duration >= worker["timeout_seconds"]:
                 worker["status"] = "timed_out"
                 self.event(state, "worker_timed_out", worker=key)
-            return {"worker": key, "status": worker["status"], "elapsed_seconds": duration,
+            return {"worker": key, "status": "needs_input" if needs_input and not worker["terminated"] else worker["status"], "elapsed_seconds": duration,
+                    "question": question,
                     "clock_uncertain": duration is None, "terminated": worker["terminated"],
                     "accepted": worker.get("accepted", False),
                     "result_available": worker["result"] is not None}
 
     def wait(self, key, seconds=30):
         require(math.isfinite(seconds) and 0 <= seconds <= 60, "one wait must be between 0 and 60 seconds")
-        deadline = time.monotonic() + seconds
-        while True:
-            result = self.inspect(key)
-            if result["clock_uncertain"] or result["status"] not in {"pending", "running"} or time.monotonic() >= deadline:
-                return result
-            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        # A second shell waiter fails quickly instead of multiplying background jobs.
+        with self.transaction() as state:
+            self.worker(state, key)
+        with state_lock(self.path.parent / ("worker-" + key + ".wait.lock"), 0.05):
+            with self.transaction() as state:
+                self.event(state, "worker_wait", worker=key, seconds=seconds)
+            deadline = time.monotonic() + seconds
+            while True:
+                result = self.inspect(key)
+                if result["clock_uncertain"] or result["status"] not in {"pending", "running"} or time.monotonic() >= deadline:
+                    return result
+                time.sleep(min(0.25, max(0, deadline - time.monotonic())))
 
     def consume(self, key):
         with self.transaction() as state:
@@ -825,6 +965,7 @@ class Runtime:
                     "a confirmed-terminated worker's result is not acceptable")
             require(worker["status"] == "consumed",
                     "consume the result before accepting it")
+            validate_result(worker, worker["result"])
             if not worker["accepted"]:
                 worker["accepted"] = True
                 self.event(state, "worker_result_accepted", worker=key, role=worker["role"])
@@ -1012,6 +1153,12 @@ class Runtime:
                 if source.get("snapshot") and digest(source["snapshot"]) != source["sha256"]:
                     reasons.append(f"review snapshot changed: {name}")
             result = worker["result"] or {}
+            if worker.get("contract_version"):
+                if not worker.get("accepted"):
+                    reasons.append("parent has not accepted the independent result")
+                validate_result(worker, result) if result else None
+                if result.get("code_review", {}).get("verdict") != "clean":
+                    reasons.append("independent code-quality review is not clean")
             if not self.correction_reviewed(state, worker, result):
                 reasons.append("corrective code needs an independent clean correction review of the exact manifest")
             if worker.get("previous"):
@@ -1239,10 +1386,44 @@ class Runtime:
                  "provider_id": provider_id, "data_sha256": data_sha256,
                  **self.clock.stamp()}
         with self.transaction() as state:
+            if state["schema"] >= 3:
+                previous = [e for e in state["record_journal"] if e["operation"] == operation]
+                if previous:
+                    latest = previous[-1]
+                    require(latest["target"] == target and latest.get("data_sha256") == data_sha256,
+                            "record outcome must preserve planned target and payload digest")
+                    require(latest["outcome"] != "confirmed" or outcome == "confirmed",
+                            "confirmed operation is terminal; do not reset it to replay side effects")
+                    require(outcome != "planned" or latest["outcome"] == "planned",
+                            "an executed operation cannot be reset to planned; reconcile its outcome")
+                    if outcome == "attempted":
+                        require(latest["outcome"] in {"planned", "failed"},
+                                "completed or uncertain operation cannot be blindly retried; reconcile first")
             state.setdefault("record_journal", []).append(entry)
             self.event(state, "record_operation", operation=operation, outcome=outcome,
                        provider_id=provider_id)
         return entry
+
+    def record_check(self, operation, target, payload):
+        """Plan a stable operation or report the reconciliation needed before a retry."""
+        require(operation.strip() and target.strip(), "operation and target required")
+        payload_hash = digest(payload)
+        with self.transaction() as state:
+            previous = [e for e in state["record_journal"] if e["operation"] == operation]
+            if previous:
+                latest = previous[-1]
+                require(latest["target"] == target and latest.get("data_sha256") == payload_hash,
+                        "record operation identity changed; reconcile, then use a new explicit operation revision")
+                action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
+                          if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
+            else:
+                latest = {"operation": operation, "target": target, "data_sha256": payload_hash,
+                          "provider_id": None, "outcome": "planned", **self.clock.stamp()}
+                state["record_journal"].append(latest)
+                self.event(state, "record_operation", operation=operation, outcome="planned")
+                action = "execute"
+            return {"operation": operation, "action": action, "data_sha256": payload_hash,
+                    "provider_id": latest.get("provider_id"), "target": target}
 
     def probe(self, key, expect):
         """Host publication feasibility: did the worker's own bytes survive delivery?
@@ -1331,6 +1512,10 @@ class Runtime:
                         "unaccounted_workers": [w["id"] for w in state["workers"].values()
                                                 if not w["terminated"] and not w.get("accepted")],
                         "verification_reuses": sum(e["kind"] == "verification_reused" for e in state["events"]),
+                        "worker_waits": sum(e["kind"] == "worker_wait" for e in state["events"]),
+                        "worker_questions": sum(e["kind"] == "worker_question" for e in state["events"]),
+                        "question_wait_seconds": sum(e.get("paused_seconds", 0) for e in state["events"]
+                                                     if e["kind"] == "worker_answer"),
                         "evidence_by_worker": evidence,
                         # Attempt counts stay per entry: how many attempts an operation
                         # took is exactly what a journal is for. Only the unconfirmed
@@ -1358,10 +1543,12 @@ def main():
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--previous"); p.add_argument("--slot")
     for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations",
-                 "evidence", "section", "probe", "end-worker", "yield", "merge-gate"):
+                 "evidence", "section", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
         if name == "publish": p.add_argument("--result", required=True)
+        if name in {"question", "answer"}: p.add_argument("--text", required=True)
+        if name == "answer": p.add_argument("--question", required=True)
         if name == "resolve-citations": p.add_argument("--citations", required=True)
         if name == "probe": p.add_argument("--expect", required=True)
         if name == "section":
@@ -1384,6 +1571,9 @@ def main():
     p.add_argument("--operation", required=True); p.add_argument("--target", required=True)
     p.add_argument("--outcome", required=True, choices=RECORD_OUTCOMES)
     p.add_argument("--provider-id"); p.add_argument("--digest")
+    p = commands.add_parser("record-check")
+    p.add_argument("--operation", required=True); p.add_argument("--target", required=True)
+    p.add_argument("--payload", required=True)
     commands.add_parser("summary")
     args = parser.parse_args()
     runtime = Runtime(args.state)
@@ -1403,6 +1593,8 @@ def main():
         result = runtime.prepare(args.role, files, args.worktree, args.timeout, args.previous, args.slot)
     elif name == "attach": result = runtime.attach(args.worker, args.agent)
     elif name == "publish": result = runtime.publish(args.worker, read_json(args.result))
+    elif name == "question": result = runtime.question(args.worker, args.text)
+    elif name == "answer": result = runtime.answer(args.worker, args.question, args.text)
     elif name == "inspect": result = runtime.inspect(args.worker)
     elif name == "wait": result = runtime.wait(args.worker, args.seconds)
     elif name == "consume": result = runtime.consume(args.worker)
@@ -1418,6 +1610,7 @@ def main():
     elif name == "verifications": result = runtime.verifications(args.worktree)
     elif name == "record-op":
         result = runtime.record_op(args.operation, args.target, args.outcome, args.provider_id, args.digest)
+    elif name == "record-check": result = runtime.record_check(args.operation, args.target, args.payload)
     else: result = runtime.summary()
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))
     if result.get("passed") is False or (name == "wait" and result["status"] not in {"result_ready", "consumed"}):

@@ -291,7 +291,7 @@ class ConvergenceTests(unittest.TestCase):
                     self.rt.publish(key, result)
 
     def test_prompt_contracts_fail_under_in_memory_mutation(self):
-        review = (fixtures.ROOT / "plugins/notion-dev/skills/review-and-merge/SKILL.md").read_text(encoding="utf-8")
+        review = (fixtures.ROOT / "plugins/notion-dev/references/legacy/review-and-merge.md").read_text(encoding="utf-8")
         candidate = self.root / "review.md"
         # Python runs natively on Windows; Git Bash needs forward-slash arguments.
         library = (fixtures.ROOT / "scripts/lib/assert.sh").as_posix()

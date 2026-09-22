@@ -19,8 +19,10 @@ Read project state:
 - Probe `gh` CLI: `command -v gh` and `gh auth status 2>&1`. Record whether `gh` is available and authenticated — used later in step 4.
 - Probe `iwe --version` (≥ 0.19) on this same line, and probe the interpreter in order — `python3 --version`, then `python --version`, then `py -3 --version` — recording the first whose output reports Python 3.8 or newer as `PYTHON_CMD` (its exact spelling: `python3`, `python`, or `py -3`); none of the three → name the install routes per platform (below). Record both — used later in step 9 to scaffold the knowledge bundle. Missing or older `iwe`: name both install routes, `cargo install iwe --root ~/.local` (works wherever Rust does; required on hosts whose GLIBC is older than 2.39, which includes Ubuntu 22.04 under WSL) and `brew install iwe` / `npm i -g @iwe-org/iwe` where the prebuilt binary runs, and record `missing-dependency:iwe` per `notion-dev:issue-log`. No interpreter found: warn plainly — `${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py` cannot run without one. Neither probe aborts init: the bundle degrades exactly as `notion-dev:knowledge` describes, the same way a missing `gh` does not abort here.
 - Also probe the shell: `uname -s` starting with `MINGW` or `MSYS` is Git for Windows (Git Bash), which Claude Code's Bash tool runs through on Windows; it is required there — every notion-dev command relies on `dirname`, `mktemp`, `od`, `tr`, `tar` and `/dev/urandom` from it. On that platform name the Windows install routes: `npm i -g @iwe-org/iwe` (the package ships a win32-x64 binary), `winget install Python.Python.3.12` (which provides `python`, not `python3` — the probe records that), `winget install jqlang.jq`.
-- **Build-flow plugins (hard requirement).** `/notion-dev:ticket` needs both flows
-  available regardless of which one triage picks. Check the available-skills list for:
+- **Build-flow plugins (optional legacy flows only).** Default ticket/next-task/finalize
+  use the lean workflow and require neither framework. Record live availability hints;
+  do not install or stop for missing optional skills. Only if the user explicitly selects
+  legacy build-flow setup, apply the diagnosis/install branch below. Check the catalog for:
   - superpowers: `superpowers:writing-plans`, `superpowers:subagent-driven-development`,
     `superpowers:receiving-code-review`
   - feature-dev: `feature-dev:feature-dev`
@@ -366,7 +368,7 @@ Select a template based on Step 1 detection; show the proposed list to the user 
 
 ### 9. Write files
 
-Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` with the collected values, this first key, and the recorded build-flow dependencies (verified live in step 1). These booleans are setup-time hints only; future commands check their current host's skills, not this snapshot:
+Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` with the collected values, this first key, and the recorded build-flow dependencies (verified live in step 1). These booleans are setup-time hints only; optional legacy flows check their current host's skills, not this snapshot. Substitute actual observed booleans below; omit dependencies if availability was not probed:
 
 ```json
 {
@@ -379,7 +381,7 @@ Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` w
 
 Always write `reviewer` explicitly (unlike the omit-when-default properties above) — it is exempt from the "omit when equal to default" convention, so it appears in the config even when the answer was the default `codex`.
 
-**Preserve `reviewsCap` on reconfigure.** `reviewsCap` (the review-loop round cap; see the schema and README) is a hand-edited knob that init never prompts for. When reconfiguring an existing config, carry any `reviewsCap` it already contained through to the rewritten file verbatim — this rewrite is from collected values, so a value init never collects would otherwise be silently dropped, and the next review loop would fall back to 15 despite the user's documented setting. A fresh init omits the key (the review loop defaults to 15).
+**Preserve `reviewsCap` on reconfigure.** `reviewsCap` (the review-loop round cap; see the schema and README) is a hand-edited knob that init never prompts for. When reconfiguring an existing config, carry any `reviewsCap` it already contained through to the rewritten file verbatim — this rewrite is from collected values, so a value init never collects would otherwise be silently dropped, and the next review loop would lose the user's documented setting. A fresh init omits the key (lean defaults to 3 external rounds; legacy defaults to 15).
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 
@@ -421,7 +423,7 @@ Print a short summary:
 - Optional slots resolved: `Creation Date`, `Parent task`, `Is Epic` — and whether **Epic containers are available**. Availability is decided on the **property each slot actually resolved to**, whatever its name, not on the default name: the marker slot must have bound a live `checkbox`, and the parent slot a live self-referential `relation`. A slot that bound a differently-named property (`Epic parent`, a Sub-items relation, any other checkbox) is **available**; a slot that bound nothing is **unavailable**. This holds regardless of whether `epicMarkerProperty` / `parentTaskProperty` were written to config — omit-when-default means they are commonly absent from config even when resolved live. **Presence of the default name is not availability, and neither is its absence a bar**: what matters is whether a correctly-typed property was bound, because that is exactly what `notion-dev:ticket-system` checks at runtime (see its "Marker usability rule"). The `Epic` select tag is unrelated to availability — it's display metadata, never what identifies a container.
 
   When a slot bound nothing, say so plainly and give the reason, distinguishing missing from mistyped: "Epic containers unavailable — no Checkbox property to use as the Is Epic marker, and `Is Epic` itself is a `select`. Epic grouping will use the Select tag only." versus "…no Checkbox property named `Is Epic` or otherwise available…". When a slot bound a correctly-typed property but the default name is still held by a wrong-typed column (`MARKER_NAME_TAKEN` / `PARENT_MISTYPED` from the resolution steps above — the parent one is the loose diagnostic, which is what names the column the user would clean up), report **available** and add the mistyped column as a note, not as a failure — it is a stale column the user may want to clean up, not something blocking the plugin.
-- Build-flow plugins verified: superpowers + feature-dev (required dependencies)
+- Default workflow: lean. Report actual optional build-flow availability, not an assumed verified result.
 - Knowledge bundle: `<knowledge.dir>/` scaffolded (or already present, left untouched) — `iwe` and `<knowledge.python>` available, or the install guidance from step 1 when either was missing.
 - Issues logged, when this run wrote any: `<N> issues logged to .claude/notion-dev/notion-dev-issues.md`. Omit the line entirely when the run logged nothing.
 - Next actions: "Run `/notion-dev:create-task` to create your first ticket, or `/notion-dev:ticket <ticket-id>` to work on an existing one."

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Windows CLI support — notion-dev works from a Windows-native Claude Code session (Git Bash)
 # exactly as it does from WSL: the `knowledge.python` config key `/notion-dev:init` writes and
 # every command reads, LF-forced knowledge.py output, a repo-wide .gitattributes, a
@@ -29,6 +30,10 @@ assert_present "init: omits it again when the recorded value equals the default 
   "$INIT" 1 "$L" 'omitted again when the recorded value equals that default .python3.'
 for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/finalize.md commands/create-task.md commands/knowledge.md skills/knowledge/SKILL.md skills/epic-doc/SKILL.md; do
   n=$(total_lines "$ND/$f")
+  case "$f" in commands/ticket.md|commands/next-task.md|commands/finalize.md)
+    assert_has "$f: interpreter comes from configuration" "$ND/$f" 'knowledge.python'
+    continue ;;
+  esac
   assert_present "$f: python3 stands for knowledge.python" "$ND/$f" 1 "$n" '`python3` in every `knowledge.py` line below stands for `knowledge.python`'
 done
 assert_has "knowledge.py: forces LF and UTF-8 on stdout and stderr" "$KPY" 'reconfigure(newline="\n", encoding="utf-8")'
@@ -93,10 +98,10 @@ rm -f "$GUARDCODE"
 
 # Runtime/telemetry use the same interpreter contract; behavioral fixtures are
 # discovered by the existing Windows job through verify-runtime.sh.
-for helper in runtime telemetry dependencies; do
+for helper in runtime telemetry dependencies workflow; do
   assert_has "$helper forces UTF-8 and LF output" "$ND/scripts/$helper.py" 'stream.reconfigure(encoding="utf-8", newline="\n")'
 done
-assert_has "runtime protocol uses the configured interpreter" "$ND/references/runtime.md" '`knowledge.python` interpreter'
+assert_has "runtime protocol uses the configured interpreter" "$ND/references/legacy/runtime.md" '`knowledge.python` interpreter'
 assert_has "runtime harness supports Windows interpreter selection" scripts/verify-runtime.sh 'PYBIN=${KNOWLEDGE_PY:-python3}'
 
 # A bare `bash` is not the Git for Windows bash. Windows `CreateProcess` — what
@@ -139,7 +144,7 @@ assert_has  "verify-evidence.sh supports Windows interpreter selection" \
 # default text mode writes CRLF on Windows, which would make a correctly delivered
 # payload read as `mangled` on that leg alone -- it did, on this change's first CI run.
 assert_has  "the protocol requires an LF expectation file for the probe" \
-  "$ND/references/runtime.md" '**Write the expectation file as UTF-8 with LF**'
+  "$ND/references/legacy/runtime.md" '**Write the expectation file as UTF-8 with LF**'
 assert_has  "the probe regression writes its expectation without newline translation" \
   scripts/tests/test_runtime_evidence.py 'with path.open("w", encoding="utf-8", newline="") as stream'
 # `tempfile` hands back Windows' 8.3 short path (`C:\Users\RUNNER~1\...`) while

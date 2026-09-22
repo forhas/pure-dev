@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Standing invariants for evidence reuse, bounded delta indexes, verification receipts,
 # host publication probes, and the generic evaluation fixture.
 #
@@ -28,9 +29,9 @@ PYBIN=${KNOWLEDGE_PY:-python3}
 ND=plugins/notion-dev
 RT=$ND/scripts/runtime.py
 TM=$ND/scripts/telemetry.py
-PROTOCOL=$ND/references/runtime.md
+PROTOCOL=$ND/references/legacy/runtime.md
 CONVERGENCE=$ND/references/convergence.md
-REVIEW=$ND/skills/review-and-merge/SKILL.md
+REVIEW=$ND/references/legacy/review-and-merge.md
 EVAL=scripts/fixtures/evaluation
 
 echo "== behavioural fixtures =="

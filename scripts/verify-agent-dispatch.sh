@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Every review seat in these plugins is filled by a separate agent — unless the
 # user forbade it.
 #
@@ -111,6 +112,7 @@ for S in plugins/*/skills/review-and-merge/SKILL.md; do
   [ -f "$S" ] || continue
   rms=$((rms + 1))
   n=$(plugin_of "$S")
+  [ "$n" != notion-dev ] || S=plugins/notion-dev/references/legacy/review-and-merge.md
   L=$(total_lines "$S")
 
   echo "== $n review-and-merge dispatch =="
@@ -210,7 +212,7 @@ assert_present "develop: a forbidden dispatch emits \`PLAN-REVIEW: degraded\` an
 assert_present "develop: \"explicitly disallowed\" is an instruction aimed at this dispatch, not a general default" \
   "$DEV" 1 "$L" '\*\*"Explicitly disallowed" means an instruction aimed at this dispatch'
 
-TK=plugins/notion-dev/commands/ticket.md
+TK=plugins/notion-dev/references/legacy/ticket.md
 L=$(total_lines "$TK")
 # The call site, not just the skill. `plan-review/SKILL.md` Step 2 already states that
 # invoking it *is* the request for its agent — and only a run that invokes the skill can
@@ -257,8 +259,8 @@ assert_present "ticket: the review seats never substitute the same way" \
 # flag threaded through four files, so each hop is pinned separately: a hop that goes quiet
 # silently restores the nested dispatch.
 CT=plugins/notion-dev/commands/create-task.md; CTL=$(total_lines "$CT")
-RC=plugins/notion-dev/references/record.md;     RCL=$(total_lines "$RC")
-EU=plugins/notion-dev/skills/epic-update/SKILL.md; EUL=$(total_lines "$EU")
+RC=plugins/notion-dev/references/legacy/record.md;     RCL=$(total_lines "$RC")
+EU=plugins/notion-dev/skills/epic-update/references/with-followups.md; EUL=$(total_lines "$EU")
 assert_present "create-task: the \`--no-proxy\` flag answers Phase 2.1 from the \`--context-file\` packet instead of dispatching a proxy respondent" \
   "$CT" 1 "$CTL" '`--no-proxy` \| Answer Phase 2\.1.s interview from `--context-file`.s packet directly, in this agent, instead of dispatching a proxy-respondent subagent'
 assert_present "create-task: a dispatched agent has no waiting state, so a grandchild proxy leaves no \`RECORD:\` block" \
@@ -277,8 +279,8 @@ assert_present "create-task: Phase 2.1's non-interactive routing names the \`--n
 # The completeness gate caught the prose naming the wrong mechanism for the second inline path:
 # finalize never reads record.md at all. The behaviour was right and the sentence was not, which
 # is exactly the class that rots into a wrong fix later.
-assert_present "create-task: says \`/notion-dev:ticket\` runs \`references/record.md\` and \`/notion-dev:finalize\` never reads it, invoking \`notion-dev:epic-update\` on every path" \
-  "$CT" 1 "$CTL" '`/notion-dev:ticket`.s Phase 8 recovery runs `references/record.md` itself.*`/notion-dev:finalize` never reads that file at all.*invokes.*`notion-dev:epic-update` directly.*on \*\*every\*\* finalize path'
+assert_has "create-task: lean inline callers share record without the dispatched-unit exemption" \
+  "$CT" 'The lean ticket and finalize both run `references/record.md` inline.'
 # The hint is the user-visible flag list; a table counting eight beside a hint listing seven is
 # the kind of drift nobody reads until it is wrong in a client.
 assert_present "create-task: the \`argument-hint\` frontmatter lists \`--no-proxy\` with the other flags" \

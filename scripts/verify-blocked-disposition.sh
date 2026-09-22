@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Standing invariant: an item that cannot be done from anywhere, for a named
 # EXTERNAL cause, has its own disposition — `blocked` — and never becomes a
 # ticket, a `Deferred:` trailer, or anything else a later run is expected to
@@ -30,7 +31,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 
 echo "== the disposition itself =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n carries blocked in the ledger disposition enum" "$RM" '`file` / `drop` / `blocked` |'
   assert_has "$n records a blocked_cause field"                  "$RM" '| `blocked_cause` |'
@@ -50,7 +51,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== the two meanings of the word =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   # `COMPLETENESS: blocked` is a GATE STATUS; a TRIAGE `blocked` is a
   # DISPOSITION. The same token on two keys in one block is a live conflation
@@ -60,9 +61,9 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== the completeness gate's terminal rule =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
-  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+  if [ "$RM" = "$ND/references/legacy/review-and-merge.md" ]; then
     assert_has "$n stops on an unresolved mandatory criterion" "$RM" 'exhausted budget or an unmet mandatory'
     assert_has "$n forbids a budget-driven scope reduction" "$RM" 'or round cap does not authorize scope reduction'
   else
@@ -88,7 +89,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== the PR body must match the gate's final counts =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   # Charge 2 audits the body BEFORE pass 2 can change a verdict, so nothing
   # re-reads it afterwards. PR #83 merged claiming "4/4 met" against a recorded
@@ -98,7 +99,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== the sweep does not collect blocked =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n keeps blocked out of the final sweep" "$RM" '**A `blocked` item is not swept either'
   # Not swept as INPUT, but reachable as an OUTCOME: a sweep-round finding
@@ -106,7 +107,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
   # removes another REVIEW, never the ability to name an item's state — and
   # forcing it to `file` mints the unactionable backlog entry this all prevents.
   assert_has "$n lets the sweep round reach a blocked outcome" "$RM" 'sweep-round finding that cannot be acted on until a named external cause changes is `blocked`'
-  if [ "$RM" = "$ND/skills/review-and-merge/SKILL.md" ]; then
+  if [ "$RM" = "$ND/references/legacy/review-and-merge.md" ]; then
     assert_has "$n keeps corrective sweep edits bounded" "$RM" 'bounded fixes/reverts but no second sweep or reviewer round'
   else
     assert_has "$n keeps the sweep bounded across all three outcomes" "$RM" 'The sweep round can only file, drop, or block'
@@ -114,7 +115,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== reporting keeps BLOCKED separate from FILED =="
-for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL.md; do
+for RM in $ND/references/legacy/review-and-merge.md $QD/skills/review-and-merge/SKILL.md; do
   n=${RM#plugins/}
   assert_has "$n names BLOCKED in the CONVERGENCE block" "$RM" 'DROPPED: <n>  BLOCKED: <n>'
   assert_has "$n counts five exhaustive dispositions"    "$RM" 'The five disposition counts are exhaustive'
@@ -133,7 +134,7 @@ for RM in $ND/skills/review-and-merge/SKILL.md $QD/skills/review-and-merge/SKILL
 done
 
 echo "== notion-dev call sites =="
-for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
+for CMD in $ND/references/legacy/ticket.md $ND/references/legacy/finalize.md; do
   n=${CMD#plugins/}
   # `BLOCKED` items appears twice in ticket.md, so it is vocabulary, not a place —
   # mutating one occurrence left the other and the check stayed green. Pin the
@@ -153,8 +154,8 @@ for CMD in $ND/commands/ticket.md $ND/commands/finalize.md; do
   # assertion all live in 8.2/8.3, which moved into references/record.md with the
   # rest of the record unit (Task 8). finalize.md carries its own copy unmoved.
   RCMD=$CMD; rn=$n
-  if [ "$CMD" = "$ND/commands/ticket.md" ]; then
-    RCMD=$ND/references/record.md; rn=${RCMD#plugins/}
+  if [ "$CMD" = "$ND/references/legacy/ticket.md" ]; then
+    RCMD=$ND/references/legacy/record.md; rn=${RCMD#plugins/}
   fi
   # The terminal summary scrolls away. The ticket's `## Merged` record is the
   # shared durable one, and the Completeness record covers acceptance criteria
@@ -198,7 +199,7 @@ echo "== quick-dev call sites =="
 assert_has "quick-dev/skills/review-and-merge names a destination quick-dev has" \
   "$QD/skills/review-and-merge/SKILL.md" '**`quick-dev` ships no issue-log skill**'
 assert_has "notion-dev/skills/review-and-merge cites its registered signature" \
-  "$ND/skills/review-and-merge/SKILL.md" '`unexpected:completeness-verifier-contract-invalid`'
+  "$ND/references/legacy/review-and-merge.md" '`unexpected:completeness-verifier-contract-invalid`'
 assert_has "quick-dev/skills/develop gives a BLOCKED item no trailer" \
   "$QD/skills/develop/SKILL.md" '**A `BLOCKED` item never takes a trailer of either kind.**'
 # The Unmet: template enumerates absorb|file|drop and the rule above it demanded

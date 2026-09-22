@@ -64,6 +64,10 @@ class RuntimeTests(unittest.TestCase):
         self.state = self.root / "runtime" / "state.json"
         self.rt = runtime.Runtime(self.state, self.clock)
         self.rt.init("invocation-1", "STO-153")
+        # Preserve regression coverage for in-flight 0.35 runs. Strict new-run
+        # publication/repair and rendering are exercised by test_lean_workflow.
+        with self.rt.transaction() as state:
+            state["schema"] = 2
         self.source = self.root / "ticket.md"
         with self.source.open("w", encoding="utf-8", newline="\n") as stream:
             stream.write(FIXTURE["ticket"])
@@ -85,6 +89,7 @@ class RuntimeTests(unittest.TestCase):
 
     def result(self):
         return {"report": "COMPLETENESS: clean\nCRITERIA-TOTAL: 4\nCRITERIA-MET: 4\nCRITERIA-NOT-MET: 0\nCRITERIA-UNVERIFIED: 0\n",
+                "code_review": {"verdict": "clean", "citation": "fixture code and tests"},
                 "requirements": [{"id": item["id"], "verdict": "met", "citation": "fixture evidence"}
                                  for item in self.inventory["items"]], "blocking_findings": [],
                 "requirements_complete": True}

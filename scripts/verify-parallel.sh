@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical contracts below cover opt-in legacy flows; verify-lean-workflow.sh covers the new default.
 # Parallel ticket picking — the run marker, ownership check, marker resume
 # rules, and `claimed-elsewhere`, plus (Tasks 3-5) next-task validity and the
 # `new-info --pr` epic-branch rebase.
@@ -15,9 +16,9 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 
 ND=plugins/notion-dev
-TICKET=$ND/commands/ticket.md
-RECORD=$ND/references/record.md
-NT=$ND/commands/next-task.md
+TICKET=$ND/references/legacy/ticket.md
+RECORD=$ND/references/legacy/record.md
+NT=$ND/references/legacy/next-task.md
 SIG=$ND/skills/issue-log/references/signatures.md
 L=$(total_lines "$TICKET")
 P11=$(find_line "$TICKET" 1 "$L" '^### 1\.1 '); P12=$(find_line "$TICKET" 1 "$L" '^### 1\.2 '); P13=$(find_line "$TICKET" 1 "$L" '^### 1\.3 ')
@@ -84,13 +85,13 @@ assert_present "step 4: on \`claimed-elsewhere\` DONE is not incremented and the
 assert_present "step 4: lost keys accumulate in a LOST set that resets on re-read" "$NT" "$S4" "$SR" '`LOST` set.*resets when the brief is re-read'
 
 echo "== review-and-merge: rebase at the gate (both copies) =="
-for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/skills/review-and-merge/SKILL.md; do
+for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/references/legacy/review-and-merge.md; do
   n=$(total_lines "$f"); M5=$(find_line "$f" 1 "$n" '^## 5\. Merge'); SR=$(find_line "$f" "$M5" "$n" '^## Safety rules')
   assert_present "$f: reads \`mergeStateStatus\` at the gate" "$f" "$M5" "$SR" 'gh pr view <pr> --json mergeStateStatus'
   assert_present "$f: \`BEHIND\` or \`DIRTY\` → \`git rebase origin/<base>\` in the worktree" "$f" "$M5" "$SR" '`BEHIND`.*`DIRTY`.*git rebase origin/<base>'
   assert_present "$f: the rebase also fires when the head is not a descendant of origin/<base>" "$f" "$M5" "$SR" 'merge-base --is-ancestor origin/<base> HEAD. fails'
   assert_present "$f: re-run verify, then \`git push --force-with-lease\`" "$f" "$M5" "$SR" 'verify.*git push --force-with-lease'
-  if [ "$f" = plugins/notion-dev/skills/review-and-merge/SKILL.md ]; then
+  if [ "$f" = plugins/notion-dev/references/legacy/review-and-merge.md ]; then
     assert_present "$f: a conflict-free rebase still checks behavior" "$f" "$M5" "$SR" 'conflict-free rebase.*changed behavior needs independent review'
   else
     assert_present "$f: a clean rebase triggers no new review round" "$f" "$M5" "$SR" 'clean rebase.*no new review round'
@@ -106,7 +107,7 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
   assert_present "$f: the bounded re-read distinguishes \`UNKNOWN\` from \`BLOCKED\`" "$f" "$M5" "$SR" '`UNKNOWN`.*wait.*`BLOCKED`.*gate 1'
   assert_present "$f: a merge-ready status — \`CLEAN\`, \`HAS_HOOKS\`, \`UNSTABLE\` — continues rather than stopping" "$f" "$M5" "$SR" 'merge-ready status — `CLEAN`, `HAS_HOOKS`, `UNSTABLE` — is the rebase having settled, so continue'
   assert_present "$f: gate 1 is re-satisfied on the pushed head" "$f" "$M5" "$SR" 're-satisfy gate 1 on the pushed head'
-  if [ "$f" = plugins/notion-dev/skills/review-and-merge/SKILL.md ]; then
+  if [ "$f" = plugins/notion-dev/references/legacy/review-and-merge.md ]; then
     assert_order "$f: stabilize and close out before completeness, then merge" "$f" "$M5" "$SR" \
       rebase '^\*\*Rebase at the gate\.\*\*' premerge "Caller's pre-merge check" completeness '^4\. \*\*Completeness gate\*\*' merge '^gh pr merge <pr> '
   else
@@ -117,13 +118,13 @@ for f in plugins/quick-dev/skills/review-and-merge/SKILL.md plugins/notion-dev/s
 done
 
 echo "== review-and-merge: notion-dev-only fork anchors =="
-NF=plugins/notion-dev/skills/review-and-merge/SKILL.md
+NF=plugins/notion-dev/references/legacy/review-and-merge.md
 nNF=$(total_lines "$NF"); M5NF=$(find_line "$NF" 1 "$nNF" '^## 5\. Merge'); SRNF=$(find_line "$NF" "$M5NF" "$nNF" '^## Safety rules')
 assert_present "notion-dev fork: cites \`/notion-dev:ticket\` Phase 6.1's rule" "$NF" "$M5NF" "$SRNF" '`/notion-dev:ticket`.*Phase 6\.1'
 assert_present "notion-dev fork: \`git.mergeStrategy\` is unchanged by the rebase" "$NF" "$M5NF" "$SRNF" '`git\.mergeStrategy` is unchanged by the rebase'
 
 echo "== per-invocation run ids (#44) =="
-for f in plugins/notion-dev/commands/new-info.md plugins/notion-dev/commands/knowledge.md plugins/notion-dev/commands/create-task.md plugins/notion-dev/commands/next-task.md; do
+for f in plugins/notion-dev/commands/new-info.md plugins/notion-dev/commands/knowledge.md plugins/notion-dev/commands/create-task.md plugins/notion-dev/references/legacy/next-task.md; do
   n=$(total_lines "$f")
   assert_present "$f: defines \`<run id>\` once as a per-invocation token with \`date -u +%Y%m%dT%H%M%SZ\`" "$f" 1 "$n" '<run id>.*\$\(date -u \+%Y%m%dT%H%M%SZ\)'
   assert_absent "$f: no bare per-command label remains as the run id" "$f" 1 "$n" '`<run id>` is `(new-info|knowledge|create-task|next-task <KEY>-<n>)`'

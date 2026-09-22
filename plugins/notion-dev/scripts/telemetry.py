@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -127,7 +128,11 @@ def correlate(workers, logs):
         if worker is None:
             # Some hosts decorate the filename around the agent ID. An unambiguous
             # containment match is still evidence; an ambiguous one is not.
-            candidates = [w for agent, w in by_agent.items() if agent and agent in stem]
+            # This host writes agent-a<name>-<hex>.jsonl for <name>@<session>.
+            # Anchor the whole name: "review" must not also match "review-p2".
+            candidates = [w for agent, w in by_agent.items() if agent and
+                          (agent in stem or re.fullmatch(r"agent-a" + re.escape(agent.split("@", 1)[0])
+                                                        + r"-[0-9a-f]+", stem))]
             worker = candidates[0] if len(candidates) == 1 else None
         attribution[name] = worker
         if worker:
