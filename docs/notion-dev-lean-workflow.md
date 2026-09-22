@@ -69,7 +69,10 @@ question delay, verification executions/reuses, record operations/reconciliation
 Check quality separately: all mandatory requirements, regression checks, late-discovered
 requirements, unresolved findings, and correct Notion/knowledge/epic outcomes.
 
-Do not claim ticket-level token/time savings from reduced prompt bytes or passing unit tests.
-The real-ticket run determines whether this structural change improves the baseline. Stop and
+**Disposition: `blocked`.** Do not claim ticket-level token/time savings from reduced prompt
+bytes or passing unit tests. External cause: a real token/time figure needs a representative
+live ticket run against a client repository, which no offline test can substitute for. The
+real-ticket run below is what unblocks it, and it determines whether this structural change
+improves the baseline. Stop and
 diagnose unexpected repeated reviews, stale-evidence reuse or replayed provider effects; preserve
 the existing invocation rather than resetting its budget.
