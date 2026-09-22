@@ -71,10 +71,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" claim --project "$REPO_ROOT"
 ```
 
 On an explicitly resolved lean resume add `--resume`. The helper serializes the claim with a
-kernel lock, checks ownership again, creates the worktree atomically on a fresh branch, writes
+kernel lock, checks ownership again, creates the worktree on a fresh branch, writes
 the ticket marker and retires the preflight marker. Save its returned paths, especially the
 possibly resumed runtime. A failed claim creates no Notion status change. Report
 `OUTCOME: claimed-elsewhere` only when evidence actually establishes competing ownership.
+If Git succeeded but marker publication failed, preserve the worktree and inspect the partial
+claim; do not overwrite it or assume the multi-step operation was transactional.
 
 Work only in the returned worktree. Compare the primary checkout with its preflight status
 after implementation boundaries; a new edit there is a wrong-root error, not permission to
