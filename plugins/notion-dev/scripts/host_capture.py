@@ -31,7 +31,18 @@ def latest_call(transcript, session, name, arguments=None, page=None):
         normalized = page.lower().replace("-", "")
         if len(normalized) != 32 or any(c not in "0123456789abcdef" for c in normalized):
             raise ValueError("capture page selector must be the actual Notion page UUID")
-    found = None
+    found = [call for call, _ in _matching_calls(transcript, session, name, arguments, page)]
+    if not found: raise ValueError("matching host tool call unavailable; never reconstruct it")
+    return found[-1]
+
+
+def calls_since(transcript, session, name, arguments, since):
+    """Every exact matching call at or after a durable begin; the host must not pick one."""
+    return [call for call, stamp in _matching_calls(transcript, session, name, arguments, None)
+            if timestamp(stamp) >= since]
+
+
+def _matching_calls(transcript, session, name, arguments, page):
     with Path(transcript).open("rb") as stream:
         for raw in stream:
             # A partial tail may be the newer matching call; never return an older one.
@@ -49,9 +60,7 @@ def latest_call(transcript, session, name, arguments=None, page=None):
                 if arguments is not None and args != arguments: continue
                 if page and (not isinstance(args, dict) or page.lower().replace("-", "") not in
                              str(args.get("id", "")).lower().replace("-", "")): continue
-                found = item.get("id")
-    if not found: raise ValueError("matching host tool call unavailable; never reconstruct it")
-    return found
+                yield item.get("id"), row["timestamp"]
 
 
 def exchange(transcript, session, call_id):

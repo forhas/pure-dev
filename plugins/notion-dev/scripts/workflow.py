@@ -461,11 +461,15 @@ def record_receipt(state, operation, transcript, session, call_id=None):
     A successful tool transport is not proof that a provider write had its intended
     effect. The host still checks the response/readback before record-outcome.
     """
-    from host_capture import exchange, timestamp, latest_call
+    from host_capture import exchange, timestamp, latest_call, calls_since
     current = record_input(state, operation)
     require(current["action"] == "reconcile", "begin the operation before host dispatch")
     expected = current["data"].get("host_call")
     require(isinstance(expected, dict) and set(expected) == {"name", "input"}, "planned host_call missing")
+    attempts = [e for e in read_json(state)["record_journal"] if e["operation"] == operation and e["outcome"] == "attempted"]
+    # Two identical writes after one begin may both have taken effect; never keep only one.
+    require(not attempts or len(calls_since(transcript, session, expected["name"], expected["input"], attempts[-1]["wall"])) <= 1,
+            "multiple matching host calls after begin; reconcile, never select one")
     call_id = call_id or latest_call(transcript, session, expected["name"], arguments=expected["input"])
     observed = exchange(transcript, session, call_id)
     call = observed["call"]["item"]

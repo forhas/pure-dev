@@ -333,6 +333,18 @@ class BoundaryTests(unittest.TestCase):
         workflow.record_outcome(self.state, operation, 'confirmed', 'provider-readback')
         self.assertEqual(workflow.record_next(self.state)['action'], 'confirm-children')
 
+    def test_duplicate_writes_after_one_begin_require_reconciliation(self):
+        _, _, plan = self.record(); args = {'status': 'done'}
+        operation = self.child(plan['ticket-status']['operation'], {'host_call': {'name': 'ProviderWrite', 'input': args}})
+        workflow.record_input(self.state, operation, begin=True)
+        self.clock.seconds = datetime.now(timezone.utc).timestamp() - 1790000000
+        first = self.log({'ok': None}, 'first', name='ProviderWrite', args=args, offset=0)
+        second = self.log({'ok': True}, 'second', name='ProviderWrite', args=args, offset=0)
+        first.write_bytes(first.read_bytes() + second.read_bytes())
+        for call_id in (None, 'second'):
+            with self.assertRaisesRegex(workflow.Invalid, 'multiple matching'):
+                workflow.record_receipt(self.state, operation, first, 'fixture-session', call_id)
+
     def test_unjournaled_effect_is_explicit_reconciliation_not_fake_begin(self):
         _, _, plan = self.record()
         operation = self.child(plan['ticket-status']['operation'], {'host_call': {'name': 'ProviderWrite', 'input': {}}})
