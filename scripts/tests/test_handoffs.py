@@ -432,7 +432,9 @@ class HandoffTests(unittest.TestCase):
         bundle = self.root / "knowledge"
         shutil.copytree(ROOT / "scripts/fixtures/handoffs", bundle)
         shutil.copytree(ROOT / "plugins/notion-dev/skills/knowledge/references/iwe", bundle / ".iwe")
-        proc = subprocess.run(["iwe", "retrieve", "-k", "epic/TEST-10", "--expand-references", "1",
+        # npm installs iwe.cmd on Windows; CreateProcess does not resolve a bare
+        # "iwe" through PATHEXT. Match knowledge.py's resolved executable path.
+        proc = subprocess.run([shutil.which("iwe"), "retrieve", "-k", "epic/TEST-10", "--expand-references", "1",
             "--lexical", "Sanitize the failure response", "--filter", "status: stable", "--max-tokens", "1000", "-f", "markdown"],
             cwd=bundle, capture_output=True, encoding="utf-8", check=True)
         for required in ("sibling failure paths", "Rejected historical approach", "approval before deployment"):
