@@ -9,6 +9,7 @@ import argparse
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import difflib
 import errno
 import hashlib
 import json
@@ -16,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -842,6 +844,8 @@ class Runtime:
                         packet["result_contract"]["required"]["correction_review"]["depends_on"] = []
                         packet["result_contract"]["correction_rules"] = "depends_on lists absolute paths of ALL external evidence used (logs/config/provider snapshots). Code/requirements are already bound. Explicit [] only for code-only review."
             packet_path = directory / "context.json"
+            if contract_version and contract_version >= 4:
+                packet["publication"] = self.publication_kit(key, directory, packet)
             atomic_json(packet_path, packet)
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
                       "started": self.clock.stamp(), "timeout_seconds": timeout,
@@ -862,6 +866,69 @@ class Runtime:
                        delta_bytes=(packet.get("delta") or {}).get("bytes"))
         return {"worker": key, "state": str(self.path), "role": role,
                 "timeout_seconds": timeout, "revision": current, "packet": str(packet_path)}
+
+    def publication_kit(self, key, directory, packet):
+        """An editable, deliberately nonpassing submission and exact Git Bash/WSL command."""
+        draft = {"report": "", "requirements_complete": False}
+        if packet["role"] == "completeness":
+            draft.update(requirements=[{"id": i["id"], "verdict": "unverified", "citation": ""}
+                         for i in read_json(packet["requirements"]["path"])["items"]],
+                         blocking_findings=[], code_review={"verdict": "unverified", "citation": ""},
+                         recording={"release_obligations": [], "claim_corrections": [], "technical_delta": []})
+            for name in AUDIT_FIELDS:
+                draft[name] = {"status": "unverified", "evidence": "", "findings": []}
+            if packet.get("delta_publication"):
+                for name in ("requirements", "blocking_findings", "code_review", "recording") + AUDIT_FIELDS:
+                    draft.pop(name)
+                draft["delta_result"] = {"baseline_sha256": packet["delta_publication"]["baseline_sha256"],
+                    "changed_requirements": [], "reused_requirement_ids": [], "updated_sections": {}, "reused_sections": []}
+            for name in ("delta_review", "correction_review"):
+                if name in packet["result_contract"]["required"]:
+                    draft[name] = dict(packet["result_contract"]["required"][name])
+                    if name == "delta_review": draft[name]["disposition"] = "full-review-required"
+                    else: draft[name].update(verdict="unverified", report="")
+        elif packet["role"] == "record":
+            draft = {"report": "", "record": {name: "" for name in RECORD_FIELDS}}
+        else:
+            draft = {"report": ""}
+        submission = directory / "submission.json"
+        atomic_json(submission, draft)
+        argv = [sys.executable, str(Path(__file__).resolve()), "--state", str(self.path),
+                "publish", "--worker", key, "--result", str(submission)]
+        return {"submission": str(submission), "result_directory": str(directory / "published"),
+                "argv": argv, "command": " ".join(shlex.quote(a) for a in argv),
+                "instruction": "Edit submission.json using the host's permitted structured-file tool, then run command. Skeleton is NOT a verdict. Return findings/evidence once, not another narrative report. Do not read global state.json or load legacy formatting manuals.",
+                "host_return": "If the host forbids report writes, do not try another writing tool. Return the complete contract JSON as your final response. After host completion, the parent saves that unchanged object to submission and publishes for this SAME worker; normal consume/accept checks still apply. This route waits for host delivery, not publication polling."}
+
+    @staticmethod
+    def result_artifact(worker):
+        """Materialize the canonical value, not an assumed caller submission filename."""
+        if not worker.get("packet"):
+            return None
+        # Do not collide with an older worker's freely chosen submission filename.
+        path = Path(worker["packet"]).parent / "published" / (digest_bytes(json_bytes(worker["result"])) + ".json")
+        if path.exists():
+            require(read_json(path) == worker["result"], "canonical result artifact changed")
+        else:
+            atomic_json(path, worker["result"])
+        return {"path": str(path), "sha256": digest(path)}
+
+    def result_view(self, key, section=None):
+        """A parent/reviewer never needs the global worker roster to find one result."""
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(worker["result"] is not None, "result not available")
+            artifact = self.result_artifact(worker)
+            result = worker["result"]
+            if section is not None:
+                require(section in result, "unknown result section")
+                return {"worker": key, "artifact": artifact, "section": section, "data": result[section]}
+            return {"worker": key, "artifact": artifact, "accepted": worker.get("accepted", False),
+                    "sections": list(result), "requirements_complete": result.get("requirements_complete"),
+                    "verdict_counts": dict(Counter(v["verdict"] for v in result.get("requirements", []))),
+                    "code_review": result.get("code_review"), "blocking_findings": result.get("blocking_findings", []),
+                    "audits": {name: result[name] for name in AUDIT_FIELDS if name in result},
+                    "release_obligations": result.get("recording", {}).get("release_obligations", [])}
 
     def question(self, key, text):
         require(isinstance(text, str) and text.strip(), "question text required")
@@ -1107,6 +1174,28 @@ class Runtime:
                                   **{k: len(v) for k, v in buckets.items()}),
                  "instruction": "Read only what this index references. Reuse-applicable is a "
                  "candidate, not a verdict. Check indirect effects on EVERY requirement."}
+        # Only changed inputs, read from owned frozen snapshots, never the overwritten
+        # author's path. This keeps PR-only review from rediscovering its own diff.
+        changes = []
+        for name in changed_inputs:
+            before, after = old_inputs.get(name), snapshots.get(name)
+            row = {"name": name, "before": before, "after": after}
+            try:
+                def frozen(source):
+                    if not source: return ""
+                    path = source.get("snapshot", source["path"])
+                    require(digest(path) == source["sha256"], "changed input snapshot no longer matches")
+                    return Path(path).read_text(encoding="utf-8")
+                old, new = frozen(before), frozen(after)
+                row["diff"] = "".join(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
+                    fromfile="before/" + name, tofile="after/" + name))
+                if old != new and not row["diff"]:
+                    row["instruction"] = "Compare complete snapshots; text representation differs."
+            except UnicodeError:
+                row["instruction"] = "Non-UTF-8 input: inspect both complete binary snapshots."
+            changes.append(row)
+        # Add to the existing side index, not the bounded top-level manifest.
+        index["inputs"] = side("delta-inputs.json", {"changes": changes, "before": old_inputs, "after": snapshots})
         return self.bound_index(index, sections)
 
     @staticmethod
@@ -1275,20 +1364,21 @@ class Runtime:
             self.validate_delta(worker, result)
             if worker["result"] is not None:
                 require(worker["result"] == result, "result is immutable; create a new attempt for a revision")
-                return {"worker": key, "status": worker["status"]}
+                return {"worker": key, "status": worker["status"], "artifact": self.result_artifact(worker)}
             require(worker["status"] in {"pending", "running", "timed_out", "cancellation_requested"},
                     "worker cannot publish in its current state")
             if worker.get("contract_version", 0) and worker["contract_version"] >= 3 and not worker.get("reused_correction"):
                 worker["correction_dependencies"] = [{"path": str(Path(p).resolve()), "sha256": digest(p)}
                     for p in result.get("correction_review", {}).get("depends_on", [])]
             worker.update(result=result, status="result_ready", result_ready=self.clock.stamp())
+            artifact = self.result_artifact(worker)
             # Sizes, not bodies. Knowing a report arrived at 40KB is what identifies
             # prose duplicated into both `report` and the per-criterion records; copying
             # the prose here to measure it would be the same mistake one layer down.
             self.event(state, "worker_result_ready", worker=key, role=worker["role"],
                        result_bytes=len(json.dumps(result, ensure_ascii=False).encode("utf-8")),
                        report_bytes=len(result["report"].encode("utf-8")))
-        return {"worker": key, "status": "result_ready"}
+        return {"worker": key, "status": "result_ready", "artifact": artifact}
 
     def inspect(self, key):
         with self.transaction() as state:
@@ -1322,7 +1412,7 @@ class Runtime:
                     return result
                 time.sleep(min(0.25, max(0, deadline - time.monotonic())))
 
-    def consume(self, key):
+    def consume(self, key, summary=False):
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(worker["agent_id"], "attach the actual host agent before consuming its result")
@@ -1333,7 +1423,10 @@ class Runtime:
                            delivery_lag_seconds=elapsed(worker["result_ready"], self.clock.stamp()))
             if state["awaiting_worker"] == key:
                 state["awaiting_worker"] = None
-        return {"worker": key, "status": "consumed", "result": worker["result"]}
+            artifact = self.result_artifact(worker)
+        if summary:
+            return {"status": "consumed", **self.result_view(key)}
+        return {"worker": key, "status": "consumed", "result": worker["result"], "artifact": artifact}
 
     def accept(self, key):
         """Record that the parent judged this worker's result valid.
@@ -1939,10 +2032,12 @@ def main():
     p.add_argument("--previous"); p.add_argument("--slot")
     p.add_argument("--remove-input", action="append", default=[])
     for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations",
-                 "evidence", "section", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
+                 "evidence", "section", "result-view", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
         if name == "publish": p.add_argument("--result", required=True)
+        if name == "consume": p.add_argument("--summary", action="store_true")
+        if name == "result-view": p.add_argument("--section")
         if name in {"question", "answer"}: p.add_argument("--text", required=True)
         if name == "answer": p.add_argument("--question", required=True)
         if name == "resolve-citations": p.add_argument("--citations", required=True)
@@ -1996,7 +2091,8 @@ def main():
     elif name == "answer": result = runtime.answer(args.worker, args.question, args.text)
     elif name == "inspect": result = runtime.inspect(args.worker)
     elif name == "wait": result = runtime.wait(args.worker, args.seconds)
-    elif name == "consume": result = runtime.consume(args.worker)
+    elif name == "consume": result = runtime.consume(args.worker, args.summary)
+    elif name == "result-view": result = runtime.result_view(args.worker, args.section)
     elif name == "accept": result = runtime.accept(args.worker)
     elif name == "resolve-citations": result = runtime.resolve_citations(args.worker, read_json(args.citations))
     elif name == "evidence": result = runtime.evidence(args.worker)

@@ -29,6 +29,10 @@ shape details for uncommon callers live in `references/operations.md` (on demand
 Read `references/query.md` before a data-source query (not needed for a direct page fetch).
 Read `references/config-write.md` and `references/styling.md` before writes; reads do not load
 writing/creation manuals. The complete source comes from fetchTicket, never a status query.
+For schema-5 post-merge ticket-status/resolution with a frozen record plan, use
+`workflow.py record-capture` and `record-build` after the live schema/scope checks. The builder
+owns exact status/AC/resolution rendering; do not recreate its payload in prose or Python.
+Unsupported structures and unknown-coverage recovery retain the write-ops adapter and journal.
 For shared title-prefix/marker rules, read only the `Title prefix` and `Marker usability rule`
 sections in `references/create-ops.md` when needed; do not load its unrelated creation procedures.
 

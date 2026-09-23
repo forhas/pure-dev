@@ -84,7 +84,13 @@ the provider call. Use the returned data for the authorized write; never reopen 
 files to construct it. Changed sources cannot alter this operation's intended evidence.
 
 Schema 5 normally uses `record-next --state <state> --begin` for one complete scoped operation.
-For parent planning use record-view, never a truncated evidence pool. Declare exact host_call
+On a `plan-children` response, its `data` is the scoped parent view. For ticket-status and
+ticket-resolution, use the common builder in `references/boundaries.md`: actual live fetch →
+record-capture → record-build. It derives status from config and resolution/AC from the accepted
+review, preserves existing human content, and batches compatible section edits. It never marks
+unknown coverage complete. Unsupported/ambiguous page structures use the existing ticket-system
+adapter with the same complete child journal, not a guessed replacement or weakened check.
+For additional parent evidence use record-view, never a truncated evidence pool. Declare exact host_call
 or local_command per child. Ticket status and epic writes also use children on schema 5.
 Capture the actual host exchange with record-receipt before confirmation; synchronous local
 hooks use record-run, which journals before executing. Skills remain host-mediated. If an

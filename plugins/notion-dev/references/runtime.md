@@ -69,6 +69,11 @@ Also pass runtime path, plugin root, configured interpreter, worktree, role obje
 permissions (review workers are read-only except their owned runtime artifacts).
 Do NOT inherit the author's conversation, rewrite the JSON contract in the parent prompt,
 or paste a full manual. The generated contract includes delta/correction fields when applicable.
+New packets also contain `publication`: an editable `submission.json` skeleton, the exact
+command using the active configured interpreter, and the canonical result path. Use those;
+do not read global state.json to discover worker metadata. The skeleton intentionally lacks
+passing verdicts/evidence. A lean plan worker reports its required findings, evidence and risk
+invariants in the current contract; it does not load the legacy plan-review formatting rubric.
 
 After real host dispatch: `attach --worker <id> --agent <actual-host-id>`.
 A dispatch acknowledgement is not a result. Do not invent an ID or launch a replacement while
@@ -97,16 +102,27 @@ the worker execution deadline. Answers are immutable and identify the exact ques
 
 ## Publication, acceptance and cancellation
 
-The worker writes the complete JSON object to an owned result file and runs:
+Use the generated submission file/command when supplied. Older packets keep this form:
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" publish --worker <id> --result <result.json>
 ```
 New-run publication validates the generated role schema. Invalid output stays unpublished;
 repair the FILE, then publish again from the same worker. No new reviewer or provider writes.
 A published result is immutable. Runtime renders completeness counts and RECORD fields from
-that structured object. Final chat is only its reference, never a different report.
+that structured object. Publish and consume return its actual `artifact.path` and hash; never
+guess a result filename. Final chat is only its reference, never a different report.
+
+**Host forbids worker report writes:** do not switch tools to evade the restriction. The
+worker returns the complete contract JSON in its final host response instead. The parent waits
+for that same host worker's completion, saves the unchanged object to its prepared submission
+path, and publishes for that worker before consume/accept. Do not poll for runtime publication
+after receiving this host-return result. Missing/rejected fields go back to the SAME reviewer;
+the parent does not invent verdicts. This fallback pays host delivery latency but no new review.
 
 Parent: `consume --worker <id>`, inspect the evidence, then `accept --worker <id>`.
+Prefer `consume --worker <id> --summary` on new runs; `result-view --worker <id> --section
+<requirements|recording|claims|...>` retrieves a needed full section. The immutable full result
+remains at the returned artifact. Summary is routing, not permission to skip checking evidence.
 **Consuming a result is not accepting it, and the difference is enforced.**
 A valid nonpassing review may be accepted as an honest finding; acceptance is not permission
 to merge. New-run acceptance repeats schema validation.

@@ -23,6 +23,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'te
 else
   bad "host capture, scoped recording and compact deltas"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_scoped_execution.py'; then
+  ok "scoped delta inputs, publication and deterministic ticket recording"
+else
+  bad "scoped delta inputs, publication and deterministic ticket recording"
+fi
 assert_has "new ticket delegates intake" plugins/notion-dev/commands/ticket.md 'references/lean-intake.md'
 assert_has "review has code quality and requirements in one seat" plugins/notion-dev/skills/review-and-merge/SKILL.md 'One combined independent internal review'
 assert_has "record uses operation planning" plugins/notion-dev/references/record.md 'workflow.py" record-plan'

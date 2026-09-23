@@ -82,6 +82,11 @@ Keep its body small: requirement/outcome, actual behavior change, verified tests
 Include all ticket-mandated disclosure/checklist/sign-off wording. Distinguish merge prerequisites
 from release-only obligations using the ticket's actual words. Do not invent sign-off.
 Avoid volatile counts, file line numbers and narratives unless necessary or generated from evidence.
+Render `pr-facts.json` (`requirement`: string; `behavior`, `validation`, `risks`, `mandatory`:
+string lists) with `workflow.py pr-body --facts <pr-facts.json> --output <pr-body.md>`.
+Use that file for the PR and frozen `pr_body`. Rendering is not verification. Correct to a new
+file, reconciling human edits and preserving mandatory wording. Review status stays in runtime,
+not a new PR-body history requiring another review.
 
 Through ticket-system, set the PR property. Save branch, tests, PR identity and the implementation
 summary in context. Defer the final Notion `Implementation` narrative to recording; preserve
@@ -109,10 +114,9 @@ keep evidence outside disposable worktrees. `OUTCOME: resolved` is valid only th
 
 ## Failure and waiting
 
-Non-interactive means continue through authorized work, not busy-poll or suppress needed authority.
-Use `references/runtime.md` for every worker: one waiter, durable questions, publication before
-chat, safe yield, and confirmed cancellation before replacement. A pending worker is unfinished,
-not failed or empty. No duplicate background sleeps/status watchers.
+Non-interactive continues authorized work without suppressing missing authority. Follow
+`references/runtime.md` for worker waits, delivery and cancellation; pending is unfinished,
+not failed. No duplicate waiters.
 
 On failure preserve the branch/worktree/PR and runtime. Update the owned marker to `stopped`
 with the actual cause before ending the turn. Name only artifacts whose existence was checked.
