@@ -418,8 +418,9 @@ def record_run(state, operation):
             and isinstance(command.get("cwd"), str) and Path(command["cwd"]).is_dir(),
             "local hook requires argv strings and an existing cwd; Claude skills use the host instead")
     log = child_payload_path(Path(state).resolve().parent / "record", operation + ":execution").with_suffix(".log")
-    # A concurrent dispatcher is rejected by record_input/record_op before launch.
-    record_input(state, operation, begin=True)
+    # A concurrent dispatcher that began first leaves this begin at reconcile: never launch.
+    require(record_input(state, operation, begin=True)["action"] == "execute",
+            "another dispatcher began this hook; reconcile it instead of launching")
     try:
         with log.open("wb") as output:
             proc = subprocess.run(command["argv"], cwd=command["cwd"], stdout=output,

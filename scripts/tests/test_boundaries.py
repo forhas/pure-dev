@@ -373,6 +373,19 @@ class BoundaryTests(unittest.TestCase):
         with patch.object(workflow.subprocess, 'run', side_effect=AssertionError('replayed')):
             self.assertEqual(workflow.record_run(self.state, operation)['action'], 'skip')
 
+    def test_local_hook_that_loses_the_begin_race_never_launches(self):
+        _, _, plan = self.record()
+        operation = self.child(plan['post-merge-hooks']['operation'], {'local_command': {'argv': [sys.executable, '-c', 'pass'], 'cwd': str(self.repo)}})
+        original = workflow.record_input
+        def racing(state, op, begin=False, field=None):
+            if begin:
+                original(state, op, begin=True)  # the other dispatcher wins first
+            return original(state, op, begin=begin, field=field)
+        with patch.object(workflow, 'record_input', side_effect=racing), \
+                patch.object(workflow.subprocess, 'run', side_effect=AssertionError('launched twice')):
+            with self.assertRaisesRegex(workflow.Invalid, 'another dispatcher'):
+                workflow.record_run(self.state, operation)
+
     def test_failed_hook_with_possible_partial_effect_requires_reconciliation(self):
         _, _, plan = self.record()
         operation = self.child(plan['post-merge-hooks']['operation'], {'local_command': {'argv': [sys.executable, '-c', 'raise SystemExit(2)'], 'cwd': str(self.repo)}})
