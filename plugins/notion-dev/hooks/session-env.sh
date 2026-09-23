@@ -56,6 +56,19 @@ shquote() {  # wrap in single quotes, escaping any single quote within
 
 printf 'export NOTION_DEV_SESSION_ID=%s\n' "$(shquote "$sid")" >> "$CLAUDE_ENV_FILE" 2>/dev/null
 
+# Optional bridge for provider capture. Windows paths contain JSON escapes;
+# never parse them with sed/eval. Missing Python leaves original Stop ownership
+# intact; capture-ticket fails explicitly rather than inventing a host path.
+capture_script="$(dirname "${BASH_SOURCE[0]}")/../scripts/host_capture.py"
+for capture_py in python3 python py; do
+  command -v "$capture_py" >/dev/null 2>&1 || continue
+  capture_args=()
+  [ "$capture_py" != py ] || capture_args=(-3)
+  if printf '%s' "$input" | "$capture_py" "${capture_args[@]}" "$capture_script" session-env 2>/dev/null; then
+    break
+  fi
+done
+
 # Also capture the primary checkout, NOW, while it is still resolvable.
 #
 # The Stop guard needs the primary checkout because that is where run markers

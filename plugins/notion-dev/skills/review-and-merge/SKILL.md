@@ -82,7 +82,8 @@ the local fallback when the external seat is unavailable; do not run another ove
 agent first. Its obligations include code quality, not only AC checking.
 
 Before the first internal review, refresh the full ticket after this run's start/Implementation
-writes. On schema 4 run `ticket-source` on the raw fetch and reconcile the inventory; this puts
+writes. On schema 5 use `capture-ticket --page <notion-page-uuid> --config <primary-config>`;
+schema 4 keeps `ticket-source` on the raw fetch. Reconcile the inventory; this puts
 our bookkeeping changes before the evidence freeze, not into an avoidable post-review delta.
 Never discard new human requirements while reconciling. Then freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
 body and verification receipt/log references outside the worktree. Run readiness. Prepare
@@ -98,6 +99,10 @@ general-purpose worker with the generated runtime context/contract and these cha
 - Return code_review, requirements_complete, requirement verdicts, blocking_findings and
   structured claims/caveats/triage audits (including evidence and finding dispositions) in
   the generated JSON contract. A failed check is a valid nonpassing report, not malformed output.
+
+Freeze author-written ticket narrative until recording. Continue required live status/ownership
+checks and property updates, but keep review-history/Implementation corrections in the canonical
+local decision record until the post-merge write. Never ignore human changes in those sections.
 
 The reviewer gets no author conversation, plan, or conclusions. It may run targeted tests when
 a concrete doubt warrants them, but starts from existing applicable logs. Source references
@@ -121,12 +126,26 @@ verdicts with valid evidence. Do not rerun a full review merely to generate new 
 Broader changes or uncertainty require full review within the invocation's two-full/two-delta
 budgets. A budget exhausted with unresolved work stops; no new invocation resets it.
 
+Before that delta, batch each correction across its affected code/docs/PR occurrences. Search
+for the retired assertion, replace it in place, and verify the whole affected set; do not append
+a correction story while retaining the false original. Put deferred Notion narrative changes
+in accepted recording facts. A new factual assertion still needs evidence and independent
+review; calling it non-blocking is not a waiver. Keep decision/reason/evidence/release obligations
+once in the local decision record and derive concise required summaries from it.
+
 Resolve available baseline citations BEFORE preparing that delta. Omitted named inputs are
 inherited/rehashed; use --remove-input only for intentional removals. Read correction_reuse when
 present: the runtime carries the prior independent verdict at unchanged code/dependencies, so
 do not demand a new correction report or retest unchanged code merely to fill a report field.
 Carry corrected claims, release obligations and the evidence-backed technical delta into the
 generated `recording` fields before publication; downstream knowledge uses those fields.
+
+For a version-4 delta packet, use its `delta_publication` contract: changed judgments plus
+explicit reused IDs/sections. Read changed hunks and prior-judgment references first; retrieve
+full prior sections only for an affected claim or a specific doubt. Runtime assembles the full
+result. Check indirect effects on EVERY requirement, retain all audits and release obligations,
+and recheck stale/unknown evidence; no automatic "comments are safe" rule. Do not regenerate
+the complete prior report to fill fields. Old packet contracts remain unchanged.
 
 ## 4. Final gates and merge
 
@@ -137,7 +156,7 @@ through review. On plugin repos ensure the manifest version still exceeds the cu
 
 Immediately before merge:
 1. Re-fetch the authoritative ticket and refresh its source file on legacy schema 1–3 runs.
-   On schema 4 perform the guarded full-fetch receipt at step 5 below, after potentially slow
+   On schema 4/5 perform the guarded full-fetch receipt at step 5 below, after potentially slow
    checks. Changed requirement-bearing content invalidates inventory/review even when the
    criterion count is unchanged; never edit the ticket to pass the gate.
 2. Re-fetch live PR HEAD/base/body and require equality with reviewed inputs. Base movement
@@ -149,9 +168,11 @@ Immediately before merge:
    Also fetch new review bodies and issue comments, including late external responses during
    fallback. Triage new substantive feedback. Empty/failed output is not proof. Every absorbed
    finding has an actual fix.
-5. Schema 4: `runtime.py --state "$RUNTIME_STATE" refresh-ticket --worker <accepted-review-id>`,
-   then a NEW full notion-fetch of its exact page; save raw JSON and the actual tool-call ID.
-   Finish `refresh-ticket` with --request, --response and --call-id per references/runtime.md.
+5. Schema 4/5: `runtime.py --state "$RUNTIME_STATE" refresh-ticket --worker <accepted-review-id>`,
+   then a NEW full notion-fetch of its exact page. Schema 5 finishes with `capture-ticket
+   --worker <accepted-review-id> --request <token>`; the helper extracts
+   the real response from this session's host transcript. Schema 4 keeps `refresh-ticket`
+   with --request, --response and --call-id per references/runtime.md.
    Status queries and old local copies do not qualify. Failed/changed/stale receipts block.
    Re-inventory/review changed requirements; if only the 5-minute receipt expired, fetch again
    without repeating unchanged review. Then `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`

@@ -160,6 +160,10 @@ assert_has  "the shared fixture root is resolved, so no derived path is a short 
   scripts/tests/test_runtime.py 'Path(self.temp.name).resolve()'
 assert_has  "the citation regression compares resolved paths on both platforms" \
   scripts/tests/test_runtime_evidence.py 'str(Path(second).resolve())'
+assert_has "the host hook and capture CLI round-trip native paths and UTF-8" \
+  scripts/tests/test_boundaries.py 'def test_session_hook_and_capture_cli_preserve_native_paths_and_utf8(self):'
+assert_has "both platform suites execute the host boundary regressions" \
+  scripts/verify-lean-workflow.sh "-p 'test_boundaries.py'"
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

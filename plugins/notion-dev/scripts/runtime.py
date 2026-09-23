@@ -25,8 +25,8 @@ import time
 import uuid
 
 
-SCHEMA = 4
-SCHEMAS = (1, 2, 3, SCHEMA)
+SCHEMA = 5
+SCHEMAS = (1, 2, 3, 4, SCHEMA)
 
 # A delta index is read by a fresh reviewer as its first act, so it is a table of
 # contents, not the material. Lists that do not fit are paged out to a side file and
@@ -37,7 +37,7 @@ PAGE_ITEMS = 50
 RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
 RECORD_FIELDS = ("EPIC-REPORT", "TICKET-RECORD", "CLEANUP", "CLEANUP-STEPS",
                  "HOOKS", "EPIC-DOC-RECORD", "EPIC-DOC-NEXT", "ISSUES")
-RESULT_CONTRACT_VERSION = 3
+RESULT_CONTRACT_VERSION = 4
 AUDIT_FIELDS = ("claims", "caveats", "triage")
 
 
@@ -47,9 +47,9 @@ def audits_pass(result):
                for name in AUDIT_FIELDS)
 
 
-def result_contract(role, items):
+def result_contract(role, items, version=RESULT_CONTRACT_VERSION):
     """One machine-readable contract, supplied to the worker and checked at publication."""
-    contract = {"version": RESULT_CONTRACT_VERSION, "required": {"report": "nonempty summary string"}}
+    contract = {"version": version, "required": {"report": "nonempty summary string; do not duplicate structured fields"}}
     if role == "completeness":
         contract["required"].update(
             requirements_complete="boolean: independently checked the whole authoritative source",
@@ -63,7 +63,7 @@ def result_contract(role, items):
                 "findings": [{"finding": "nonempty description", "disposition": "absorb|file|drop|blocked",
                               "rationale": "nonempty decision/evidence", "blocking": "boolean: unresolved merge obligation"}]}
         contract["audit_rules"] = "All three audits required. Checked with findings=[] means NONE. Missing is unknown. Unverified or blocking=true prevents merge. Mandatory work cannot be waived with file/drop."
-        if RESULT_CONTRACT_VERSION >= 3:
+        if version >= 3:
             contract["required"]["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}
             contract["recording_rules"] = "Preserve release obligations and accepted claim corrections as strings; technical_delta items carry fact/evidence. Explicit [] means none. These are the canonical post-merge facts, not another narrative."
     elif role == "record":
@@ -177,8 +177,14 @@ def render_result(worker, result):
             # Render one-line JSON per charge, so repeated publication is idempotent
             # and prose claiming NONE cannot override structured findings.
             narrative = re.sub(r"^(?:CLAIMS|CAVEATS|TRIAGE):[^\r\n]*\r?\n?", "", narrative, flags=re.M)
-            header.extend(name.upper() + ": " + json.dumps(result[name], ensure_ascii=False, sort_keys=True)
-                          for name in AUDIT_FIELDS)
+            if worker["contract_version"] >= 4:
+                # Full audits are siblings in this same result. Repeating all their
+                # evidence in report doubles transport without adding information.
+                header.extend(name.upper() + ": " + result[name]["status"] + "; findings="
+                              + str(len(result[name]["findings"])) for name in AUDIT_FIELDS)
+            else:
+                header.extend(name.upper() + ": " + json.dumps(result[name], ensure_ascii=False, sort_keys=True)
+                              for name in AUDIT_FIELDS)
         rendered["report"] = "\n".join(header) + "\n" + narrative
     return rendered
 
@@ -475,7 +481,8 @@ class Runtime:
                 return {"state": str(self.path), "run": run, "resumed": True}
             state.update(schema=2 if legacy else SCHEMA, run=run, ticket=ticket, stage=None, events=[],
                          workers={}, requirements=None, awaiting_worker=None,
-                         verifications=[], record_journal=[])
+                         verifications=[], record_journal=[],
+                         host_session=os.environ.get("NOTION_DEV_SESSION_ID") or None)
             self.event(state, "run_started")
         return {"state": str(self.path), "run": run, "resumed": False}
 
@@ -491,6 +498,49 @@ class Runtime:
                 self.event(state, "stage_started")
         return {"stage": name}
 
+    def capture_ticket(self, transcript, session, call_id=None, config=None, worker=None, request=None, page=None):
+        """Persist actual host output and bind/refresh without model-transcribed JSON."""
+        from host_capture import notion_fetch
+        with self.transaction() as state:
+            require(not state.get("completed"), "resume before capturing into a completed invocation")
+            require(not state.get("host_session") or state["host_session"] == session, "foreign host session")
+            pending = state.get("ticket_refresh_request") if worker else None
+            require(not worker or (pending and pending["request"] == request and pending["worker"] == worker),
+                    "begin the review's refresh challenge first")
+            require(bool(worker) == bool(request), "refresh worker and request must be supplied together")
+            require(worker or config, "intake capture requires primary config")
+            response, observed = notion_fetch(transcript, session, call_id,
+                pending["started"]["wall"] if pending else None, self.clock.stamp()["wall"],
+                pending["page"] if pending else page)
+            call_id = observed["call_id"]
+            page, _, _ = notion_source(response, [])
+            requested = str(observed["call"]["item"].get("input", {}).get("id", "")).lower().replace("-", "")
+            require(page in requested, "fetch request must identify the returned page")
+            if pending: require(page == pending["page"], "foreign ticket page")
+            saved = self.path.parent / ("host-fetch-" + digest_bytes(call_id.encode("utf-8")) + ".json")
+            if saved.exists(): require(read_json(saved) == response, "host capture is immutable")
+            else: atomic_json(saved, response)
+            binding = {"path": str(saved), "sha256": digest(saved), "session": session,
+                       "call_id": call_id, "call_time": observed["call"]["timestamp"],
+                       "result_time": observed["result"]["timestamp"],
+                       "transcript": observed["transcript"],
+                       "call_sha256": observed["call"]["sha256"], "result_sha256": observed["result"]["sha256"]}
+            old = state.setdefault("host_captures", {}).get(str(saved))
+            require(old is None or old == binding, "capture provenance changed")
+            state["host_session"] = session
+            state["host_captures"][str(saved)] = binding
+        if worker:
+            return self.refresh_ticket(worker, saved, request, call_id)
+        return self.ticket_source(saved, config)
+
+    @staticmethod
+    def captured_response(state, response):
+        binding = state.get("host_captures", {}).get(str(Path(response).resolve()))
+        require(binding and binding["sha256"] == digest(response)
+                and binding["session"] == state.get("host_session"),
+                "schema 5 requires capture-ticket from the actual host transcript, not reconstructed JSON")
+        return binding
+
     def ticket_source(self, response, config):
         """Bind a fetched provider page to the local source used by the inventory."""
         settings = read_json(config)["ticketSystem"]
@@ -498,6 +548,7 @@ class Runtime:
         page, content, props = notion_source(read_json(response), ignored)
         source = self.path.parent / "ticket.md"
         with self.transaction() as state:
+            if state["schema"] >= 5: self.captured_response(state, response)
             old = state.get("ticket_source")
             require(not state.get("completed"), "resume explicitly before changing a completed invocation")
             id_property = settings.get("idProperty", "ID")
@@ -554,6 +605,12 @@ class Runtime:
             require(isinstance(call_id, str) and call_id.strip() and call_id not in used,
                     "a new actual provider tool-call ID is required")
             capture = Path(response).resolve()
+            if state["schema"] >= 5:
+                from host_capture import timestamp
+                provenance = self.captured_response(state, capture)
+                require(provenance["call_id"] == call_id
+                        and timestamp(provenance["call_time"]) >= pending["started"]["wall"],
+                        "actual provider call must follow this refresh challenge")
             require(str(capture) != binding["response"] and capture.stat().st_mtime >= pending["started"]["wall"],
                     "capture the new full fetch response after refresh began; do not replay intake")
             fetched = read_json(capture)
@@ -739,9 +796,9 @@ class Runtime:
             packet = {"worker": key, "role": role, "slot": slot, "revision": current,
                       "inputs": snapshots, "requirements": {"path": str(inventory_path),
                       "sha256": digest(inventory_path)}}
-            contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 3 else None
+            contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 5 else (3 if state["schema"] >= 3 else None)
             if contract_version:
-                packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []))
+                packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []), contract_version)
             if baseline is not None:
                 delta_path = directory / "delta.json"
                 # `indent=None`: this one file is budgeted, and `bound_index` measured
@@ -755,6 +812,8 @@ class Runtime:
                         "previous": previous, "manifest_sha256": packet["delta"]["sha256"],
                         "checked_requirement_ids": [i["id"] for i in state["requirements"]["items"]],
                         "disposition": "sufficient|full-review-required"}
+                if contract_version and contract_version >= 4:
+                    packet["delta_publication"] = self.delta_publication(directory, baseline["worker"])
             if reused:
                 packet["correction_manifest"] = reused["correction_manifest"]
                 packet["correction_reuse"] = {"worker": reused["id"],
@@ -787,6 +846,7 @@ class Runtime:
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
                       "inventory_snapshot": packet["requirements"], "previous": previous,
                       "delta": packet.get("delta"), "correction": correction,
+                      "delta_publication": packet.get("delta_publication"),
                       "correction_manifest": packet.get("correction_manifest"),
                       "reused_correction": reused["result"]["correction_review"] if reused else None,
                       "correction_dependencies": reused.get("correction_dependencies", []) if reused else []}
@@ -929,6 +989,77 @@ class Runtime:
             index["index_bytes"] = measured
             index["within_budget"] = measured <= budget
         return index
+
+    @staticmethod
+    def delta_publication(directory, baseline):
+        """Small prior-fact index; the complete result remains available on demand."""
+        result = baseline["result"]
+        sections = {}
+        for name in ("code_review", "blocking_findings", "claims", "caveats", "triage", "recording"):
+            path = directory / ("prior-" + name + ".json")
+            atomic_json(path, result.get(name))
+            sections[name] = {"path": str(path), "sha256": digest(path)}
+        prior = directory / "prior-judgments.json"
+        atomic_json(prior, {"requirements": result["requirements"], "sections": sections})
+        return {"version": 1, "baseline": baseline["id"],
+                "baseline_sha256": digest_bytes(json_bytes(result)),
+                "prior": {"path": str(prior), "sha256": digest(prior)},
+                "rules": "Read delta.json and prior judgments first; retrieve prior sections only when needed. Supply report, requirements_complete, delta_review and any required correction_review. Under delta_result supply baseline_sha256, changed_requirements, reused_requirement_ids, updated_sections and reused_sections. Partition EVERY requirement and section exactly once. Reuse requirements only with current evidence and independently checked indirect effects. Replace affected sections in full; never clear findings implicitly. Runtime assembles the complete result; no duplicate narrative. Full result publication remains supported."}
+
+    def expand_delta(self, state, worker, submitted):
+        publication = worker.get("delta_publication")
+        require(publication and worker.get("contract_version", 0) >= 4, "compact delta not supported by this packet")
+        require(set(submitted) <= {"report", "requirements_complete", "delta_review", "correction_review", "delta_result"},
+                "do not mix compact and complete result fields")
+        delta = submitted["delta_result"]
+        baseline = self.worker(state, worker["previous"])
+        require(baseline.get("accepted") and not baseline["terminated"], "accepted baseline required")
+        previous = baseline["result"]
+        require(set(previous) <= {"report", "requirements_complete", "requirements", "blocking_findings",
+                "code_review", "claims", "caveats", "triage", "recording", "correction_review", "delta_review"},
+                "unknown baseline fields require complete publication, not implicit dropping")
+        require(isinstance(delta, dict) and delta.get("baseline_sha256") == publication["baseline_sha256"]
+                == digest_bytes(json_bytes(previous)), "compact delta baseline changed")
+        prior = publication["prior"]
+        require(digest(prior["path"]) == prior["sha256"], "prior judgments changed")
+        for reference in read_json(prior["path"])["sections"].values():
+            require(digest(reference["path"]) == reference["sha256"], "prior section changed")
+        changed = delta.get("changed_requirements")
+        reused = delta.get("reused_requirement_ids")
+        require(isinstance(changed, list) and all(isinstance(v, dict) for v in changed)
+                and isinstance(reused, list) and all(isinstance(v, str) for v in reused),
+                "compact delta needs explicit changed and reused requirements")
+        ids = [v.get("id") for v in changed] + reused
+        expected = [v["id"] for v in worker["requirements"]["items"]]
+        require(all(isinstance(v, str) for v in ids) and len(ids) == len(set(ids))
+                and set(ids) == set(expected), "compact delta must partition every requirement exactly once")
+        index = read_json(worker["delta"]["path"])
+        sections = read_json(self.ref_path(index, index["sections_file"]))
+        current = {r["id"]: r["applicability"] for r in self.evidence_records(baseline, sections["changed_paths"])}
+        require(all(current.get(i) == "current" for i in reused), "stale/unknown evidence cannot be inherited")
+        updates, carry = delta.get("updated_sections"), delta.get("reused_sections")
+        names = {"code_review", "blocking_findings", "claims", "caveats", "triage", "recording"}
+        require(isinstance(updates, dict) and isinstance(carry, list) and all(isinstance(n, str) for n in carry)
+                and len(carry) == len(set(carry)) and not set(updates) & set(carry)
+                and set(updates) | set(carry) == names, "compact delta must partition all audit/recording sections")
+        for name in carry:
+            old = previous.get(name)
+            require(old is not None, "missing baseline section cannot be inherited")
+            if name in AUDIT_FIELDS:
+                require(old["status"] == "checked" and not any(f["blocking"] for f in old["findings"]),
+                        "unverified/blocking audit must be rechecked")
+            if name == "code_review": require(old["verdict"] == "clean", "nonclean code review must be rechecked")
+            if name == "blocking_findings": require(not old, "unresolved findings cannot be inherited as clean")
+        result = {name: previous[name] if name in carry else updates[name] for name in names}
+        old_verdicts = {v["id"]: v for v in previous["requirements"]}
+        verdicts = {v["id"]: v for v in changed}
+        verdicts.update({i: old_verdicts[i] for i in reused})
+        result.update({k: v for k, v in submitted.items() if k != "delta_result"})
+        result["requirements"] = [verdicts[i] for i in expected]
+        if worker["result"] is None:
+            worker["inherited_requirements"] = reused
+            worker["citation_resolutions"] = [c for c in baseline.get("citation_resolutions", []) if c["id"] in reused]
+        return result
 
     def delta_index(self, baseline, current, snapshots, directory):
         """The compact change/reuse index a delta reviewer reads first."""
@@ -1083,6 +1214,11 @@ class Runtime:
                 "delta review must check indirect impact on every requirement")
         require(delta.get("disposition") in {"sufficient", "full-review-required"},
                 "delta review must assess whether its scope is sufficient")
+        if worker.get("delta_publication"):
+            prior = worker["delta_publication"]["prior"]
+            require(digest(prior["path"]) == prior["sha256"], "prior judgments changed")
+            for reference in read_json(prior["path"])["sections"].values():
+                require(digest(reference["path"]) == reference["sha256"], "prior section changed")
         manifest = read_json(worker["delta"]["path"])
         # Every artifact the index merely REFERENCES is hash-bound here, because moving
         # the bulk out of the index moved the tampering surface out with it.
@@ -1125,6 +1261,8 @@ class Runtime:
             require(not worker["terminated"], "worker was confirmed terminated; reconcile late output explicitly")
             require(not worker.get("question") or worker["question"].get("answer"),
                     "answer the outstanding question before publication")
+            if "delta_result" in result:
+                result = self.expand_delta(state, worker, result)
             validate_result(worker, result)
             result = render_result(worker, result)
             self.validate_packet(worker)
@@ -1782,6 +1920,9 @@ def main():
     p = commands.add_parser("stage"); p.add_argument("name")
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
     p = commands.add_parser("ticket-source"); p.add_argument("--response", required=True); p.add_argument("--config", required=True)
+    p = commands.add_parser("capture-ticket"); p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT"))
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", "")); p.add_argument("--call-id"); p.add_argument("--page")
+    p.add_argument("--config"); p.add_argument("--worker"); p.add_argument("--request")
     p = commands.add_parser("refresh-ticket"); p.add_argument("--worker", required=True)
     p.add_argument("--response"); p.add_argument("--request"); p.add_argument("--call-id")
     commands.add_parser("ready")
@@ -1831,6 +1972,7 @@ def main():
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
     elif name == "ticket-source": result = runtime.ticket_source(args.response, args.config)
+    elif name == "capture-ticket": result = runtime.capture_ticket(args.transcript, args.session, args.call_id, args.config, args.worker, args.request, args.page)
     elif name == "refresh-ticket": result = runtime.refresh_ticket(args.worker, args.response, args.request, args.call_id)
     elif name == "ready": result = runtime.ready()
     elif name == "correction-needed": result = runtime.correction_needed(args.worktree, args.reason)

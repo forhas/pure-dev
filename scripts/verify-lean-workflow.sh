@@ -18,6 +18,11 @@ else
   bad "review freshness and efficient handoffs"
 fi
 assert_has "closeout reuses current evidence" plugins/notion-dev/skills/session-closeout/SKILL.md 'workflow.py verify'
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_boundaries.py'; then
+  ok "host capture, scoped recording and compact deltas"
+else
+  bad "host capture, scoped recording and compact deltas"
+fi
 assert_has "new ticket delegates intake" plugins/notion-dev/commands/ticket.md 'references/lean-intake.md'
 assert_has "review has code quality and requirements in one seat" plugins/notion-dev/skills/review-and-merge/SKILL.md 'One combined independent internal review'
 assert_has "record uses operation planning" plugins/notion-dev/references/record.md 'workflow.py" record-plan'
@@ -35,8 +40,8 @@ for f in plugins/notion-dev/references/legacy/*.md; do
   assert_lacks "$f loads the legacy runtime contract, never the lean one" "$f" '${CLAUDE_PLUGIN_ROOT}/references/runtime.md'
 done
 assert_has "the lean contract is schema-gated, so legacy packets carry none" \
-  plugins/notion-dev/scripts/runtime.py 'contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 3 else None'
-assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 3'
+  plugins/notion-dev/scripts/runtime.py '(3 if state["schema"] >= 3 else None)'
+assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 4'
 assert_has "recording consumes frozen input" plugins/notion-dev/references/record.md 'record-input'
 assert_has "child identity is a published contract" plugins/notion-dev/references/record.md ':child:'
 exit $(( fails > 0 ))

@@ -374,7 +374,7 @@ class HandoffTests(unittest.TestCase):
         lean_runtime = runtime.Runtime(lean_path)
         lean_runtime.init("lean-flow", "TEST-1")
         lean_runtime.init("lean-flow", "TEST-1", legacy=True)
-        self.assertEqual(runtime.read_json(lean_path)["schema"], 4)
+        self.assertEqual(runtime.read_json(lean_path)["schema"], 5)
 
     def test_owned_lock_outstanding_worker_and_partial_recording_block_completion(self):
         marker = self.completion_fixture()

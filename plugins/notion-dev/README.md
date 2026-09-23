@@ -2,10 +2,20 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.37.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.38.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Deterministic boundaries (0.38.0)
+
+New lean invocations use schema 5: actual Claude Code tool exchanges supply full-ticket
+captures; accepted worker IDs supply recording facts; scoped recording operations bind host
+calls or run explicitly planned local hooks after journaling. New delta workers can reference
+unchanged judgments instead of reauthoring a complete report. Existing schema 1–4 runs and
+already-prepared contracts keep their protocols and budgets. See
+[`references/boundaries.md`](references/boundaries.md) for commands, trust boundaries and
+measurement. These mechanisms are regression-tested, not a claim of measured live savings.
 
 ## Efficient handoffs (0.37.0)
 

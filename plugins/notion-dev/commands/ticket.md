@@ -41,6 +41,10 @@ function/call-site/test/docs changes into separate worker tasks. The implementat
 correct test setup, helper choices and line ranges without asking permission to deviate from
 a proposed implementation; requirements and explicit user decisions still govern.
 
+`context.md` owns the compact decision record: decision, essential reason, evidence and release
+obligations. Other summaries derive from these facts, not new explanations. Required detail
+stays accessible by reference; do not copy the same condition list into every surface by default.
+
 **Design review when warranted:** unresolved architecture, financial/security invariants,
 migration/data-loss risk, or a public contract change merits a bounded independent `plan`
 worker via `references/runtime.md`. Give it the short decision record and authoritative
@@ -79,8 +83,9 @@ Include all ticket-mandated disclosure/checklist/sign-off wording. Distinguish m
 from release-only obligations using the ticket's actual words. Do not invent sign-off.
 Avoid volatile counts, file line numbers and narratives unless necessary or generated from evidence.
 
-Through ticket-system, set the PR property and upsert `Implementation` with the actual branch,
-PR, tests and implementation summary. Preserve unrelated sections. Save PR identity in context.
+Through ticket-system, set the PR property. Save branch, tests, PR identity and the implementation
+summary in context. Defer the final Notion `Implementation` narrative to recording; preserve
+unrelated sections. Do not write review history into the ticket while its source is frozen.
 
 ## 4. Review and merge
 
