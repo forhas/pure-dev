@@ -216,3 +216,4 @@ This is a host/provider integration receipt, not cryptographic provider attestat
 cannot establish network truth or prevent a host forging a new call ID and copying old bytes.
 The adapter must preserve the actual tool response and call identity; unavailable evidence stops
 merge rather than filling fields with assertions. No credentials or provider SDK are added.
+That limit is `blocked` on the provider; see `references/handoffs.md`.

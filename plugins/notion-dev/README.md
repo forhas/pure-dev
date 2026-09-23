@@ -12,7 +12,8 @@ remain supported; Python 3.8+ and configured `knowledge.python` remain the floor
 The lean architecture stays intact. New contracts use structured correction verdicts, preserve
 resolved evidence before deltas, inherit unchanged named inputs, and carry independently reviewed
 corrections at unchanged code/dependencies. New invocations require a full authoritative Notion
-fetch receipt immediately before merge; this is host-captured evidence, not provider attestation.
+fetch receipt immediately before merge; this is host-captured evidence, not provider attestation
+(`blocked` on the provider).
 
 Knowledge, epic and ticket skills load operation-specific references. `next-task` selects from
 the brief/live children before ticket-scoped knowledge retrieval. Recording deduplicates frozen

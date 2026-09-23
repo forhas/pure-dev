@@ -34,6 +34,10 @@ capture. All body text is retained, even in plugin-named sections. Only configur
 properties and transport metadata are excluded from requirement comparison. Own pre-review
 bookkeeping is captured before freezing the first internal review.
 
+**Disposition: `blocked`.** Attestation is an external limit: the Notion MCP fetch returns no
+signed response, so no local helper can prove a request happened. A provider-signed fetch
+response would unblock it; until then the receipt fails closed on missing or incomplete capture.
+
 Version boundaries are explicit: schema 1/2 legacy workflows (new explicit legacy flows use
 `init --legacy`, never on a lean invocation), schema 3 existing lean invocations,
 and already-prepared result contracts 1/2 keep their original obligations. New lean workers get
@@ -66,3 +70,7 @@ Use the same accounting conventions and record ticket scope/risk. Confirm qualit
 requirement evidence, configured checks and defect findings; a smaller context alone is not
 success. No live savings are inferred from character counts or offline checks. A multi-ticket
 sample is needed before attributing an aggregate improvement to this release.
+
+**Disposition: `blocked`.** External cause: savings exist only in a live Claude Code run against
+a client repository, which no offline test can substitute for. The real-ticket comparison above,
+then the multi-ticket sample, is what unblocks it.
