@@ -26,7 +26,9 @@ Save immutable `record-facts.json` beside runtime state with:
  "verification":"<receipt index path>","review":"<structured result path>",
  "epic":"<page id or null>","followups":[],
  "knowledge_delta":[{"fact":"<new durable fact>","evidence":"<source/commit reference>"}],
- "worktree":"<owned worktree>","branch":"<owned branch>","hooks":["<configured skills in order>"]
+ "worktree":"<owned worktree>","branch":"<owned branch>","hooks":["<configured skills in order>"],
+ "epic_url":"<actual epic URL or null>","brief_path":"<actual brief path or null>",
+ "project_root":"<primary checkout>","knowledge_dir":"<configured bundle path>"
 }
 ```
 Requirements, verification and review may be embedded structured objects instead of paths.
@@ -49,12 +51,21 @@ an unconfirmed live writer could still perform side effects; then preserve the l
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-plan --state "$RUNTIME_STATE" --facts <record-facts.json>
 ```
 
-The helper emits version-2 immutable payload files and stable operation IDs. It embeds the
-exact UTF-8 bytes of the three named evidence files, including their byte counts and hashes;
-it does not recursively open paths inside receipts. Each file is limited to 4 MiB: larger
+New schema-4 runs emit version-3 immutable payloads and stable operation IDs. The helper
+archives full named evidence by content identity, deduplicating identical requirements/review
+files. Provider views retain every structured requirement verdict, audit, evidence reference,
+release obligation and accepted claim correction; only a structured review with canonical
+recording facts can omit its redundant report narrative from the view. Unknown formats/fields
+remain complete. The original report stays in the hash-bound local archive. It does not
+recursively open paths inside receipts. Each source file is limited to 4 MiB: larger
 inputs require scoped evidence, never silent truncation. Plan output contains references,
 not the evidence text. Keep these private artifacts outside commits; do not copy entire logs
 or secrets into provider pages.
+
+On new runs the final accepted review's `recording` fields supply the canonical technical delta,
+claim corrections and release obligations. Reconcile them before planning, not after delayed
+chat arrives. Do not substitute a stale author summary for those accepted corrections.
+Old schema-3/version-2 plans resume unchanged through the same interface.
 
 For each operation consume the frozen data, not the original evidence paths:
 ```bash
@@ -72,13 +83,17 @@ files to construct it. Changed sources cannot alter this operation's intended ev
   Record failed only after proving no effect occurred; then a retry may execute. Unknown stays
   unknown-outcome and requires resolution, never a blind retry.
 
-After a response/readback confirms the effect, journal `record-op --operation <id> --target
-<target> --outcome confirmed --digest <data_sha256> --provider-id <receipt>` with that same
-identity and an actual provider ID or durable receipt path. Without `--begin`, record-input
+After a response/readback confirms the effect, use the SAME command surface:
+`workflow.py record-outcome --state "$RUNTIME_STATE" --operation <id> --outcome confirmed
+--provider-id <receipt>`. It looks up the frozen target and digest; do not copy them by hand.
+Use failed or unknown-outcome with the observed cause/readback when appropriate. The low-level
+runtime record-op remains for legacy callers only. Without `--begin`, record-input
 is read-only; `--field <name>` retrieves one top-level field for inspection/reconciliation,
 including after confirmation. Downstream epic/brief steps use these frozen review/requirements
 fields from ticket-resolution, never reopen the original evidence. Do not combine --field
 with --begin: an attempt must receive its complete input.
+Never pipe provider input through head/tail or a character limit. If the view is too large,
+inspect its scoped fields first and plan smaller complete write payloads; never truncate evidence.
 On resume consume existing frozen payloads without regenerating them. Replanning changed
 evidence fails closed, including after confirmation. Legacy path-only payloads are refused:
 reconcile their existing effects and preserve their journal; do not reset or silently rebind
@@ -89,6 +104,18 @@ Use distinct child operations for multi-write steps and EACH configured hook:
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-child --state "$RUNTIME_STATE" --parent <planned-id> --name <stable-name> --target <actual-target> --payload <literal-input.json>
 ```
+For new schema-4 multi-write parents, declare the COMPLETE set first with
+`workflow.py record-children --state "$RUNTIME_STATE" --parent <id> --writes <writes.json>`.
+The JSON is `[{"name":"merged-section","target":"<real target>","data":{...}}, ...]`.
+Declare completeness append, AC update and merged section separately unless the adapter truly
+performs one atomic provider call (then one atomic-batch child is appropriate). Hooks each get
+their own child. All children must exist and be confirmed before their required parent can
+confirm; a partial interruption resumes only unfinished children. `record-input --begin` on
+such a parent returns `action: children`, never permission to perform a second parent write.
+
+Use actual epic/local targets, not the ticket URL for every kind. Use real UTF-8 JSON files or
+`--payload -` / `--writes -` with stdin. Native Windows Python cannot open Bash process
+substitution paths such as /dev/fd or /proc/fd. No shell-specific provider-payload tricks.
 The child ID is `<planned-id>:child:<stable-name>`. Names match
 `[A-Za-z0-9][A-Za-z0-9._-]{0,79}`; choose semantic names (e.g. `merged-section`, `hook-01`)
 once and retain them on resume. No nested children or IDs invented from display names.
@@ -160,3 +187,9 @@ artifacts. Report merge success separately from partial recording, preserving ex
 failed operations and recovery command. Only fully reconciled required record operations permit
 `OUTCOME: resolved`; best-effort knowledge/brief failures remain explicit in their outcome fields,
 never hidden by that label. Do not load old code-review history to make the final report longer.
+
+After workspace closeout, run `workflow.py complete --state "$RUNTIME_STATE" --marker
+"$RUN_MARKER"`. It verifies required recording outcomes, worker accounting, invocation/session
+ownership and release of this run's primary writer lock, then sets BOTH phase and state to
+complete. Do not use a phase-only marker update or disable the Stop hook. A stopped run must
+be explicitly resumed first. Foreign locks are never released by this helper.

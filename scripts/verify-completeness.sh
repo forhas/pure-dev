@@ -19,6 +19,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 # repeats on purpose declares its count with `assert_has_n`.
 # (cd to the repo root already happened above, so this path is stable.)
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 echo "== spec status =="
 SPEC=docs/superpowers/specs/2026-08-28-completeness-design.md
@@ -28,7 +29,7 @@ assert_lacks "spec status is not stale" "$SPEC" 'Not yet planned or implemented'
 assert_has   "spec status names its plan"  "$SPEC" '../plans/2026-08-28-completeness.md'
 
 echo "== Task 1: ticket-system write path =="
-TS=$ND/skills/ticket-system/SKILL.md
+TS=$(instruction_view ticket-system)
 TSWRITE=$ND/skills/ticket-system/references/write-ops.md
 assert_has "ticket-system tables refreshAcceptanceCriteria" "$TS" '| `refreshAcceptanceCriteria` |'
 assert_has "refreshAcceptanceCriteria has its own section"  "$TSWRITE" '## refreshAcceptanceCriteria(id, verdicts)'

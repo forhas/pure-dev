@@ -25,6 +25,7 @@ class LeanTests(unittest.TestCase):
         value = support.RuntimeTests.result(self)
         value.update({name: {"status": "checked", "evidence": "fixture audit: source, diff and PR body",
                              "findings": []} for name in runtime.AUDIT_FIELDS})
+        value["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}
         return value
 
     def setUp(self):
@@ -42,10 +43,10 @@ class LeanTests(unittest.TestCase):
         runtime.atomic_json(directory / "notion-dev.config.json", value)
         return value
 
-    def test_new_run_uses_schema_three(self):
+    def test_new_run_uses_schema_four(self):
         state = self.root / "new/state.json"
         runtime.Runtime(state).init("new", "TEST-1")
-        self.assertEqual(runtime.read_json(state)["schema"], 3)
+        self.assertEqual(runtime.read_json(state)["schema"], 4)
 
     def test_generated_contract_covers_whole_inventory_and_code_review(self):
         key = self.prepare()
@@ -56,7 +57,7 @@ class LeanTests(unittest.TestCase):
                          {v["id"] for v in self.inventory["items"]})
         self.assertIn("code_review", contract)
         self.assertIn("blocking_findings", contract)
-        self.assertEqual(packet["result_contract"]["version"], 2)
+        self.assertEqual(packet["result_contract"]["version"], 3)
         for name in runtime.AUDIT_FIELDS:
             self.assertEqual(set(contract[name]), {"status", "evidence", "findings"})
 
@@ -152,7 +153,7 @@ class LeanTests(unittest.TestCase):
         self.assertEqual(runtime.digest(worker["packet"]), packet_hash)
         delta = self.rt.prepare("completeness", {"ticket": self.source}, self.repo, previous=key)
         packet = runtime.read_json(delta["packet"])
-        self.assertEqual(packet["result_contract"]["version"], 2)
+        self.assertEqual(packet["result_contract"]["version"], 3)
         self.assertIn("triage", packet["result_contract"]["required"])
         self.assertIn("delta_review", packet["result_contract"]["required"])
 

@@ -99,7 +99,8 @@ agent or reload investigation history. Carry the technical knowledge delta alrea
 Run the workspace pass of `notion-dev:session-closeout` over owned artifacts and the finished
 draft. Report ticket/PR/merge, requirement and test evidence, Notion/knowledge/epic outcomes,
 release obligations and runtime path. Mark the owned run `complete` only after recording and
-closeout; keep evidence outside disposable worktrees. `OUTCOME: resolved` is valid only then.
+closeout using `workflow.py complete --state "$RUNTIME_STATE" --marker "$RUN_MARKER"`;
+keep evidence outside disposable worktrees. `OUTCOME: resolved` is valid only then.
 
 ## Failure and waiting
 

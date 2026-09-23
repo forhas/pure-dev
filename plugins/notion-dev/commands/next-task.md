@@ -18,7 +18,7 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
 
 ## Select
 
-1. Invoke knowledge `retrieve(<epic-id>)` once. Retain the brief, context and live child list
+1. Invoke epic-doc `schedule(<epic-id>)` once. Retain the brief and live child list
    as artifact references with source identity and fetch time. The brief supplies scheduling
    guidance, not authoritative ticket requirements or live statuses.
 2. If BOOTSTRAP or DRIFT requires a brief write, use epic-doc's bootstrap/refresh operation
@@ -36,6 +36,8 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
 
 ## Delegate and repeat
 
+For the chosen ticket invoke knowledge `retrieve(<epic-id>, <ticket-title>, <ticket-key>)` once.
+Pass schedule's same-boundary metadata/root revision for reuse; do not repeat its epic fetch.
 Invoke `/notion-dev:ticket <key> [flags] | selected from <brief-path>: <reason>` via Skill.
 Pass the saved ticket/context references, not copied histories. Ticket rechecks live ownership
 and requirement freshness before writes. Each ticket owns its own runtime invocation; resumes
@@ -46,7 +48,8 @@ a launch acknowledgement, an unmerged PR, failed recording, or an incomplete clo
 `claimed-elsewhere` refreshes ownership and selection without counting a resolution.
 A stop/failure stops this loop too. Do not pick another ticket over unfinished owned work.
 
-After a resolution retrieve the updated epic once; reuse that retrieval for the next iteration.
+After a resolution schedule from the updated brief/live children once; reuse it for the next iteration.
+Pass the full selected ticket and targeted context to intake, not the whole epic bundle before selection.
 No new implementation owner inherits the previous ticket's conversation: supply source/context
 references only if delegation is justified. No request to continue between tickets within the
 requested depth; a runtime-authorized wait/yield is still unfinished work, not abandonment.

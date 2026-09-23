@@ -17,7 +17,7 @@ import uuid
 from runtime import Runtime, Invalid, atomic_json, git, read_json, require, state_lock
 
 
-RECORD_PAYLOAD_VERSION = 2
+RECORD_PAYLOAD_VERSION = 3
 MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
 CHILD_SEPARATOR = ":child:"
 
@@ -53,8 +53,8 @@ def record_kind(operation, kinds):
     return None  # Unknown/legacy ids remain required; never guess ancestry.
 
 
-def save_record_payload(path, kind, data):
-    payload = {"record_payload_version": RECORD_PAYLOAD_VERSION, "kind": kind, "data": data}
+def save_record_payload(path, kind, data, version=2):
+    payload = {"record_payload_version": version, "kind": kind, "data": data}
     if path.exists():
         require(read_json(path) == payload,
                 "record payload changed or legacy payload: reconcile before an explicit operation revision")
@@ -64,6 +64,34 @@ def save_record_payload(path, kind, data):
 
 def child_payload_path(directory, operation):
     return directory / ("child-" + hashlib.sha256(operation.encode("utf-8")).hexdigest() + ".json")
+
+
+def json_input(path):
+    """A real UTF-8 file or stdin works with native Windows Python; /dev/fd does not."""
+    if path == "-":
+        return json.load(sys.stdin)
+    require(not str(path).startswith(("/dev/fd/", "/proc/")), "use a real JSON file or --payload - with stdin, not process substitution")
+    return read_json(path)
+
+
+def evidence_view(snapshot, directory, canonical_review=None):
+    """One content-addressed full archive and one complete provider-facing value.
+
+    Only a version-3 structured review has canonical recording facts that replace
+    narrative. Unknown fields/formats are retained, never silently summarized/cut.
+    """
+    raw = json.dumps(snapshot, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    identity = hashlib.sha256(raw).hexdigest()
+    path = directory / "evidence" / (identity + ".json")
+    if not path.exists(): atomic_json(path, snapshot)
+    require(read_json(path) == snapshot, "frozen evidence archive changed")
+    data = snapshot
+    if isinstance(snapshot, dict) and snapshot.get("format") == "utf-8":
+        try: data = json.loads(snapshot["content"])
+        except ValueError: pass
+    if canonical_review is not None and data == canonical_review:
+        data = {k: v for k, v in data.items() if k != "report"}
+    return identity, {"archive": str(path), "archive_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "data": data}
 
 
 def primary(project):
@@ -119,6 +147,9 @@ def marker_update(path, session, phase, state="running", cause=None):
     with state_lock(path.with_suffix(".claim.lock"), 5):
         marker = read_json(path)
         require(marker.get("claude_session") == session, "marker belongs to another host session")
+        require(marker.get("state") != "complete", "terminal marker: resume-pr is required for explicit recovery")
+        require(phase != "complete" or state == "complete", "phase-only completion is invalid; use workflow.py complete")
+        require(state != "complete" or not marker.get("runtime_state"), "use workflow.py complete to validate a ticket's terminal transition")
         marker.update(phase=phase, state=state, cause=cause, heartbeat=now())
         atomic_json(path, marker)
     return marker
@@ -214,6 +245,8 @@ def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch,
             require(Runtime(runtime_path).ready()["passed"], "requirements/readiness must pass before review")
         body = {**pending, "run": ticket, "session": identity["run"], "runtime_state": str(runtime_path),
                 "worktree": str(worktree), "branch": branch, "phase": "record" if merged else "review"}
+        with Runtime(runtime_path).transaction() as state:
+            state.pop("completed", None)  # Explicit verified PR recovery; budgets/journal unchanged.
         atomic_json(marker, body)
         pending_path.unlink()
     return {"marker": str(marker), "runtime": str(runtime_path), "worktree": str(worktree), "branch": branch}
@@ -240,7 +273,7 @@ def verify_config(state, project, worktree, depends=()):
 
 def record_plan(state, facts_file):
     """Prepare immutable payloads; execute with provider tools, then journal readback."""
-    facts = read_json(facts_file)
+    facts = json_input(facts_file)
     required = ("ticket", "ticket_url", "pr_url", "merge_sha", "base", "merged_at", "strategy", "requirements", "verification", "review")
     require(all(facts.get(k) for k in required), "record facts are incomplete")
     require(re.fullmatch(r"[0-9a-f]{40}", facts["merge_sha"]), "full verified merge SHA required")
@@ -248,6 +281,22 @@ def record_plan(state, facts_file):
                          for name in ("requirements", "verification", "review")}}
     output = Path(state).resolve().parent / "record"
     output.mkdir(exist_ok=True)
+    identity = read_json(state)
+    version = RECORD_PAYLOAD_VERSION if identity["schema"] >= 4 else 2
+    pool = {}
+    if version >= 3:
+        reviews = [w for w in identity["workers"].values() if w["role"] == "completeness" and w.get("accepted") and not w["terminated"]]
+        canonical = reviews[-1]["result"] if reviews and (reviews[-1].get("contract_version") or 0) >= 3 else None
+        for name in ("requirements", "verification", "review"):
+            key, view = evidence_view(facts[name], output, canonical)
+            pool[key] = view
+            facts[name] = {"evidence_id": key}
+        if reviews:
+            accepted = reviews[-1]["result"].get("recording")
+            require(accepted is not None, "accepted review lacks canonical recording facts; preserve legacy recovery explicitly")
+            facts["knowledge_delta"] = accepted["technical_delta"]
+            facts["accepted_claim_corrections"] = accepted["claim_corrections"]
+            facts["release_obligations"] = accepted["release_obligations"]
     payloads = {
         "ticket-status": {"status": "implemented"},
         "ticket-resolution": {k: facts[k] for k in required if k != "ticket"},
@@ -257,14 +306,26 @@ def record_plan(state, facts_file):
         "post-merge-hooks": {"merge_sha": facts["merge_sha"], "hooks": facts.get("hooks", [])},
         "epic-brief": {"epic": facts.get("epic"), "ticket": facts["ticket"], "pr_url": facts["pr_url"], "merge_sha": facts["merge_sha"]},
     }
+    if version >= 3:
+        payloads["ticket-resolution"].update(evidence=pool, release_obligations=facts.get("release_obligations", []),
+                                              accepted_claim_corrections=facts.get("accepted_claim_corrections", []))
+        payloads["knowledge-delta"].update(accepted_claim_corrections=facts.get("accepted_claim_corrections", []),
+                                             release_obligations=facts.get("release_obligations", []))
+    targets = {"epic-record": facts.get("epic_url") or facts.get("epic") or "none:epic",
+               "epic-brief": facts.get("brief_path") or facts.get("epic_url") or facts.get("epic") or "none:epic",
+               "cleanup": facts.get("worktree") or "none:worktree",
+               "knowledge-delta": facts.get("knowledge_dir") or "none:knowledge",
+               "post-merge-hooks": facts.get("project_root") or "none:hooks"}
     runtime = Runtime(state)
     operations = []
     for name, payload in payloads.items():
         path = output / (name + ".json")
-        save_record_payload(path, name, payload)
+        save_record_payload(path, name, payload, version)
         operation = facts["ticket"] + ":" + facts["merge_sha"] + ":" + name
-        check = runtime.record_check(operation, facts["ticket_url"], path)
-        operations.append({**check, "kind": name, "payload": str(path)})
+        check = runtime.record_check(operation, targets.get(name, facts["ticket_url"]) if version >= 3 else facts["ticket_url"], path)
+        operations.append({**check, "kind": name, "payload": str(path),
+                           "requires_children": version >= 3 and (name == "ticket-resolution" or
+                                (name == "post-merge-hooks" and bool(facts.get("hooks"))))})
     atomic_json(output / "plan.json", operations)
     return {"plan": str(output / "plan.json"), "operations": operations}
 
@@ -278,11 +339,46 @@ def record_child(state, parent, name, target, payload_file):
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", name), "invalid child name")
     operation = parent + CHILD_SEPARATOR + name
     path = child_payload_path(directory, operation)
-    data = read_json(payload_file)
+    data = json_input(payload_file)
     require(isinstance(data, dict), "child payload must be a self-contained object, not a live file reference")
-    save_record_payload(path, kinds[parent], data)
+    version = read_json(next(p["payload"] for p in plan if p["operation"] == parent))["record_payload_version"]
+    save_record_payload(path, kinds[parent], data, version)
     check = Runtime(state).record_check(operation, target, path)
     return {**check, "payload": str(path), "parent": parent, "kind": kinds[parent]}
+
+
+def record_children(state, parent, manifest_file):
+    """Freeze the complete provider-write set BEFORE any child dispatch.
+
+    A caller may declare one atomic batch, or separately recoverable writes. Unknown
+    outcomes then stop only the affected child, not replay a completed sibling.
+    """
+    writes = json_input(manifest_file)
+    require(isinstance(writes, list) and writes and all(isinstance(w, dict) and
+            all(k in w for k in ("name", "target", "data")) for w in writes), "writes must list name/target/data objects")
+    require(all(isinstance(w["name"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", w["name"])
+                and isinstance(w["target"], str) and w["target"].strip() and isinstance(w["data"], dict)
+                for w in writes), "each write requires a valid child name, actual target and self-contained data")
+    require(len({w["name"] for w in writes}) == len(writes), "duplicate child name")
+    directory = Path(state).resolve().parent / "record"
+    plan = read_json(directory / "plan.json")
+    require(any(p["operation"] == parent for p in plan), "unknown parent operation")
+    manifest = child_payload_path(directory, parent + ":manifest")
+    if manifest.exists(): require(read_json(manifest) == writes, "child write set changed; reconcile explicitly")
+    else:
+        require(record_input(state, parent)["action"] == "execute", "declare children before parent execution")
+        atomic_json(manifest, writes)
+    binding = {"path": str(manifest), "sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()}
+    with Runtime(state).transaction() as data:
+        old = data.setdefault("record_child_sets", {}).get(parent)
+        require(old is None or old == binding, "declared child write set changed")
+        data["record_child_sets"][parent] = binding
+    children = []
+    for write in writes:
+        source = child_payload_path(directory, parent + ":input:" + write["name"])
+        atomic_json(source, write["data"])
+        children.append(record_child(state, parent, write["name"], write["target"], source))
+    return {"parent": parent, "children": children}
 
 
 def record_input(state, operation, begin=False, field=None):
@@ -301,7 +397,7 @@ def record_input(state, operation, begin=False, field=None):
     raw = path.read_bytes()
     payload_hash = hashlib.sha256(raw).hexdigest()
     payload = json.loads(raw.decode("utf-8"))
-    require(isinstance(payload, dict) and payload.get("record_payload_version") == RECORD_PAYLOAD_VERSION and payload.get("kind") == kind
+    require(isinstance(payload, dict) and payload.get("record_payload_version") in {2, RECORD_PAYLOAD_VERSION} and payload.get("kind") == kind
             and isinstance(payload.get("data"), dict), "legacy/invalid payload; reconcile before recording")
     if operation in parents:
         require(parents[operation]["data_sha256"] == payload_hash, "planned payload changed")
@@ -314,17 +410,50 @@ def record_input(state, operation, begin=False, field=None):
         if operation in parents:
             require(latest["target"] == parents[operation]["target"], "planned target changed")
     content = payload["data"]
+    # `evidence` is an ordinary provider field in arbitrary child/legacy payloads.
+    # Only our version-3 parent ticket-resolution owns the archive-pool shape.
+    pool = content.get("evidence", {}) if (operation in parents and kind == "ticket-resolution"
+            and payload["record_payload_version"] >= 3) else {}
+    for view in pool.values():
+        require(hashlib.sha256(Path(view["archive"]).read_bytes()).hexdigest() == view["archive_sha256"],
+                "frozen evidence archive changed")
     if field is not None:
         require(field in content, "requested payload field does not exist")
         content = {field: content[field]}
     action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
               if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
     if begin and action == "execute":
+        if operation in parents and parents[operation].get("requires_children"):
+            manifest = child_payload_path(directory, operation + ":manifest")
+            require(manifest.exists(), "plan independently recoverable writes with record-children before execution")
+            return {"operation": operation, "action": "children", "children": [
+                operation + CHILD_SEPARATOR + w["name"] for w in read_json(manifest)]}
         # record_op rechecks the latest journal state under its own lock, so a
         # concurrent begin cannot dispatch the same provider mutation twice.
         rt.record_op(operation, latest["target"], "attempted", data_sha256=payload_hash)
     return {"operation": operation, "action": action, "target": latest["target"],
             "data_sha256": payload_hash, "data": content if action != "skip" or field is not None else None}
+
+
+def record_outcome(state, operation, outcome, provider_id=None):
+    require(outcome in {"confirmed", "failed", "unknown-outcome"}, "invalid recording outcome")
+    current = record_input(state, operation)
+    require(outcome != "confirmed" or (isinstance(provider_id, str) and provider_id.strip()),
+            "confirmation requires an actual response/readback receipt")
+    directory = Path(state).resolve().parent / "record"
+    plan = read_json(directory / "plan.json")
+    parent = next((p for p in plan if p["operation"] == operation), None)
+    require(outcome != "confirmed" or current["action"] != "execute" or (parent and parent.get("requires_children")),
+            "begin the operation before confirming its provider effect")
+    if outcome == "confirmed" and parent and parent.get("requires_children"):
+        manifest = child_payload_path(directory, operation + ":manifest")
+        require(manifest.exists(), "required child write plan missing")
+        binding = read_json(state).get("record_child_sets", {}).get(operation)
+        require(binding and hashlib.sha256(manifest.read_bytes()).hexdigest() == binding["sha256"], "child write set changed")
+        for write in read_json(manifest):
+            require(record_input(state, operation + CHILD_SEPARATOR + write["name"])["action"] == "skip",
+                    "confirm parent only after every declared write is confirmed")
+    return Runtime(state).record_op(operation, current["target"], outcome, provider_id, current["data_sha256"])
 
 
 # Named best-effort by `references/record.md`; every other operation is required.
@@ -337,6 +466,7 @@ def record_summary(state):
     require(isinstance(plan, list) and plan, "record operation plan missing")
     with Runtime(path).transaction() as data:
         latest = {entry["operation"]: entry for entry in data["record_journal"]}
+        child_sets = data.get("record_child_sets", {})
     outcomes = {}
     for operation in plan:
         receipt = latest.get(operation["operation"], {})
@@ -359,6 +489,16 @@ def record_summary(state):
     # inherit policy; unknown identities remain REQUIRED.
     kinds = {operation["operation"]: operation["kind"] for operation in plan}
     unresolved = sorted(k for k, entry in latest.items() if entry["outcome"] != "confirmed")
+    for operation in plan:
+        if not operation.get("requires_children"): continue
+        binding = child_sets.get(operation["operation"])
+        complete = bool(binding and Path(binding["path"]).is_file()
+                        and hashlib.sha256(Path(binding["path"]).read_bytes()).hexdigest() == binding["sha256"])
+        if complete:
+            complete = all(latest.get(operation["operation"] + CHILD_SEPARATOR + w["name"], {}).get("outcome") == "confirmed"
+                           for w in read_json(binding["path"]))
+        if not complete and operation["operation"] not in unresolved:
+            unresolved.append(operation["operation"])
     blocking = [k for k in unresolved if record_kind(k, kinds) not in BEST_EFFORT_RECORD]
     fields["ISSUES"] = ", ".join(unresolved) if unresolved else "none"
     result = {"record": fields, "passed": not blocking, "unresolved": unresolved,
@@ -367,6 +507,42 @@ def record_summary(state):
               "report": "RECORD:\n" + "\n".join(k + ": " + v for k, v in fields.items())}
     atomic_json(path.parent / "record-result.json", result)
     return result
+
+
+def complete(state, marker_path, session):
+    """Validate recording/ownership once, then set phase AND terminal state together."""
+    path = Path(state).resolve()
+    marker_path = Path(marker_path).resolve()
+    snapshot = read_json(path)["record_journal"]
+    summary = record_summary(path)
+    require(summary["passed"], "required recording outcomes remain unresolved")
+    with state_lock(marker_path.with_suffix(".claim.lock"), 5):
+        marker = read_json(marker_path)
+        require(marker.get("claude_session") == session and
+                Path(marker.get("runtime_state", "")).resolve() == path, "completion marker/runtime ownership mismatch")
+        require(marker.get("state") in {"running", "complete"}, "resume a stopped run before completion")
+        lock = marker_path.parent.parent / "locks/primary"
+        if lock.exists():
+            owner = (lock / "owner").read_text(encoding="utf-8") if (lock / "owner").is_file() else ""
+            owners = re.findall(r"^run: (.+)$", owner, re.M)
+            require(len(owners) == 1 and owners[0] not in {marker.get("session"), marker.get("run")},
+                    "release the owned primary writer lock before completion; unknown lock ownership requires reconciliation")
+        rt = Runtime(path)
+        with rt.transaction() as data:
+            require(marker.get("session") == data["run"] and marker.get("run") == data["ticket"], "completion invocation mismatch")
+            require(data["record_journal"] == snapshot, "recording changed during completion; check again")
+            require(not any(not w["terminated"] and not w.get("accepted") for w in data["workers"].values()),
+                    "workers remain outstanding; completion is not cancellation")
+            if not data.get("completed") and data.get("stage"):
+                rt.event(data, "stage_ended")
+            data["completed"] = True
+            data["stage"] = "complete"
+            marker.update(phase="complete", state="complete", heartbeat=now(), cause=None)
+            rt.event(data, "run_completed")
+        # If this second atomic write fails, Stop still sees running. Retrying complete
+        # repairs only the marker, never repeats provider work. Never the inverse order.
+        atomic_json(marker_path, marker)
+    return {"passed": True, "phase": "complete", "state": "complete", "record": summary}
 
 
 def main():
@@ -388,6 +564,12 @@ def main():
     p.add_argument("--name", required=True); p.add_argument("--target", required=True); p.add_argument("--payload", required=True)
     p = commands.add_parser("record-input"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
     p.add_argument("--begin", action="store_true"); p.add_argument("--field")
+    p = commands.add_parser("record-children"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
+    p.add_argument("--writes", required=True)
+    p = commands.add_parser("record-outcome"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--outcome", required=True, choices=("confirmed", "failed", "unknown-outcome")); p.add_argument("--provider-id")
+    p = commands.add_parser("complete"); p.add_argument("--state", required=True); p.add_argument("--marker", required=True)
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("record-summary"); p.add_argument("--state", required=True)
     args = parser.parse_args()
     if args.command == "preflight": result = preflight(args.project, args.session, args.non_interactive)
@@ -397,6 +579,9 @@ def main():
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends)
     elif args.command == "record-plan": result = record_plan(args.state, args.facts)
     elif args.command == "record-child": result = record_child(args.state, args.parent, args.name, args.target, args.payload)
+    elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
+    elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)
+    elif args.command == "complete": result = complete(args.state, args.marker, args.session)
     elif args.command == "record-input": result = record_input(args.state, args.operation, args.begin, args.field)
     else: result = record_summary(args.state)
     print(json.dumps(result, ensure_ascii=False))
@@ -404,7 +589,7 @@ def main():
 
 
 if __name__ == "__main__":
-    for stream in (sys.stdout, sys.stderr):
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", newline="\n")
     try:

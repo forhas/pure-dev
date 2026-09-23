@@ -25,15 +25,16 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # shellcheck source=lib/assert.sh
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 ND=plugins/notion-dev
-ED=$ND/skills/epic-doc/SKILL.md
+ED=$(instruction_view epic-doc)
 NT=$ND/references/legacy/next-task.md
 TICKET=$ND/references/legacy/ticket.md
 RECORD=$ND/references/legacy/record.md
 FINALIZE=$ND/references/legacy/finalize.md
-TS=$ND/skills/ticket-system/SKILL.md
-TSREAD=$ND/skills/ticket-system/references/read-ops.md
+TS=$(instruction_view ticket-system)
+TSREAD=$(instruction_view ticket-reads)
 SIG=$ND/skills/issue-log/references/signatures.md
 SCHEMA=$ND/schema/notion-dev.config.schema.json
 README=$ND/README.md
