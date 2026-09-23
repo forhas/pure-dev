@@ -101,7 +101,7 @@ class BoundaryTests(unittest.TestCase):
     def test_automatic_capture_does_not_fall_back_from_incomplete_or_failed_latest(self):
         fetched = runtime.read_json(self.fetch()); old = self.log(fetched, 'old'); complete = old.read_bytes()
         failed = self.log(fetched, 'latest', error=True).read_bytes()
-        for tail in (failed.splitlines(keepends=True)[0], failed):
+        for tail in (failed.splitlines(keepends=True)[0], failed, failed.splitlines()[0]):
             old.write_bytes(complete + tail)
             with self.assertRaises(ValueError): host_capture.notion_fetch(old, 'fixture-session', page='a' * 32)
 

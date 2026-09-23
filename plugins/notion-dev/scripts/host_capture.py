@@ -34,7 +34,8 @@ def latest_call(transcript, session, name, arguments=None, page=None):
     found = None
     with Path(transcript).open("rb") as stream:
         for raw in stream:
-            if not raw.endswith(b"\n"): break
+            # A partial tail may be the newer matching call; never return an older one.
+            if not raw.endswith(b"\n"): raise ValueError("host transcript tail is incomplete; retry after delivery")
             if not raw.strip(): continue
             row = json.loads(raw.decode("utf-8"))
             if not isinstance(row, dict) or row.get("sessionId") != session or row.get("isSidechain"): continue
