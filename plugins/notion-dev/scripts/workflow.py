@@ -410,7 +410,11 @@ def record_input(state, operation, begin=False, field=None):
         if operation in parents:
             require(latest["target"] == parents[operation]["target"], "planned target changed")
     content = payload["data"]
-    for view in content.get("evidence", {}).values():
+    # `evidence` is an ordinary provider field in arbitrary child/legacy payloads.
+    # Only our version-3 parent ticket-resolution owns the archive-pool shape.
+    pool = content.get("evidence", {}) if (operation in parents and kind == "ticket-resolution"
+            and payload["record_payload_version"] >= 3) else {}
+    for view in pool.values():
         require(hashlib.sha256(Path(view["archive"]).read_bytes()).hexdigest() == view["archive_sha256"],
                 "frozen evidence archive changed")
     if field is not None:

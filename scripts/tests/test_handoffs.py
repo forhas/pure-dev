@@ -314,6 +314,15 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "real JSON file"):
             workflow.record_child(self.state, parent, "bad", "target", "/dev/fd/63")
 
+    def test_arbitrary_child_evidence_field_is_not_an_internal_archive_pool(self):
+        plan = self.v3_plan()
+        parent = next(p for p in plan["operations"] if p["kind"] == "knowledge-delta")["operation"]
+        for index, evidence in enumerate(("source:commit", {"quote": "verified behavior"})):
+            payload = self.root / "child.json"
+            runtime.atomic_json(payload, {"fact": "caller owns retries", "evidence": evidence})
+            child = workflow.record_child(self.state, parent, "fact-" + str(index), "knowledge", str(payload))
+            self.assertEqual(workflow.record_input(self.state, child["operation"], begin=True)["data"]["evidence"], evidence)
+
     def completion_fixture(self):
         plan = self.v3_plan()
         for op in plan["operations"]:
