@@ -201,15 +201,17 @@ def notion_source(response, ignored_properties):
     """
     value = response
     for _ in range(5):
+        require(not isinstance(value, dict) or not any(value.get(k) for k in ("isError", "truncated", "has_more")),
+                "failed or incomplete fetch cannot establish full-source freshness")
         if isinstance(value, str):
             value = json.loads(value)
-        elif isinstance(value, list) and len(value) == 1 and value[0].get("type") == "text":
+        elif isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict) and value[0].get("type") == "text":
             value = value[0]["text"]
         elif isinstance(value, dict) and "content" in value and not value.get("isError"):
             value = value["content"]
         else:
             break
-    require(isinstance(value, dict) and value.get("metadata", {}).get("type") == "page"
+    require(isinstance(value, dict) and isinstance(value.get("metadata"), dict) and value["metadata"].get("type") == "page"
             and isinstance(value.get("title"), str) and isinstance(value.get("text"), str),
             "requires the complete raw notion-fetch page response, not rows/status or a summary")
     text = value["text"].replace("\r\n", "\n")

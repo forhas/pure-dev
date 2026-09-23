@@ -10,6 +10,7 @@ import subprocess
 import sys
 import re
 import shutil
+import inspect
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -190,6 +191,15 @@ class HandoffTests(unittest.TestCase):
         self.clock.seconds += 301
         with self.assertRaisesRegex(runtime.Invalid, "expired"):
             self.rt.refresh_ticket(key, fresh, pending["request"], "new-call")
+
+    def test_complete_looking_failed_or_truncated_response_is_never_authoritative(self):
+        raw = runtime.read_json(self.fetch())
+        for marker in ("isError", "truncated", "has_more"):
+            for invalid in ({**raw, marker: True}, {marker: True, "content": [{"type": "text", "text": json.dumps(raw)}]}):
+                with self.assertRaisesRegex(runtime.Invalid, "incomplete fetch"):
+                    runtime.notion_source(invalid, ["Status"])
+        for malformed in ([None], {"metadata": None}, {"metadata": "page"}):
+            with self.assertRaises(runtime.Invalid): runtime.notion_source(malformed, [])
 
     def test_receipt_replay_and_snapshot_tampering_are_rejected(self):
         body = self.bind(); key = self.reviewed(); self.resolve(key)
@@ -394,6 +404,75 @@ class HandoffTests(unittest.TestCase):
             self.assertIn(required, proc.stdout)
         self.assertIn("[TEST-2] Sanitize the failure response", proc.stdout)
         self.assertNotIn("migration", proc.stdout)
+
+    def test_guards_fail_under_isolated_mutations(self):
+        # Isolated functions/fixtures only. No worktree reset/restore, no source edits.
+        original_baseline = runtime.Runtime.delta_baseline
+        original_prepare = runtime.Runtime.prepare
+        original_view = workflow.evidence_view
+
+        def skip_handoff(instance, state, previous, current):
+            state["workers"][previous]["citation_resolutions"] = []
+            return original_baseline(instance, state, previous, current)
+
+        def forget_inputs(instance, role, files, *args, **kwargs):
+            if kwargs.get("previous"):
+                old = runtime.read_json(instance.path)["workers"][kwargs["previous"]]["files"]
+                kwargs["remove_inputs"] = [name for name in old if name not in files]
+            return original_prepare(instance, role, files, *args, **kwargs)
+
+        def legacy_correction(state, worker, result):
+            return runtime.Runtime.correction_reviewed_original(state, {**worker, "contract_version": 2}, result)
+
+        def confirm_without_children(state, operation, outcome, provider_id=None):
+            current = workflow.record_input(state, operation)
+            return workflow.Runtime(state).record_op(operation, current["target"], outcome, provider_id, current["data_sha256"])
+
+        # Check each mutation trips the corresponding independent behavioral assertion.
+        cases = [
+            ("test_full_ticket_refresh_is_required_and_status_only_changes_are_ignored",
+             runtime.Runtime, "ticket_freshness", lambda *a: []),
+            ("test_delta_requires_evidence_handoff_and_retains_named_inputs",
+             runtime.Runtime, "delta_baseline", skip_handoff),
+            ("test_delta_requires_evidence_handoff_and_retains_named_inputs",
+             runtime.Runtime, "prepare", forget_inputs),
+            ("test_deduplicated_provider_view_keeps_requirements_and_accepted_claims",
+             workflow, "evidence_view", lambda snapshot, directory, canonical=None: original_view(snapshot, directory)),
+            ("test_child_recovery_skips_confirmed_writes_and_reconciles_unknown",
+             workflow, "record_outcome", confirm_without_children),
+            ("test_completion_is_validated_and_updates_both_terminal_fields",
+             workflow, "complete", lambda *a: {"passed": True}),
+        ]
+        original_correction = runtime.Runtime.correction_reviewed
+        cases.append(("test_structured_correction_punctuation_and_rendering", runtime.Runtime, "correction_reviewed",
+                      staticmethod(lambda state, worker, result: original_correction(state, {**worker, "contract_version": 2}, result))))
+        for test, target, method, replacement in cases:
+            with self.subTest(mutation=method):
+                case = HandoffTests(test)
+                try:
+                    case.setUp()
+                    with patch.object(target, method, replacement):
+                        with self.assertRaises(AssertionError): getattr(case, test)()
+                finally: case.doCleanups()
+
+    def test_instruction_guards_reject_their_own_removal(self):
+        guards = {
+            "skills/epic-doc/references/schedule.md": ["full candidate ticket", "live resolved statuses", "dependency may be outside"],
+            "skills/knowledge/references/retrieve.md": ['--lexical "<ticket title>"', 'skills/epic-doc/references/parse.md'],
+            "skills/ticket-system/references/fetch-ticket.md": ["actual host tool-call ID", "complete original notion-fetch"],
+            "skills/review-and-merge/SKILL.md": ["refresh-ticket", "--call-id", "Resolve available baseline citations BEFORE"],
+            "references/record.md": ["record-children", "record-outcome", "workflow.py complete", "Never pipe provider input through head/tail"],
+        }
+        candidate = self.root / "instructions.md"
+        command = 'fails=0; ok() { :; }; bad() { fails=$((fails + 1)); }; . "$1"; assert_has invariant "$2" "$3"; test "$fails" -eq 0'
+        for path, fragments in guards.items():
+            source = (ROOT / "plugins/notion-dev" / path).read_text(encoding="utf-8")
+            for fragment in fragments:
+                for text, expected in ((source, 0), (source.replace(fragment, "REMOVED"), 1)):
+                    candidate.write_text(text, encoding="utf-8")
+                    proc = subprocess.run([runtime.bash_exe(), "-c", command, "--", (ROOT / "scripts/lib/assert.sh").as_posix(),
+                                           candidate.as_posix(), fragment], capture_output=True)
+                    self.assertEqual(proc.returncode, expected, (path, fragment, proc.stderr.decode("utf-8")))
 
 
 if __name__ == "__main__":
