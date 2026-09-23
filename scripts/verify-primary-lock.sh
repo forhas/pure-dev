@@ -14,6 +14,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # shellcheck source=lib/assert.sh
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 ND=plugins/notion-dev
 TICKET=$ND/references/legacy/ticket.md
@@ -23,8 +24,8 @@ NT=$ND/references/legacy/next-task.md
 NI=$ND/commands/new-info.md
 KC=$ND/commands/knowledge.md
 CT=$ND/commands/create-task.md
-ED=$ND/skills/epic-doc/SKILL.md
-KS=$ND/skills/knowledge/SKILL.md
+ED=$(instruction_view epic-doc)
+KS=$(instruction_view knowledge)
 
 TAKE='knowledge\.py" lock take --run <run id> --section '
 REL='knowledge\.py" lock release --run <run id>'

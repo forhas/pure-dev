@@ -12,6 +12,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'te
 else
   bad "lean runtime, workflow, recording and routing regressions"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_handoffs.py'; then
+  ok "review freshness and efficient handoffs"
+else
+  bad "review freshness and efficient handoffs"
+fi
 assert_has "closeout reuses current evidence" plugins/notion-dev/skills/session-closeout/SKILL.md 'workflow.py verify'
 assert_has "new ticket delegates intake" plugins/notion-dev/commands/ticket.md 'references/lean-intake.md'
 assert_has "review has code quality and requirements in one seat" plugins/notion-dev/skills/review-and-merge/SKILL.md 'One combined independent internal review'
@@ -31,7 +36,7 @@ for f in plugins/notion-dev/references/legacy/*.md; do
 done
 assert_has "the lean contract is schema-gated, so legacy packets carry none" \
   plugins/notion-dev/scripts/runtime.py 'contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 3 else None'
-assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 2'
+assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 3'
 assert_has "recording consumes frozen input" plugins/notion-dev/references/record.md 'record-input'
 assert_has "child identity is a published contract" plugins/notion-dev/references/record.md ':child:'
 exit $(( fails > 0 ))

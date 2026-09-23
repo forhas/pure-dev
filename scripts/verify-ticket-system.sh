@@ -23,8 +23,9 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # (cd to the repo root already happened above, so this path is stable.)
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
-TS=plugins/notion-dev/skills/ticket-system/SKILL.md
+TS=$(instruction_view ticket-system)
 TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 TICKET=plugins/notion-dev/references/legacy/ticket.md
 FINALIZE=plugins/notion-dev/references/legacy/finalize.md

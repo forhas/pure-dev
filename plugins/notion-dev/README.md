@@ -2,10 +2,23 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.36.1). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.37.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Efficient handoffs (0.37.0)
+
+The lean architecture stays intact. New contracts use structured correction verdicts, preserve
+resolved evidence before deltas, inherit unchanged named inputs, and carry independently reviewed
+corrections at unchanged code/dependencies. New invocations require a full authoritative Notion
+fetch receipt immediately before merge; this is host-captured evidence, not provider attestation.
+
+Knowledge, epic and ticket skills load operation-specific references. `next-task` selects from
+the brief/live children before ticket-scoped knowledge retrieval. Recording deduplicates frozen
+evidence, carries canonical accepted claims, declares independently recoverable writes, and uses
+one outcome/validated-completion interface. No additional agent or review stage is introduced.
+Existing invocations/packets retain their contracts. See [handoff design and measurement](references/handoffs.md).
 
 ## Lean workflow (0.36.1)
 

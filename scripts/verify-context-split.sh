@@ -22,10 +22,11 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # shellcheck source=lib/assert.sh
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 ND=plugins/notion-dev
 IL=$ND/skills/issue-log/SKILL.md
-TS=$ND/skills/ticket-system/SKILL.md
+TS=$(instruction_view ticket-system)
 TICKET=$ND/references/legacy/ticket.md
 RECORD=$ND/references/legacy/record.md
 
@@ -54,7 +55,7 @@ assert_present "\`references/styling.md\` pins the zone-divider rule inserting a
 # ---------------------------------------------------------------------------
 echo "== ticket-system: the read-operations reference is present and pinned =="
 
-TSREAD=$ND/skills/ticket-system/references/read-ops.md
+TSREAD=$(instruction_view ticket-reads)
 
 assert_present "\`references/read-ops.md\` pins fetchTicket's rule that more than one row or \`has_more: true\` is never resolved by taking the first row" \
   "$TSREAD" 1 "$(total_lines "$TSREAD")" 'more than one row, or `has_more: true`, is never resolved by taking the first row'
@@ -77,7 +78,7 @@ assert_present "read-ops: the blanket clause no longer names only \`query the da
 assert_present "read-ops: the blanket clause reaches the \`Query the DB\` wording too" \
   "$TSREAD" 1 "$TSRL" '^"Query the DB"\*\* means this call'
 assert_present "read-ops: the third query site names the call shape at its own step" \
-  "$TSREAD" 1 "$TSRL" '^3\. Query the DB — in the call shape this file opens with —'
+  "$TSREAD" 1 "$TSRL" '^3\. Query the DB — in the call shape in `query.md` —'
 TSCREATE=$ND/skills/ticket-system/references/create-ops.md
 assert_present "create-ops: sends its two query paths to read-ops for the call contract before their first query" \
   "$TSCREATE" 1 "$(total_lines "$TSCREATE")" 'call contract for that lives in$'

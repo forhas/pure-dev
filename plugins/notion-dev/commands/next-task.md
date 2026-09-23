@@ -18,7 +18,7 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
 
 ## Select
 
-1. Invoke knowledge `retrieve(<epic-id>)` once. Retain the brief, context and live child list
+1. Invoke epic-doc `schedule(<epic-id>)` once. Retain the brief and live child list
    as artifact references with source identity and fetch time. The brief supplies scheduling
    guidance, not authoritative ticket requirements or live statuses.
 2. If BOOTSTRAP or DRIFT requires a brief write, use epic-doc's bootstrap/refresh operation
@@ -46,7 +46,9 @@ a launch acknowledgement, an unmerged PR, failed recording, or an incomplete clo
 `claimed-elsewhere` refreshes ownership and selection without counting a resolution.
 A stop/failure stops this loop too. Do not pick another ticket over unfinished owned work.
 
-After a resolution retrieve the updated epic once; reuse that retrieval for the next iteration.
+After a resolution schedule from the updated brief/live children once; reuse it for the next iteration.
+After selecting the next ticket, retrieve knowledge seeded with its title/key once, not the whole
+epic bundle before selection. Pass the full selected ticket and targeted context to intake.
 No new implementation owner inherits the previous ticket's conversation: supply source/context
 references only if delegation is justified. No request to continue between tickets within the
 requested depth; a runtime-authorized wait/yield is still unfinished work, not abandonment.

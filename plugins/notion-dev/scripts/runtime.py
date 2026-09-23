@@ -25,8 +25,8 @@ import time
 import uuid
 
 
-SCHEMA = 3
-SCHEMAS = (1, 2, SCHEMA)
+SCHEMA = 4
+SCHEMAS = (1, 2, 3, SCHEMA)
 
 # A delta index is read by a fresh reviewer as its first act, so it is a table of
 # contents, not the material. Lists that do not fit are paged out to a side file and
@@ -37,7 +37,7 @@ PAGE_ITEMS = 50
 RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
 RECORD_FIELDS = ("EPIC-REPORT", "TICKET-RECORD", "CLEANUP", "CLEANUP-STEPS",
                  "HOOKS", "EPIC-DOC-RECORD", "EPIC-DOC-NEXT", "ISSUES")
-RESULT_CONTRACT_VERSION = 2
+RESULT_CONTRACT_VERSION = 3
 AUDIT_FIELDS = ("claims", "caveats", "triage")
 
 
@@ -63,6 +63,9 @@ def result_contract(role, items):
                 "findings": [{"finding": "nonempty description", "disposition": "absorb|file|drop|blocked",
                               "rationale": "nonempty decision/evidence", "blocking": "boolean: unresolved merge obligation"}]}
         contract["audit_rules"] = "All three audits required. Checked with findings=[] means NONE. Missing is unknown. Unverified or blocking=true prevents merge. Mandatory work cannot be waived with file/drop."
+        if RESULT_CONTRACT_VERSION >= 3:
+            contract["required"]["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}
+            contract["recording_rules"] = "Preserve release obligations and accepted claim corrections as strings; technical_delta items carry fact/evidence. Explicit [] means none. These are the canonical post-merge facts, not another narrative."
     elif role == "record":
         contract["required"]["record"] = {field: "nonempty outcome, including skipped reason" for field in RECORD_FIELDS}
     contract["delivery"] = "Publish this object, repair rejected fields in the same worker, then return only its artifact reference. Never rerun completed work to repair a report."
@@ -108,8 +111,20 @@ def validate_result(worker, result):
                             and finding.get("disposition") in {"absorb", "file", "drop", "blocked"}
                             and isinstance(finding.get("blocking"), bool),
                             name + " finding requires finding/disposition/rationale/blocking")
+        if worker["contract_version"] >= 3:
+            recording = result.get("recording")
+            require(isinstance(recording, dict), "recording facts required")
+            for name in ("release_obligations", "claim_corrections"):
+                require(isinstance(recording.get(name), list)
+                        and all(isinstance(v, str) and v.strip() for v in recording[name]), name + " must be a list of facts")
+            require(isinstance(recording.get("technical_delta"), list)
+                    and all(isinstance(v, dict) and all(isinstance(v.get(k), str) and v[k].strip()
+                            for k in ("fact", "evidence")) for v in recording["technical_delta"]),
+                    "technical_delta must contain fact/evidence objects")
         if worker.get("correction_manifest"):
             correction = result.get("correction_review")
+            if worker.get("reused_correction") and correction is None:
+                correction = worker["reused_correction"]
             require(isinstance(correction, dict)
                     and correction.get("id") == worker["correction"]["id"]
                     and correction.get("manifest_sha256") == worker["correction_manifest"]["sha256"]
@@ -117,6 +132,12 @@ def validate_result(worker, result):
                     and isinstance(correction.get("blocking_findings"), list)
                     and isinstance(correction.get("report"), str) and correction["report"].strip(),
                     "correction_review must cover the exact correction manifest with verdict/report/findings")
+            if worker.get("reused_correction"):
+                require(correction == worker["reused_correction"], "reused correction evidence is immutable")
+            elif worker["contract_version"] >= 3:
+                require(isinstance(correction.get("depends_on"), list)
+                        and all(isinstance(p, str) and Path(p).is_file() for p in correction["depends_on"]),
+                        "correction_review depends_on must list its external evidence files (explicit [] for code-only)")
     elif role == "record":
         fields = result.get("record")
         require(isinstance(fields, dict) and all(isinstance(fields.get(k), str) and fields[k].strip()
@@ -131,6 +152,16 @@ def render_result(worker, result):
     if worker["role"] == "record":
         rendered["report"] = "RECORD:\n" + "\n".join(k + ": " + result["record"][k] for k in RECORD_FIELDS)
     elif worker["role"] == "completeness":
+        if worker.get("reused_correction"):
+            rendered["correction_review"] = worker["reused_correction"]
+        elif worker["contract_version"] >= 3 and result.get("correction_review"):
+            correction = dict(result["correction_review"])
+            # The structured verdict is authoritative. Narrative punctuation cannot
+            # demand another independent investigation of unchanged code.
+            narrative = re.sub(r"^VERDICT: (?:CLEAN|FINDINGS|UNVERIFIED)\r?\n", "", correction["report"], count=1)
+            narrative = re.sub(r"^VERDICT:", "Review detail:", narrative, flags=re.M)
+            correction["report"] = "VERDICT: " + correction["verdict"].upper() + "\n" + narrative
+            rendered["correction_review"] = correction
         verdicts = {v["id"]: v["verdict"] for v in result["requirements"]}
         counts = Counter(verdicts[i["id"]] for i in worker["requirements"]["items"] if i["kind"] == "acceptance")
         clean = (result["requirements_complete"] and not result["blocking_findings"]
@@ -159,6 +190,43 @@ class Invalid(ValueError):
 def require(condition, message):
     if not condition:
         raise Invalid(message)
+
+
+def notion_source(response, ignored_properties):
+    """Canonicalize a complete notion-fetch response, never a query/status projection.
+
+    The MCP's `as of` value describes page editing, not the time of the network read.
+    Keep ALL body text and unknown properties. Only configured status/PR properties
+    are non-requirement metadata; never strip sections just because of their headings.
+    """
+    value = response
+    for _ in range(5):
+        if isinstance(value, str):
+            value = json.loads(value)
+        elif isinstance(value, list) and len(value) == 1 and value[0].get("type") == "text":
+            value = value[0]["text"]
+        elif isinstance(value, dict) and "content" in value and not value.get("isError"):
+            value = value["content"]
+        else:
+            break
+    require(isinstance(value, dict) and value.get("metadata", {}).get("type") == "page"
+            and isinstance(value.get("title"), str) and isinstance(value.get("text"), str),
+            "requires the complete raw notion-fetch page response, not rows/status or a summary")
+    text = value["text"].replace("\r\n", "\n")
+    page = re.search(r'<page\s+url="([^"]+)"[^>]*>', text)
+    ids = lambda url: re.findall(r"[0-9a-f]{32}", str(url).lower().replace("-", ""))
+    require(page is not None and ids(page[1]) and ids(value.get("url")) == ids(page[1]),
+            "full page identity missing or inconsistent")
+    properties = re.findall(r"<properties>\s*(.*?)\s*</properties>", text, re.S)
+    bodies = re.findall(r"<content>\n?(.*?)</content>\s*</page>", text, re.S)
+    require(len(properties) == len(bodies) == 1 and "<truncated" not in text.lower(),
+            "full page properties/content required; incomplete fetch is not evidence")
+    props = json.loads(properties[0])
+    require(isinstance(props, dict), "page properties must be an object")
+    source = "# " + value["title"] + "\n\n" + json.dumps(
+        {k: v for k, v in props.items() if k not in ignored_properties and k != "url"},
+        ensure_ascii=False, sort_keys=True, indent=2) + "\n\n" + bodies[0]
+    return ids(page[1])[-1], source.encode("utf-8"), props
 
 
 def read_json(path):
@@ -419,6 +487,104 @@ class Runtime:
                 self.event(state, "stage_started")
         return {"stage": name}
 
+    def ticket_source(self, response, config):
+        """Bind a fetched provider page to the local source used by the inventory."""
+        settings = read_json(config)["ticketSystem"]
+        ignored = [settings.get("statusProperty", "Status"), settings.get("prProperty", "PR")]
+        page, content, props = notion_source(read_json(response), ignored)
+        source = self.path.parent / "ticket.md"
+        with self.transaction() as state:
+            old = state.get("ticket_source")
+            require(not state.get("completed"), "resume explicitly before changing a completed invocation")
+            id_property = settings.get("idProperty", "ID")
+            value = props.get("userDefined:" + id_property, props.get(id_property))
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)  # Number properties may be encoded as 42.0.
+            number = re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9_-]*-)?([0-9]+)", str(value))
+            require(number and int(number[1]) == int(state["ticket"].rsplit("-", 1)[-1]),
+                    "provider page ID property does not match the invocation ticket")
+            for name, expected in settings.get("staticProperties", {}).items():
+                require(name not in props or props[name] == expected, "provider page violates configured project scope: " + name)
+            require(not old or old["page"] == page, "cannot change the invocation's ticket page")
+            require(not any(not w["terminated"] and not w.get("accepted") for w in state["workers"].values()),
+                    "account for workers before changing their authoritative source")
+            source.write_bytes(content)
+            state["ticket_source"] = {"page": page, "ignored_properties": ignored,
+                                      "source": str(source), "source_sha256": digest(source),
+                                      "response": str(Path(response).resolve())}
+            state.pop("ticket_refresh", None)
+            self.event(state, "ticket_source_bound", page=page, source_sha256=digest(source))
+        return {"source": str(source), "source_sha256": digest(source), "page": page}
+
+    def refresh_ticket(self, key, response=None, request=None, call_id=None):
+        """Begin before the host's full fetch; finish with that call's raw response.
+
+        This is an integration receipt, NOT provider attestation. The host must capture
+        the real tool response/call ID. Python cannot detect a host forging a new call
+        and copying old bytes. Replaying a retained capture/receipt is rejected locally.
+        """
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(worker["role"] == "completeness" and worker.get("accepted"),
+                    "refresh requires an accepted independent review")
+            latest = [w for w in state["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
+            require(latest and latest[-1]["id"] == key, "refresh must follow the final independent review")
+            binding = state.get("ticket_source")
+            require(binding and worker["requirements"] == state["requirements"]
+                    and worker["requirements"]["source_sha256"] == binding["source_sha256"],
+                    "bind full ticket source and review its current inventory first")
+            if response is None:
+                state.pop("ticket_refresh", None)
+                challenge = {"request": uuid.uuid4().hex, "worker": key, "run": state["run"],
+                             "started": self.clock.stamp(), "page": binding["page"],
+                             "source_sha256": binding["source_sha256"]}
+                state["ticket_refresh_request"] = challenge
+                self.event(state, "ticket_refresh_started", worker=key, request=challenge["request"])
+                return challenge
+            pending = state.get("ticket_refresh_request")
+            require(pending and pending["request"] == request and pending["worker"] == key
+                    and pending["source_sha256"] == binding["source_sha256"], "refresh request is stale or foreign")
+            age = elapsed(pending["started"], self.clock.stamp())
+            require(age is not None and 0 <= age <= 300, "refresh expired; begin a new full fetch")
+            used = state.setdefault("ticket_fetch_calls", [])
+            require(isinstance(call_id, str) and call_id.strip() and call_id not in used,
+                    "a new actual provider tool-call ID is required")
+            capture = Path(response).resolve()
+            require(str(capture) != binding["response"] and capture.stat().st_mtime >= pending["started"]["wall"],
+                    "capture the new full fetch response after refresh began; do not replay intake")
+            fetched = read_json(capture)
+            page, content, _ = notion_source(fetched, binding["ignored_properties"])
+            require(page == pending["page"], "refreshed page is not the reviewed ticket")
+            snapshot = self.path.parent / ("ticket-refresh-" + request + ".json")
+            atomic_json(snapshot, fetched)
+            used.append(call_id)
+            unchanged = digest_bytes(content) == binding["source_sha256"]
+            receipt = {**pending, "call_id": call_id, "response": str(snapshot),
+                       "response_sha256": digest(snapshot), "finished": self.clock.stamp(),
+                       "unchanged": unchanged}
+            state["ticket_refresh"] = receipt
+            del state["ticket_refresh_request"]
+            self.event(state, "ticket_refreshed", worker=key, unchanged=unchanged, call_id=call_id)
+        return {"passed": unchanged, "receipt": receipt,
+                "action": "merge-gate" if unchanged else "requirements changed: bind refreshed response, inventory and review again"}
+
+    def ticket_freshness(self, state, worker):
+        if state["schema"] < 4:
+            return []  # Existing invocations keep their original contract.
+        receipt = state.get("ticket_refresh") or {}
+        age = elapsed(receipt["started"], self.clock.stamp()) if receipt.get("started") else None
+        binding = state.get("ticket_source") or {}
+        latest = [w for w in state["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
+        if (not latest or latest[-1]["id"] != worker["id"]
+                or receipt.get("worker") != worker["id"] or receipt.get("run") != state["run"]
+                or not receipt.get("unchanged") or receipt.get("page") != binding.get("page")
+                or receipt.get("source_sha256") != (worker["requirements"] or {}).get("source_sha256")
+                or age is None or not 0 <= age <= 300
+                or not Path(receipt.get("response", "")).is_file()
+                or digest(receipt["response"]) != receipt["response_sha256"]):
+            return ["fresh full authoritative ticket receipt required after final review (refresh-ticket)"]
+        return []
+
     def requirements(self, source, inventory):
         source = Path(source).resolve()
         text = source.read_text(encoding="utf-8")
@@ -497,7 +663,7 @@ class Runtime:
                 "changed_paths": [name for name in names if name],
                 "patch": subprocess.check_output(args + ["--binary"])}
 
-    def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None):
+    def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None, remove_inputs=()):
         require(role in {"plan", "scout", "implementation", "branch-review", "local-review",
                          "completeness", "record", "probe"}, "invalid worker role")
         require(slot is None or (role in {"implementation", "scout", "plan", "local-review", "branch-review"}
@@ -508,12 +674,14 @@ class Runtime:
                 "timeout must be positive and within the role's bound")
         snapshots = {name: {"path": str(Path(path).resolve()), "sha256": digest(path)}
                      for name, path in files.items()}
-        require(bool(snapshots), "at least one input artifact is required")
+        require(not remove_inputs or previous, "input removal requires a delta baseline")
+        require(not set(remove_inputs) & set(files), "cannot supply and remove the same input")
         require(role not in {"plan", "implementation", "branch-review", "local-review", "completeness"} or worktree,
                 "review workers require a worktree revision")
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
+            require(not state.get("completed"), "resume explicitly before dispatching in a completed invocation")
             if role == "completeness" and not previous and state["schema"] >= 3:
                 require(sum(w["role"] == role and not w.get("previous") for w in state["workers"].values()) < 2,
                         "full completeness attempt budget exhausted; preserve unresolved work and escalate")
@@ -539,8 +707,20 @@ class Runtime:
             # Validate the delta BEFORE writing anything: a rejected preparation must
             # not leave half a packet on disk under an unregistered worker directory.
             baseline = self.delta_baseline(state, previous, current) if previous else None
+            if baseline and state["schema"] >= 3:
+                old_files = baseline["worker"]["files"]
+                require(set(remove_inputs) <= set(old_files), "cannot remove an unknown input")
+                for name, source in old_files.items():
+                    if name not in snapshots and name not in remove_inputs:
+                        snapshots[name] = {"path": source["path"], "sha256": digest(source["path"])}
+            require(bool(snapshots), "at least one input artifact is required")
             correction = state.get("correction") if role == "completeness" else None
             correction_manifest = self.correction_manifest(correction, current) if correction else None
+            reused = None
+            if (baseline and correction and (baseline["worker"].get("contract_version") or 0) >= 3
+                    and baseline["worker"]["revision"] == current
+                    and self.correction_reviewed(state, baseline["worker"], baseline["worker"]["result"])):
+                reused = baseline["worker"]
             # Owned snapshots preserve old PR claims/evidence without transporting them
             # through every parent/tool response. Artifact names are never used as paths.
             for index, source in enumerate(snapshots.values()):
@@ -571,7 +751,12 @@ class Runtime:
                         "previous": previous, "manifest_sha256": packet["delta"]["sha256"],
                         "checked_requirement_ids": [i["id"] for i in state["requirements"]["items"]],
                         "disposition": "sufficient|full-review-required"}
-            if correction_manifest is not None:
+            if reused:
+                packet["correction_manifest"] = reused["correction_manifest"]
+                packet["correction_reuse"] = {"worker": reused["id"],
+                    "review": reused["result"]["correction_review"],
+                    "instruction": "Unchanged code, obligation and declared dependencies: runtime carries this independent verdict. Review only delta impact; do not repeat correction tests by default."}
+            elif correction_manifest is not None:
                 patch_path = directory / "correction.patch"
                 patch_path.write_bytes(correction_manifest.pop("patch"))
                 correction_manifest["patch"] = {"path": str(patch_path), "sha256": digest(patch_path),
@@ -583,7 +768,10 @@ class Runtime:
                     packet["result_contract"]["required"]["correction_review"] = {
                         "id": correction["id"], "manifest_sha256": digest(manifest_path),
                         "verdict": "clean|findings|unverified", "blocking_findings": [],
-                        "report": "VERDICT: CLEAN only after independently reviewing the correction patch"}
+                        "report": "evidence summary; structured verdict is authoritative"}
+                    if contract_version >= 3:
+                        packet["result_contract"]["required"]["correction_review"]["depends_on"] = []
+                        packet["result_contract"]["correction_rules"] = "depends_on lists absolute paths of ALL external evidence used (logs/config/provider snapshots). Code/requirements are already bound. Explicit [] only for code-only review."
             packet_path = directory / "context.json"
             atomic_json(packet_path, packet)
             worker = {"id": key, "role": role, "status": "pending", "agent_id": None,
@@ -595,7 +783,9 @@ class Runtime:
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
                       "inventory_snapshot": packet["requirements"], "previous": previous,
                       "delta": packet.get("delta"), "correction": correction,
-                      "correction_manifest": packet.get("correction_manifest")}
+                      "correction_manifest": packet.get("correction_manifest"),
+                      "reused_correction": reused["result"]["correction_review"] if reused else None,
+                      "correction_dependencies": reused.get("correction_dependencies", []) if reused else []}
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role,
                        input_bytes=input_bytes, packet_bytes=packet_path.stat().st_size,
@@ -648,6 +838,9 @@ class Runtime:
         require(sum(bool(w.get("previous")) for w in reviews) < 2, "delta attempt budget exhausted")
         require(baseline["requirements"] == state["requirements"],
                 "changed requirements require a full review")
+        if (baseline.get("contract_version") or 0) >= 3:
+            require("citation_resolutions" in baseline,
+                    "resolve available citations before preparing a delta (explicit [] records genuinely missing evidence)")
         self.validate_packet(baseline)
         require(not baseline.get("previous") or (baseline["result"] or {}).get("delta_review", {}).get(
             "disposition") == "sufficient", "escalated delta requires a full review")
@@ -738,8 +931,7 @@ class Runtime:
         worker = baseline["worker"]
         old_inputs = worker["files"]
         changed_inputs = [name for name in sorted(set(old_inputs) | set(snapshots))
-                          if {k: old_inputs.get(name, {}).get(k) for k in ("path", "sha256")}
-                          != {k: snapshots.get(name, {}).get(k) for k in ("path", "sha256")}]
+                          if old_inputs.get(name, {}).get("sha256") != snapshots.get(name, {}).get("sha256")]
         records = self.evidence_records(worker, baseline["changed_paths"])
         buckets = {"reuse_applicable": [], "recheck_needed": [], "blocked": [], "unresolved": []}
         for record in records:
@@ -861,6 +1053,11 @@ class Runtime:
         if not isinstance(review, dict) or not isinstance(review.get("report"), str):
             return False
         verdicts = re.findall(r"^VERDICT:[ \t]*([^\r\n]*)$", review["report"], re.M)
+        if worker.get("contract_version", 0) and worker["contract_version"] >= 3:
+            if any(not Path(d["path"]).is_file() or digest(d["path"]) != d["sha256"]
+                   for d in worker.get("correction_dependencies", [])):
+                return False
+            verdicts = ["CLEAN"]  # One authority for new contracts; prose is only a view.
         return (review.get("id") == worker["correction"]["id"]
                 and review.get("manifest_sha256") == worker["correction_manifest"]["sha256"]
                 and review.get("verdict") == "clean" and review.get("blocking_findings") == []
@@ -933,6 +1130,9 @@ class Runtime:
                 return {"worker": key, "status": worker["status"]}
             require(worker["status"] in {"pending", "running", "timed_out", "cancellation_requested"},
                     "worker cannot publish in its current state")
+            if worker.get("contract_version", 0) and worker["contract_version"] >= 3 and not worker.get("reused_correction"):
+                worker["correction_dependencies"] = [{"path": str(Path(p).resolve()), "sha256": digest(p)}
+                    for p in result.get("correction_review", {}).get("depends_on", [])]
             worker.update(result=result, status="result_ready", result_ready=self.clock.stamp())
             # Sizes, not bodies. Knowing a report arrived at 40KB is what identifies
             # prose duplicated into both `report` and the per-criterion records; copying
@@ -1176,7 +1376,7 @@ class Runtime:
         with self.transaction() as state:
             worker = self.worker(state, key)
             self.validate_packet(worker)
-            reasons = self.readiness(state)
+            reasons = self.readiness(state) + self.ticket_freshness(state, worker)
             if worker["role"] != "completeness" or worker["status"] != "consumed":
                 reasons.append("independent completeness result has not been consumed")
             if worker["revision"] != current:
@@ -1424,6 +1624,7 @@ class Runtime:
                  "provider_id": provider_id, "data_sha256": data_sha256,
                  **self.clock.stamp()}
         with self.transaction() as state:
+            require(not state.get("completed"), "resume explicitly before recording in a completed invocation")
             if state["schema"] >= 3:
                 previous = [e for e in state["record_journal"] if e["operation"] == operation]
                 if previous:
@@ -1455,6 +1656,7 @@ class Runtime:
                 action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
                           if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
             else:
+                require(not state.get("completed"), "resume explicitly before planning new recording")
                 latest = {"operation": operation, "target": target, "data_sha256": payload_hash,
                           "provider_id": None, "outcome": "planned", **self.clock.stamp()}
                 state["record_journal"].append(latest)
@@ -1574,12 +1776,16 @@ def main():
     p = commands.add_parser("init"); p.add_argument("--run", required=True); p.add_argument("--ticket", required=True)
     p = commands.add_parser("stage"); p.add_argument("name")
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
+    p = commands.add_parser("ticket-source"); p.add_argument("--response", required=True); p.add_argument("--config", required=True)
+    p = commands.add_parser("refresh-ticket"); p.add_argument("--worker", required=True)
+    p.add_argument("--response"); p.add_argument("--request"); p.add_argument("--call-id")
     commands.add_parser("ready")
     p = commands.add_parser("correction-needed"); p.add_argument("--worktree", required=True)
     p.add_argument("--reason", help="what made this correction necessary; recorded, never inferred")
     p = commands.add_parser("prepare"); p.add_argument("--role", required=True); p.add_argument("--file", action="append", default=[])
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--previous"); p.add_argument("--slot")
+    p.add_argument("--remove-input", action="append", default=[])
     for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations",
                  "evidence", "section", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
@@ -1619,6 +1825,8 @@ def main():
     if name == "init": result = runtime.init(args.run, args.ticket)
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
+    elif name == "ticket-source": result = runtime.ticket_source(args.response, args.config)
+    elif name == "refresh-ticket": result = runtime.refresh_ticket(args.worker, args.response, args.request, args.call_id)
     elif name == "ready": result = runtime.ready()
     elif name == "correction-needed": result = runtime.correction_needed(args.worktree, args.reason)
     elif name == "prepare":
@@ -1628,7 +1836,7 @@ def main():
             key, path = item.split("=", 1)
             require(key and key not in files, "unique artifact name required")
             files[key] = path
-        result = runtime.prepare(args.role, files, args.worktree, args.timeout, args.previous, args.slot)
+        result = runtime.prepare(args.role, files, args.worktree, args.timeout, args.previous, args.slot, args.remove_input)
     elif name == "attach": result = runtime.attach(args.worker, args.agent)
     elif name == "publish": result = runtime.publish(args.worker, read_json(args.result))
     elif name == "question": result = runtime.question(args.worker, args.text)

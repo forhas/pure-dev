@@ -81,7 +81,10 @@ This replaces separate whole-branch-code and completeness agents on the lean pat
 the local fallback when the external seat is unavailable; do not run another overlapping local
 agent first. Its obligations include code quality, not only AC checking.
 
-Freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
+Before the first internal review, refresh the full ticket after this run's start/Implementation
+writes. On schema 4 run `ticket-source` on the raw fetch and reconcile the inventory; this puts
+our bookkeeping changes before the evidence freeze, not into an avoidable post-review delta.
+Never discard new human requirements while reconciling. Then freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
 body and verification receipt/log references outside the worktree. Run readiness. Prepare
 role `completeness` with those named files and the exact worktree. Dispatch one independent
 general-purpose worker with the generated runtime context/contract and these charges:
@@ -107,7 +110,7 @@ Keep the persisted compatibility report's triage lists for ticket/epic consumers
 Render COMPLETENESS_REPORT with runtime-derived counts, VERDICTS from the structured requirement
 objects, and runtime-rendered CLAIMS / CAVEATS / TRIAGE evidence. A checked audit with empty
 findings explicitly means NONE; unverified stays unknown and blocks merge, never inferred NONE.
-Honor an in-flight worker's original packet contract; do not require it to republish as version 2.
+Honor an in-flight worker's original packet contract; do not require it to republish as a newer version.
 Keep REVIEW_REPORT's ABSORBED / FILED / DROPPED / BLOCKED lists from the findings ledger.
 Persist both named objects in one review artifact; do not paste the completeness report twice.
 
@@ -118,6 +121,13 @@ verdicts with valid evidence. Do not rerun a full review merely to generate new 
 Broader changes or uncertainty require full review within the invocation's two-full/two-delta
 budgets. A budget exhausted with unresolved work stops; no new invocation resets it.
 
+Resolve available baseline citations BEFORE preparing that delta. Omitted named inputs are
+inherited/rehashed; use --remove-input only for intentional removals. Read correction_reuse when
+present: the runtime carries the prior independent verdict at unchanged code/dependencies, so
+do not demand a new correction report or retest unchanged code merely to fill a report field.
+Carry corrected claims, release obligations and the evidence-backed technical delta into the
+generated `recording` fields before publication; downstream knowledge uses those fields.
+
 ## 4. Final gates and merge
 
 Run the completion pass of `notion-dev:session-closeout` plus caller `--pre-merge-check` and
@@ -126,11 +136,10 @@ the phase changed. Any check that changes source/claims invalidates relevant evi
 through review. On plugin repos ensure the manifest version still exceeds the current base.
 
 Immediately before merge:
-1. Re-fetch the authoritative ticket and refresh its source file. Changed bytes invalidate the
-   inventory and the review even when the criterion count is unchanged: return through
-   inventory, readiness and review, never a local waiver. The frozen copy and `merge-gate`
-   agree with each other whatever upstream now says, so only this re-fetch can see a mandatory
-   requirement added during implementation or review. Do not edit the ticket to pass the gate.
+1. Re-fetch the authoritative ticket and refresh its source file on legacy schema 1–3 runs.
+   On schema 4 perform the guarded full-fetch receipt at step 5 below, after potentially slow
+   checks. Changed requirement-bearing content invalidates inventory/review even when the
+   criterion count is unchanged; never edit the ticket to pass the gate.
 2. Re-fetch live PR HEAD/base/body and require equality with reviewed inputs. Base movement
    triggers safe stabilization and applicable rechecks, not silent retargeting.
 3. `gh pr checks <pr> --required`: all required checks pass, none pending. No checks reported
@@ -140,7 +149,12 @@ Immediately before merge:
    Also fetch new review bodies and issue comments, including late external responses during
    fallback. Triage new substantive feedback. Empty/failed output is not proof. Every absorbed
    finding has an actual fix.
-5. `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
+5. Schema 4: `runtime.py --state "$RUNTIME_STATE" refresh-ticket --worker <accepted-review-id>`,
+   then a NEW full notion-fetch of its exact page; save raw JSON and the actual tool-call ID.
+   Finish `refresh-ticket` with --request, --response and --call-id per references/runtime.md.
+   Status queries and old local copies do not qualify. Failed/changed/stale receipts block.
+   Re-inventory/review changed requirements; if only the 5-minute receipt expired, fetch again
+   without repeating unchanged review. Then `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
    must pass. It covers requirements, code review, citations, snapshots, corrections and workers.
 6. Respect explicit user merge approval conditions. Merge using configured strategy and
    `gh pr merge <pr> --<strategy> --match-head-commit <reviewed-head>`.

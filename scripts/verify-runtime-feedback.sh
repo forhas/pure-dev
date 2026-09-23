@@ -35,6 +35,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # Assertions come from the shared library, like every other harness here.
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 plugin_of() { basename "$(dirname "$(dirname "$(dirname "$1")")")"; }
 
@@ -396,8 +397,8 @@ done
 # read-back sites carry the same brackets: an unescaped Resolution Log parse
 # finds zero entries on a populated log, so epic-update's idempotency check can
 # never fire and a recovery invocation appends a duplicate entry.
-TS=plugins/notion-dev/skills/ticket-system/SKILL.md
-TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TS=$(instruction_view ticket-system)
+TSREAD=$(instruction_view ticket-reads)
 TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")
@@ -738,8 +739,8 @@ done
 # the one intended row each time. The project-scoping guardrail cannot catch it —
 # those rows carry the same pinned staticProperties, being the same project's
 # tickets — so verifying the resolved id is the only thing standing in the way.
-TS=plugins/notion-dev/skills/ticket-system/SKILL.md
-TSREAD=plugins/notion-dev/skills/ticket-system/references/read-ops.md
+TS=$(instruction_view ticket-system)
+TSREAD=$(instruction_view ticket-reads)
 TSCREATE=plugins/notion-dev/skills/ticket-system/references/create-ops.md
 if [ -f "$TS" ]; then
   L=$(total_lines "$TS")

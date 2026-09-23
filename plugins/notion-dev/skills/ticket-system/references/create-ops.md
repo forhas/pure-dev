@@ -5,7 +5,7 @@ Read before the first create. Title prefixing, `resolveAssignee`, `createTicket`
 `setParent`, `refreshEpicTasks`. Referenced from `../SKILL.md`.
 
 **Two operations here query the data source, and the call contract for that lives in
-`read-ops.md` under "Calling `mcp__notion__notion-query-data-sources`" — read it before the
+`query.md` under "Calling `mcp__notion__notion-query-data-sources`" — read it before the
 first such query.** `createTicket`'s max-plus-one next-id lookup (a Number-typed `idProperty`
 only) and `setDependencies` resolving a title reference both reach the tool **without** going
 through `fetchTicket`, so neither picks the contract up on the way. It is not read-path
@@ -267,4 +267,3 @@ Re-renders an epic's `## Tasks` section from its live children. **The single own
 6. `upsertSection(epicId, "Tasks", <rendered blocks>)`.
 
 Safe to call repeatedly. `upsertSection` replaces only up to the next top-level heading, so a `## Resolution Log` below it is never touched.
-

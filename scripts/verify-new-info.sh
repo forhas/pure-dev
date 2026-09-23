@@ -25,10 +25,11 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # shellcheck source=lib/assert.sh
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 ND=plugins/notion-dev
 NI=$ND/commands/new-info.md
-ED=$ND/skills/epic-doc/SKILL.md
+ED=$(instruction_view epic-doc)
 TSSTY=$ND/skills/ticket-system/references/styling.md
 SIG=$ND/skills/issue-log/references/signatures.md
 README=$ND/README.md
@@ -138,7 +139,7 @@ echo "== epic-doc: the note operation =="
 if [ -f "$ED" ]; then
   L=$(total_lines "$ED")
   N0=$(find_line "$ED" 1 "$L" '^## `note\(')
-  assert_present "epic-doc description names \`/notion-dev:new-info\`" "$ED" 1 4 'notion-dev:new-info'
+  assert_present "epic-doc description names \`/notion-dev:new-info\`" "$ND/skills/epic-doc/SKILL.md" 1 4 'notion-dev:new-info'
   assert_present "epic-doc has the \`note(\` operation heading" "$ED" 1 "$L" '^## `note\('
   if [ -n "$N0" ]; then
     assert_present "note: propose \`Writes nothing\`" "$ED" "$N0" "$L" '^\*\*Writes nothing\.\*\*'

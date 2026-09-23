@@ -15,6 +15,7 @@ bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 
 # shellcheck source=lib/assert.sh
 . ./scripts/lib/assert.sh
+. ./scripts/lib/instruction-view.sh
 
 ND=plugins/notion-dev; SCHEMA=$ND/schema/notion-dev.config.schema.json; INIT=$ND/commands/init.md; README=$ND/README.md; KPY=$ND/scripts/knowledge.py; WF=.github/workflows/verify.yml
 assert_has "schema: knowledge.python key with default python3" "$SCHEMA" '"python": { "type": "string", "default": "python3"'
@@ -28,7 +29,7 @@ assert_present "init: writes \`python: <PYTHON_CMD>\` only when the probe record
   "$INIT" 1 "$L" 'python: <PYTHON_CMD>.*only when step 1.s probe actually recorded .PYTHON_CMD.*omitted when no interpreter was found'
 assert_present "init: omits it again when the recorded value equals the default \`python3\`" \
   "$INIT" 1 "$L" 'omitted again when the recorded value equals that default .python3.'
-for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/finalize.md commands/create-task.md commands/knowledge.md skills/knowledge/SKILL.md skills/epic-doc/SKILL.md; do
+for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/finalize.md commands/create-task.md commands/knowledge.md skills/knowledge/references/common.md skills/epic-doc/references/refresh.md; do
   n=$(total_lines "$ND/$f")
   case "$f" in commands/ticket.md|commands/next-task.md|commands/finalize.md)
     assert_has "$f: interpreter comes from configuration" "$ND/$f" 'knowledge.python'
@@ -51,7 +52,7 @@ assert_present "knowledge.py: the retry re-reads the owner before renaming again
 # the brief out CRLF while knowledge.py forces LF on stdout, so `diff` reports 100% changed
 # whatever the repair — measured as `1,137c1,137` in a client run, ~5k tokens to report a
 # two-line drift. The file is hard-wrapped, so each assertion matches inside one line.
-ED=$ND/skills/epic-doc/SKILL.md; EDL=$(total_lines "$ED")
+ED=$(instruction_view epic-doc); EDL=$(total_lines "$ED")
 assert_present "epic-doc: the brief's change list is the stderr listing, never a diff of the rendered brief" \
   "$ED" 1 "$EDL" 'Never diff the rendered brief against the old one to see what changed'
 assert_present "epic-doc: a CRLF checkout against LF stdout is why a line diff reports every line" \
@@ -79,8 +80,8 @@ assert_lacks "verify-knowledge-py.sh: no hardcoded python3 invocation via \$OLDP
 assert_lacks "verify-knowledge-py.sh: no hardcoded python3 heredoc invocation remains" "$KPS" 'python3 -'
 assert_has "README: Git for Windows prerequisite" "$README" 'Git for Windows'
 assert_has "README: knowledge.python documented" "$README" 'knowledge.python'
-LE=$(total_lines "$ND/skills/epic-doc/SKILL.md")
-assert_present "epic-doc: Windows rename note on the lock" "$ND/skills/epic-doc/SKILL.md" 1 "$LE" 'On Windows.*renaming the lock directory can fail while another process holds a handle'
+LE=$(total_lines "$ED")
+assert_present "epic-doc: Windows rename note on the lock" "$ED" 1 "$LE" 'On Windows.*renaming the lock directory can fail while another process holds a handle'
 
 # The Stop guard runs on EVERY stop in every session, on both platforms, and a
 # hook that errors on one of them is a hook nobody sees fail. Its behaviour is

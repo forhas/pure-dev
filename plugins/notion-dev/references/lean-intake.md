@@ -44,7 +44,13 @@ An in-progress ticket without our worktree is held elsewhere; do not claim it.
 Already resolved tickets are not reopened implicitly. If a ticket already has an OPEN or
 MERGED PR, use finalize for that PR instead of opening another implementation branch.
 
-Use already-retrieved epic context if available, otherwise knowledge `retrieve` once. Save
+On new schema-4 runs retain the raw notion-fetch JSON too. After `init`, use runtime's
+`ticket-source --response <capture.json> --config <primary-config>` and inventory its generated
+ticket.md. Do not write a hand-summarized substitute. Save the actual provider tool-call ID.
+
+Use already-retrieved ticket-scoped context if available, otherwise knowledge
+`retrieve(<epic-id>, <ticket-title>, <ticket-key>)` once AFTER selecting the ticket. A scheduling
+brief is not a knowledge retrieval. Load only retrieve's operation reference, not capture/migrate. Save
 paths for relevant architectural constraints/history. Only fetch deeper documents to answer
 a named question. Do not eagerly read every sibling ticket or the whole epic body.
 

@@ -37,7 +37,8 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
    the existing journal to reconcile or skip completed operations. No copied cleanup/status
    implementation and no replacement record agent.
 7. Run the workspace closeout pass, report actual outcomes and evidence paths, then mark the
-   owned marker complete. On failure preserve work, mark stopped with cause, and report the
+   owned marker complete through `workflow.py complete --state "$RUNTIME_STATE" --marker "$RUN_MARKER"`.
+   On failure preserve work, mark stopped with cause, and report the
    exact resume path. No requirement to create a disposable test project.
 
 Before invoking review in step 4 or recording in step 6, bind the verified PR using:
