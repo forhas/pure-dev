@@ -440,7 +440,10 @@ def record_run(state, operation):
 def record_observed(state, operation, receipt):
     """Do not invent a historical begin for an effect discovered after dispatch."""
     current = record_input(state, operation)
-    require(current["action"] != "skip" and isinstance(receipt, str) and receipt.strip(), "observed effect requires readback evidence")
+    # After begin, an effect must bind to its actual host receipt; an "unjournaled"
+    # observation there would let confirmation skip that check.
+    require(current["action"] == "execute", "record-observed is only for an effect found before begin")
+    require(isinstance(receipt, str) and receipt.strip(), "observed effect requires readback evidence")
     return Runtime(state).record_op(operation, current["target"], "unknown-outcome",
                                     "unjournaled effect; reconcile: " + receipt, current["data_sha256"])
 
@@ -467,7 +470,7 @@ def record_receipt(state, operation, transcript, session, call_id=None):
         require(entries[-1]["outcome"] in {"attempted", "unknown-outcome"}, "operation changed during receipt capture")
         attempts = [e for e in entries if e["outcome"] == "attempted"]
         require(attempts and timestamp(observed["call"]["timestamp"]) >= attempts[-1]["wall"],
-                "provider call predates durable begin; record-observed and reconcile, never retroactively begin")
+                "provider call predates durable begin; it cannot confirm this attempt, never retroactively begin")
         require(timestamp(observed["result"]["timestamp"]) <= rt.clock.stamp()["wall"], "future host receipt")
         receipts = data.setdefault("host_operation_receipts", {})
         require(not any(r["call_id"] == call_id and key != operation for key, r in receipts.items()), "host call already belongs to another operation")

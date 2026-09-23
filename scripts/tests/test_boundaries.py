@@ -328,6 +328,15 @@ class BoundaryTests(unittest.TestCase):
         entries = [e for e in runtime.read_json(self.state)['record_journal'] if e['operation'] == operation]
         self.assertNotIn('attempted', [e['outcome'] for e in entries])
 
+    def test_observation_after_begin_cannot_bypass_host_receipt(self):
+        _, _, plan = self.record()
+        operation = self.child(plan['ticket-status']['operation'], {'host_call': {'name': 'ProviderWrite', 'input': {}}})
+        workflow.record_input(self.state, operation, begin=True)
+        with self.assertRaisesRegex(workflow.Invalid, 'before begin'):
+            workflow.record_observed(self.state, operation, 'claimed readback')
+        with self.assertRaisesRegex(workflow.Invalid, 'actual host receipt'):
+            workflow.record_outcome(self.state, operation, 'confirmed', 'claimed readback')
+
     def test_retry_cannot_reuse_previous_attempt_receipt(self):
         _, _, plan = self.record(); args = {'status': 'done'}
         operation = self.child(plan['ticket-status']['operation'], {'host_call': {'name': 'ProviderWrite', 'input': args}})
