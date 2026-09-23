@@ -481,8 +481,9 @@ class Runtime:
 
     def stage(self, name):
         require(bool(name.strip()), "stage name required")
-        require(name != "complete", "use workflow.py complete for the validated terminal transition")
         with self.transaction() as state:
+            require(name != "complete" or state["schema"] < 4,
+                    "use workflow.py complete for the validated terminal transition")
             if state["stage"] != name:
                 if state["stage"]:
                     self.event(state, "stage_ended")

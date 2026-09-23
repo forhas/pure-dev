@@ -347,6 +347,11 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "resume explicitly"):
             self.prepare("probe")
 
+    def test_legacy_runtime_retains_its_documented_stage_complete_command(self):
+        for schema in (1, 2, 3):
+            with self.rt.transaction() as state: state["schema"] = schema
+            self.assertEqual(self.rt.stage("complete"), {"stage": "complete"})
+
     def test_owned_lock_outstanding_worker_and_partial_recording_block_completion(self):
         marker = self.completion_fixture()
         lock = marker.parent.parent / "locks/primary"
