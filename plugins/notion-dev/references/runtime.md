@@ -6,7 +6,12 @@ One invocation per ticket, retained on resume. Never edit state JSON directly or
 
 ## Requirements and evidence
 
-For new schema-4 runs, save the complete **raw notion-fetch response** (JSON, including page
+For new schema-5 runs use `capture-ticket --page <notion-page-uuid> --config <primary-config>`
+after the real notion-fetch; SessionStart supplies the transcript path/session. Read the host
+capture section of `references/boundaries.md`. Missing/foreign evidence stops; no manual JSON
+assembly or schema downgrade.
+
+For existing schema-4 runs, save the complete **raw notion-fetch response** (JSON, including page
 metadata, properties and content, or its MCP content envelope) to a real UTF-8 file. Do not
 construct a response from a status query, summarize it, or reuse a previous local capture.
 Initialize the runtime, then bind the provider source:
@@ -158,6 +163,10 @@ The result still covers EVERY ID and declares `delta_review` with the exact prev
 manifest hash, checked_requirement_ids, and disposition sufficient or full-review-required.
 Uncertainty expands scope or escalates; it is not a fabricated clean verdict.
 
+Version-4 delta packets offer `delta_publication`: changed judgments plus explicit unchanged
+ID/section references. Read `references/boundaries.md` for its shape. Runtime assembles a full
+result; do not regenerate the prior narrative. All-ID coverage and dependency checks remain.
+
 At most two full and two delta attempts per invocation, including failed attempts.
 Same-worker unpublished format repair consumes no new investigation attempt. Budget exhaustion
 preserves work and stops with evidence; it never waives a requirement or starts a fresh run.
@@ -190,8 +199,8 @@ Read `references/record.md` only at recording time.
 Import raw parent/child JSONL with telemetry.py for token counts. Unknown telemetry is not zero.
 Schema 1/2 resumes retain original contracts; do not rewrite them to obtain new attempt budgets.
 Already-prepared version-1/2 workers also retain their packet/validation contract.
-Newly prepared lean workers use version 3, including on resume; no budget or invocation reset.
-New lean invocations use schema 4 and require the full-source refresh receipt. Never use
+Schema-5 workers use version 4; schema-3/4 workers keep version 3. No budget or invocation reset.
+New lean invocations use schema 5 and require the host-captured full-source refresh receipt. Never use
 `init --legacy` on this path; it belongs only to an explicitly selected legacy build flow.
 Never downgrade state
 to bypass it. Old frozen version-2 recording payloads remain readable without rebinding.
@@ -200,8 +209,10 @@ to bypass it. Old frozen version-2 recording payloads remain readable without re
 
 After the final accepted review and other live merge checks, begin:
 `refresh-ticket --worker <id>`. It returns a request token bound to this run, reviewed source,
-worker and provider page. NOW call notion-fetch for that exact page, save the full raw response
-to a NEW real JSON file, and retain the actual host tool-call ID. Finish with:
+worker and provider page. NOW call notion-fetch for that exact page and retain its actual ID.
+On schema 5 finish with `capture-ticket --worker <id> --request <token>`;
+it extracts the real host exchange. Do not assemble a response JSON yourself.
+Only on schema 4 save the full raw response to a NEW real JSON file and finish with
 `refresh-ticket --worker <id> --request <token> --response <new-fetch.json> --call-id <actual-id>`.
 Do not use the provider's `as of` text as fetch time: it may describe last page editing.
 
@@ -216,4 +227,4 @@ This is a host/provider integration receipt, not cryptographic provider attestat
 cannot establish network truth or prevent a host forging a new call ID and copying old bytes.
 The adapter must preserve the actual tool response and call identity; unavailable evidence stops
 merge rather than filling fields with assertions. No credentials or provider SDK are added.
-That limit is `blocked` on the provider; see `references/handoffs.md`.
+That is a trust boundary, not pending implementation work; see `references/boundaries.md`.

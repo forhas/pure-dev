@@ -188,6 +188,8 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
             worktree, branch = Path(old["worktree"]), old["branch"]
         identity = read_json(runtime_path)
         require(identity["ticket"] == ticket, "runtime belongs to another ticket")
+        require(not old or identity["schema"] < 5 or pending.get("claude_session"),
+                "schema-5 takeover needs the actual host session in preflight --session")
         require(Runtime(runtime_path).ready()["passed"], "requirements/readiness must pass before claiming")
         if not old:
             require(not worktree.exists(), "existing unowned worktree; inspect rather than overwrite")
@@ -205,6 +207,12 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
                     "resume worktree missing or on another branch; use finalize if a PR exists")
         body = {**pending, "run": ticket, "session": identity["run"], "worktree": str(worktree), "branch": branch,
                 "phase": "implementation", "heartbeat": now(), "runtime_state": str(runtime_path)}
+        with Runtime(runtime_path).transaction() as state:
+            if state["schema"] >= 5:
+                state["host_session"] = pending.get("claude_session") or state.get("host_session")
+                state.pop("ticket_refresh", None)
+                state.pop("ticket_refresh_request", None)
+                state.pop("record_recovery", None)
         atomic_json(marker, body)
         preflight_marker.unlink()
     return {"marker": str(marker), "worktree": str(worktree), "branch": branch,
@@ -228,6 +236,8 @@ def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch,
     runtime_path = Path(runtime_path).resolve()
     identity = read_json(runtime_path)
     require(identity["ticket"] == ticket and identity["schema"] >= 3, "runtime ticket/schema mismatch")
+    require(identity["schema"] < 5 or pending.get("claude_session"),
+            "schema-5 recovery needs the actual host session in preflight --session")
     with state_lock(marker.with_suffix(".claim.lock"), 5):
         old = read_json(marker) if marker.exists() else None
         if old:
@@ -247,6 +257,11 @@ def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch,
                 "worktree": str(worktree), "branch": branch, "phase": "record" if merged else "review"}
         with Runtime(runtime_path).transaction() as state:
             state.pop("completed", None)  # Explicit verified PR recovery; budgets/journal unchanged.
+            if state["schema"] >= 5:
+                state["host_session"] = pending.get("claude_session") or None
+                state.pop("ticket_refresh", None)
+                state.pop("ticket_refresh_request", None)
+                state["record_recovery"] = merged
         atomic_json(marker, body)
         pending_path.unlink()
     return {"marker": str(marker), "runtime": str(runtime_path), "worktree": str(worktree), "branch": branch}
@@ -271,9 +286,34 @@ def verify_config(state, project, worktree, depends=()):
     return {"passed": True, "receipts": receipts}
 
 
-def record_plan(state, facts_file):
+def record_plan(state, facts_file, review_worker=None):
     """Prepare immutable payloads; execute with provider tools, then journal readback."""
     facts = json_input(facts_file)
+    identity = read_json(state)
+    source = identity.get("ticket_source")
+    if identity["schema"] >= 5 and source:
+        # A takeover clears refresh receipts but not this binding; never write from it.
+        capture = identity.get("host_captures", {}).get(source["response"])
+        require(capture and capture["session"] == identity.get("host_session"),
+                "ticket source predates this host session; capture-ticket again before recording")
+    if identity["schema"] >= 5 or review_worker:
+        reviews = [w for w in identity["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
+        require(not any(k in facts for k in ("requirements", "review", "verification")),
+                "worker-bound recording derives requirements/review/verification; do not copy them into facts")
+        if not reviews and not review_worker and identity.get("record_recovery"):
+            # Verified MERGED recovery may have no runtime history. Do not invent
+            # an accepted verdict, or require a pre-merge worker after the merge.
+            facts.update(requirements=identity.get("requirements") or {"status": "unknown"},
+                         review={"status": "unknown", "evidence": "No accepted runtime review survives; merge does not establish coverage."},
+                         release_obligations=["Unknown: independent review evidence unavailable; verify release readiness explicitly."])
+        else:
+            require(reviews and reviews[-1]["id"] == review_worker and reviews[-1].get("accepted"),
+                    "record-plan requires the final accepted --review-worker, not a consume envelope")
+            accepted = reviews[-1]
+            require(accepted.get("contract_version", 0) >= 3, "canonical recording facts unavailable on this legacy worker")
+            facts.update(requirements=accepted["requirements"], review=accepted["result"])
+        facts["verification"] = {"receipts": identity.get("verifications", []),
+                                 "status": "recorded" if identity.get("verifications") else "unknown"}
     required = ("ticket", "ticket_url", "pr_url", "merge_sha", "base", "merged_at", "strategy", "requirements", "verification", "review")
     require(all(facts.get(k) for k in required), "record facts are incomplete")
     require(re.fullmatch(r"[0-9a-f]{40}", facts["merge_sha"]), "full verified merge SHA required")
@@ -281,7 +321,6 @@ def record_plan(state, facts_file):
                          for name in ("requirements", "verification", "review")}}
     output = Path(state).resolve().parent / "record"
     output.mkdir(exist_ok=True)
-    identity = read_json(state)
     version = RECORD_PAYLOAD_VERSION if identity["schema"] >= 4 else 2
     pool = {}
     if version >= 3:
@@ -324,10 +363,141 @@ def record_plan(state, facts_file):
         operation = facts["ticket"] + ":" + facts["merge_sha"] + ":" + name
         check = runtime.record_check(operation, targets.get(name, facts["ticket_url"]) if version >= 3 else facts["ticket_url"], path)
         operations.append({**check, "kind": name, "payload": str(path),
-                           "requires_children": version >= 3 and (name == "ticket-resolution" or
+                           "requires_children": (identity["schema"] >= 5 and (name == "ticket-status" or
+                                (name == "epic-record" and bool(facts.get("epic") or facts.get("followups"))))) or version >= 3 and (name == "ticket-resolution" or
                                 (name == "post-merge-hooks" and bool(facts.get("hooks"))))})
     atomic_json(output / "plan.json", operations)
     return {"plan": str(output / "plan.json"), "operations": operations}
+
+
+def record_view(state, name, field=None):
+    """Complete scoped evidence, selected mechanically from the frozen parent pool."""
+    plan = read_json(Path(state).resolve().parent / "record/plan.json")
+    operation = next(p["operation"] for p in plan if p["kind"] == "ticket-resolution")
+    data = record_input(state, operation, field=name)["data"][name]
+    if isinstance(data, dict) and set(data) == {"evidence_id"}:
+        pool = record_input(state, operation, field="evidence")["data"]["evidence"]
+        data = pool[data["evidence_id"]]["data"]
+    if field is not None:
+        require(isinstance(data, dict) and field in data, "unknown evidence field")
+        data = data[field]
+    return {"operation": operation, "section": name, "field": field, "data": data}
+
+
+def record_next(state, begin=False):
+    """One pending operation, in the existing plan order; no new scheduler/state."""
+    plan = read_json(Path(state).resolve().parent / "record/plan.json")
+    for parent in plan:
+        current = record_input(state, parent["operation"])
+        if current["action"] == "skip": continue
+        if parent.get("requires_children"):
+            binding = read_json(state).get("record_child_sets", {}).get(parent["operation"])
+            if not binding:
+                return {"operation": parent["operation"], "target": parent["target"], "action": "plan-children",
+                        "kind": parent["kind"], "instruction": "Declare the complete write set with record-children. Use record-view for complete scoped evidence, never truncate record-input."}
+            require(hashlib.sha256(Path(binding["path"]).read_bytes()).hexdigest() == binding["sha256"], "child write set changed")
+            for child in read_json(binding["path"]):
+                operation = parent["operation"] + CHILD_SEPARATOR + child["name"]
+                pending = record_input(state, operation)
+                if pending["action"] != "skip":
+                    # Local commands are begun inside record-run, never here.
+                    local = "local_command" in pending["data"]
+                    return {**record_input(state, operation, begin=begin and not local),
+                            "executor": "record-run" if local else "host"}
+            return {"operation": parent["operation"], "action": "confirm-children",
+                    "provider_id": "confirmed-child-set:" + binding["sha256"]}
+        return record_input(state, parent["operation"], begin=begin)
+    return {"action": "complete", "instruction": "Run record-summary and validated completion."}
+
+
+def record_run(state, operation):
+    """Run an explicitly planned local hook after durable begin. No shell interpolation."""
+    current = record_input(state, operation)
+    if current["action"] != "execute": return current
+    plan = read_json(Path(state).resolve().parent / "record/plan.json")
+    kinds = {p["operation"]: p["kind"] for p in plan}
+    require(operation not in kinds and record_kind(operation, kinds) == "post-merge-hooks",
+            "record-run is only for declared local hook children")
+    command = current["data"].get("local_command")
+    require(isinstance(command, dict) and isinstance(command.get("argv"), list) and command["argv"]
+            and all(isinstance(v, str) and v for v in command["argv"])
+            and isinstance(command.get("cwd"), str) and Path(command["cwd"]).is_dir(),
+            "local hook requires argv strings and an existing cwd; Claude skills use the host instead")
+    log = child_payload_path(Path(state).resolve().parent / "record", operation + ":execution").with_suffix(".log")
+    # A concurrent dispatcher that began first leaves this begin at reconcile: never launch.
+    require(record_input(state, operation, begin=True)["action"] == "execute",
+            "another dispatcher began this hook; reconcile it instead of launching")
+    try:
+        with log.open("wb") as output:
+            proc = subprocess.run(command["argv"], cwd=command["cwd"], stdout=output,
+                                  stderr=subprocess.STDOUT, timeout=900,
+                                  env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        receipt = {"operation": operation, "exit_code": proc.returncode, "log": str(log),
+                   "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest()}
+        if proc.returncode:
+            record_outcome(state, operation, "unknown-outcome", "local hook failed; inspect effects before retry")
+        else:
+            record_outcome(state, operation, "confirmed", "local-exit-0:" + receipt["log_sha256"])
+        return {**receipt, "passed": proc.returncode == 0}
+    except BaseException:
+        record_outcome(state, operation, "unknown-outcome", "local execution interrupted; reconcile before retry")
+        raise
+
+
+def record_observed(state, operation, receipt):
+    """Do not invent a historical begin for an effect discovered after dispatch."""
+    current = record_input(state, operation)
+    # After begin, an effect must bind to its actual host receipt; an "unjournaled"
+    # observation there would let confirmation skip that check.
+    require(current["action"] == "execute", "record-observed is only for an effect found before begin")
+    require(isinstance(receipt, str) and receipt.strip(), "observed effect requires readback evidence")
+    rt = Runtime(state)
+    entry = rt.record_op(operation, current["target"], "unknown-outcome",
+                         "unjournaled effect; reconcile: " + receipt, current["data_sha256"])
+    # Provenance, not the caller-settable provider_id text, marks this reconciliation.
+    with rt.transaction() as data:
+        data.setdefault("unjournaled_observations", {})[operation] = entry
+    return entry
+
+
+def record_receipt(state, operation, transcript, session, call_id=None):
+    """Bind a host-mediated attempt to its real tool exchange, not a guessed ID.
+
+    A successful tool transport is not proof that a provider write had its intended
+    effect. The host still checks the response/readback before record-outcome.
+    """
+    from host_capture import exchange, timestamp, latest_call, calls_since
+    current = record_input(state, operation)
+    require(current["action"] == "reconcile", "begin the operation before host dispatch")
+    expected = current["data"].get("host_call")
+    require(isinstance(expected, dict) and set(expected) == {"name", "input"}, "planned host_call missing")
+    attempts = [e for e in read_json(state)["record_journal"] if e["operation"] == operation and e["outcome"] == "attempted"]
+    # Two identical writes after one begin may both have taken effect; never keep only one.
+    require(not attempts or len(calls_since(transcript, session, expected["name"], expected["input"], attempts[-1]["wall"])) <= 1,
+            "multiple matching host calls after begin; reconcile, never select one")
+    call_id = call_id or latest_call(transcript, session, expected["name"], arguments=expected["input"])
+    observed = exchange(transcript, session, call_id)
+    call = observed["call"]["item"]
+    require({"name": call.get("name"), "input": call.get("input")} == expected, "host tool/arguments differ from frozen operation")
+    rt = Runtime(state)
+    with rt.transaction() as data:
+        require(data.get("host_session") == session, "foreign host session")
+        entries = [e for e in data["record_journal"] if e["operation"] == operation]
+        require(entries[-1]["outcome"] in {"attempted", "unknown-outcome"}, "operation changed during receipt capture")
+        attempts = [e for e in entries if e["outcome"] == "attempted"]
+        require(attempts and timestamp(observed["call"]["timestamp"]) >= attempts[-1]["wall"],
+                "provider call predates durable begin; it cannot confirm this attempt, never retroactively begin")
+        require(timestamp(observed["result"]["timestamp"]) <= rt.clock.stamp()["wall"], "future host receipt")
+        receipts = data.setdefault("host_operation_receipts", {})
+        require(not any(r["call_id"] == call_id and key != operation for key, r in receipts.items()), "host call already belongs to another operation")
+        binding = {"call_id": call_id, "data_sha256": current["data_sha256"],
+                   "attempt": attempts[-1],
+                   "result_sha256": observed["result"]["sha256"], "call_sha256": observed["call"]["sha256"]}
+        saved = child_payload_path(Path(state).resolve().parent / "record", operation + ":host-receipt")
+        atomic_json(saved, observed)
+        receipts[operation] = {**binding, "path": str(saved), "sha256": hashlib.sha256(saved.read_bytes()).hexdigest()}
+    return {"operation": operation, "action": "verify-effect", "receipt": str(saved),
+            "instruction": "Inspect provider response or read back its actual effect before confirming. Tool transport success is not write success."}
 
 
 def record_child(state, parent, name, target, payload_file):
@@ -360,9 +530,27 @@ def record_children(state, parent, manifest_file):
                 and isinstance(w["target"], str) and w["target"].strip() and isinstance(w["data"], dict)
                 for w in writes), "each write requires a valid child name, actual target and self-contained data")
     require(len({w["name"] for w in writes}) == len(writes), "duplicate child name")
+    if read_json(state)["schema"] >= 5:
+        for write in writes:
+            body = write["data"]
+            require(("host_call" in body) != ("local_command" in body), "declare exactly one host_call or local_command per write")
+            if "host_call" in body:
+                call = body["host_call"]
+                require(isinstance(call, dict) and set(call) == {"name", "input"}
+                        and isinstance(call["name"], str) and call["name"].strip() and isinstance(call["input"], dict),
+                        "host_call needs exact tool name and input object")
+            else:
+                command = body["local_command"]
+                require(isinstance(command, dict) and isinstance(command.get("argv"), list) and command["argv"]
+                        and all(isinstance(v, str) and v for v in command["argv"])
+                        and isinstance(command.get("cwd"), str) and Path(command["cwd"]).is_dir(),
+                        "local_command needs argv strings and an existing cwd before freezing its write set")
     directory = Path(state).resolve().parent / "record"
     plan = read_json(directory / "plan.json")
     require(any(p["operation"] == parent for p in plan), "unknown parent operation")
+    if any("local_command" in w["data"] for w in writes):
+        require(any(p["operation"] == parent and p["kind"] == "post-merge-hooks" for p in plan),
+                "local_command is only supported for configured post-merge hook children")
     manifest = child_payload_path(directory, parent + ":manifest")
     if manifest.exists(): require(read_json(manifest) == writes, "child write set changed; reconcile explicitly")
     else:
@@ -443,6 +631,18 @@ def record_outcome(state, operation, outcome, provider_id=None):
     directory = Path(state).resolve().parent / "record"
     plan = read_json(directory / "plan.json")
     parent = next((p for p in plan if p["operation"] == operation), None)
+    identity = read_json(state)
+    if identity["schema"] >= 5 and outcome == "confirmed" and current["action"] != "skip" and not parent:
+        if "host_call" in current["data"]:
+            receipt = identity.get("host_operation_receipts", {}).get(operation)
+            entries = [e for e in identity["record_journal"] if e["operation"] == operation]
+            attempts = [e for e in entries if e["outcome"] == "attempted"]
+            reconciled = (entries[-1]["outcome"] == "unknown-outcome"
+                          and identity.get("unjournaled_observations", {}).get(operation) == entries[-1])
+            require(reconciled or (receipt and receipt["data_sha256"] == current["data_sha256"]
+                    and attempts and receipt.get("attempt") == attempts[-1]
+                    and hashlib.sha256(Path(receipt["path"]).read_bytes()).hexdigest() == receipt["sha256"]),
+                    "capture the actual host receipt or explicitly reconcile an unjournaled effect")
     require(outcome != "confirmed" or current["action"] != "execute" or (parent and parent.get("requires_children")),
             "begin the operation before confirming its provider effect")
     if outcome == "confirmed" and parent and parent.get("requires_children"):
@@ -560,6 +760,14 @@ def main():
     p = commands.add_parser("verify"); p.add_argument("--project", required=True); p.add_argument("--state", required=True)
     p.add_argument("--worktree", required=True); p.add_argument("--depends", action="append", default=[])
     p = commands.add_parser("record-plan"); p.add_argument("--state", required=True); p.add_argument("--facts", required=True)
+    p.add_argument("--review-worker")
+    p = commands.add_parser("record-view"); p.add_argument("--state", required=True); p.add_argument("--name", required=True); p.add_argument("--field")
+    p = commands.add_parser("record-next"); p.add_argument("--state", required=True); p.add_argument("--begin", action="store_true")
+    p = commands.add_parser("record-run"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p = commands.add_parser("record-observed"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True); p.add_argument("--receipt", required=True)
+    p = commands.add_parser("record-receipt"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("record-child"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
     p.add_argument("--name", required=True); p.add_argument("--target", required=True); p.add_argument("--payload", required=True)
     p = commands.add_parser("record-input"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
@@ -577,7 +785,12 @@ def main():
     elif args.command == "claim": result = claim(args.project, args.preflight, args.ticket, args.title, args.state, args.resume)
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends)
-    elif args.command == "record-plan": result = record_plan(args.state, args.facts)
+    elif args.command == "record-plan": result = record_plan(args.state, args.facts, args.review_worker)
+    elif args.command == "record-view": result = record_view(args.state, args.name, args.field)
+    elif args.command == "record-next": result = record_next(args.state, args.begin)
+    elif args.command == "record-run": result = record_run(args.state, args.operation)
+    elif args.command == "record-observed": result = record_observed(args.state, args.operation, args.receipt)
+    elif args.command == "record-receipt": result = record_receipt(args.state, args.operation, args.transcript, args.session, args.call_id)
     elif args.command == "record-child": result = record_child(args.state, args.parent, args.name, args.target, args.payload)
     elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
     elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)

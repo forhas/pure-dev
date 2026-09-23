@@ -44,9 +44,14 @@ An in-progress ticket without our worktree is held elsewhere; do not claim it.
 Already resolved tickets are not reopened implicitly. If a ticket already has an OPEN or
 MERGED PR, use finalize for that PR instead of opening another implementation branch.
 
-On new schema-4 runs retain the raw notion-fetch JSON too. After `init`, use runtime's
-`ticket-source --response <capture.json> --config <primary-config>` and inventory its generated
-ticket.md. Do not write a hand-summarized substitute. Save the actual provider tool-call ID.
+On schema 5, after `init`, run `capture-ticket --page <notion-page-uuid>
+--config <primary-config>` using runtime.py. SessionStart supplies `NOTION_DEV_TRANSCRIPT` and
+`NOTION_DEV_SESSION_ID`; an explicit actual --transcript/--session is supported when needed.
+The helper selects the actual call ID, extracts the complete host response and generates ticket.md. Never transcribe the
+response, invent a call ID, or patch/copy an old capture. If the completed exchange has not yet
+been flushed to the host log, wait for that existing delivery and retry capture, not the fetch.
+Unsupported/missing host evidence stops explicitly; see `references/boundaries.md`.
+Existing schema-4 runs keep `ticket-source --response <capture.json> --config <primary-config>`.
 
 Use already-retrieved ticket-scoped context if available, otherwise knowledge
 `retrieve(<epic-id>, <ticket-title>, <ticket-key>)` once AFTER selecting the ticket. A scheduling
@@ -68,6 +73,9 @@ runtime on a lean resume, including attempt budgets, receipts and journal. Refre
 inventory there only after resolving its old workers. A pre-0.36 run reads the legacy ticket
 reference and keeps its own state. Never adopt a running marker merely because a heartbeat is
 old: confirm its workers stopped and obtain takeover authority first. Do not auto-stash edits.
+For a schema-5 takeover, the authorized claim/resume-pr transfers host-session ownership using
+the retained readiness state first; then capture the new full source and re-establish readiness
+before any implementation/review or Notion write. Do not capture under the old session identity.
 
 Fresh runs initialize the returned runtime with `init --run <invocation> --ticket <key>`.
 After readiness, claim with:

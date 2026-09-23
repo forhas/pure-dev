@@ -43,10 +43,10 @@ class LeanTests(unittest.TestCase):
         runtime.atomic_json(directory / "notion-dev.config.json", value)
         return value
 
-    def test_new_run_uses_schema_four(self):
+    def test_new_run_uses_schema_five(self):
         state = self.root / "new/state.json"
         runtime.Runtime(state).init("new", "TEST-1")
-        self.assertEqual(runtime.read_json(state)["schema"], 4)
+        self.assertEqual(runtime.read_json(state)["schema"], 5)
 
     def test_generated_contract_covers_whole_inventory_and_code_review(self):
         key = self.prepare()
@@ -145,6 +145,10 @@ class LeanTests(unittest.TestCase):
         for name in runtime.AUDIT_FIELDS: del contract["required"][name]
         with patch.object(runtime, "RESULT_CONTRACT_VERSION", 1), patch.object(runtime, "result_contract", return_value=contract):
             key = self.prepare()
+        # Emulate an already-prepared old worker. New schema-3/4 preparations
+        # deliberately retain version 3, independently of the current default.
+        with self.rt.transaction() as state:
+            state["workers"][key]["contract_version"] = 1
         worker = runtime.read_json(self.state)["workers"][key]
         packet_hash = runtime.digest(worker["packet"])
         self.rt.publish(key, support.RuntimeTests.result(self))

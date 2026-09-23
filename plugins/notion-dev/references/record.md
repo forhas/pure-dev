@@ -32,6 +32,9 @@ Save immutable `record-facts.json` beside runtime state with:
 }
 ```
 Requirements, verification and review may be embedded structured objects instead of paths.
+On schema 5 OMIT those three fields from record-facts; record-plan --review-worker selects
+them from the final accepted runtime worker and verification receipts. The field/path rules
+below are for existing schema 1–4 resumptions.
 Paths resolve relative to this facts file. Each must exist; only requirements accepts the
 literal `unknown` on merged recovery. For other unavailable evidence use an explicit object
 such as `{"status":"unknown","reason":"<observed cause>"}`, never a pretend file path.
@@ -50,8 +53,12 @@ an unconfirmed live writer could still perform side effects; then preserve the l
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-plan --state "$RUNTIME_STATE" --facts <record-facts.json>
 ```
+Schema 5 adds `--review-worker <final-accepted-id>` (omit only for verified MERGED recovery
+without a surviving review; the helper records unknown coverage). Read the recording section of
+`references/boundaries.md` for record-next, record-view, record-receipt and record-run.
+They reuse this journal; no new scheduler or provider authority.
 
-New schema-4 runs emit version-3 immutable payloads and stable operation IDs. The helper
+Schema-4/5 runs emit version-3 immutable payloads and stable operation IDs. The helper
 archives full named evidence by content identity, deduplicating identical requirements/review
 files. Provider views retain every structured requirement verdict, audit, evidence reference,
 release obligation and accepted claim correction; only a structured review with canonical
@@ -75,6 +82,13 @@ This verifies the saved payload against the plan/journal, reads and hashes it on
 that same data. With `--begin`, execute is durably journaled as `--outcome attempted` BEFORE
 the provider call. Use the returned data for the authorized write; never reopen the source
 files to construct it. Changed sources cannot alter this operation's intended evidence.
+
+Schema 5 normally uses `record-next --state <state> --begin` for one complete scoped operation.
+For parent planning use record-view, never a truncated evidence pool. Declare exact host_call
+or local_command per child. Ticket status and epic writes also use children on schema 5.
+Capture the actual host exchange with record-receipt before confirmation; synchronous local
+hooks use record-run, which journals before executing. Skills remain host-mediated. If an
+effect preceded begin, record-observed and reconcile; never fabricate a historical begin.
 
 - **skip:** the same payload is already confirmed; consume the receipt.
 - **execute:** perform the authorized write using the returned data, target and digest.
@@ -128,6 +142,11 @@ but do not block resolution. The parent confirms only after all children are con
 explicitly not applicable; never hide partial effects behind a confirmed parent.
 
 ## 3. Operation meanings and order
+
+On schema 5 write the final Notion Implementation/review narrative here from accepted facts.
+Preserve unrelated content and human edits. The review phase deliberately deferred these writes
+to avoid invalidating its own frozen source. Keep required explanations concise and consistent
+with the corrected code/docs/PR claims; do not invent new rationale during recording.
 
 1. **ticket-status:** ticket-system `updateStatus(id, "implemented")`. Never advance to deployed/
    released. Re-read status to confirm; use the configured status map.
