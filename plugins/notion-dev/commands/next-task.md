@@ -36,6 +36,8 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
 
 ## Delegate and repeat
 
+For the chosen ticket invoke knowledge `retrieve(<epic-id>, <ticket-title>, <ticket-key>)` once.
+Pass schedule's same-boundary metadata/root revision for reuse; do not repeat its epic fetch.
 Invoke `/notion-dev:ticket <key> [flags] | selected from <brief-path>: <reason>` via Skill.
 Pass the saved ticket/context references, not copied histories. Ticket rechecks live ownership
 and requirement freshness before writes. Each ticket owns its own runtime invocation; resumes
@@ -47,8 +49,7 @@ a launch acknowledgement, an unmerged PR, failed recording, or an incomplete clo
 A stop/failure stops this loop too. Do not pick another ticket over unfinished owned work.
 
 After a resolution schedule from the updated brief/live children once; reuse it for the next iteration.
-After selecting the next ticket, retrieve knowledge seeded with its title/key once, not the whole
-epic bundle before selection. Pass the full selected ticket and targeted context to intake.
+Pass the full selected ticket and targeted context to intake, not the whole epic bundle before selection.
 No new implementation owner inherits the previous ticket's conversation: supply source/context
 references only if delegation is justified. No request to continue between tickets within the
 requested depth; a runtime-authorized wait/yield is still unfinished work, not abandonment.

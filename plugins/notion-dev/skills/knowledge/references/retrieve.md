@@ -17,10 +17,12 @@ Read-only. It writes nothing and runs before any worktree exists.
 
 ### Steps
 
-1. `fetchTicket(<epic-id>)` via `notion-dev:ticket-system`, then the epic predicate
+1. Reuse verified epic identity/metadata supplied from this same selection boundary; otherwise
+   `fetchTicket(<epic-id>)` via `notion-dev:ticket-system`. Apply the epic predicate
    (`metadata.parentTaskProperty` empty **and** `metadata.epicMarkerProperty` true — the one
    `findEpics()` and `/notion-dev:ticket`'s epic guard apply). Not an epic → return `null`.
-2. `git fetch origin`, then locate the root on `origin/<epicBranch>` with
+2. Reuse schedule's fetched bundle revision/root location when no intervening write or ref
+   change occurred. Otherwise `git fetch origin`, then locate the root on `origin/<epicBranch>` with
    `git ls-tree -r --name-only origin/<epicBranch> -- <knowledge.dir>/epic/` filtered to
    `<KEY>-<n>-*.md`. Missing → bootstrap **in memory** exactly as `epic-doc` "Bootstrap"
    describes, its seed search now also covering `<knowledge.dir>/epic/`; return the brief alone

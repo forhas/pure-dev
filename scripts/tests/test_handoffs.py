@@ -5,12 +5,10 @@ No client data, network calls or provider writes. Same suite on Git Bash and WSL
 import copy
 import json
 import os
-import io
 import subprocess
 import sys
 import re
 import shutil
-import inspect
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -57,6 +55,7 @@ class HandoffTests(unittest.TestCase):
         for report in ("VERDICT: CLEAN. prose", "VERDICT: CLEAN\nprose", "Independent review complete"):
             value = copy.deepcopy(worker["result"]); value["correction_review"]["report"] = report
             runtime.validate_result(worker, value)
+            self.assertTrue(runtime.Runtime.correction_reviewed(runtime.read_json(self.state), worker, value))
             rendered = runtime.render_result(worker, value)
             self.assertEqual(rendered, runtime.render_result(worker, rendered))
             self.assertTrue(runtime.Runtime.correction_reviewed(runtime.read_json(self.state), worker, rendered))
@@ -420,9 +419,6 @@ class HandoffTests(unittest.TestCase):
                 old = runtime.read_json(instance.path)["workers"][kwargs["previous"]]["files"]
                 kwargs["remove_inputs"] = [name for name in old if name not in files]
             return original_prepare(instance, role, files, *args, **kwargs)
-
-        def legacy_correction(state, worker, result):
-            return runtime.Runtime.correction_reviewed_original(state, {**worker, "contract_version": 2}, result)
 
         def confirm_without_children(state, operation, outcome, provider_id=None):
             current = workflow.record_input(state, operation)

@@ -136,7 +136,7 @@ def validate_result(worker, result):
                 require(correction == worker["reused_correction"], "reused correction evidence is immutable")
             elif worker["contract_version"] >= 3:
                 require(isinstance(correction.get("depends_on"), list)
-                        and all(isinstance(p, str) and Path(p).is_file() for p in correction["depends_on"]),
+                        and all(isinstance(p, str) and Path(p).is_absolute() for p in correction["depends_on"]),
                         "correction_review depends_on must list its external evidence files (explicit [] for code-only)")
     elif role == "record":
         fields = result.get("record")
