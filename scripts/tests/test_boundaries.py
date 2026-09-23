@@ -249,6 +249,20 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(workflow.record_view(self.state, 'review')['data']['status'], 'unknown')
         self.assertIn('Unknown:', workflow.record_view(self.state, 'release_obligations')['data'][0])
 
+    def test_takeover_cannot_record_from_previous_session_capture(self):
+        self.capture(); facts = self.facts()
+        value = runtime.read_json(facts)
+        for name in ('requirements', 'review', 'verification'): value.pop(name)
+        runtime.atomic_json(facts, value)
+        pending = workflow.preflight(self.repo, 'new-host', True)
+        workflow.resume_pr(self.repo, pending['marker'], 'TEST-1', self.state, self.root / 'removed', 'ticket/TEST-1', True)
+        with self.assertRaisesRegex(workflow.Invalid, 'predates this host session'):
+            workflow.record_plan(self.state, facts)
+        fetched = runtime.read_json(self.fetch())
+        self.rt.capture_ticket(self.log(fetched, 'recaptured', session='new-host'), 'new-host', 'recaptured',
+                               self.repo / '.claude/notion-dev.config.json')
+        workflow.record_plan(self.state, facts)
+
     def test_schema_five_claim_and_takeover_preserve_host_ownership(self):
         self.new_schema()
         handoffs.lean.LeanTests.test_claim_and_stopped_resume_keep_identity_and_do_not_steal_live_runs(self)

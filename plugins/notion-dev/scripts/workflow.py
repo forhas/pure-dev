@@ -290,6 +290,12 @@ def record_plan(state, facts_file, review_worker=None):
     """Prepare immutable payloads; execute with provider tools, then journal readback."""
     facts = json_input(facts_file)
     identity = read_json(state)
+    source = identity.get("ticket_source")
+    if identity["schema"] >= 5 and source:
+        # A takeover clears refresh receipts but not this binding; never write from it.
+        capture = identity.get("host_captures", {}).get(source["response"])
+        require(capture and capture["session"] == identity.get("host_session"),
+                "ticket source predates this host session; capture-ticket again before recording")
     if identity["schema"] >= 5 or review_worker:
         reviews = [w for w in identity["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
         require(not any(k in facts for k in ("requirements", "review", "verification")),
