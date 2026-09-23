@@ -191,7 +191,9 @@ Import raw parent/child JSONL with telemetry.py for token counts. Unknown teleme
 Schema 1/2 resumes retain original contracts; do not rewrite them to obtain new attempt budgets.
 Already-prepared version-1/2 workers also retain their packet/validation contract.
 Newly prepared lean workers use version 3, including on resume; no budget or invocation reset.
-New invocations use schema 4 and require the full-source refresh receipt. Never downgrade state
+New lean invocations use schema 4 and require the full-source refresh receipt. Never use
+`init --legacy` on this path; it belongs only to an explicitly selected legacy build flow.
+Never downgrade state
 to bypass it. Old frozen version-2 recording payloads remain readable without rebinding.
 
 ## Fresh authoritative ticket at the merge boundary

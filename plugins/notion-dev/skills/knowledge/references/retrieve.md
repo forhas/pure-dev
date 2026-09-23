@@ -49,6 +49,9 @@ Read-only. It writes nothing and runs before any worktree exists.
    `NEXT`, `BLOCKED`, `STATUS`, `CHILDREN` (one `listEpicChildren(<epic-id>)` call, since no
    concept stores a live status; reuse a list read at this same selection boundary), `BOOTSTRAP`,
    `DRIFT` and `SEED`. Do not fetch every sibling body to audit scheduling during retrieval.
+   Exception: an explicitly selected legacy workflow that consumes a full DRIFT audit invokes
+   epic-doc `read` with this already-retrieved KNOWLEDGE_CONTEXT. Its `read.md` retains that
+   audit; it must not call retrieve again. Lean selection uses schedule/parse only.
 5. `iwe` missing or the call failing → read the root alone with
    `git show origin/<epicBranch>:<root path>` as `EPIC_CONTEXT`, return
    `KNOWLEDGE_CONTEXT: unavailable`, and record `partial:knowledge-retrieve` per

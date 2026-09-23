@@ -467,13 +467,13 @@ class Runtime:
         state["events"].append(event)
         return event
 
-    def init(self, run, ticket):
+    def init(self, run, ticket, legacy=False):
         with self.transaction(create=True) as state:
             if state:
                 require(state["run"] == run and state["ticket"] == ticket,
                         "state belongs to a different invocation")
                 return {"state": str(self.path), "run": run, "resumed": True}
-            state.update(schema=SCHEMA, run=run, ticket=ticket, stage=None, events=[],
+            state.update(schema=2 if legacy else SCHEMA, run=run, ticket=ticket, stage=None, events=[],
                          workers={}, requirements=None, awaiting_worker=None,
                          verifications=[], record_journal=[])
             self.event(state, "run_started")
@@ -1778,6 +1778,7 @@ def main():
     parser.add_argument("--state", required=True, help="per-invocation state.json outside disposable worktrees")
     commands = parser.add_subparsers(dest="command", required=True)
     p = commands.add_parser("init"); p.add_argument("--run", required=True); p.add_argument("--ticket", required=True)
+    p.add_argument("--legacy", action="store_true", help="only for an explicitly selected legacy build flow; never changes an existing invocation")
     p = commands.add_parser("stage"); p.add_argument("name")
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
     p = commands.add_parser("ticket-source"); p.add_argument("--response", required=True); p.add_argument("--config", required=True)
@@ -1826,7 +1827,7 @@ def main():
     args = parser.parse_args()
     runtime = Runtime(args.state)
     name = args.command
-    if name == "init": result = runtime.init(args.run, args.ticket)
+    if name == "init": result = runtime.init(args.run, args.ticket, args.legacy)
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
     elif name == "ticket-source": result = runtime.ticket_source(args.response, args.config)

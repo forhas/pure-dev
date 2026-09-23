@@ -20,12 +20,15 @@ Use the preflight token, or a new UUID for an interactive/direct invocation.
 Set `RUNTIME_STATE` to its absolute `state.json` path. Initialize:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" init --run <invocation> --ticket <key>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" init --run <invocation> --ticket <key> --legacy
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" stage intake
 ```
 
 Persist `runtime_state` in the existing run marker; preserve it on marker rewrites,
 claim handover, and resume. Never reuse another invocation's state by ticket ID.
+`--legacy` initializes this explicitly selected build flow with its schema-2 contract, not the
+new lean contract described elsewhere. It never converts an existing state or resets a budget.
+Never use it on the lean path to bypass source freshness, publication or completion checks.
 Legacy runs without it get a new state and re-established evidence, never assumed
 verdicts. Pass `RUNTIME_STATE` to invoked notion-dev skills and the record unit.
 At each phase boundary call `stage <name>` (selection, intake, plan, implementation,

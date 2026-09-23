@@ -361,6 +361,21 @@ class HandoffTests(unittest.TestCase):
             with self.rt.transaction() as state: state["schema"] = schema
             self.assertEqual(self.rt.stage("complete"), {"stage": "complete"})
 
+    def test_explicit_new_legacy_flow_uses_its_own_contract_without_downgrading_resumes(self):
+        path = self.root / "legacy/state.json"
+        legacy = runtime.Runtime(path)
+        legacy.init("legacy-flow", "TEST-1", legacy=True)
+        self.assertEqual(runtime.read_json(path)["schema"], 2)
+        packet = legacy.prepare("probe", {"input": self.source})
+        self.assertNotIn("result_contract", runtime.read_json(packet["packet"]))
+        legacy.init("legacy-flow", "TEST-1")
+        self.assertEqual(len(runtime.read_json(path)["workers"]), 1)
+        lean_path = self.root / "new-lean/state.json"
+        lean_runtime = runtime.Runtime(lean_path)
+        lean_runtime.init("lean-flow", "TEST-1")
+        lean_runtime.init("lean-flow", "TEST-1", legacy=True)
+        self.assertEqual(runtime.read_json(lean_path)["schema"], 4)
+
     def test_owned_lock_outstanding_worker_and_partial_recording_block_completion(self):
         marker = self.completion_fixture()
         lock = marker.parent.parent / "locks/primary"

@@ -34,7 +34,8 @@ capture. All body text is retained, even in plugin-named sections. Only configur
 properties and transport metadata are excluded from requirement comparison. Own pre-review
 bookkeeping is captured before freezing the first internal review.
 
-Version boundaries are explicit: schema 1/2 legacy workflows, schema 3 existing lean invocations,
+Version boundaries are explicit: schema 1/2 legacy workflows (new explicit legacy flows use
+`init --legacy`, never on a lean invocation), schema 3 existing lean invocations,
 and already-prepared result contracts 1/2 keep their original obligations. New lean workers get
 contract 3; new invocations get schema 4. Version-2 recording payloads remain consumable. Do not
 reset state, edit published evidence, or create a new invocation to replenish review budgets.
