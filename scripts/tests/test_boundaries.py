@@ -249,6 +249,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(workflow.record_view(self.state, 'review')['data']['status'], 'unknown')
         self.assertIn('Unknown:', workflow.record_view(self.state, 'release_obligations')['data'][0])
 
+    def test_takeover_makes_previous_session_capture_not_ready(self):
+        self.capture()
+        self.assertTrue(self.rt.ready()['passed'])
+        with self.rt.transaction() as state: state['host_session'] = 'new-host'
+        self.assertIn('ticket source predates this host session', self.rt.ready()['reasons'][0])
+
     def test_takeover_cannot_record_from_previous_session_capture(self):
         self.capture(); facts = self.facts()
         value = runtime.read_json(facts)

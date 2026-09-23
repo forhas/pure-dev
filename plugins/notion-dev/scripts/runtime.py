@@ -682,6 +682,12 @@ class Runtime:
             return ["requirements inventory missing"]
         if digest(inventory["source"]) != inventory["source_sha256"]:
             return ["ticket source changed; refresh requirements and review"]
+        source = state.get("ticket_source")
+        if state["schema"] >= 5 and source:
+            # A takeover transfers host_session but keeps this binding; recapture first.
+            capture = state.get("host_captures", {}).get(source["response"])
+            if not capture or capture["session"] != state.get("host_session"):
+                return ["ticket source predates this host session; capture-ticket again"]
         return [f"{item['id']}: {item['readiness']}" for item in inventory["items"]
                 if item["readiness"] != "ready"]
 
