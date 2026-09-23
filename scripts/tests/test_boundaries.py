@@ -368,6 +368,9 @@ class BoundaryTests(unittest.TestCase):
             workflow.record_observed(self.state, operation, 'claimed readback')
         with self.assertRaisesRegex(workflow.Invalid, 'actual host receipt'):
             workflow.record_outcome(self.state, operation, 'confirmed', 'claimed readback')
+        workflow.record_outcome(self.state, operation, 'unknown-outcome', 'unjournaled effect; forged')
+        with self.assertRaisesRegex(workflow.Invalid, 'actual host receipt'):
+            workflow.record_outcome(self.state, operation, 'confirmed', 'claimed readback')
 
     def test_retry_cannot_reuse_previous_attempt_receipt(self):
         _, _, plan = self.record(); args = {'status': 'done'}

@@ -451,8 +451,13 @@ def record_observed(state, operation, receipt):
     # observation there would let confirmation skip that check.
     require(current["action"] == "execute", "record-observed is only for an effect found before begin")
     require(isinstance(receipt, str) and receipt.strip(), "observed effect requires readback evidence")
-    return Runtime(state).record_op(operation, current["target"], "unknown-outcome",
-                                    "unjournaled effect; reconcile: " + receipt, current["data_sha256"])
+    rt = Runtime(state)
+    entry = rt.record_op(operation, current["target"], "unknown-outcome",
+                         "unjournaled effect; reconcile: " + receipt, current["data_sha256"])
+    # Provenance, not the caller-settable provider_id text, marks this reconciliation.
+    with rt.transaction() as data:
+        data.setdefault("unjournaled_observations", {})[operation] = entry
+    return entry
 
 
 def record_receipt(state, operation, transcript, session, call_id=None):
@@ -633,7 +638,7 @@ def record_outcome(state, operation, outcome, provider_id=None):
             entries = [e for e in identity["record_journal"] if e["operation"] == operation]
             attempts = [e for e in entries if e["outcome"] == "attempted"]
             reconciled = (entries[-1]["outcome"] == "unknown-outcome"
-                          and str(entries[-1].get("provider_id", "")).startswith("unjournaled effect;"))
+                          and identity.get("unjournaled_observations", {}).get(operation) == entries[-1])
             require(reconciled or (receipt and receipt["data_sha256"] == current["data_sha256"]
                     and attempts and receipt.get("attempt") == attempts[-1]
                     and hashlib.sha256(Path(receipt["path"]).read_bytes()).hexdigest() == receipt["sha256"]),
