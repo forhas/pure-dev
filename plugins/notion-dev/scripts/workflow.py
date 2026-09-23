@@ -148,6 +148,7 @@ def marker_update(path, session, phase, state="running", cause=None):
         marker = read_json(path)
         require(marker.get("claude_session") == session, "marker belongs to another host session")
         require(marker.get("state") != "complete", "terminal marker: resume-pr is required for explicit recovery")
+        require(phase != "complete" or state == "complete", "phase-only completion is invalid; use workflow.py complete")
         require(state != "complete" or not marker.get("runtime_state"), "use workflow.py complete to validate a ticket's terminal transition")
         marker.update(phase=phase, state=state, cause=cause, heartbeat=now())
         atomic_json(path, marker)
@@ -528,6 +529,8 @@ def complete(state, marker_path, session):
             require(data["record_journal"] == snapshot, "recording changed during completion; check again")
             require(not any(not w["terminated"] and not w.get("accepted") for w in data["workers"].values()),
                     "workers remain outstanding; completion is not cancellation")
+            if not data.get("completed") and data.get("stage"):
+                rt.event(data, "stage_ended")
             data["completed"] = True
             data["stage"] = "complete"
             marker.update(phase="complete", state="complete", heartbeat=now(), cause=None)

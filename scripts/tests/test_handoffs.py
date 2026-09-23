@@ -332,10 +332,17 @@ class HandoffTests(unittest.TestCase):
             workflow.complete(self.state, marker, "foreign-host")
         with self.assertRaisesRegex(ValueError, "use workflow.py complete"):
             workflow.marker_update(marker, "host", "complete", "complete")
+        with self.assertRaisesRegex(ValueError, "phase-only completion"):
+            workflow.marker_update(marker, "host", "complete")
+        with self.assertRaisesRegex(runtime.Invalid, "validated terminal"):
+            self.rt.stage("complete")
+        self.rt.stage("closeout")
         self.assertTrue(workflow.complete(self.state, marker, "host")["passed"])
         self.assertEqual(runtime.read_json(marker)["state"], "complete")
         self.assertEqual(runtime.read_json(marker)["phase"], "complete")
         self.assertEqual(runtime.read_json(self.state)["stage"], "complete")
+        self.assertTrue(any(e["kind"] == "stage_ended" and e["stage"] == "closeout"
+                            for e in runtime.read_json(self.state)["events"]))
         self.assertTrue(workflow.complete(self.state, marker, "host")["passed"])
         with self.assertRaisesRegex(ValueError, "resume explicitly"):
             self.prepare("probe")
