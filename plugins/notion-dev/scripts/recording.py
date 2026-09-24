@@ -10,9 +10,13 @@ from runtime import notion_source, require
 
 
 def page_id(value):
-    ids = re.findall(r"[0-9a-f]{32}", str(value).lower().replace("-", ""))
+    # Match whole dashed or 32-hex tokens; stripping hyphens first would join a
+    # hex-ending title slug to the UUID and shift it.
+    text = str(value).lower()
+    dashed = re.findall(r"(?<![0-9a-f])[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?![0-9a-f])", text)
+    ids = {d.replace("-", "") for d in dashed} | set(re.findall(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])", text))
     require(len(ids) == 1, "expected one exact Notion page UUID or URL")
-    return ids[0]
+    return ids.pop()
 
 
 def page_data(response):

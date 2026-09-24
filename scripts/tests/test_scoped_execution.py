@@ -106,6 +106,13 @@ class ScopedExecutionTests(unittest.TestCase):
         self.assertIn('-frozen old', removed['diff'])
         self.assertNotIn('changed after snapshot', removed['diff'])
 
+    def test_page_id_never_joins_a_hex_ending_slug_to_the_uuid(self):
+        uuid = '0123456789abcdef0123456789abcdef'
+        dashed = '01234567-89ab-cdef-0123-456789abcdef'
+        for value in (uuid, dashed, 'https://www.notion.so/team/feature-scope-' + uuid, 'https://notion.so/cafe-' + dashed):
+            self.assertEqual(recording.page_id(value), uuid)
+        with self.assertRaisesRegex(Exception, 'one exact'): recording.page_id('https://notion.so/a-' + uuid + '?p=' + 'f' * 32)
+
     def test_stable_pr_renderer_preserves_disclosures_and_refuses_overwriting_human_body(self):
         facts = {'requirement': 'Exact requirement', 'behavior': ['Four outcomes.'], 'validation': ['See passing receipt.'],
                  'risks': ['Operator judgment required.'], 'mandatory': ['- [ ] Obtain release sign-off.']}
