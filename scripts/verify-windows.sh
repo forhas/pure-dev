@@ -164,6 +164,10 @@ assert_has "the host hook and capture CLI round-trip native paths and UTF-8" \
   scripts/tests/test_boundaries.py 'def test_session_hook_and_capture_cli_preserve_native_paths_and_utf8(self):'
 assert_has "both platform suites execute the host boundary regressions" \
   scripts/verify-lean-workflow.sh "-p 'test_boundaries.py'"
+assert_has "review preparation exercises configured steps and native paths" \
+  scripts/tests/test_convergence.py 'def test_review_prepare_cli_uses_configured_steps_and_native_paths(self):'
+assert_has "both platform suites execute the convergence regressions" \
+  scripts/verify-lean-workflow.sh "-p 'test_convergence.py'"
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

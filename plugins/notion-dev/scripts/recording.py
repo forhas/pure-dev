@@ -70,7 +70,7 @@ def section_edits(body, sections):
             additions.append(("---\n\n" if name in {"Implementation", "Merged"} else "") + heading + "\n\n" + content.rstrip())
     calls = []
     if updates: calls.append({"command": "update_content", "content_updates": updates})
-    if additions: calls.append({"command": "insert_content", "position": {"type": "end"}, "content": "\n\n" + "\n\n".join(additions) + "\n"})
+    if additions: calls.append({"command": "insert_content", "position": {"type": "end"}, "content": "\n\n" + "\n\n".join(additions)})
     return calls
 
 
@@ -101,7 +101,9 @@ def ticket_sections(facts, inventory, review):
     coverage = []
     for item in inventory["items"]:
         v = verdicts[item["id"]]
-        coverage.append("- " + item["id"] + " — " + v["verdict"] + ": " + item["text"] + "\n  Evidence: " + v["citation"])
+        # The requirement text already lives on this page. Keep the evidence and
+        # disposition, not a second copy of the authoritative requirement paragraph.
+        coverage.append("- " + item["id"] + " — " + v["verdict"] + "\n  Evidence: " + v["citation"])
     details = ["**PR:** " + facts["pr_url"], "**Completeness**\n\n" + "\n".join(coverage)]
     for name in ("claims", "caveats", "triage"):
         audit = review[name]
@@ -124,6 +126,46 @@ def ticket_sections(facts, inventory, review):
     merged += '<table header-row="true">\n<tr><td>Field</td><td>Value</td></tr>\n'
     merged += "\n".join("<tr><td>" + name + "</td><td>" + cell(value) + "</td></tr>" for name, value in rows) + "\n</table>"
     return {"Implementation": '<callout icon="🔨" color="blue_bg">Merged implementation record.</callout>\n\n' + "\n\n".join(details), "Merged": merged}
+
+
+def equivalent_write(expected, actual):
+    """Version-1 equivalence, only two observed Notion serialization differences.
+
+    Never normalize anchors, property values, page IDs, internal whitespace or code.
+    This predicate alone is NOT permission to confirm a write: readback is required.
+    """
+    if expected == actual: return True
+    if expected.get("name") != "mcp__notion__notion-update-page" or actual.get("name") != expected["name"]:
+        return False
+    if not isinstance(expected.get("input"), dict) or not isinstance(actual.get("input"), dict): return False
+    left, right = dict(expected["input"]), dict(actual["input"])
+    for args in (left, right):
+        if args.get("allow_async") is False: args.pop("allow_async")
+    if left == right: return True
+    if left.get("command") != "insert_content" or right.get("command") != "insert_content": return False
+    a, b = left.pop("content", None), right.pop("content", None)
+    return (left == right and isinstance(a, str) and isinstance(b, str)
+            and (a == b + "\n" or b == a + "\n"))
+
+
+def write_effect_present(arguments, page):
+    """Conservative readback: unsupported provider reformatting remains unknown."""
+    if page["page"] != page_id(arguments["page_id"]): return False
+    command = arguments.get("command")
+    if command == "update_properties":
+        values = arguments.get("properties", {})
+        return bool(values) and all(page["properties"].get(k) == v for k, v in values.items())
+    body = page["content"]
+    if command == "insert_content":
+        content = arguments.get("content", "")
+        if content.endswith("\n"): content = content[:-1]
+        return bool(content.strip()) and body.count(content) == 1
+    if command == "update_content":
+        edits = arguments.get("content_updates", [])
+        return bool(edits) and all(isinstance(e.get("new_str"), str) and e["new_str"].strip()
+            and body.count(e["new_str"]) == 1 and (e["old_str"] == e["new_str"] or e["old_str"] not in body)
+            for e in edits)
+    return False
 
 
 def acceptance_edits(body, inventory, review):

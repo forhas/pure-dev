@@ -77,6 +77,10 @@ do not rerun merely to discover the output shape. Report `exit_code`, `duration_
 the log path returned by the helper. No configured checks: establish appropriate commands with
 the user (or from documented project commands when unambiguous), never report untested success.
 
+Declare generated evidence in `verify.steps[].outputs` or `--output STEP=PATH`; cite returned
+archives, not mutable reports. `workflow.py verify` already reuses receipts (no `--reuse` flag).
+Full/delta dispatch uses `workflow.py review-prepare` per review-and-merge.
+
 Push only the ticket branch. Open a PR against `git.prTargetBranch` or `git.baseBranch`.
 Keep its body small: requirement/outcome, actual behavior change, verified tests and known risks.
 Include all ticket-mandated disclosure/checklist/sign-off wording. Distinguish merge prerequisites

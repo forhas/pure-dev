@@ -37,13 +37,13 @@ def latest_call(transcript, session, name, arguments=None, page=None):
     return found[-1]
 
 
-def calls_since(transcript, session, name, arguments, since):
-    """Every exact matching call at or after a durable begin; the host must not pick one."""
-    return [call for call, stamp in _matching_calls(transcript, session, name, arguments, None)
+def calls_since(transcript, session, name, arguments, since, predicate=None):
+    """Every matching call after begin; a narrow predicate may extend exact matching."""
+    return [call for call, stamp in _matching_calls(transcript, session, name, arguments, None, predicate)
             if timestamp(stamp) >= since]
 
 
-def _matching_calls(transcript, session, name, arguments, page):
+def _matching_calls(transcript, session, name, arguments, page, predicate=None):
     with Path(transcript).open("rb") as stream:
         for raw in stream:
             # A partial tail may be the newer matching call; never return an older one.
@@ -58,6 +58,7 @@ def _matching_calls(transcript, session, name, arguments, page):
             for item in content:
                 if not isinstance(item, dict) or item.get("type") != "tool_use" or item.get("name") != name: continue
                 args = item.get("input")
+                if predicate is not None and not predicate(item): continue
                 if arguments is not None and args != arguments: continue
                 if page and (not isinstance(args, dict) or page.lower().replace("-", "") not in
                              str(args.get("id", "")).lower().replace("-", "")): continue

@@ -1298,9 +1298,14 @@ def _validate_state(state):
             assert isinstance(c["id"], int) and isinstance(c["title"], str)
             assert c["status_class"] in STATUS_CLASSES
             assert isinstance(c.get("blocked_by", []), list)
+            assert isinstance(c.get("dependencies_known", True), bool)
             for p in ("phase", "step"):
                 assert c.get(p) is None or isinstance(c[p], int)
         assert isinstance(state.get("thread_blocked", []), list)
+        external = state.get("external_statuses", {})
+        assert isinstance(external, dict)
+        assert all(isinstance(k, str) and KEY_RE.fullmatch(k) and v in STATUS_CLASSES
+                   for k, v in external.items())
         stop = state.get("stop")
         if stop is not None:
             assert isinstance(stop, dict)
@@ -1320,7 +1325,8 @@ def derive_next(state, stopped_keys):
 
     def resolved(k):
         c = by_key.get(k)
-        return c is None or c["status_class"] == "resolved"
+        return (c["status_class"] == "resolved" if c else
+                state.get("external_statuses", {}).get(k) == "resolved")
 
     thread_blocked = set(state.get("thread_blocked", []))
     inprog, blocked, numbered = [], [], []
@@ -1333,7 +1339,8 @@ def derive_next(state, stopped_keys):
             blocked.append(c)
         else:
             numbered.append(c)
-    first = next((c for c in numbered if all(resolved(k) for k in c.get("blocked_by", []))), None)
+    first = next((c for c in numbered if c.get("dependencies_known", True)
+                  and all(resolved(k) for k in c.get("blocked_by", []))), None)
     if first is not None:
         numbered.remove(first)
         numbered.insert(0, first)
@@ -1363,7 +1370,8 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
         else:
             waits = [k for k in c.get("blocked_by", []) if not resolved(k)]
             out.append("%d. [%s] %s — %s" % (i, c["key"], c["title"],
-                                             ("after " + ", ".join(waits)) if waits else "ready"))
+                        "dependency check pending" if not c.get("dependencies_known", True) else
+                        (("after " + ", ".join(waits)) if waits else "ready")))
     if inprog:
         out.append("In progress: " + ", ".join(
             "[%s] %s — since %s" % (c["key"], c["title"], prev_in_progress.get(c["key"], today))

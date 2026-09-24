@@ -2,10 +2,27 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.39.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.40.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Review convergence and recording recovery (0.40.0)
+
+- `workflow.py review-prepare` verifies the committed revision before dispatching full/delta
+  review. Declare generated reports with `verify.steps[].outputs` or `--output STEP=PATH`;
+  reviewers cite immutable archives with revision/command provenance, not mutable coverage files.
+- `record-reconcile` binds an already-landed Notion write to its actual call and fresh readback.
+  Narrow serialization differences can be reconciled without undoing/replaying provider writes;
+  Notion reformatting requires an explicit adapter judgment. Ambiguous outcomes still stop.
+- Delta review reuses applicable evidence; empirical claims reference measured results rather
+  than repeating speculative test histories. Required validation/review remains intact.
+- Ticket recording omits duplicate requirement paragraphs. Knowledge uses accepted deltas;
+  complete reviewed follow-ups avoid a second proxy interview; epic recording labels unexamined
+  dependencies pending rather than fetching every sibling. Selection still verifies candidates live.
+
+These changes address observed workflow failures; real-ticket token/time savings remain unmeasured.
+Both native Windows Git Bash and Ubuntu/WSL2 use the same configured-interpreter commands.
 
 ## Scoped execution (0.39.0)
 

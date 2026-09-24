@@ -149,6 +149,32 @@ explicitly not applicable; never hide partial effects behind a confirmed parent.
 
 ## 3. Operation meanings and order
 
+**Landed-effect recovery:** never undo a correct write to obtain a matching receipt. Never
+untick/re-tick AC or replay an append after unknown outcome. For the known Notion differences
+(absent versus false `allow_async`, or one final newline on insert_content), fetch the target
+again and use `workflow.py record-reconcile --state "$RUNTIME_STATE" --operation <child-id>
+--readback-call-id <actual-fetch-id>` (optional `--call-id <actual-write-id>`). It binds the
+original attempt, actual exchange and fresh readback without changing intent or executing writes.
+Then confirm with record-outcome. For provider reformatting it returns `judge-effect`, frozen
+evidence and three binding hashes. The ticket-system adapter compares the COMPLETE intended
+effect/readback, including append uniqueness and unrelated content. Only if matched, save those
+hashes plus `verdict: "matched"` and a nonempty `evidence` explanation, then repeat reconciliation
+with `--readback-verdict <json-path>`. This is an explicit trusted-host semantic judgment, not
+automatic text equality. Missing/partial/duplicate effects, material argument differences,
+foreign sessions or unavailable evidence remain unknown. Never invent a matching verdict.
+This also works with an existing unknown-outcome child in the same bound host session. Do not
+reset a journal or invent a begin. A takeover lacking the original session binding needs explicit
+reconciliation of ownership/evidence, not a forced successful receipt.
+
+**Host-mediated operations:** planning reads are allowed BEFORE begin. For epic-record, read
+the live epic/filing inputs first, declare the complete provider write set, then begin each child
+before dispatch. For a configured Skill hook, declare a child with `host_call.name: "Skill"`
+and the exact configured `input` (skill and arguments). Begin before invoking Skill, capture that
+exchange, then verify the hook's actual git/provider effects before confirmation. The Skill
+launch acknowledgement alone is not completion. Do not run effects first because a parent
+requires children. Dynamic provider writes inside an adapter must follow its write-ahead plan;
+an outer Skill receipt does not certify unobserved nested effects. No new generic record agent.
+
 On schema 5 write the final Notion Implementation/review narrative here from accepted facts.
 Preserve unrelated content and human edits. The review phase deliberately deferred these writes
 to avoid invalidating its own frozen source. Keep required explanations concise and consistent

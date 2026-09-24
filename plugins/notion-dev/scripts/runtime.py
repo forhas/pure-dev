@@ -783,6 +783,15 @@ class Runtime:
                     if name not in snapshots and name not in remove_inputs:
                         snapshots[name] = {"path": source["path"], "sha256": digest(source["path"])}
             require(bool(snapshots), "at least one input artifact is required")
+            verification_ids = []
+            if role == "completeness" and "verification_receipts" in snapshots:
+                verification_ids = read_json(snapshots["verification_receipts"]["path"])["verifications"]
+                require(verification_ids and not self.verification_reasons(state, verification_ids, current),
+                        "review verification is stale: commit, verify, then prepare review")
+                for source in snapshots.values():
+                    receipts = [r for r in state.get("verifications", []) if r["log"] == source["path"]]
+                    require(not receipts or not self.receipt_reusable(receipts[-1], current, environment_signature()),
+                            "named test log is stale; use the current verification receipt")
             correction = state.get("correction") if role == "completeness" else None
             correction_manifest = self.correction_manifest(correction, current) if correction else None
             reused = None
@@ -804,6 +813,10 @@ class Runtime:
             packet = {"worker": key, "role": role, "slot": slot, "revision": current,
                       "inputs": snapshots, "requirements": {"path": str(inventory_path),
                       "sha256": digest(inventory_path)}}
+            if verification_ids:
+                packet["verification_evidence"] = {
+                    "input": "verification_receipts",
+                    "instruction": "Read the verification manifest for current logs and archived outputs. Cite outputs[].path, never the mutable outputs[].source. Use those archives in correction_review.depends_on. Re-run only for a concrete doubt; changed results require rechecking affected claims."}
             contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 5 else (3 if state["schema"] >= 3 else None)
             if contract_version:
                 packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []), contract_version)
@@ -860,6 +873,7 @@ class Runtime:
                       "correction_manifest": packet.get("correction_manifest"),
                       "reused_correction": reused["result"]["correction_review"] if reused else None,
                       "correction_dependencies": reused.get("correction_dependencies", []) if reused else []}
+            worker["verification_ids"] = verification_ids
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role,
                        input_bytes=input_bytes, packet_bytes=packet_path.stat().st_size,
@@ -1621,6 +1635,8 @@ class Runtime:
             worker = self.worker(state, key)
             self.validate_packet(worker)
             reasons = self.readiness(state) + self.ticket_freshness(state, worker)
+            verification_reasons = self.verification_reasons(state, worker.get("verification_ids", []), current)
+            reasons.extend(verification_reasons)
             if worker["role"] != "completeness" or worker["status"] != "consumed":
                 reasons.append("independent completeness result has not been consumed")
             if worker["revision"] != current:
@@ -1702,7 +1718,11 @@ class Runtime:
             if pending:
                 reasons.append("other worker results or termination outcomes remain outstanding")
             self.event(state, "merge_gate_checked", passed=not reasons, worker=key, head=current["head"])
-        return {"passed": not reasons, "reasons": reasons, "head": current["head"]}
+        invalidations = [{"kind": "external-review-evidence", "path": d["path"],
+                          "recovery": "Recover the verified immutable artifact or review affected evidence/claims; do not automatically restart full review."}
+                         for d in worker.get("correction_dependencies", [])
+                         if not Path(d["path"]).is_file() or digest(d["path"]) != d["sha256"]]
+        return {"passed": not reasons, "reasons": reasons, "head": current["head"], "invalidations": invalidations}
 
     @staticmethod
     def declared_inputs(paths):
@@ -1738,6 +1758,10 @@ class Runtime:
         """
         reasons = []
         recorded = receipt.get("inputs", [])
+        reasons.extend(receipt.get("output_errors", []))
+        for artifact in receipt.get("outputs", []):
+            if not Path(artifact["path"]).is_file() or digest(artifact["path"]) != artifact["sha256"]:
+                reasons.append("verification archive missing or changed: " + artifact["path"])
         for entry in recorded:
             source = Path(entry["path"])
             if not source.is_file():
@@ -1798,14 +1822,14 @@ class Runtime:
             for receipt in state.get("verifications", []):
                 reasons = self.receipt_applicable(receipt, current, signature) if current else \
                     ["applicability needs a worktree"]
-                reuse_reasons = self.receipt_reusable(receipt, current, signature) if current else \
+                reuse_reasons = self.verification_reasons(state, [receipt["verification"]], current) if current else \
                     list(reasons)
                 # `{**a, **b}`, not `a | b`: the merge operator is 3.9 and this plugin
                 # supports 3.8. verify-python-floor.sh is a smoke filter that does not
                 # see this form, so the floor job is what would have caught it.
                 items.append({**{k: receipt.get(k) for k in
                                  ("verification", "command_sha256", "exit_code",
-                                  "duration_seconds", "log", "log_sha256")},
+                                  "duration_seconds", "log", "log_sha256", "outputs", "output_errors")},
                               "revision": receipt["revision"]["fingerprint"],
                               "environment": receipt.get("environment", {}).get("signature"),
                               "started": receipt.get("started", {}).get("utc"),
@@ -1818,17 +1842,46 @@ class Runtime:
                 "coverage": "receipts recorded by this runtime only; a command run outside it "
                             "leaves no receipt and is unknown, never passed"}
 
-    def verify(self, worktree, command, reuse=False, depends=()):
+    @classmethod
+    def verification_reasons(cls, state, keys, current):
+        reasons = []
+        receipts = state.get("verifications", [])
+        signature = environment_signature()
+        for key in keys:
+            receipt = next((r for r in receipts if r["verification"] == key), None)
+            if not receipt:
+                reasons.append("verification receipt missing: " + key)
+                continue
+            reasons.extend(cls.receipt_reusable(receipt, current, signature))
+            # A later failure on this same source/command cannot hide behind an old pass.
+            later = [r for r in receipts[receipts.index(receipt) + 1:]
+                     if r["command_sha256"] == receipt["command_sha256"]
+                     and r["revision"] == current]
+            if any(r["exit_code"] != 0 or r["changed_during_verification"] or r.get("output_errors") for r in later):
+                reasons.append("later verification contradicted reviewed evidence: " + key)
+            if any(r.get("outputs") and r["outputs"] != receipt.get("outputs", []) for r in later):
+                reasons.append("generated evidence changed; recheck affected claims: " + key)
+        return reasons
+
+    def verify(self, worktree, command, reuse=False, depends=(), outputs=()):
         before = revision(worktree)
         signature = environment_signature()
         declared = self.declared_inputs(depends)
+        output_paths = sorted({str(Path(worktree, p).resolve()) for p in outputs})
         command_hash = digest_bytes(command.encode("utf-8"))
         if reuse:
             with self.transaction() as state:
                 for receipt in reversed(state.get("verifications", [])):
                     if receipt["command_sha256"] != command_hash:
                         continue
+                    if (receipt["revision"] == before and receipt.get("environment") == signature
+                            and (receipt["exit_code"] != 0 or receipt.get("output_errors") or receipt.get("changed_during_verification"))):
+                        break  # Do not skip a newer failed run to resurrect an older pass.
                     if self.receipt_reusable(receipt, before, signature, declared):
+                        continue
+                    if self.verification_reasons(state, [receipt["verification"]], before):
+                        continue
+                    if [o["source"] for o in receipt.get("outputs", [])] != output_paths:
                         continue
                     self.event(state, "verification_reused", verification=receipt["verification"],
                                command_sha256=command_hash)
@@ -1836,6 +1889,7 @@ class Runtime:
         key = uuid.uuid4().hex
         log = self.path.parent / f"verify-{key}.log"
         started = self.clock.stamp()
+        output_before = {p: Path(p).stat().st_mtime_ns if Path(p).is_file() else None for p in output_paths}
         with self.transaction() as state:
             self.event(state, "verification_started", verification=key,
                        command_sha256=command_hash, revision=before, log=str(log))
@@ -1848,6 +1902,20 @@ class Runtime:
                    "command_sha256": command_hash, "revision": before,
                    "environment": signature, "started": started, "inputs": declared,
                    "changed_during_verification": revision(worktree) != before}
+        receipt["outputs"] = []
+        receipt["output_errors"] = []
+        for source in output_paths:
+            path = Path(source)
+            if not path.is_file() or path.stat().st_mtime_ns == output_before[source]:
+                receipt["output_errors"].append("declared output was not regenerated: " + source)
+                continue
+            raw = path.read_bytes()
+            sha = digest_bytes(raw)
+            saved = self.path.parent / "verification-evidence" / sha
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            if saved.exists(): require(digest(saved) == sha, "verification archive changed")
+            else: saved.write_bytes(raw)
+            receipt["outputs"].append({"source": source, "path": str(saved), "sha256": sha})
         with self.transaction() as state:
             state.setdefault("verifications", []).append(receipt)
             self.event(state, "verification_finished", **receipt)
@@ -2055,6 +2123,7 @@ def main():
         if name == "yield": p.add_argument("--marker", required=True); p.add_argument("--session", required=True)
         if name == "merge-gate": p.add_argument("--worktree", required=True)
     p = commands.add_parser("verify"); p.add_argument("--worktree", required=True); p.add_argument("--shell-command", required=True)
+    p.add_argument("--output", action="append", default=[], help="generated report path to archive after execution")
     p.add_argument("--reuse", action="store_true",
                    help="return an applicable existing receipt instead of rerunning; never caches a stale one")
     p.add_argument("--depends", action="append", default=[],
@@ -2104,7 +2173,7 @@ def main():
     elif name == "end-worker": result = runtime.end_worker(args.worker, args.reason, args.confirmed, args.host_failed, args.user_requested, args.invalid_result)
     elif name == "yield": result = runtime.yield_once(args.worker, args.marker, args.session)
     elif name == "merge-gate": result = runtime.merge_gate(args.worker, args.worktree)
-    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command, args.reuse, args.depends)
+    elif name == "verify": result = runtime.verify(args.worktree, args.shell_command, args.reuse, args.depends, args.output)
     elif name == "verifications": result = runtime.verifications(args.worktree)
     elif name == "record-op":
         result = runtime.record_op(args.operation, args.target, args.outcome, args.provider_id, args.digest)
@@ -2113,7 +2182,7 @@ def main():
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))
     if result.get("passed") is False or (name == "wait" and result["status"] not in {"result_ready", "consumed"}):
         return 1
-    if name == "verify" and (result["exit_code"] != 0 or result["changed_during_verification"]):
+    if name == "verify" and (result["exit_code"] != 0 or result["changed_during_verification"] or result.get("output_errors")):
         return 1
     return 0
 

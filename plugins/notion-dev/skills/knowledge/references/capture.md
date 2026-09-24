@@ -54,7 +54,16 @@ with it. Ordinary drift is answered by re-running the operation by hand after a 
 checkout and fast-forward pull, never by loosening the assertion; the report names the re-run
 command so nobody has to reconstruct it.
 
-**Inputs come from the session, never from Notion:** the ticket body, `KNOWLEDGE_CONTEXT`, the
+**Accepted-delta fast path (lean record caller):** when supplied the final accepted review's
+`recording.technical_delta`, claim corrections and release obligations, these are the candidate
+facts. Start from that delta, the merge SHA, the concept index and `knowledge.py touched` results.
+Run Filter/Verify/Collide below; retrieve affected symbols/concepts to answer specific doubts.
+Do not load the full ticket, plan, PR comments and review history merely to synthesize the same
+facts again. All touched concepts still receive a validity check, including deletion/supersession;
+an empty accepted delta does not waive that check. Missing evidence uses the complete fallback
+below. This is targeted validation, not permission to trust unsupported author claims.
+
+**Fallback inputs come from the session, never from Notion:** the ticket body, `KNOWLEDGE_CONTEXT`, the
 review report and `PLAN_REVIEW` when present, `gh pr view <n> --json body,comments` plus the
 review threads, and `git show <merge-sha>`. For `--fact`, the inputs are the fact text and that
 epic's `KNOWLEDGE_CONTEXT`, nothing else. The hand re-run is the one exception, and only because

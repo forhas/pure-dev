@@ -48,6 +48,21 @@ Never ignore human changes under the same headings.
 
 ## Compact delta publication
 
+Use `workflow.py review-prepare` for new full/delta dispatches. It verifies the committed tree
+before allocating a worker and provides `verification_receipts`. Generated reports declared via
+`verify.steps[].outputs` or `--output STEP=PATH` are archived after the producing command; a
+missing/not-regenerated output fails verification. Cite the archive with its receipt, not its
+mutable source path. A later contradictory run blocks reuse and needs affected-claim review.
+For independent targeted commands, `runtime.py verify --output PATH` also archives outputs.
+Only named outputs are archived: never recursively collect build directories or secrets.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" review-prepare --project "$REPO_ROOT" --state "$RUNTIME_STATE" --worktree "$WORKTREE" --file "ticket=<source-path>" --file "inventory=<inventory-path>" --file "diff=<frozen-diff>" --file "pr_body=<frozen-pr-body>"
+```
+Supply actual paths. For delta add `--previous <accepted-worker>` and changed named inputs.
+Keep declared `--depends` consistent. Logs are in the generated manifest: do not supply an old
+test_log separately. Applicable inherited test-log inputs refresh to the new receipts.
+
 Read delta.json, required paged sections, and delta_publication's prior index first. Prior
 verdicts and references to audit/recording sections replace eager full-report loading. Retrieve
 full sections only for affected claims or a specific doubt. Full evidence remains available.
@@ -79,6 +94,14 @@ Version-4 reports render audit counts, not a second copy of their evidence; comp
 objects remain in the same result. Older result rendering is unchanged.
 
 ## Canonical recording and execution
+
+For attempted-but-landed Notion writes use `record-reconcile` with a fresh actual fetch ID.
+The version-1 equivalence rule accepts only absent/false allow_async and one terminal insert
+newline; all other arguments remain exact. Readback must establish the complete intended effect
+exactly once. Nonliteral provider formatting returns `judge-effect`, not a confirming receipt;
+only an explicit adapter judgment bound to the intent/call/readback hashes can continue. This
+is host judgment, not provider attestation. It never dispatches or reverses a write. Read `references/record.md`'s recovery
+and host-mediated-operation rules before handling mismatches; do not repair them with more writes.
 
 Schema-5 record-facts holds observed merge/target/config facts, NOT requirements/review/verification.
 Use `record-plan --state <state> --facts <facts.json> --review-worker <final-accepted-id>`.

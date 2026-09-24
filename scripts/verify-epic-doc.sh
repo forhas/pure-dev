@@ -163,7 +163,7 @@ if [ -f "$ED" ]; then
     assert_present "read: title and order drift are findings" "$ED" "$R0" "$RB" 'title differs from its live title.*numbered order differs'
     assert_present "read assembles \`thread_blocked\` from \`## Open threads\`" "$ED" "$R0" "$RB" 'thread_blocked.*## Open threads'
     assert_absent "read never takes the lock" "$ED" "$R0" "$RB" 'lock take'
-    assert_present "record step 2 recomputes \`## Next\` through \`refresh\`'s derivation" "$ED" "$R1" "$R2" '`## Next` — recompute through `refresh`'
+    assert_present "record marks unexamined dependencies unknown before deriving Next" "$ED" "$R1" "$R2" 'dependencies_known: false'
     assert_count "record commits through the write path (cited twice on purpose: the resolution path's step 4, and the bootstrap path's)" \
       "$ED" "$R1" "$R2" 'through `## The write path`' 2
     assert_count "commit subjects: after, bootstrap, note, start, stop, create, refresh (lines citing \`docs(epic):\`)" \
