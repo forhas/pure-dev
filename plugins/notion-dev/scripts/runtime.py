@@ -1187,8 +1187,11 @@ class Runtime:
                     require(digest(path) == source["sha256"], "changed input snapshot no longer matches")
                     return Path(path).read_text(encoding="utf-8")
                 old, new = frozen(before), frozen(after)
-                row["diff"] = "".join(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
-                    fromfile="before/" + name, tofile="after/" + name))
+                lines = difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
+                    fromfile="before/" + name, tofile="after/" + name)
+                # An unterminated last line would fuse with the next record, as in `-old+new`.
+                row["diff"] = "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
+                                      for line in lines)
                 if old != new and not row["diff"]:
                     row["instruction"] = "Compare complete snapshots; text representation differs."
             except UnicodeError:

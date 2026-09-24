@@ -106,6 +106,16 @@ class ScopedExecutionTests(unittest.TestCase):
         self.assertIn('-frozen old', removed['diff'])
         self.assertNotIn('changed after snapshot', removed['diff'])
 
+    def test_input_diff_keeps_records_distinct_without_trailing_newline(self):
+        self.new_schema()
+        body = self.root / 'body.md'; body.write_text('old', encoding='utf-8')
+        key = self.reviewed(inputs={'ticket': self.source, 'pr_body': body}); self.resolve(key)
+        body.write_text('new', encoding='utf-8')
+        prepared = self.rt.prepare('completeness', {'pr_body': body}, self.repo, previous=key)
+        index = runtime.read_json(runtime.read_json(prepared['packet'])['delta']['path'])
+        diff = runtime.read_json(runtime.Runtime.ref_path(index, index['inputs']))['changes'][0]['diff']
+        self.assertIn('\n-old\n\\ No newline at end of file\n+new\n', diff)
+
     def test_page_id_never_joins_a_hex_ending_slug_to_the_uuid(self):
         uuid = '0123456789abcdef0123456789abcdef'
         dashed = '01234567-89ab-cdef-0123-456789abcdef'
