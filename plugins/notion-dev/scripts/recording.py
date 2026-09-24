@@ -143,8 +143,9 @@ def acceptance_edits(body, inventory, review):
         lines = list(re.finditer(pattern, section))
         require(len(lines) == 1, "criterion not an exact unique checkbox; use adapter without paraphrasing")
         old = lines[0][0]
-        new = "- [" + ("x" if verdicts[item["id"]] == "met" else " ") + "] " + item["text"]
         require(body.count(old) == 1, "criterion anchor is not unique on page")
+        if verdicts[item["id"]] == "unverified": continue  # unknown never overwrites a human tick
+        new = "- [" + ("x" if verdicts[item["id"]] == "met" else " ") + "] " + item["text"]
         if old != new: edits.append({"old_str": old, "new_str": new})
     return edits
 

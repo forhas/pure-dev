@@ -292,6 +292,7 @@ class ScopedExecutionTests(unittest.TestCase):
         with self.assertRaises(ValueError): recording.acceptance_edits(body.replace('Exact', 'Paraphrased'), inventory, review)
         review['requirements'][0]['verdict'] = 'unverified'
         self.assertEqual(recording.acceptance_edits(body, inventory, review), [])
+        self.assertEqual(recording.acceptance_edits(body.replace('[ ]', '[x]'), inventory, review), [])
 
     def test_section_parser_ignores_fenced_examples_and_rejects_ambiguous_headings(self):
         body = '```markdown\n## Implementation\nexample\n```\n## Notes\nHuman note\n'
