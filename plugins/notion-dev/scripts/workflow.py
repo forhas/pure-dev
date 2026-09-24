@@ -398,7 +398,9 @@ def record_next(state, begin=False):
                     # The builder consumes the full canonical evidence in code. The host
                     # needs facts/obligations, not a dumped archive pool or opaque IDs.
                     scoped = {k: v for k, v in scoped.items() if k not in {"evidence", "review", "requirements", "verification"}}
-                    scoped["recording"] = record_view(state, "review")["data"].get("recording", {"status": "unknown"})
+                    review = record_view(state, "review")["data"]
+                    scoped["recording"] = (review.get("recording") if isinstance(review, dict) else None) or {
+                        "status": "unknown", "instruction": "Use record-view --name review for the complete legacy evidence; do not infer coverage."}
                 return {"operation": parent["operation"], "target": parent["target"], "action": "plan-children",
                         "kind": parent["kind"], "data": scoped,
                         "builder": "record-build" if parent["kind"] in {"ticket-status", "ticket-resolution"} else None,

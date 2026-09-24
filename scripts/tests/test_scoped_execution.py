@@ -237,6 +237,19 @@ class ScopedExecutionTests(unittest.TestCase):
         self.assertEqual(section['content'], '## Tasks {color="blue"}\nAll task rows.\n')
         self.assertFalse(workflow.record_page(self.state, snapshot, 'Absent')['present'])
 
+    def test_legacy_array_review_stays_available_without_a_scoped_view_crash(self):
+        with self.rt.transaction() as state: state['schema'] = 4
+        facts = self.facts(); value = runtime.read_json(facts)
+        value['review'] = [{'legacy_obligation': 'Needs explicit reconciliation.'}]
+        runtime.atomic_json(facts, value)
+        plan = workflow.record_plan(self.state, facts)
+        status = next(p for p in plan['operations'] if p['kind'] == 'ticket-status')
+        workflow.record_input(self.state, status['operation'], begin=True)
+        workflow.record_outcome(self.state, status['operation'], 'confirmed', 'fixture readback')
+        next_op = workflow.record_next(self.state)
+        self.assertEqual(next_op['data']['recording']['status'], 'unknown')
+        self.assertEqual(workflow.record_view(self.state, 'review')['data'], value['review'])
+
     def test_resolution_builder_batches_sections_preserving_human_content_and_release_obligations(self):
         plan = self.plan_recording()
         body = '## Implementation {color="red"}\nHuman prerequisite: contact owner.\n\n## Notes\nKeep this note.\n'
