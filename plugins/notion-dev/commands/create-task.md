@@ -1,6 +1,6 @@
 ---
 description: Produce a well-formed ticket from a prompt or an existing source. Runs a depth-calibrated interview (via notion-dev:ticket-interviewer) when needed, then writes the result to the configured ticket system.
-argument-hint: "[--non-interactive] [--context-file=<path>] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [--provenance=<marker>] [--no-proxy] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
+argument-hint: "[--non-interactive] [--context-file=<path>] [--reviewed-followup] [--epic=<name>] [--parent=<id>] [--assignee=<id>] [--title=<text>] [--provenance=<marker>] [--no-proxy] [prompt:|existing-ticket:|notion-page:]<text-or-ref>"
 ---
 
 # /notion-dev:create-task
@@ -14,10 +14,11 @@ Args: `[<source>:]<ref>` or free prompt text.
 
 **Parsing rule.** Only treat a leading `<token>:` as a source selector when `<token>` exactly matches a known source name (`prompt`, `existing-ticket`, `notion-page`). Otherwise — including when the argument merely happens to contain a colon (e.g. `Add rate limiting: 100 req/min`) — default to `prompt` and treat the **entire** argument as raw text. Never infer a source from an arbitrary word before a colon.
 
-**Flags.** Eight optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
+**Flags.** Optional flags are parsed off the front of the argument string **before** the source-selector parsing rule runs, so they never interfere with free-prompt text:
 
 | Flag | Effect |
 |---|---|
+| `--reviewed-followup` | Only for an authorized review finding with a complete context packet. Apply the bounded clarity check below; missing scope/authority uses the normal interview. Never bypasses filing confirmation, dedup, schema, project, parent or assignee validation. |
 | `--non-interactive` | Never pause for user input; see the phase table below. **And never hand back**: do not end your turn between phases or after a delegated skill or subagent returns. A message ending with `Next: <the thing you were about to do>` and then stopping is not a question, so the self-answer rule never reaches it, and in a non-interactive run nobody is watching to type "continue". Announcing what comes next is fine; announcing it *instead of doing it* is the defect. Only this command's explicit stop conditions and its Phase 4 report end the run. |
 | `--context-file=<path>` | Path to a markdown context packet. Seeds the interviewer, and is the proxy respondent's evidence base. Valid with or without `--non-interactive`. |
 | `--epic=<name>` | Skip Phase 2.6's matching; use this Epic select value verbatim. |
@@ -77,6 +78,17 @@ Show a short preview to the user.
 **Invariant:** this phase does not exit until the ticket has a clear goal, well-scoped requirements, explicit acceptance criteria, and no open questions that would change the implementation.
 
 ### 2.1 Run the interview
+
+**Reviewed follow-up fast path:** with `--reviewed-followup`, first read the context packet's
+accepted independent finding, evidence and recorded filing decision. Check goal, scope,
+requirements, acceptance tests, edge cases, dependencies and provenance. Every implementation-
+changing answer must be explicit in that evidence; missing/ambiguous is not an empty list.
+When complete, compose the normal ticket sections from those facts, preserve the exact pinned
+title/provenance, and proceed to 2.2 without interviewer or proxy respondent. Do not invent a
+solution or widen the finding. If anything is missing, use the normal interview below, asking
+only the missing questions; non-interactive cannot invent authority. This exception overrides
+the proxy policy only for this fully specified, already independently reviewed case. General
+prompts, existing-ticket elaboration and legacy packets retain their normal interview.
 
 Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confidence}` from Phase 1. The skill:
 

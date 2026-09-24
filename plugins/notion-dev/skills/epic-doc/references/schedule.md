@@ -22,6 +22,12 @@ not claimed elsewhere, not held by BLOCKED or an Open thread. Fetch the full can
 and verify every `## Blocked by` key against live resolved statuses. A dependency may be outside
 this epic; resolve it explicitly. Unavailable/unknown is blocked, not permission to proceed.
 Keep selection reasons and retained full ticket/source identity by reference.
+`dependency check pending` in a brief is an unexamined candidate, not ready and not permanently
+blocked. Fetch candidates progressively in the established order until one is proven eligible;
+never dispatch a gatherer to fetch every sibling simply to select one. Preserve unknowns for
+the unexamined tail. Reuse cached dependency content only with a trustworthy unchanged provider
+revision; statuses and ownership still need current checks. Outside-epic dependencies require
+explicit live resolution; absence from CHILDREN is not proof of completion.
 
 Only AFTER selecting a candidate the caller invokes knowledge `retrieve(epic, ticket-title, ticket-key)` once.
 That targeted retrieval must retain the complete epic root's relevant constraints/history and

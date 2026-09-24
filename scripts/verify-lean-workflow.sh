@@ -29,6 +29,11 @@ else
   bad "scoped delta inputs, publication and deterministic ticket recording"
 fi
 assert_has "new ticket delegates intake" plugins/notion-dev/commands/ticket.md 'references/lean-intake.md'
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_convergence.py'; then
+  ok "immutable verification, landed-effect reconciliation and progressive scheduling"
+else
+  bad "immutable verification, landed-effect reconciliation and progressive scheduling"
+fi
 assert_has "review has code quality and requirements in one seat" plugins/notion-dev/skills/review-and-merge/SKILL.md 'One combined independent internal review'
 assert_has "record uses operation planning" plugins/notion-dev/references/record.md 'workflow.py" record-plan'
 # The frozen ticket and the merge gate agree with each other whatever upstream now says, so

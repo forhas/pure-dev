@@ -267,7 +267,7 @@ def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch,
     return {"marker": str(marker), "runtime": str(runtime_path), "worktree": str(worktree), "branch": branch}
 
 
-def verify_config(state, project, worktree, depends=()):
+def verify_config(state, project, worktree, depends=(), outputs=()):
     root = primary(project)
     config = read_json(root / ".claude/notion-dev.config.json")
     steps = config.get("verify", {}).get("steps", [])
@@ -275,15 +275,51 @@ def verify_config(state, project, worktree, depends=()):
             and s["cmd"].strip() and isinstance(s.get("name"), str) for s in steps),
             "verify.steps must contain name/cmd objects")
     require(steps, "no verification configured; establish task-appropriate checks before completion")
+    extra = {}
+    for entry in outputs:
+        name, sep, path = entry.partition("=")
+        require(sep and path and name in {s["name"] for s in steps}, "output must be STEP=PATH for a configured step")
+        extra.setdefault(name, []).append(path)
     runtime = Runtime(state)
     receipts = []
     for step in steps:
         command = step["cmd"]
-        receipt = runtime.verify(worktree, command, reuse=True, depends=depends)
-        receipts.append({"name": step["name"], **{k: receipt[k] for k in ("verification", "exit_code", "duration_seconds", "log", "reused", "changed_during_verification")}})
-        if receipt["exit_code"] != 0 or receipt["changed_during_verification"]:
+        paths = step.get("outputs", [])
+        require(isinstance(paths, list) and all(isinstance(p, str) and p for p in paths), "step outputs must be path strings")
+        receipt = runtime.verify(worktree, command, reuse=True, depends=depends, outputs=paths + extra.get(step["name"], []))
+        receipts.append({"name": step["name"], **{k: receipt.get(k, []) for k in ("verification", "exit_code", "duration_seconds", "log", "reused", "changed_during_verification", "outputs", "output_errors")}})
+        if receipt["exit_code"] != 0 or receipt["changed_during_verification"] or receipt.get("output_errors"):
             return {"passed": False, "receipts": receipts}
     return {"passed": True, "receipts": receipts}
+
+
+def review_prepare(state, project, worktree, files, previous=None, depends=(), outputs=(), remove_inputs=()):
+    """One final-revision verification boundary, shared by full and delta reviews."""
+    from runtime import revision, digest
+    require(revision(worktree)["clean"], "commit preparation/corrections before review verification")
+    verified = verify_config(state, project, worktree, depends, outputs)
+    if not verified["passed"]: return verified
+    keys = [r["verification"] for r in verified["receipts"]]
+    manifest = Path(state).resolve().parent / "verification-evidence" / ("review-" + hashlib.sha256(json.dumps(keys).encode()).hexdigest() + ".json")
+    data = {"verifications": keys, "receipts": [{k: v for k, v in r.items() if k != "reused"} for r in verified["receipts"]]}
+    if manifest.exists():
+        # `reused` describes this call, not the evidence itself.
+        require(read_json(manifest) == data, "verification manifest changed")
+    else: atomic_json(manifest, data)
+    inputs = dict(files)
+    require("verification_receipts" not in inputs, "verification_receipts is runtime-owned")
+    if previous:
+        identity = read_json(state)
+        prior = identity["workers"][previous]
+        receipts = {r["log"]: r for r in identity.get("verifications", [])}
+        fresh = {receipts[r["log"]]["command_sha256"]: r["log"] for r in verified["receipts"]}
+        for name, source in prior["files"].items():
+            old = receipts.get(source["path"])
+            if name not in inputs and name not in remove_inputs and old and old["command_sha256"] in fresh:
+                inputs[name] = fresh[old["command_sha256"]]
+    inputs["verification_receipts"] = str(manifest)
+    result = Runtime(state).prepare("completeness", inputs, worktree, previous=previous, remove_inputs=remove_inputs)
+    return {"passed": True, **result, "verification": str(manifest), "verification_sha256": digest(manifest)}
 
 
 def record_plan(state, facts_file, review_worker=None):
@@ -561,25 +597,63 @@ def record_observed(state, operation, receipt):
     return entry
 
 
-def record_receipt(state, operation, transcript, session, call_id=None):
+def record_receipt(state, operation, transcript, session, call_id=None, readback_call_id=None, readback_verdict=None):
     """Bind a host-mediated attempt to its real tool exchange, not a guessed ID.
 
     A successful tool transport is not proof that a provider write had its intended
     effect. The host still checks the response/readback before record-outcome.
     """
     from host_capture import exchange, timestamp, latest_call, calls_since
+    from recording import equivalent_write, write_effect_present, page_data
     current = record_input(state, operation)
     require(current["action"] == "reconcile", "begin the operation before host dispatch")
+    identity = read_json(state)
+    require(identity.get("host_session") == session, "foreign host session")
     expected = current["data"].get("host_call")
     require(isinstance(expected, dict) and set(expected) == {"name", "input"}, "planned host_call missing")
     attempts = [e for e in read_json(state)["record_journal"] if e["operation"] == operation and e["outcome"] == "attempted"]
     # Two identical writes after one begin may both have taken effect; never keep only one.
-    require(not attempts or len(calls_since(transcript, session, expected["name"], expected["input"], attempts[-1]["wall"])) <= 1,
+    candidates = calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"],
+        predicate=lambda item: equivalent_write(expected, {"name": item.get("name"), "input": item.get("input")})) if attempts else []
+    require(len(candidates) <= 1,
             "multiple matching host calls after begin; reconcile, never select one")
-    call_id = call_id or latest_call(transcript, session, expected["name"], arguments=expected["input"])
+    call_id = call_id or (candidates[0] if readback_call_id and candidates else
+                         latest_call(transcript, session, expected["name"], arguments=expected["input"]))
     observed = exchange(transcript, session, call_id)
     call = observed["call"]["item"]
-    require({"name": call.get("name"), "input": call.get("input")} == expected, "host tool/arguments differ from frozen operation")
+    actual = {"name": call.get("name"), "input": call.get("input")}
+    if readback_call_id:
+        from host_capture import notion_fetch
+        require(equivalent_write(expected, actual), "host arguments materially differ; no automatic reconciliation")
+        require(attempts and timestamp(observed["call"]["timestamp"]) >= attempts[-1]["wall"], "provider call predates durable begin")
+        now = Runtime(state).clock.stamp()["wall"]
+        require(timestamp(observed["result"]["timestamp"]) <= now, "future host receipt")
+        response, readback = notion_fetch(transcript, session, readback_call_id,
+            after=max(timestamp(observed["result"]["timestamp"]), now - 300), before=now)
+        from recording import page_id
+        page = page_data(response)
+        require(page["page"] == page_id(expected["input"]["page_id"]), "readback belongs to another target")
+        observed["reconciliation"] = {"version": 1, "readback": readback, "response": response,
+                                      "expected": expected, "actual": actual}
+        if not write_effect_present(expected["input"], page):
+            # Notion rewrites presentation (links/callouts/indentation). Do not strip
+            # arbitrary whitespace/code to manufacture equality. The existing host
+            # adapter must judge the complete effect against these immutable objects.
+            binding = {"intent_sha256": current["data_sha256"],
+                       "readback_sha256": hashlib.sha256(json.dumps(response, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest(),
+                       "call_sha256": observed["call"]["sha256"]}
+            if readback_verdict is None:
+                path = child_payload_path(Path(state).resolve().parent / "record", operation + ":reconciliation-evidence")
+                atomic_json(path, observed)
+                return {"operation": operation, "action": "judge-effect", "evidence": str(path), **binding,
+                        "instruction": "Adapter must compare ALL intended effects to this fresh readback, including uniqueness for append and preservation of unrelated content. Supply JSON with these three hashes, verdict=matched and nonempty evidence explaining the comparison via --readback-verdict, or leave unknown. Never undo/replay or claim unmatched/partial effects succeeded."}
+            verdict = read_json(readback_verdict)
+            require(all(verdict.get(k) == v for k, v in binding.items()) and verdict.get("verdict") == "matched"
+                    and isinstance(verdict.get("evidence"), str) and verdict["evidence"].strip(),
+                    "adapter verdict must bind this exact intent/call/readback and explain the complete matched effect")
+            observed["reconciliation"]["adapter_verdict"] = verdict
+    else:
+        require(actual == expected, "host tool/arguments differ from frozen operation; use record-reconcile with fresh readback, never undo/replay")
     rt = Runtime(state)
     with rt.transaction() as data:
         require(data.get("host_session") == session, "foreign host session")
@@ -872,6 +946,12 @@ def main():
     p.add_argument("--worktree", required=True); p.add_argument("--branch", required=True); p.add_argument("--merged", action="store_true")
     p = commands.add_parser("verify"); p.add_argument("--project", required=True); p.add_argument("--state", required=True)
     p.add_argument("--worktree", required=True); p.add_argument("--depends", action="append", default=[])
+    p.add_argument("--output", action="append", default=[], help="STEP=PATH generated evidence to archive")
+    p = commands.add_parser("review-prepare"); p.add_argument("--project", required=True); p.add_argument("--state", required=True)
+    p.add_argument("--remove-input", action="append", default=[])
+    p.add_argument("--worktree", required=True); p.add_argument("--previous")
+    p.add_argument("--file", action="append", default=[]); p.add_argument("--depends", action="append", default=[])
+    p.add_argument("--output", action="append", default=[])
     p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True)
     p = commands.add_parser("record-capture"); p.add_argument("--state", required=True); p.add_argument("--page", required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
@@ -887,6 +967,11 @@ def main():
     p = commands.add_parser("record-observed"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True); p.add_argument("--receipt", required=True)
     p = commands.add_parser("record-receipt"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
+    p = commands.add_parser("record-reconcile"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
+    p.add_argument("--readback-call-id", required=True)
+    p.add_argument("--readback-verdict", help="adapter judgment bound to returned intent/call/readback hashes")
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("record-child"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
     p.add_argument("--name", required=True); p.add_argument("--target", required=True); p.add_argument("--payload", required=True)
@@ -904,7 +989,14 @@ def main():
     elif args.command == "marker": result = marker_update(args.path, args.session, args.phase, args.status, args.cause)
     elif args.command == "claim": result = claim(args.project, args.preflight, args.ticket, args.title, args.state, args.resume)
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
-    elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends)
+    elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends, args.output)
+    elif args.command == "review-prepare":
+        files = {}
+        for item in args.file:
+            key, sep, path = item.partition("=")
+            require(sep and key and path and key not in files, "--file requires unique name=path")
+            files[key] = path
+        result = review_prepare(args.state, args.project, args.worktree, files, args.previous, args.depends, args.output, args.remove_input)
     elif args.command == "pr-body": result = render_pr_body(args.facts, args.output)
     elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
     elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
@@ -915,6 +1007,7 @@ def main():
     elif args.command == "record-run": result = record_run(args.state, args.operation)
     elif args.command == "record-observed": result = record_observed(args.state, args.operation, args.receipt)
     elif args.command == "record-receipt": result = record_receipt(args.state, args.operation, args.transcript, args.session, args.call_id)
+    elif args.command == "record-reconcile": result = record_receipt(args.state, args.operation, args.transcript, args.session, args.call_id, args.readback_call_id, args.readback_verdict)
     elif args.command == "record-child": result = record_child(args.state, args.parent, args.name, args.target, args.payload)
     elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
     elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)

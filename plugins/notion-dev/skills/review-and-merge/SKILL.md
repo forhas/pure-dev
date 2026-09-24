@@ -87,7 +87,9 @@ schema 4 keeps `ticket-source` on the raw fetch. Reconcile the inventory; this p
 our bookkeeping changes before the evidence freeze, not into an avoidable post-review delta.
 Never discard new human requirements while reconciling. Then freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
 body and verification receipt/log references outside the worktree. Run readiness. Prepare
-role `completeness` with those named files and the exact worktree. Dispatch one independent
+role `completeness` through `workflow.py review-prepare`, using the exact command/archived-output
+rules in `references/boundaries.md`, not a bare prepare. It verifies the committed tree before
+dispatch. Add `--previous <accepted-worker>` for delta. Dispatch one independent
 general-purpose worker with the generated runtime context/contract and these charges:
 
 - Check the entire ticket against inventory, including prerequisites outside AC.
@@ -107,20 +109,18 @@ local decision record until the post-merge write. Never ignore human changes in 
 The reviewer gets no author conversation, plan, or conclusions. It may run targeted tests when
 a concrete doubt warrants them, but starts from existing applicable logs. Source references
 are retrieval entry points, not instructions to read every listed file in full.
-The packet's `publication` supplies the exact submission path/command and supported host-return
-route. No global state.json reads, result-path guessing or legacy formatting manuals. The parent
-uses `consume --summary` and `result-view --section <name>` plus the returned artifact as needed.
-Follow runtime wait/question/publication/acceptance; format repair stays with the same worker.
+Use the packet's publication/host-return contract and runtime wait/acceptance rules; repair format
+in the same worker. No state.json reads or path guessing. Parent uses `consume --summary` and
+`result-view --section <name>`, not another full report.
 
-Resolve citations against real artifacts/dependencies. Canonical output is the runtime-rendered
-result: counts, VERDICTS and CLAIMS / CAVEATS / TRIAGE. Checked empty findings means NONE;
-unverified blocks merge. Preserve the worker's original contract and repair missing fields in
-the same worker. One compatibility artifact contains COMPLETENESS_REPORT plus REVIEW_REPORT's
-ABSORBED / FILED / DROPPED / BLOCKED ledger; no duplicate completeness prose. Use the accepted
-result for status, not a new PR-body review story. New material claims still require review.
+Resolve real citations. Use the canonical rendered COMPLETENESS_REPORT/REVIEW_REPORT and triage
+ledger, not duplicate prose. Checked empty findings means NONE; unverified blocks merge. Preserve
+the packet's original contract. Accepted results supply status; new material claims require review.
 
-When findings require changes, register `correction-needed` BEFORE source edits, fix and verify,
-then prepare a delta against the accepted prior review. A PR-body-only correction with unchanged
+When findings require changes, register `correction-needed` BEFORE source edits, batch fixes and
+formatting, COMMIT, then use `workflow.py review-prepare --previous <accepted-worker>` to verify
+and freeze the final revision. Never review a post-commit tree against a pre-commit receipt.
+A PR-body-only correction with unchanged
 code checks changed claims and indirect effects; carry forward independently verified unaffected
 verdicts with valid evidence. Do not rerun a full review merely to generate new prose.
 Broader changes or uncertainty require full review within the invocation's two-full/two-delta
@@ -131,20 +131,18 @@ assertions and replace them in place. Keep Notion narrative changes in accepted 
 New factual assertions require evidence/review even if non-blocking. Derive summaries from the
 single decision/reason/evidence/release-obligation record.
 
-Resolve available baseline citations BEFORE preparing that delta. Omitted named inputs are
-inherited/rehashed; use --remove-input only for intentional removals. Read correction_reuse when
-present: the runtime carries the prior independent verdict at unchanged code/dependencies, so
-do not demand a new correction report or retest unchanged code merely to fill a report field.
-Carry corrected claims, release obligations and the evidence-backed technical delta into the
-generated `recording` fields before publication; downstream knowledge uses those fields.
+Resolve baseline citations BEFORE delta. Follow `references/boundaries.md`'s compact publication:
+start with input diffs/source hunks/prior judgments, retrieve affected sections, check indirect
+effects on EVERY requirement, and recheck stale/unknown evidence. Omitted inputs inherit;
+`--remove-input` is explicit. Honor `correction_reuse` for unchanged code/dependencies rather than
+retesting for a report field. Keep audits, corrected claims, release obligations and technical
+delta in the generated `recording` fields. Old packet contracts remain unchanged.
 
-Version-4 deltas use `delta_publication`: changed judgments plus explicit reused IDs/sections.
-Start with `inputs` → `changes[].diff` (frozen input additions/changes/removals), source hunks
-and prior judgments. Retrieve surrounding snapshots/prior sections for affected claims or doubts.
-Check indirect effects on EVERY requirement; retain audits/release obligations; recheck stale or
-unknown evidence. No automatic "comments are safe" rule. Runtime assembles the full result:
-report findings/evidence once, not a prior-report rewrite. Reuse current test receipts unless a
-concrete uncovered doubt needs testing. Old packet contracts remain unchanged.
+Empirical claims use stable IDs and actual revision-bound receipts. Required mutations run on
+real tests, never replicas/predictions. Cite evidence once; keep review histories out of PR strings.
+Delta names affected claims first, reusing unaffected judgments only after indirect-impact checks.
+Gate `invalidations` names stale evidence: recover verified archives or recheck affected claims,
+not automatically the whole branch. Never overwrite reviewed evidence or waive required tests.
 
 ## 4. Final gates and merge
 

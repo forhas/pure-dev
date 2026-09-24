@@ -208,6 +208,12 @@
             "properties": {
               "name": { "type": "string" },
               "cmd": { "type": "string" },
+              "outputs": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true,
+                "description": "Generated evidence files to archive after this command. Paths resolve against the verification worktree; missing or non-regenerated files fail verification."
+              },
               "retries": { "type": "integer", "minimum": 0, "default": 3 }
             }
           }

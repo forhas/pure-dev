@@ -491,11 +491,14 @@ class HandoffTests(unittest.TestCase):
 
     def test_instruction_guards_reject_their_own_removal(self):
         guards = {
-            "skills/epic-doc/references/schedule.md": ["full candidate ticket", "live resolved statuses", "dependency may be outside"],
+            "skills/epic-doc/references/schedule.md": ["full candidate ticket", "live resolved statuses", "dependency may be outside", "Fetch candidates progressively"],
+            "skills/epic-doc/references/record.md": ["dependencies_known: false", "external_statuses"],
+            "skills/knowledge/references/capture.md": ["recording.technical_delta", "All touched concepts still receive a validity check"],
+            "commands/create-task.md": ["--reviewed-followup", "Every implementation-", "only the missing questions"],
             "skills/knowledge/references/retrieve.md": ['--lexical "<ticket title>"', 'skills/epic-doc/references/parse.md'],
             "skills/ticket-system/references/fetch-ticket.md": ["actual host tool-call ID", "complete original notion-fetch"],
-            "skills/review-and-merge/SKILL.md": ["refresh-ticket", "--call-id", "Resolve available baseline citations BEFORE"],
-            "references/record.md": ["record-children", "record-outcome", "workflow.py complete", "Never pipe provider input through head/tail"],
+            "skills/review-and-merge/SKILL.md": ["refresh-ticket", "--call-id", "Resolve baseline citations BEFORE"],
+            "references/record.md": ["record-children", "record-outcome", "workflow.py complete", "Never pipe provider input through head/tail", "record-reconcile", "--readback-verdict", "Begin before invoking Skill"],
         }
         candidate = self.root / "instructions.md"
         command = 'fails=0; ok() { :; }; bad() { fails=$((fails + 1)); }; . "$1"; assert_has invariant "$2" "$3"; test "$fails" -eq 0'
