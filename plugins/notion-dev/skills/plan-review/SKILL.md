@@ -6,6 +6,13 @@ argument-hint: "--plan=<path> [--auto] [--spec-file=<path>]"
 
 # plan-review — independent review of a plan before implementation
 
+**Current lean runtime packet supplied:** this is already the independent `plan` seat.
+Use that packet's result_contract/publication, the complete ticket and the short decision
+record. Check architecture, requirement gaps, failure paths and decisive tests; return required
+findings with evidence and a small risk-invariant matrix. Do not spawn another reviewer, read
+global runtime state, or load the legacy reviewer-rubric/nine-key report below. Never waive
+required correctness findings. The rest of this file is for the explicit legacy plan flow.
+
 Review a written implementation plan with a **fresh agent that did not write it**, verify the plan against the **actual codebase**, revise it, and return a verdict the caller can gate on.
 
 This exists because nothing else checks a plan against reality. `superpowers:writing-plans` self-reviews its own output against the spec; `local-code-review` reviews the diff two phases later, after the implementation has already been paid for. Neither reads the repo at plan time.

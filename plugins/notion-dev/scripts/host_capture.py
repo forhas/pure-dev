@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import sys
 
@@ -127,18 +128,44 @@ def notion_fetch(transcript, session, call_id=None, after=None, before=None, pag
     finished = timestamp(observed["result"]["timestamp"])
     if (after is not None and started < after) or (before is not None and finished > before):
         raise ValueError("provider fetch is outside the capture challenge window")
-    response = observed["result"]["item"].get("content")
-    # Keep the real provider object, including all unknown fields. Decode only the
-    # host transport envelope; runtime.notion_source validates page completeness.
-    if isinstance(response, list):
-        if len(response) != 1 or response[0].get("type") != "text":
-            raise ValueError("unsupported host result envelope; no lossy concatenation")
-        response = response[0]["text"]
-    if isinstance(response, str):
-        response = json.loads(response)
-    if not isinstance(response, dict):
-        raise ValueError("provider page response must be an object")
+    payload = observed["result"]["item"].get("content")
+    # Claude may retain the actual successful response in this session's tool-results
+    # directory instead of the JSONL. Never follow arbitrary paths from tool content.
+    if isinstance(payload, str):
+        spilled = re.match(r"^Error: result \([\d,]+ characters across \d+ lines?\) exceeds maximum allowed tokens\. Output has been saved to (.+)\.\r?\nFormat: Plain text\r?\n", payload)
+        if spilled:
+            root = Path(transcript).resolve().with_suffix("") / "tool-results"
+            path = Path(spilled[1]).resolve()
+            if path.parent != root.resolve() or path.suffix != ".txt":
+                raise ValueError("persisted tool result must belong to this exact host session")
+            with path.open("rb") as stream:
+                raw = stream.read(4 * 1024 * 1024 + 1)
+            if len(raw) > 4 * 1024 * 1024:
+                raise ValueError("persisted page exceeds 4 MiB; explicit scoped adapter required")
+            payload = raw.decode("utf-8")
+            observed["persisted_result"] = {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+    response = page_response(payload)
     return response, observed
+
+
+def page_response(value):
+    """Decode only known transport wrappers; keep every field of the actual page."""
+    for _ in range(10):
+        if isinstance(value, dict):
+            if any(value.get(k) for k in ("isError", "truncated", "has_more")):
+                raise ValueError("failed or incomplete page response")
+            if isinstance(value.get("metadata"), dict) and value["metadata"].get("type") == "page":
+                return value
+            if "content" not in value:
+                break
+            value = value["content"]
+        elif isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict) and value[0].get("type") == "text":
+            value = value[0].get("text")
+        elif isinstance(value, str):
+            value = json.loads(value)
+        else:
+            break
+    raise ValueError("unsupported page response envelope; no lossy concatenation")
 
 
 def session_env():

@@ -107,17 +107,17 @@ local decision record until the post-merge write. Never ignore human changes in 
 The reviewer gets no author conversation, plan, or conclusions. It may run targeted tests when
 a concrete doubt warrants them, but starts from existing applicable logs. Source references
 are retrieval entry points, not instructions to read every listed file in full.
+The packet's `publication` supplies the exact submission path/command and supported host-return
+route. No global state.json reads, result-path guessing or legacy formatting manuals. The parent
+uses `consume --summary` and `result-view --section <name>` plus the returned artifact as needed.
 Follow runtime wait/question/publication/acceptance; format repair stays with the same worker.
 
-Resolve the returned citations against real artifacts and dependencies. Retain the structured
-result as canonical; render reports from it. Missing fields never trigger a fresh investigation.
-Keep the persisted compatibility report's triage lists for ticket/epic consumers.
-Render COMPLETENESS_REPORT with runtime-derived counts, VERDICTS from the structured requirement
-objects, and runtime-rendered CLAIMS / CAVEATS / TRIAGE evidence. A checked audit with empty
-findings explicitly means NONE; unverified stays unknown and blocks merge, never inferred NONE.
-Honor an in-flight worker's original packet contract; do not require it to republish as a newer version.
-Keep REVIEW_REPORT's ABSORBED / FILED / DROPPED / BLOCKED lists from the findings ledger.
-Persist both named objects in one review artifact; do not paste the completeness report twice.
+Resolve citations against real artifacts/dependencies. Canonical output is the runtime-rendered
+result: counts, VERDICTS and CLAIMS / CAVEATS / TRIAGE. Checked empty findings means NONE;
+unverified blocks merge. Preserve the worker's original contract and repair missing fields in
+the same worker. One compatibility artifact contains COMPLETENESS_REPORT plus REVIEW_REPORT's
+ABSORBED / FILED / DROPPED / BLOCKED ledger; no duplicate completeness prose. Use the accepted
+result for status, not a new PR-body review story. New material claims still require review.
 
 When findings require changes, register `correction-needed` BEFORE source edits, fix and verify,
 then prepare a delta against the accepted prior review. A PR-body-only correction with unchanged
@@ -126,12 +126,10 @@ verdicts with valid evidence. Do not rerun a full review merely to generate new 
 Broader changes or uncertainty require full review within the invocation's two-full/two-delta
 budgets. A budget exhausted with unresolved work stops; no new invocation resets it.
 
-Before that delta, batch each correction across its affected code/docs/PR occurrences. Search
-for the retired assertion, replace it in place, and verify the whole affected set; do not append
-a correction story while retaining the false original. Put deferred Notion narrative changes
-in accepted recording facts. A new factual assertion still needs evidence and independent
-review; calling it non-blocking is not a waiver. Keep decision/reason/evidence/release obligations
-once in the local decision record and derive concise required summaries from it.
+Before delta, batch corrections across affected code/docs/PR occurrences: search for retired
+assertions and replace them in place. Keep Notion narrative changes in accepted recording facts.
+New factual assertions require evidence/review even if non-blocking. Derive summaries from the
+single decision/reason/evidence/release-obligation record.
 
 Resolve available baseline citations BEFORE preparing that delta. Omitted named inputs are
 inherited/rehashed; use --remove-input only for intentional removals. Read correction_reuse when
@@ -140,12 +138,13 @@ do not demand a new correction report or retest unchanged code merely to fill a 
 Carry corrected claims, release obligations and the evidence-backed technical delta into the
 generated `recording` fields before publication; downstream knowledge uses those fields.
 
-For a version-4 delta packet, use its `delta_publication` contract: changed judgments plus
-explicit reused IDs/sections. Read changed hunks and prior-judgment references first; retrieve
-full prior sections only for an affected claim or a specific doubt. Runtime assembles the full
-result. Check indirect effects on EVERY requirement, retain all audits and release obligations,
-and recheck stale/unknown evidence; no automatic "comments are safe" rule. Do not regenerate
-the complete prior report to fill fields. Old packet contracts remain unchanged.
+Version-4 deltas use `delta_publication`: changed judgments plus explicit reused IDs/sections.
+Start with `inputs` → `changes[].diff` (frozen input additions/changes/removals), source hunks
+and prior judgments. Retrieve surrounding snapshots/prior sections for affected claims or doubts.
+Check indirect effects on EVERY requirement; retain audits/release obligations; recheck stale or
+unknown evidence. No automatic "comments are safe" rule. Runtime assembles the full result:
+report findings/evidence once, not a prior-report rewrite. Reuse current test receipts unless a
+concrete uncovered doubt needs testing. Old packet contracts remain unchanged.
 
 ## 4. Final gates and merge
 

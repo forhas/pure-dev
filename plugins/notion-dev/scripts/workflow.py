@@ -393,8 +393,18 @@ def record_next(state, begin=False):
         if parent.get("requires_children"):
             binding = read_json(state).get("record_child_sets", {}).get(parent["operation"])
             if not binding:
+                scoped = current["data"]
+                if parent["kind"] == "ticket-resolution":
+                    # The builder consumes the full canonical evidence in code. The host
+                    # needs facts/obligations, not a dumped archive pool or opaque IDs.
+                    scoped = {k: v for k, v in scoped.items() if k not in {"evidence", "review", "requirements", "verification"}}
+                    review = record_view(state, "review")["data"]
+                    scoped["recording"] = (review.get("recording") if isinstance(review, dict) else None) or {
+                        "status": "unknown", "instruction": "Use record-view --name review for the complete legacy evidence; do not infer coverage."}
                 return {"operation": parent["operation"], "target": parent["target"], "action": "plan-children",
-                        "kind": parent["kind"], "instruction": "Declare the complete write set with record-children. Use record-view for complete scoped evidence, never truncate record-input."}
+                        "kind": parent["kind"], "data": scoped,
+                        "builder": "record-build" if parent["kind"] in {"ticket-status", "ticket-resolution"} else None,
+                        "instruction": "For ticket-status/resolution: live fetch, record-capture, record-build. Other kinds declare the COMPLETE write set with record-children. record-view retrieves specific additional evidence; never dump/truncate the archive pool."}
             require(hashlib.sha256(Path(binding["path"]).read_bytes()).hexdigest() == binding["sha256"], "child write set changed")
             for child in read_json(binding["path"]):
                 operation = parent["operation"] + CHILD_SEPARATOR + child["name"]
@@ -408,6 +418,97 @@ def record_next(state, begin=False):
                     "provider_id": "confirmed-child-set:" + binding["sha256"]}
         return record_input(state, parent["operation"], begin=begin)
     return {"action": "complete", "instruction": "Run record-summary and validated completion."}
+
+
+def record_capture(state, transcript, session, page, call_id=None):
+    """Capture a live recording page without changing the frozen ticket requirements."""
+    from host_capture import notion_fetch, timestamp
+    from recording import page_data
+    rt = Runtime(state)
+    identity = read_json(state)
+    require(identity.get("host_session") == session and session, "foreign recording capture session")
+    response, observed = notion_fetch(transcript, session, call_id, page=page,
+                                      after=rt.clock.stamp()["wall"] - 300, before=rt.clock.stamp()["wall"])
+    decoded = page_data(response)
+    from recording import page_id
+    require(decoded["page"] == page_id(page), "recording fetch returned a foreign page")
+    # Each capture is immutable; a later fetch cannot silently change a planned write.
+    directory = Path(state).resolve().parent / "record" / "captures"
+    path = directory / (hashlib.sha256(observed["call_id"].encode()).hexdigest() + ".json")
+    payload = {"page": decoded, "response": response, "host": observed}
+    if path.exists(): require(read_json(path) == payload, "recording capture changed")
+    else: atomic_json(path, payload)
+    binding = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "session": session,
+               "fetched_at": timestamp(observed["result"]["timestamp"])}
+    with rt.transaction() as data:
+        require(data.get("host_session") == session, "recording session changed")
+        data.setdefault("record_captures", {})[str(path)] = binding
+    return {"snapshot": str(path), "page": decoded["page"], "fetched_at": binding["fetched_at"],
+            "instruction": "Pass snapshot to record-build; no manual envelope decoding."}
+
+
+def record_build(state, parent, config_file, snapshot, spec_file=None):
+    """Freeze exact common ticket writes using canonical facts and actual host capture."""
+    from recording import build_writes
+    current = record_input(state, parent)
+    require(current["action"] == "execute", "builder only plans new writes; reconcile existing attempts")
+    path = Path(snapshot).resolve()
+    identity = read_json(state)
+    binding = identity.get("record_captures", {}).get(str(path))
+    require(binding and binding["session"] == identity.get("host_session")
+            and hashlib.sha256(path.read_bytes()).hexdigest() == binding["sha256"], "actual unchanged host recording capture required")
+    age = Runtime(state).clock.stamp()["wall"] - binding["fetched_at"]
+    require(0 <= age <= 300, "recording capture stale; fetch current content before planning")
+    plan = read_json(Path(state).resolve().parent / "record/plan.json")
+    operation = next((p for p in plan if p["operation"] == parent), None)
+    require(operation is not None, "builder requires a planned parent")
+    require(operation["kind"] in {"ticket-status", "ticket-resolution"},
+            "common builder handles ticket writes; other complete write sets use record-children")
+    inventory = record_view(state, "requirements")["data"] if operation["kind"] == "ticket-resolution" else None
+    review = record_view(state, "review")["data"] if operation["kind"] == "ticket-resolution" else None
+    writes = build_writes(operation["kind"], current["target"], current["data"], read_json(config_file),
+                          read_json(path)["page"], json_input(spec_file) if spec_file else {}, inventory, review)
+    source = Path(state).resolve().parent / "record" / (operation["kind"] + "-writes.json")
+    if source.exists(): require(read_json(source) == writes, "builder intent changed; reconcile existing plan")
+    else: atomic_json(source, writes)
+    planned = record_children(state, parent, source)
+    return {**planned, "writes": str(source), "instruction": "record-next --begin returns exact host_call; dispatch it unchanged, capture receipt and verify effect."}
+
+
+def record_page(state, snapshot, heading=None):
+    """Scoped read of a real page capture; never claim an absent heading is its content."""
+    from recording import section_headings
+    path = Path(snapshot).resolve()
+    identity = read_json(state)
+    binding = identity.get("record_captures", {}).get(str(path))
+    require(binding and binding["session"] == identity.get("host_session")
+            and hashlib.sha256(path.read_bytes()).hexdigest() == binding["sha256"], "actual unchanged host recording capture required")
+    page = read_json(path)["page"]
+    headings = section_headings(page["content"])
+    labels = [re.sub(r"\s*\{[^{}]*\}\s*$", "", h[1]).strip() for h in headings]
+    result = {"page": page["page"], "fetched_at": binding["fetched_at"], "snapshot": str(path)}
+    if heading is None:
+        return {**result, "properties": page["properties"], "headings": labels,
+                "instruction": "Use --heading for a complete section. This index is not the whole page or a live ownership check."}
+    indices = [i for i, label in enumerate(labels) if label.casefold() == heading.casefold()]
+    require(len(indices) <= 1, "ambiguous duplicate heading")
+    if not indices: return {**result, "heading": heading, "present": False, "content": None}
+    i = indices[0]
+    return {**result, "heading": heading, "present": True,
+            "content": page["content"][headings[i].start():headings[i + 1].start() if i + 1 < len(headings) else len(page["content"])]}
+
+
+def render_pr_body(facts_file, output):
+    from recording import pr_body
+    body = pr_body(json_input(facts_file))
+    target = Path(output)
+    # Never overwrite a hand-edited body by accident; corrections use a new file.
+    if target.exists(): require(target.read_text(encoding="utf-8") == body, "PR output exists with different content; use a new output path")
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("x", encoding="utf-8", newline="\n") as stream: stream.write(body)
+    return {"body": str(target.resolve()), "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "instruction": "Review actual facts and mandatory disclosures. Rendering is not verification. Freeze this exact body as pr_body; do not append a review-history narrative."}
 
 
 def record_run(state, operation):
@@ -524,6 +625,18 @@ def record_children(state, parent, manifest_file):
     outcomes then stop only the affected child, not replay a completed sibling.
     """
     writes = json_input(manifest_file)
+    # Compact host-tool recipes use the exact input object the host already needs.
+    # Normalize into the original protocol before freezing; no second journal or API.
+    if isinstance(writes, list):
+        normalized = []
+        for write in writes:
+            if isinstance(write, dict) and "tool" in write:
+                require(set(write) == {"name", "target", "tool", "input"},
+                        "host recipe requires name/target/tool/input, not mixed payload formats")
+                write = {"name": write["name"], "target": write["target"],
+                         "data": {"host_call": {"name": write["tool"], "input": write["input"]}}}
+            normalized.append(write)
+        writes = normalized
     require(isinstance(writes, list) and writes and all(isinstance(w, dict) and
             all(k in w for k in ("name", "target", "data")) for w in writes), "writes must list name/target/data objects")
     require(all(isinstance(w["name"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", w["name"])
@@ -759,6 +872,13 @@ def main():
     p.add_argument("--worktree", required=True); p.add_argument("--branch", required=True); p.add_argument("--merged", action="store_true")
     p = commands.add_parser("verify"); p.add_argument("--project", required=True); p.add_argument("--state", required=True)
     p.add_argument("--worktree", required=True); p.add_argument("--depends", action="append", default=[])
+    p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True)
+    p = commands.add_parser("record-capture"); p.add_argument("--state", required=True); p.add_argument("--page", required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
+    p = commands.add_parser("record-build"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
+    p.add_argument("--config", required=True); p.add_argument("--snapshot", required=True); p.add_argument("--spec")
+    p = commands.add_parser("record-page"); p.add_argument("--state", required=True); p.add_argument("--snapshot", required=True); p.add_argument("--heading")
     p = commands.add_parser("record-plan"); p.add_argument("--state", required=True); p.add_argument("--facts", required=True)
     p.add_argument("--review-worker")
     p = commands.add_parser("record-view"); p.add_argument("--state", required=True); p.add_argument("--name", required=True); p.add_argument("--field")
@@ -785,6 +905,10 @@ def main():
     elif args.command == "claim": result = claim(args.project, args.preflight, args.ticket, args.title, args.state, args.resume)
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends)
+    elif args.command == "pr-body": result = render_pr_body(args.facts, args.output)
+    elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
+    elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
+    elif args.command == "record-page": result = record_page(args.state, args.snapshot, args.heading)
     elif args.command == "record-plan": result = record_plan(args.state, args.facts, args.review_worker)
     elif args.command == "record-view": result = record_view(args.state, args.name, args.field)
     elif args.command == "record-next": result = record_next(args.state, args.begin)

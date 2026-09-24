@@ -2,10 +2,23 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.38.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.39.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Scoped execution (0.39.0)
+
+Delta packets include exact changed-input diffs. Worker packets supply submission skeletons,
+publication commands and canonical result locations, with an explicit host-return route when
+worker report writes are prohibited. Scoped consume/result views avoid global-state discovery.
+PR bodies render from stable implementation facts; review status stays in its canonical result.
+Common ticket recording derives mapped status, exact AC ticks and resolution sections from
+accepted evidence and real live captures. Other host writes accept flat recipes through the
+same journal. No provider credentials, new agents or weaker merge gates. Existing packets and
+resumptions retain their contracts. See [recording commands](references/boundaries.md).
+Sanitized failure-shape regressions cover these mechanisms; live token/time savings remain
+unmeasured until the next real ticket. Native Windows Git Bash and Ubuntu/WSL2 are both required.
 
 ## Deterministic boundaries (0.38.0)
 

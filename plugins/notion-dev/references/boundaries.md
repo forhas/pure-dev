@@ -1,4 +1,4 @@
-# Deterministic boundaries (0.38)
+# Deterministic boundaries
 
 New lean runs use schema 5 / result contract 4. Existing schema 1–4 runs and prepared workers
 retain their protocols and budgets. No new agent, scheduler or provider-authentication stack.
@@ -122,6 +122,47 @@ it. Unknown outcomes never authorize blind retry. Use actual UTF-8 JSON files, n
 hand-escaped Python path literals. Schema 1–4 recording keeps its original contract.
 
 ## Measurement
+
+### Common recording builders (0.39)
+
+For ticket-status/ticket-resolution `plan-children`, use a NEW live notion-fetch of the target
+page, then (configured `knowledge.python` for `python3`):
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-capture --state "$RUNTIME_STATE" --page <page-uuid>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-build --state "$RUNTIME_STATE" --parent <operation-id> --config "$REPO_ROOT/.claude/notion-dev.config.json" --snapshot <returned-snapshot>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-next --state "$RUNTIME_STATE" --begin
+```
+Dispatch the returned `data.host_call` exactly once. Existing record-receipt, provider-effect
+verification, record-outcome and parent confirmation remain mandatory. No inline Python,
+JSON envelope decoding, copied review report or handwritten child wrapper is required.
+The capture is session-owned, immutable and at most five minutes old at planning. This does
+not provide atomic provider revision locking: still validate live schema/ownership, and let
+exact old_str anchors reject conflicting section edits. Reconcile lost responses; never retry
+an unknown outcome blindly. A host timeout or unsupported provider shape is not success.
+Large successful fetches persisted by Claude are read from the exact session's tool-results
+directory (at most 4 MiB), not copied/decoded by the model. Other paths and failed/incomplete
+results fail closed. For epic/adapter planning, `record-page --state <state> --snapshot <path>`
+returns properties/heading index; add `--heading "Tasks"` (or another exact heading) for that
+complete section. This is a scoped snapshot, not a new live status check or a claim that the
+model read the whole epic. Authoritative ticket requirement extraction still reads the full ticket.
+
+Implementation/Merged additions preserve existing section content and heading attributes.
+Ambiguous headings, nonmatching criterion text, HTML code blocks, pre-existing identical entries
+and unknown review coverage require the existing adapter's explicit reconciliation. The builder
+does not paraphrase acceptance criteria, infer approval, or decide an epic is complete.
+
+For epic/follow-up/Skill writes whose semantics require the existing adapter, `record-children`
+also accepts flat recipes. Declare the complete set after live schema/child/scope checks and
+approved filing decisions; this only removes wrapper construction, not those decisions:
+```json
+[{"name":"resolution","target":"<actual-page-url>","tool":"mcp__notion__notion-update-page",
+  "input":{"page_id":"<actual-uuid>","command":"update_content","content_updates":[{"old_str":"<exact live anchor>","new_str":"<approved replacement>"}]}}]
+```
+Use the actual host tool and exact arguments for approved follow-up creation or configured Skill
+hooks too. The helper normalizes into the original immutable child protocol. Local synchronous
+hooks still use local_command/record-run; never replace a configured skill with an invented script.
+
+### Performance checks
 
 Regression fixtures are not proof of live savings. Track capture errors, self-induced full
 reviews, stale-copy/induced findings, delta/full fresh-token ratio, report/view sizes, recording
