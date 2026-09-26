@@ -186,17 +186,19 @@ The result still covers EVERY ID and declares `delta_review` with the exact prev
 manifest hash, checked_requirement_ids, and disposition sufficient or full-review-required.
 Uncertainty expands scope or escalates; it is not a fabricated clean verdict.
 
-Version-4 delta packets offer `delta_publication`: changed judgments plus explicit unchanged
+Version-4-and-later delta packets offer `delta_publication`: changed judgments plus explicit unchanged
 ID/section references. Read `references/boundaries.md` for its shape. Runtime assembles a full
 result; do not regenerate the prior narrative. All-ID coverage and dependency checks remain.
 
-At most two full and two delta attempts per invocation, including failed attempts.
+Default allowance: two full and two delta attempts per invocation, including failed attempts.
 Same-worker unpublished format repair consumes no new investigation attempt. Budget exhaustion
 preserves work and stops with evidence; it never waives a requirement or starts a fresh run.
+Only `references/review-accounting.md`'s actual user authorization grants one bounded extra delta.
 
 Before post-round corrective source edits use `correction-needed --worktree <path> --reason <why>`.
 The next combined reviewer also checks the exact correction manifest and supplies its generated
-correction_review fields; only a clean independently reviewed correction can pass.
+correction_review fields. Versions 3/4 require clean; version 5 also permits independently
+classified advisory-only/resolved findings after parent accounting. Unknown/mandatory work blocks.
 Version 3's structured correction verdict is authoritative; runtime renders its header.
 Declare `depends_on` paths for all external correction evidence (explicit [] only for code-only
 review); code revision and requirement inventory are already bound. When code, obligation and
