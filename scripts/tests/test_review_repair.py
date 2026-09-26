@@ -179,6 +179,8 @@ class ReviewRepairTests(unittest.TestCase):
         self.assertEqual(self.rt.summary()["review_budget"]["extensions"][0]["worker"], key)
         with self.assertRaisesRegex(runtime.Invalid, "budget exhausted"):
             self.rt.prepare("completeness", {}, self.repo, previous=key)
+        with self.assertRaisesRegex(runtime.Invalid, "one authorized correction review"):
+            self.rt.budget_request(key, self.repo, "another correction", "second scope")
 
     def test_approval_rejects_agent_tool_meta_foreign_stale_and_wrong_phrase(self):
         key = self.exhausted(); request = self.rt.budget_request(key, self.repo, "reason", "scope")

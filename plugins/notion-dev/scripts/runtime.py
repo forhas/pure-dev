@@ -1176,6 +1176,9 @@ class Runtime:
         require(current["clean"], "commit all coupled corrections before requesting their review")
         with self.transaction() as state:
             require(state.get("host_session"), "bind the actual host session through workflow resume first")
+            # One authorized correction review per invocation; a second grant would chain extra deltas.
+            require(not any(r.get("authority") for r in state.get("review_allowances", [])),
+                    "this invocation already used its one authorized correction review")
             baseline = self.worker(state, previous)
             reviews = [w for w in state["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
             require(reviews and reviews[-1]["id"] == previous and baseline.get("accepted")
