@@ -3,6 +3,12 @@
 Use the caller's runtime, reviewed HEAD and remaining budgets. This reference does not start
 another loop or require an external build-framework skill.
 
+For internal results, `references/review-accounting.md` owns the canonical hash-bound ledger.
+Do not create a competing narrative. Enumerate defects in the structured owning section, classify
+mandatory/advisory/unknown independently, and batch coupled code/docs/PR-claim corrections before
+another review. Affirmative audit observations are evidence, not findings. Optional suggestions
+need honest disposition, not cosmetic edits that manufacture another review cycle.
+
 ## Judge and preserve
 
 Read all inline, review-body and PR-comment findings. Correlate inline comments by

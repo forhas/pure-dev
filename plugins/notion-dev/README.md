@@ -2,10 +2,21 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.40.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.41.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Complete review accounting and bounded recovery (0.41.0)
+
+- Compact indexes and lossless pages expose every finding; result-hash-bound dispositions
+  precede acceptance, another review or merge. No more judging a clipped findings prefix.
+- Contract 5 explicitly separates mandatory, advisory and unknown findings. Independently
+  classified advisory-only results can pass without cosmetic full-review loops; requirement,
+  claim, validation, freshness and correction gates remain mandatory. Old packets keep their contracts.
+- Exhausted review budgets do not reset on `finalize`. One extra bounded correction review
+  requires a fresh actual user approval, scoped to the current run/head/inputs. Attempts and
+  authorization evidence remain durable. See `references/review-accounting.md`.
 
 ## Review convergence and recording recovery (0.40.0)
 

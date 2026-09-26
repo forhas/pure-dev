@@ -8,7 +8,7 @@ import sys
 import unittest
 
 import test_boundaries as boundaries
-from test_lean_workflow import runtime, workflow
+from test_lean_workflow import runtime, workflow, account_findings
 import host_capture
 import recording
 
@@ -32,7 +32,7 @@ class ScopedExecutionTests(unittest.TestCase):
         result = self.result()
         result['recording']['release_obligations'] = ['Human approval still required before release.']
         result['recording']['claim_corrections'] = ['There are four outcomes, not three.']
-        self.rt.publish(key, result); self.rt.consume(key); self.rt.accept(key)
+        self.rt.publish(key, result); self.rt.consume(key); account_findings(self.rt, key); self.rt.accept(key)
         path = self.facts(); facts = runtime.read_json(path)
         for name in ('requirements', 'review', 'verification'): facts.pop(name)
         facts['ticket_url'] = 'https://app.notion.com/p/' + 'a' * 32

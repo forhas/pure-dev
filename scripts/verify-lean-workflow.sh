@@ -23,6 +23,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'te
 else
   bad "host capture, scoped recording and compact deltas"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_review_repair.py'; then
+  ok "lossless findings, mandatory/advisory gates and authorized bounded recovery"
+else
+  bad "lossless findings, mandatory/advisory gates and authorized bounded recovery"
+fi
 if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_scoped_execution.py'; then
   ok "scoped delta inputs, publication and deterministic ticket recording"
 else
@@ -51,7 +56,7 @@ for f in plugins/notion-dev/references/legacy/*.md; do
 done
 assert_has "the lean contract is schema-gated, so legacy packets carry none" \
   plugins/notion-dev/scripts/runtime.py '(3 if state["schema"] >= 3 else None)'
-assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 4'
+assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 5'
 assert_has "recording consumes frozen input" plugins/notion-dev/references/record.md 'record-input'
 assert_has "child identity is a published contract" plugins/notion-dev/references/record.md ':child:'
 exit $(( fails > 0 ))
