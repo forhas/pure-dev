@@ -264,8 +264,9 @@ class ReviewRepairTests(unittest.TestCase):
             self.rt.budget_extend(request["request"], path, "fixture-session", "human-approval", self.repo)
         row = json.loads(raw); row["message"]["content"] = "not authorized"
         path.write_bytes(raw + (json.dumps(row) + "\n").encode())
-        with self.assertRaises(ValueError):
-            self.rt.budget_extend(request["request"], path, "fixture-session", "human-approval", self.repo)
+        for selector in (None, "human-approval"):
+            with self.subTest(selector=selector), self.assertRaises(ValueError):
+                self.rt.budget_extend(request["request"], path, "fixture-session", selector, self.repo)
         path.write_bytes(raw)
         second = self.rt.budget_request(key, self.repo, "another request", "different scope")
         with self.assertRaises(ValueError):

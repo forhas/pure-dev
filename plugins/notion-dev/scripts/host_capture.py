@@ -62,6 +62,10 @@ def user_approval(transcript, session, message_id, phrase, after, before):
                             "transcript": str(Path(transcript).resolve())})
     if not matches or len({m["line_sha256"] for m in matches}) != 1:
         raise ValueError("missing or conflicting user approval")
+    if not message_id:
+        # Selection by phrase must not hide a conflicting later spelling of the
+        # same UUID merely because that spelling no longer matches the phrase.
+        return user_approval(transcript, session, matches[0]["message_id"], phrase, after, before)
     return matches[0]
 
 
