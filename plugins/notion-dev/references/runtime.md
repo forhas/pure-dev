@@ -119,10 +119,11 @@ path, and publishes for that worker before consume/accept. Do not poll for runti
 after receiving this host-return result. Missing/rejected fields go back to the SAME reviewer;
 the parent does not invent verdicts. This fallback pays host delivery latency but no new review.
 
-Parent: `consume --worker <id>`, inspect the evidence, then `accept --worker <id>`.
-Prefer `consume --worker <id> --summary` on new runs; `result-view --worker <id> --section
-<requirements|recording|claims|...>` retrieves a needed full section. The immutable full result
-remains at the returned artifact. Summary is routing, not permission to skip checking evidence.
+Parent: follow `references/review-accounting.md` before `accept --worker <id>`.
+`consume --worker <id> --summary` returns a compact index, never embedded finding prose.
+`result-view --worker <id> --page <n>` retrieves bounded lossless finding fragments;
+`--section <requirements|recording|...>` retrieves an explicit full section. Never pipe either
+through head/tail to judge completeness. The immutable full result remains at the returned artifact.
 **Consuming a result is not accepting it, and the difference is enforced.**
 A valid nonpassing review may be accepted as an honest finding; acceptance is not permission
 to merge. New-run acceptance repeats schema validation.
@@ -150,6 +151,12 @@ Publication may accept an honest nonpassing result; acceptance does not make it 
 The runtime renders these three report headings from structured data, not separate prose.
 Never mark a filed/dropped
 mandatory requirement met. Release obligations remain explicit.
+
+Version 5 adds explicit code/correction findings and obligation/resolved fields to each
+finding. Independent reviewers distinguish mandatory/advisory/unknown, with evidence.
+Unknown and unresolved mandatory findings must be blocking; filing/dropping cannot waive them.
+An enumerated advisory-only `findings` verdict can pass after parent accounting; older ambiguous
+verdicts cannot. Keep affirmative observations in audit evidence, not the findings list.
 
 Version 3 additionally requires `recording`: `release_obligations` and `claim_corrections`
 (lists of strings), plus `technical_delta` (fact/evidence objects). Use explicit [] for none.
@@ -179,17 +186,19 @@ The result still covers EVERY ID and declares `delta_review` with the exact prev
 manifest hash, checked_requirement_ids, and disposition sufficient or full-review-required.
 Uncertainty expands scope or escalates; it is not a fabricated clean verdict.
 
-Version-4 delta packets offer `delta_publication`: changed judgments plus explicit unchanged
+Version-4-and-later delta packets offer `delta_publication`: changed judgments plus explicit unchanged
 ID/section references. Read `references/boundaries.md` for its shape. Runtime assembles a full
 result; do not regenerate the prior narrative. All-ID coverage and dependency checks remain.
 
-At most two full and two delta attempts per invocation, including failed attempts.
+Default allowance: two full and two delta attempts per invocation, including failed attempts.
 Same-worker unpublished format repair consumes no new investigation attempt. Budget exhaustion
 preserves work and stops with evidence; it never waives a requirement or starts a fresh run.
+Only `references/review-accounting.md`'s actual user authorization grants one bounded extra delta.
 
 Before post-round corrective source edits use `correction-needed --worktree <path> --reason <why>`.
 The next combined reviewer also checks the exact correction manifest and supplies its generated
-correction_review fields; only a clean independently reviewed correction can pass.
+correction_review fields. Versions 3/4 require clean; version 5 also permits independently
+classified advisory-only/resolved findings after parent accounting. Unknown/mandatory work blocks.
 Version 3's structured correction verdict is authoritative; runtime renders its header.
 Declare `depends_on` paths for all external correction evidence (explicit [] only for code-only
 review); code revision and requirement inventory are already bound. When code, obligation and
@@ -215,7 +224,8 @@ Read `references/record.md` only at recording time.
 Import raw parent/child JSONL with telemetry.py for token counts. Unknown telemetry is not zero.
 Schema 1/2 resumes retain original contracts; do not rewrite them to obtain new attempt budgets.
 Already-prepared version-1/2 workers also retain their packet/validation contract.
-Schema-5 workers use version 4; schema-3/4 workers keep version 3. No budget or invocation reset.
+New schema-5 workers use version 5; schema-3/4 workers keep version 3. Prepared workers retain
+their frozen contract, including version 4. No budget or invocation reset.
 New lean invocations use schema 5 and require the host-captured full-source refresh receipt. Never use
 `init --legacy` on this path; it belongs only to an explicitly selected legacy build flow.
 Never downgrade state

@@ -110,8 +110,8 @@ The reviewer gets no author conversation, plan, or conclusions. It may run targe
 a concrete doubt warrants them, but starts from existing applicable logs. Source references
 are retrieval entry points, not instructions to read every listed file in full.
 Use the packet's publication/host-return contract and runtime wait/acceptance rules; repair format
-in the same worker. No state.json reads or path guessing. Parent uses `consume --summary` and
-`result-view --section <name>`, not another full report.
+in the same worker. No state.json reads or path guessing. Parent follows
+`references/review-accounting.md`: consume the index, page and judge every finding, then accept.
 
 Resolve real citations. Use the canonical rendered COMPLETENESS_REPORT/REVIEW_REPORT and triage
 ledger, not duplicate prose. Checked empty findings means NONE; unverified blocks merge. Preserve
@@ -123,8 +123,8 @@ and freeze the final revision. Never review a post-commit tree against a pre-com
 A PR-body-only correction with unchanged
 code checks changed claims and indirect effects; carry forward independently verified unaffected
 verdicts with valid evidence. Do not rerun a full review merely to generate new prose.
-Broader changes or uncertainty require full review within the invocation's two-full/two-delta
-budgets. A budget exhausted with unresolved work stops; no new invocation resets it.
+Broader uncertainty requires full review within two-full/two-delta budgets. Exhaustion stops;
+`references/review-accounting.md` permits one explicitly authorized correction review, never a reset.
 
 Before delta, batch corrections across affected code/docs/PR occurrences: search for retired
 assertions and replace them in place. Keep Notion narrative changes in accepted recording facts.

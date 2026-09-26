@@ -16,7 +16,7 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
 2. Fetch PR identity/head/base/state, derive the configured ticket key from its branch, and
    fetch the full ticket with ticket-system. Find the matching owned run marker/runtime in the
    primary `.claude/notion-dev/`. Resume that invocation, preserving review budgets and completed
-   operations. Do not replace it with a fresh runtime to escape a failure.
+   operations. Exhaustion uses `references/review-accounting.md`, never a fresh budget.
    A legacy flow marker or schema 1/2 runtime uses `references/legacy/finalize.md` instead.
 3. For a lean run, follow `references/lean-intake.md`'s resume/ownership rules. Stop before
    any write if another session owns it or an earlier worker is unaccounted for. Adopt the

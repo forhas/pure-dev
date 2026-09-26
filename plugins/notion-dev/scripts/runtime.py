@@ -39,8 +39,97 @@ PAGE_ITEMS = 50
 RECORD_OUTCOMES = ("planned", "attempted", "confirmed", "unknown-outcome", "failed")
 RECORD_FIELDS = ("EPIC-REPORT", "TICKET-RECORD", "CLEANUP", "CLEANUP-STEPS",
                  "HOOKS", "EPIC-DOC-RECORD", "EPIC-DOC-NEXT", "ISSUES")
-RESULT_CONTRACT_VERSION = 4
+RESULT_CONTRACT_VERSION = 5
 AUDIT_FIELDS = ("claims", "caveats", "triage")
+
+
+def finding_contract():
+    return {"finding": "defect, not an affirmative audit observation", "rationale": "evidence and obligation basis",
+            "disposition": "absorb|file|drop|blocked", "obligation": "mandatory|advisory|unknown",
+            "resolved": "boolean: independently verified fixed in this revision",
+            "blocking": "boolean: unknown, or unresolved mandatory; cannot waive by filing/dropping"}
+
+
+def review_pass(worker, review):
+    if review.get("verdict") == "clean":
+        return True
+    findings = review.get("findings", [])
+    return ((worker.get("contract_version") or 0) >= 5 and review.get("verdict") == "findings"
+            and bool(findings) and all(f["obligation"] != "unknown" and
+                (f["obligation"] == "advisory" or f["resolved"]) and not f["blocking"] for f in findings))
+
+
+def validate_findings(review):
+    findings = review.get("findings")
+    require(isinstance(findings, list), "version 5 review requires explicit findings (empty means none)")
+    for f in findings:
+        require(isinstance(f, dict) and all(isinstance(f.get(k), str) and f[k].strip()
+                for k in ("finding", "rationale")) and f.get("disposition") in {"absorb", "file", "drop", "blocked"}
+                and f.get("obligation") in {"mandatory", "advisory", "unknown"}
+                and isinstance(f.get("resolved"), bool) and isinstance(f.get("blocking"), bool),
+                "every finding needs evidence, obligation, resolution and disposition")
+        require(f["blocking"] == (f["obligation"] == "unknown" or
+                (f["obligation"] == "mandatory" and not f["resolved"])),
+                "mandatory/unknown finding cannot be relabeled nonblocking")
+    if review.get("verdict") == "clean":
+        require(not any(f["blocking"] for f in findings), "clean verdict contradicts blocking findings")
+    if review.get("verdict") == "findings":
+        require(bool(findings), "findings verdict must enumerate its findings, not hide them in prose")
+
+
+def finding_ledger(result):
+    """Lossless, deterministic IDs within a hash-bound result, including legacy prose.
+
+    No model inference: old ambiguous narrative stays unknown; accounting cannot
+    turn it into a passing independent verdict. Recording facts remain obligations.
+    """
+    entries = []
+    def add(source, value, obligation="unknown"):
+        entries.append({"id": source, "obligation": obligation, "evidence": value})
+    for name in ("code_review", *AUDIT_FIELDS, "correction_review"):
+        section = result.get(name, {})
+        for i, finding in enumerate(section.get("findings", []), 1):
+            add(name + ":" + str(i), finding, finding.get("obligation", "mandatory" if finding.get("blocking") else "unknown"))
+        if section.get("verdict") in {"findings", "unverified"} and not section.get("findings"):
+            add(name + ":unclassified", section)
+        if section.get("status") == "unverified": add(name + ":unverified", section)
+        for i, finding in enumerate(section.get("blocking_findings", []), 1):
+            add(name + ":blocking:" + str(i), finding, "mandatory")
+    for i, finding in enumerate(result.get("blocking_findings", []), 1):
+        add("blocking:" + str(i), finding, "mandatory")
+    for i, item in enumerate(result.get("requirements", []), 1):
+        if item.get("verdict") != "met": add("requirement:" + str(i), item, "mandatory")
+    for name in ("claim_corrections", "release_obligations"):
+        for i, fact in enumerate(result.get("recording", {}).get(name, []), 1):
+            add("recording." + name + ":" + str(i), fact)
+    return entries
+
+
+def finding_pages(result):
+    # A single very long finding is fragmented, never clipped. 400 characters
+    # caps even JSON-escaped control characters at 2,400 bytes per fragment.
+    pages, current = [], []
+    for entry in finding_ledger(result):
+        payload = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+        parts = [payload[i:i + 400] for i in range(0, len(payload), 400)]
+        for i, part in enumerate(parts):
+            fragment = {"id": entry["id"], "part": i + 1, "parts": len(parts), "json_fragment": part}
+            if current and len(json.dumps(current + [fragment], ensure_ascii=False).encode("utf-8")) > 3500:
+                pages.append(current); current = []
+            current.append(fragment)
+    if current: pages.append(current)
+    return pages
+
+
+def findings_accounted(worker):
+    if worker["role"] != "completeness" or not (worker.get("finding_accounting") or
+                                               (worker.get("contract_version") or 0) >= 5):
+        return True
+    entries = finding_ledger(worker["result"] or {})
+    if not entries: return True
+    judgment = worker.get("finding_judgments", {})
+    return (judgment.get("result_sha256") == digest_bytes(json_bytes(worker["result"]))
+            and {e["id"] for e in entries} == {d["id"] for d in judgment.get("dispositions", [])})
 
 
 def audits_pass(result):
@@ -65,6 +154,10 @@ def result_contract(role, items, version=RESULT_CONTRACT_VERSION):
                 "findings": [{"finding": "nonempty description", "disposition": "absorb|file|drop|blocked",
                               "rationale": "nonempty decision/evidence", "blocking": "boolean: unresolved merge obligation"}]}
         contract["audit_rules"] = "All three audits required. Checked with findings=[] means NONE. Missing is unknown. Unverified or blocking=true prevents merge. Mandatory work cannot be waived with file/drop."
+        if version >= 5:
+            for name in ("code_review", *AUDIT_FIELDS):
+                contract["required"][name]["findings"] = [finding_contract()]
+            contract["finding_rules"] = "Enumerate every defect in its owning section, never only in citation/report. Affirmative observations belong in evidence. Mandatory incorrect claims, missing validation and unknown coverage block; advisory means genuinely optional. Explicitly verified resolved findings may remain as history. findings verdict with only advisory/resolved items can pass; unverified never passes. Parent must account for every indexed item before acceptance."
         if version >= 3:
             contract["required"]["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}
             contract["recording_rules"] = "Preserve release obligations and accepted claim corrections as strings; technical_delta items carry fact/evidence. Explicit [] means none. These are the canonical post-merge facts, not another narrative."
@@ -123,6 +216,8 @@ def validate_result(worker, result):
                     and all(isinstance(v, dict) and all(isinstance(v.get(k), str) and v[k].strip()
                             for k in ("fact", "evidence")) for v in recording["technical_delta"]),
                     "technical_delta must contain fact/evidence objects")
+        if worker["contract_version"] >= 5:
+            for name in ("code_review", *AUDIT_FIELDS): validate_findings(result[name])
         if worker.get("correction_manifest"):
             correction = result.get("correction_review")
             if worker.get("reused_correction") and correction is None:
@@ -140,6 +235,8 @@ def validate_result(worker, result):
                 require(isinstance(correction.get("depends_on"), list)
                         and all(isinstance(p, str) and Path(p).is_absolute() for p in correction["depends_on"]),
                         "correction_review depends_on must list its external evidence files (explicit [] for code-only)")
+            if worker["contract_version"] >= 5 and not worker.get("reused_correction"):
+                validate_findings(correction)
     elif role == "record":
         fields = result.get("record")
         require(isinstance(fields, dict) and all(isinstance(fields.get(k), str) and fields[k].strip()
@@ -167,7 +264,7 @@ def render_result(worker, result):
         verdicts = {v["id"]: v["verdict"] for v in result["requirements"]}
         counts = Counter(verdicts[i["id"]] for i in worker["requirements"]["items"] if i["kind"] == "acceptance")
         clean = (result["requirements_complete"] and not result["blocking_findings"]
-                 and result["code_review"]["verdict"] == "clean" and all(v == "met" for v in verdicts.values()))
+                 and review_pass(worker, result["code_review"]) and all(v == "met" for v in verdicts.values()))
         if worker["contract_version"] >= 2:
             clean = clean and audits_pass(result)
         header = ["COMPLETENESS: " + ("clean" if clean else "blocked"),
@@ -751,6 +848,10 @@ class Runtime:
         with self.transaction() as state:
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
             require(not state.get("completed"), "resume explicitly before dispatching in a completed invocation")
+            if role == "completeness":
+                require(all(findings_accounted(w) for w in state["workers"].values()
+                            if w["role"] == role and w.get("result") and not w["terminated"]),
+                        "account for every finding before another review; use result-view and judge-findings")
             if role == "completeness" and not previous and state["schema"] >= 3:
                 require(sum(w["role"] == role and not w.get("previous") for w in state["workers"].values()) < 2,
                         "full completeness attempt budget exhausted; preserve unresolved work and escalate")
@@ -776,6 +877,7 @@ class Runtime:
             # Validate the delta BEFORE writing anything: a rejected preparation must
             # not leave half a packet on disk under an unregistered worker directory.
             baseline = self.delta_baseline(state, previous, current) if previous else None
+            grant = self.correction_grant(state, previous, current) if previous else None
             if baseline and state["schema"] >= 3:
                 old_files = baseline["worker"]["files"]
                 require(set(remove_inputs) <= set(old_files), "cannot remove an unknown input")
@@ -783,6 +885,13 @@ class Runtime:
                     if name not in snapshots and name not in remove_inputs:
                         snapshots[name] = {"path": source["path"], "sha256": digest(source["path"])}
             require(bool(snapshots), "at least one input artifact is required")
+            if grant:
+                logs = {r["log"] for r in state.get("verifications", [])}
+                require(not remove_inputs and all(name in snapshots and snapshots[name]["sha256"] == value
+                        for name, value in grant["binding"]["inputs"].items() if name != "verification_receipts"
+                        and not (baseline["worker"]["files"][name]["path"] in logs
+                                 and snapshots.get(name, {}).get("path") in logs)),
+                        "authorized correction inputs changed; request authorization for the new scope")
             verification_ids = []
             if role == "completeness" and "verification_receipts" in snapshots:
                 verification_ids = read_json(snapshots["verification_receipts"]["path"])["verifications"]
@@ -835,6 +944,10 @@ class Runtime:
                         "disposition": "sufficient|full-review-required"}
                 if contract_version and contract_version >= 4:
                     packet["delta_publication"] = self.delta_publication(directory, baseline["worker"])
+            if grant:
+                packet["authorized_correction"] = {"request": grant["id"], "scope": grant["scope"],
+                    "instruction": "One bounded correction review only. Check indirect impact on every requirement; "
+                                   "if broader review is needed, return full-review-required, never silently widen scope."}
             if reused:
                 packet["correction_manifest"] = reused["correction_manifest"]
                 packet["correction_reuse"] = {"worker": reused["id"],
@@ -856,6 +969,8 @@ class Runtime:
                     if contract_version >= 3:
                         packet["result_contract"]["required"]["correction_review"]["depends_on"] = []
                         packet["result_contract"]["correction_rules"] = "depends_on lists absolute paths of ALL external evidence used (logs/config/provider snapshots). Code/requirements are already bound. Explicit [] only for code-only review."
+                    if contract_version >= 5:
+                        packet["result_contract"]["required"]["correction_review"]["findings"] = [finding_contract()]
             packet_path = directory / "context.json"
             if contract_version and contract_version >= 4:
                 packet["publication"] = self.publication_kit(key, directory, packet)
@@ -874,6 +989,11 @@ class Runtime:
                       "reused_correction": reused["result"]["correction_review"] if reused else None,
                       "correction_dependencies": reused.get("correction_dependencies", []) if reused else []}
             worker["verification_ids"] = verification_ids
+            if previous:
+                grant = self.correction_grant(state, previous, current)
+                if grant and sum(bool(w.get("previous")) for w in state["workers"].values()) >= 2:
+                    grant["worker"] = key
+                    self.event(state, "review_allowance_spent", request=grant["id"], worker=key)
             state["workers"][key] = worker
             self.event(state, "worker_prepared", worker=key, role=role,
                        input_bytes=input_bytes, packet_bytes=packet_path.stat().st_size,
@@ -889,6 +1009,8 @@ class Runtime:
                          for i in read_json(packet["requirements"]["path"])["items"]],
                          blocking_findings=[], code_review={"verdict": "unverified", "citation": ""},
                          recording={"release_obligations": [], "claim_corrections": [], "technical_delta": []})
+            if packet["result_contract"]["version"] >= 5:
+                draft["code_review"]["findings"] = []
             for name in AUDIT_FIELDS:
                 draft[name] = {"status": "unverified", "evidence": "", "findings": []}
             if packet.get("delta_publication"):
@@ -927,22 +1049,65 @@ class Runtime:
             atomic_json(path, worker["result"])
         return {"path": str(path), "sha256": digest(path)}
 
-    def result_view(self, key, section=None):
+    def result_view(self, key, section=None, page=None):
         """A parent/reviewer never needs the global worker roster to find one result."""
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(worker["result"] is not None, "result not available")
             artifact = self.result_artifact(worker)
             result = worker["result"]
+            if page is not None:
+                require(section is None and worker["role"] == "completeness", "finding pages require a review result")
+                pages = finding_pages(result)
+                require(1 <= page <= len(pages), "finding page out of range")
+                worker["finding_accounting"] = True
+                seen = worker.setdefault("finding_pages_read", [])
+                if page not in seen: seen.append(page)
+                return {"worker": key, "result_sha256": digest_bytes(json_bytes(result)),
+                        "page": page, "pages": len(pages), "complete": len(seen) == len(pages),
+                        "fragments": pages[page - 1]}
             if section is not None:
                 require(section in result, "unknown result section")
                 return {"worker": key, "artifact": artifact, "section": section, "data": result[section]}
-            return {"worker": key, "artifact": artifact, "accepted": worker.get("accepted", False),
+            if worker["role"] == "completeness":
+                worker["finding_accounting"] = True
+            entries = finding_ledger(result)
+            return {"worker": key, "artifact": artifact, "result_sha256": digest_bytes(json_bytes(result)),
+                    "accepted": worker.get("accepted", False),
                     "sections": list(result), "requirements_complete": result.get("requirements_complete"),
                     "verdict_counts": dict(Counter(v["verdict"] for v in result.get("requirements", []))),
-                    "code_review": result.get("code_review"), "blocking_findings": result.get("blocking_findings", []),
-                    "audits": {name: result[name] for name in AUDIT_FIELDS if name in result},
-                    "release_obligations": result.get("recording", {}).get("release_obligations", [])}
+                    "code_review": {"verdict": result.get("code_review", {}).get("verdict")},
+                    "audits": {name: {"status": result[name]["status"], "count": len(result[name]["findings"])}
+                               for name in AUDIT_FIELDS if name in result},
+                    "findings": {"count": len(entries), "counts": dict(Counter(e["obligation"] for e in entries)),
+                                 "ids": [e["id"] for e in entries[:10]], "ids_complete": len(entries) <= 10,
+                                 "pages": len(finding_pages(result)), "complete": not entries,
+                                 "accounted": findings_accounted(worker)}}
+
+    def judge_findings(self, key, judgment):
+        with self.transaction() as state:
+            worker = self.worker(state, key)
+            require(worker["role"] == "completeness" and worker["status"] == "consumed" and not worker["terminated"],
+                    "consume a completed review before judging findings")
+            result = worker["result"]
+            require(isinstance(judgment, dict) and judgment.get("result_sha256") == digest_bytes(json_bytes(result)),
+                    "judgment must bind the exact result hash")
+            require(set(worker.get("finding_pages_read", [])) == set(range(1, len(finding_pages(result)) + 1)),
+                    "read every finding page before judging; a clipped summary is not full evidence")
+            dispositions = judgment.get("dispositions")
+            require(isinstance(dispositions, list) and all(isinstance(d, dict) and isinstance(d.get("id"), str)
+                    for d in dispositions), "dispositions must be a list of finding judgments")
+            ids = [d["id"] for d in dispositions]
+            require(len(ids) == len(set(ids)) and set(ids) == {e["id"] for e in finding_ledger(result)},
+                    "judge every finding ID exactly once")
+            for d in dispositions:
+                require(d.get("action") in {"absorb", "file", "drop", "blocked", "record"}
+                        and all(isinstance(d.get(k), str) and d[k].strip() for k in ("rationale", "evidence")),
+                        "judgment needs action, rationale and evidence; it never overrides the independent verdict")
+            worker["finding_accounting"] = True
+            worker["finding_judgments"] = judgment
+            self.event(state, "findings_judged", worker=key, count=len(ids), result_sha256=judgment["result_sha256"])
+        return {"worker": key, "accounted": True, "count": len(ids)}
 
     def question(self, key, text):
         require(isinstance(text, str) and text.strip(), "question text required")
@@ -973,6 +1138,84 @@ class Runtime:
             self.event(state, "worker_answer", worker=key, question=question, paused_seconds=duration)
             return pending
 
+    def check_review_budget(self, previous, worktree):
+        """Fail before expensive verification; prepare checks again under its own lock."""
+        current = revision(worktree)
+        with self.transaction() as state:
+            require(all(findings_accounted(w) for w in state["workers"].values()
+                        if w["role"] == "completeness" and w.get("result") and not w["terminated"]),
+                    "account for every finding before another review")
+            reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
+            if previous:
+                require(sum(bool(w.get("previous")) for w in reviews) < 2
+                        or self.correction_grant(state, previous, current),
+                        "delta attempt budget exhausted; finalize preserves it. Use result-view and budget-request")
+            elif state["schema"] >= 3:
+                require(sum(not w.get("previous") for w in reviews) < 2,
+                        "full completeness attempt budget exhausted; preserve unresolved work and escalate")
+
+    @staticmethod
+    def budget_binding(state, previous, current):
+        baseline = state["workers"][previous]
+        return {"previous": previous, "revision": current, "requirements": state["requirements"],
+                "inputs": {n: digest(s["path"]) for n, s in baseline["files"].items()},
+                "attempts": sum(bool(w.get("previous")) for w in state["workers"].values())}
+
+    def correction_grant(self, state, previous, current):
+        requests = state.get("review_allowances", [])
+        for request in reversed(requests):
+            if (request.get("authority") and not request.get("worker")
+                    and request["session"] == state.get("host_session")
+                    and request["binding"] == self.budget_binding(state, previous, current)):
+                return request
+        return None
+
+    def budget_request(self, previous, worktree, reason, scope):
+        require(reason.strip() and scope.strip(), "reason and bounded correction scope required")
+        current = revision(worktree)
+        require(current["clean"], "commit all coupled corrections before requesting their review")
+        with self.transaction() as state:
+            require(state.get("host_session"), "bind the actual host session through workflow resume first")
+            # One authorized correction review per invocation; a second grant would chain extra deltas.
+            require(not any(r.get("authority") for r in state.get("review_allowances", [])),
+                    "this invocation already used its one authorized correction review")
+            baseline = self.worker(state, previous)
+            reviews = [w for w in state["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
+            require(reviews and reviews[-1]["id"] == previous and baseline.get("accepted")
+                    and baseline["status"] == "consumed" and findings_accounted(baseline),
+                    "extension requires latest accepted, accounted completeness result")
+            require(baseline["requirements"] == state["requirements"], "changed requirements require full review, not an extension")
+            require(not any(not w["terminated"] and not w.get("accepted") for w in state["workers"].values()),
+                    "account for outstanding workers before requesting allowance")
+            binding = self.budget_binding(state, previous, current)
+            require(binding["attempts"] >= 2, "use remaining default delta allowance first")
+            request = {"id": uuid.uuid4().hex, "session": state["host_session"], "binding": binding,
+                       "reason": reason, "scope": scope, "count": 1, "kind": "delta", "requested": self.clock.stamp()}
+            request["approval_phrase"] = "Approve notion-dev " + state["run"] + " correction review " + request["id"]
+            state.setdefault("review_allowances", []).append(request)
+            self.event(state, "review_allowance_requested", request=request["id"], previous=previous)
+        return {"request": request["id"], "kind": "delta", "count": 1, "scope": scope, "reason": reason,
+                "head": current["head"], "approval_phrase": request["approval_phrase"],
+                "instruction": "Ask the user to send this exact phrase only if they authorize this scope. "
+                               "Then budget-extend captures that actual user message. No automatic approval or budget reset."}
+
+    def budget_extend(self, request_id, transcript, session, message_id, worktree):
+        from host_capture import user_approval
+        current = revision(worktree)
+        with self.transaction() as state:
+            matches = [r for r in state.get("review_allowances", []) if r["id"] == request_id]
+            require(len(matches) == 1, "unknown allowance request")
+            request = matches[0]
+            require(not request.get("authority") and not request.get("worker"), "allowance already authorized or spent")
+            require(session == state.get("host_session") == request["session"], "approval belongs to a different owner")
+            require(request["binding"] == self.budget_binding(state, request["binding"]["previous"], current),
+                    "review scope/head/inputs/counts changed; request new authorization")
+            request["authority"] = user_approval(transcript, session, message_id, request["approval_phrase"],
+                                                 request["requested"]["wall"], self.clock.stamp()["wall"])
+            self.event(state, "review_allowance_authorized", request=request_id, authority=request["authority"])
+        return {"request": request_id, "authorized": True, "kind": "delta", "count": 1,
+                "previous": request["binding"]["previous"], "scope": request["scope"]}
+
     def delta_baseline(self, state, previous, current):
         baseline = self.worker(state, previous)
         reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
@@ -986,7 +1229,9 @@ class Runtime:
         live = [w for w in reviews if not w["terminated"]]
         require(live and live[-1]["id"] == previous and baseline.get("accepted")
                 and baseline["status"] == "consumed", "delta requires the latest accepted completeness result")
-        require(sum(bool(w.get("previous")) for w in reviews) < 2, "delta attempt budget exhausted")
+        require(sum(bool(w.get("previous")) for w in reviews) < 2 or self.correction_grant(state, previous, current),
+                "delta attempt budget exhausted; finalize preserves it. Inspect result-view finding IDs; "
+                "use budget-request for explicit user authorization of ONE bounded correction review")
         require(baseline["requirements"] == state["requirements"],
                 "changed requirements require a full review")
         if (baseline.get("contract_version") or 0) >= 3:
@@ -1135,9 +1380,14 @@ class Runtime:
             if name in AUDIT_FIELDS:
                 require(old["status"] == "checked" and not any(f["blocking"] for f in old["findings"]),
                         "unverified/blocking audit must be rechecked")
-            if name == "code_review": require(old["verdict"] == "clean", "nonclean code review must be rechecked")
+            if name == "code_review": require(review_pass(baseline, old), "nonclean code review must be rechecked")
             if name == "blocking_findings": require(not old, "unresolved findings cannot be inherited as clean")
         result = {name: previous[name] if name in carry else updates[name] for name in names}
+        # A legacy clean verdict already asserts no code finding; preserve it without
+        # another review just to add an empty field. Ambiguous legacy findings/audits
+        # require explicit reviewer updates, never inferred advisory classifications.
+        if worker.get("contract_version", 0) >= 5 and "code_review" in carry:
+            result["code_review"] = {"findings": [], **result["code_review"]}
         old_verdicts = {v["id"]: v for v in previous["requirements"]}
         verdicts = {v["id"]: v for v in changed}
         verdicts.update({i: old_verdicts[i] for i in reused})
@@ -1307,7 +1557,7 @@ class Runtime:
             verdicts = ["CLEAN"]  # One authority for new contracts; prose is only a view.
         return (review.get("id") == worker["correction"]["id"]
                 and review.get("manifest_sha256") == worker["correction_manifest"]["sha256"]
-                and review.get("verdict") == "clean" and review.get("blocking_findings") == []
+                and review_pass(worker, review) and review.get("blocking_findings") == []
                 and len(verdicts) == 1 and verdicts[0].strip() == "CLEAN")
 
     @staticmethod
@@ -1460,6 +1710,7 @@ class Runtime:
             require(worker["status"] == "consumed",
                     "consume the result before accepting it")
             validate_result(worker, worker["result"])
+            require(findings_accounted(worker), "unaccounted findings: read result-view pages and judge-findings before accept")
             if not worker["accepted"]:
                 worker["accepted"] = True
                 self.event(state, "worker_result_accepted", worker=key, role=worker["role"])
@@ -1653,10 +1904,12 @@ class Runtime:
                 if not worker.get("accepted"):
                     reasons.append("parent has not accepted the independent result")
                 validate_result(worker, result) if result else None
-                if result.get("code_review", {}).get("verdict") != "clean":
+                if not review_pass(worker, result.get("code_review", {})):
                     reasons.append("independent code-quality review is not clean")
                 if worker["contract_version"] >= 2 and result and not audits_pass(result):
                     reasons.append("claims/caveats/triage audits are unverified or have blocking findings")
+            if not findings_accounted(worker):
+                reasons.append("unaccounted findings: use result-view and judge-findings")
             if not self.correction_reviewed(state, worker, result):
                 reasons.append("corrective code needs an independent clean correction review of the exact manifest")
             if worker.get("previous"):
@@ -2049,6 +2302,10 @@ class Runtime:
             # a command run outside `verify`, or an agent never registered as a worker,
             # is absent from every number here. `end_to_end` says so in the output.
             return {"run": state["run"], "stage": state["stage"], "workers": workers,
+                    "review_budget": {"defaults": {"full": 2, "delta": 2},
+                        "extensions": [{k: r.get(k) for k in ("id", "kind", "count", "reason", "scope", "authority", "worker")}
+                                       for r in state.get("review_allowances", [])],
+                        "cost": "Cumulative attempts, events and stage times retained; model tokens require telemetry, not inferred here."},
                     "full_completeness_attempts": sum(w["role"] == "completeness" and not w.get("previous")
                                                        for w in state["workers"].values()),
                     "delta_attempts": sum(bool(w.get("previous")) for w in state["workers"].values()),
@@ -2102,13 +2359,22 @@ def main():
     p.add_argument("--worktree"); p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--previous"); p.add_argument("--slot")
     p.add_argument("--remove-input", action="append", default=[])
+    p = commands.add_parser("budget-request")
+    p.add_argument("--previous", required=True); p.add_argument("--worktree", required=True)
+    p.add_argument("--reason", required=True); p.add_argument("--scope", required=True)
+    p = commands.add_parser("budget-extend")
+    p.add_argument("--request", required=True); p.add_argument("--worktree", required=True)
+    p.add_argument("--transcript", required=True); p.add_argument("--session", required=True)
+    p.add_argument("--message-id", help="optional actual user UUID; otherwise select the exact approval phrase")
     for name in ("attach", "publish", "inspect", "wait", "consume", "accept", "resolve-citations",
-                 "evidence", "section", "result-view", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
+                 "evidence", "section", "result-view", "judge-findings", "probe", "end-worker", "yield", "merge-gate", "question", "answer"):
         p = commands.add_parser(name); p.add_argument("--worker", required=True)
         if name == "attach": p.add_argument("--agent", required=True)
         if name == "publish": p.add_argument("--result", required=True)
         if name == "consume": p.add_argument("--summary", action="store_true")
-        if name == "result-view": p.add_argument("--section")
+        if name == "result-view":
+            p.add_argument("--section"); p.add_argument("--page", type=int)
+        if name == "judge-findings": p.add_argument("--judgments", required=True)
         if name in {"question", "answer"}: p.add_argument("--text", required=True)
         if name == "answer": p.add_argument("--question", required=True)
         if name == "resolve-citations": p.add_argument("--citations", required=True)
@@ -2149,6 +2415,8 @@ def main():
     elif name == "refresh-ticket": result = runtime.refresh_ticket(args.worker, args.response, args.request, args.call_id)
     elif name == "ready": result = runtime.ready()
     elif name == "correction-needed": result = runtime.correction_needed(args.worktree, args.reason)
+    elif name == "budget-request": result = runtime.budget_request(args.previous, args.worktree, args.reason, args.scope)
+    elif name == "budget-extend": result = runtime.budget_extend(args.request, args.transcript, args.session, args.message_id, args.worktree)
     elif name == "prepare":
         files = {}
         for item in args.file:
@@ -2164,7 +2432,8 @@ def main():
     elif name == "inspect": result = runtime.inspect(args.worker)
     elif name == "wait": result = runtime.wait(args.worker, args.seconds)
     elif name == "consume": result = runtime.consume(args.worker, args.summary)
-    elif name == "result-view": result = runtime.result_view(args.worker, args.section)
+    elif name == "result-view": result = runtime.result_view(args.worker, args.section, args.page)
+    elif name == "judge-findings": result = runtime.judge_findings(args.worker, read_json(args.judgments))
     elif name == "accept": result = runtime.accept(args.worker)
     elif name == "resolve-citations": result = runtime.resolve_citations(args.worker, read_json(args.citations))
     elif name == "evidence": result = runtime.evidence(args.worker)

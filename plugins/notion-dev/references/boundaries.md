@@ -1,8 +1,12 @@
 # Deterministic boundaries
 
-New lean runs use schema 5 / result contract 4. Existing schema 1–4 runs and prepared workers
+New lean runs use schema 5 / result contract 5. Existing schema 1–4 runs and prepared workers
 retain their protocols and budgets. No new agent, scheduler or provider-authentication stack.
 Use configured knowledge.python on native Windows Git Bash and Ubuntu/WSL2.
+
+Review consumption uses `references/review-accounting.md`: bounded index, lossless finding pages,
+hash-bound dispositions before acceptance, and actual user authorization for one extra correction
+review. Existing compact delta partitioning and all source/evidence freshness checks remain.
 
 ## Actual host captures
 
@@ -68,7 +72,7 @@ verdicts and references to audit/recording sections replace eager full-report lo
 full sections only for affected claims or a specific doubt. Full evidence remains available.
 Whole-file dependency checks remain conservative; no automatic "comment edits are safe" rule.
 
-A version-4 delta can publish the following alternative to the full result:
+A version-4-or-later delta can publish the following alternative to the full result:
 ```json
 {
  "report":"Concise changed-scope conclusion",

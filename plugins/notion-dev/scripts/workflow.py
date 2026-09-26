@@ -297,6 +297,7 @@ def review_prepare(state, project, worktree, files, previous=None, depends=(), o
     """One final-revision verification boundary, shared by full and delta reviews."""
     from runtime import revision, digest
     require(revision(worktree)["clean"], "commit preparation/corrections before review verification")
+    Runtime(state).check_review_budget(previous, worktree)
     verified = verify_config(state, project, worktree, depends, outputs)
     if not verified["passed"]: return verified
     keys = [r["verification"] for r in verified["receipts"]]

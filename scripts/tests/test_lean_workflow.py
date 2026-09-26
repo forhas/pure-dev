@@ -16,6 +16,19 @@ import workflow
 import dependencies
 
 
+def account_findings(rt, key):
+    index = rt.result_view(key)
+    entries = {}
+    for page in range(1, index["findings"]["pages"] + 1):
+        for fragment in rt.result_view(key, page=page)["fragments"]:
+            entries.setdefault(fragment["id"], []).append(fragment["json_fragment"])
+    decoded = [json.loads("".join(parts)) for parts in entries.values()]
+    rt.judge_findings(key, {"result_sha256": index["result_sha256"], "dispositions": [
+        {"id": entry["id"], "action": "record", "rationale": "fixture retained without waiver",
+         "evidence": "read complete evidence for " + entry["id"]} for entry in decoded]})
+    return decoded
+
+
 class LeanTests(unittest.TestCase):
     run_git = support.RuntimeTests.run_git
     prepare = support.RuntimeTests.prepare
@@ -23,6 +36,7 @@ class LeanTests(unittest.TestCase):
 
     def result(self):
         value = support.RuntimeTests.result(self)
+        value["code_review"]["findings"] = []
         value.update({name: {"status": "checked", "evidence": "fixture audit: source, diff and PR body",
                              "findings": []} for name in runtime.AUDIT_FIELDS})
         value["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}

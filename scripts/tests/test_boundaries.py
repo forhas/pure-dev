@@ -13,6 +13,7 @@ from unittest.mock import patch
 import test_handoffs as handoffs
 from test_lean_workflow import runtime, workflow, ROOT
 import host_capture
+from test_lean_workflow import account_findings
 
 
 class BoundaryTests(unittest.TestCase):
@@ -177,7 +178,8 @@ class BoundaryTests(unittest.TestCase):
         _, worker, value = self.delta()
         value['delta_result']['reused_sections'].remove('claims')
         value['delta_result']['updated_sections']['claims'] = {'status': 'checked', 'evidence': 'new claim',
-            'findings': [{'finding': 'unsupported prerequisite', 'disposition': 'blocked', 'rationale': 'source contradicts claim', 'blocking': True}]}
+            'findings': [{'finding': 'unsupported prerequisite', 'disposition': 'blocked', 'rationale': 'source contradicts claim', 'blocking': True,
+                          'obligation': 'mandatory', 'resolved': False}]}
         self.rt.publish(worker['id'], value)
         result = self.rt.consume(worker['id'])['result']
         self.assertFalse(runtime.audits_pass(result))
@@ -188,7 +190,7 @@ class BoundaryTests(unittest.TestCase):
         value = self.result()
         value['recording']['release_obligations'] = ['Operator verifies service readiness.']
         value['recording']['claim_corrections'] = ['Do not claim network isolation.']
-        key = self.prepare(); self.rt.publish(key, value); self.rt.consume(key); self.rt.accept(key); self.resolve(key)
+        key = self.prepare(); self.rt.publish(key, value); self.rt.consume(key); account_findings(self.rt, key); self.rt.accept(key); self.resolve(key)
         prepared = self.rt.prepare('completeness', {}, self.repo, previous=key)
         packet = runtime.read_json(prepared['packet']); worker = prepared['worker']
         changed = {**value['requirements'][0], 'citation': 'new independently checked evidence'}
@@ -198,7 +200,7 @@ class BoundaryTests(unittest.TestCase):
                 'changed_requirements': [changed], 'reused_requirement_ids': [v['id'] for v in value['requirements'][1:]],
                 'updated_sections': {}, 'reused_sections': ['code_review', 'blocking_findings', 'claims', 'caveats', 'triage', 'recording']}}
         self.rt.attach(worker, 'delta-host'); self.rt.publish(worker, compact)
-        result = self.rt.consume(worker)['result']; self.rt.accept(worker)
+        result = self.rt.consume(worker)['result']; account_findings(self.rt, worker); self.rt.accept(worker)
         self.assertEqual(result['requirements'][0], changed)
         self.assertEqual(result['recording'], value['recording'])
         resolutions = runtime.read_json(self.state)['workers'][worker]['citation_resolutions']

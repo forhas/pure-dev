@@ -20,6 +20,55 @@ def timestamp(value):
     return parsed.timestamp()
 
 
+def user_approval(transcript, session, message_id, phrase, after, before):
+    """Capture a new parent user turn, never assistant/tool/summary text.
+
+    This trusts the local host transcript, like provider captures; it is not
+    attestation against a process allowed to forge that file.
+    """
+    matches = []
+    with Path(transcript).open("rb") as stream:
+        for number, raw in enumerate(stream, 1):
+            if not raw.endswith(b"\n"): break
+            row = json.loads(raw)
+            if message_id and row.get("uuid") != message_id: continue
+            if not message_id:
+                if (row.get("type") != "user" or row.get("sessionId") != session or row.get("isSidechain")
+                        or row.get("isMeta") or row.get("isCompactSummary")):
+                    continue
+                candidate = row.get("message", {}).get("content")
+                if isinstance(candidate, list):
+                    candidate = "\n".join(c.get("text", "") for c in candidate
+                                          if isinstance(c, dict) and c.get("type") == "text")
+                if not isinstance(candidate, str) or candidate.strip() != phrase: continue
+            if (row.get("type") != "user" or row.get("sessionId") != session or row.get("isSidechain")
+                    or row.get("isMeta") or row.get("isCompactSummary") or row.get("toolUseResult") is not None):
+                raise ValueError("approval must be an actual parent user message in the owning session")
+            message = row.get("message", {})
+            content = message.get("content")
+            if isinstance(content, list):
+                if not all(isinstance(c, dict) and c.get("type") == "text" for c in content):
+                    raise ValueError("tool results cannot authorize review allowance")
+                content = "\n".join(c.get("text", "") for c in content)
+            if message.get("role") != "user" or not isinstance(content, str) or content.strip() != phrase:
+                raise ValueError("user approval must match the bounded request exactly")
+            when = timestamp(row["timestamp"])
+            if not after <= when <= before:
+                raise ValueError("approval is outside the request time window")
+            if not isinstance(row.get("uuid"), str) or not row["uuid"]:
+                raise ValueError("host user message UUID missing")
+            matches.append({"session": session, "message_id": row["uuid"], "line": number,
+                            "line_sha256": hashlib.sha256(raw).hexdigest(), "timestamp": when,
+                            "transcript": str(Path(transcript).resolve())})
+    if not matches or len({m["line_sha256"] for m in matches}) != 1:
+        raise ValueError("missing or conflicting user approval")
+    if not message_id:
+        # Selection by phrase must not hide a conflicting later spelling of the
+        # same UUID merely because that spelling no longer matches the phrase.
+        return user_approval(transcript, session, matches[0]["message_id"], phrase, after, before)
+    return matches[0]
+
+
 def latest_call(transcript, session, name, arguments=None, page=None):
     """Select identity mechanically; a missing/failed latest result never falls back.
 
