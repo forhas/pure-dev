@@ -57,6 +57,12 @@ Never infer success from an absent log or a pipeline's last command.
 returns a worker ID and a hash-bound `context.json`. Roles: scout, plan, implementation,
 branch-review, local-review, completeness, record, probe. Default lean work is inline;
 its one internal review uses **completeness**, which covers both code quality and requirements.
+For schema 5, completeness requires bound typed inputs even through raw `runtime.py prepare`.
+Use `workflow.py review-inputs` then `review-prepare --inputs <manifest>`; arbitrary file-only
+dispatch is refused. An older untyped schema-5 worker remains readable but cannot authorize
+merge: review current typed evidence using the existing invocation and remaining budget (or
+the explicit correction-approval path). Never reset attempts or downgrade state to bypass this.
+Schema-1–4 resumptions retain their existing file-input compatibility path.
 
 Pass the worker only this compact instruction:
 > Read project instructions and the supplied context.json. Its result_contract is authoritative.

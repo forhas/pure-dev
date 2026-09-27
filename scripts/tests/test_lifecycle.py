@@ -1,9 +1,11 @@
 """Scoped lifecycle regressions on synthetic repositories; no provider writes."""
 import copy
+import inspect
 import json
 from pathlib import Path
 import subprocess
 import sys
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -192,6 +194,144 @@ class LifecycleTests(unittest.TestCase):
                 workflow.review_prepare(self.state, self.repo, self.repo, {'ticket': self.source})
         self.assertEqual(runtime.read_json(self.state)['workers'], {})
 
+    def test_raw_schema_five_prepare_cli_rejects_untyped_review_without_artifacts(self):
+        self.project()
+        before = self.state.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'bound typed review inputs'):
+            self.rt.prepare('completeness', {'ticket': self.source}, self.repo)
+        process = subprocess.run([sys.executable, runtime.__file__, '--state', str(self.state), 'prepare',
+                                  '--role', 'completeness', '--worktree', str(self.repo),
+                                  '--file', 'ticket=' + str(self.source)], capture_output=True, encoding='utf-8')
+        self.assertEqual(process.returncode, 2, process.stderr)
+        self.assertIn('bound typed review inputs', process.stderr)
+        self.assertEqual(self.state.read_bytes(), before)
+        self.assertEqual(list(self.state.parent.glob('worker-*')), [])
+
+    def test_merge_gate_rejects_preexisting_untyped_schema_five_worker(self):
+        # A worker issued before this repair remains readable, not merge-authorizing.
+        key = self.reviewed(); self.resolve(key)  # Explicit schema-3 compatibility fixture.
+        self.assertTrue(self.rt.merge_gate(key, self.repo)['passed'])
+        self.new_schema()
+        gate = self.rt.merge_gate(key, self.repo)
+        self.assertFalse(gate['passed'])
+        self.assertIn('schema 5 review lacks typed inputs', ' '.join(gate['reasons']))
+        self.assertEqual(self.rt.summary()['full_completeness_attempts'], 1)
+
+    def obsolete_source_review(self):
+        observed = self.project()
+        with patch.object(workflow, 'Runtime', return_value=self.rt):
+            capture = workflow.record_capture(self.state, self.log(runtime.read_json(self.fetch())), 'fixture-session', 'a' * 32)
+        inputs = self.inputs(observed, {'spec': capture['snapshot'], 'old_notes': capture['snapshot']})
+        files = review_inputs.validate(self.state, self.repo, inputs['inputs'])
+        prepared = self.rt.prepare('completeness', files, self.repo)
+        key = prepared['worker']
+        self.rt.attach(key, 'source-review'); self.rt.publish(key, self.result()); self.rt.consume(key)
+        self.rt.accept(key); self.resolve(key)
+        key = self.delta_finish(self.delta_finish(key))
+        return observed, key, self.inputs(observed)
+
+    def test_explicit_removal_approval_dispatches_exact_scope_and_preserves_archive(self):
+        observed, key, inputs = self.obsolete_source_review()
+        baseline = runtime.read_json(self.state)['workers'][key]
+        snapshot = Path(baseline['files']['spec']['snapshot']); before = snapshot.read_bytes()
+        # Removal binds old reviewed identity; it must not need a deleted live source.
+        Path(baseline['files']['spec']['path']).unlink()
+        request = self.rt.budget_request(key, self.repo, 'obsolete sources', 'remove superseded sources', ['spec', 'old_notes'])
+        self.assertEqual(request['removed_inputs'], {n: baseline['files'][n]['sha256'] for n in ('spec', 'old_notes')})
+        self.rt.budget_extend(request['request'], self.approval(request), 'fixture-session', None, self.repo)
+        for removed in ([], ['spec']):
+            with self.subTest(removed=removed), self.assertRaises(ValueError):
+                self.rt.prepare('completeness', review_inputs.validate(self.state, self.repo, inputs['inputs']),
+                                self.repo, previous=key, remove_inputs=removed)
+        with patch.object(review_inputs, 'github', return_value=observed):
+            prepared = workflow.review_prepare(self.state, self.repo, self.repo, {}, previous=key,
+                                               inputs_file=inputs['inputs'], remove_inputs=['old_notes', 'spec'])
+        packet = runtime.read_json(prepared['packet'])
+        self.assertNotIn('spec', packet['inputs']); self.assertNotIn('old_notes', packet['inputs'])
+        self.assertEqual(snapshot.read_bytes(), before)
+        self.assertEqual(self.rt.summary()['delta_attempts'], 3)
+        index = runtime.read_json(packet['delta']['path'])
+        changes = runtime.read_json(runtime.Runtime.ref_path(index, index['inputs']))['changes']
+        self.assertTrue({'spec', 'old_notes'} <= {c['name'] for c in changes})
+        self.assertEqual(runtime.read_json(self.state)['review_allowances'][-1]['worker'], prepared['worker'])
+
+    def test_removal_outside_approved_scope_is_rejected_without_spending_grant(self):
+        observed, key, inputs = self.obsolete_source_review()
+        request = self.rt.budget_request(key, self.repo, 'obsolete spec', 'remove spec only', ['spec'])
+        self.rt.budget_extend(request['request'], self.approval(request), 'fixture-session', None, self.repo)
+        before = self.state.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'authorized correction inputs changed'):
+            self.rt.prepare('completeness', review_inputs.validate(self.state, self.repo, inputs['inputs']),
+                            self.repo, previous=key, remove_inputs=['spec', 'old_notes'])
+        self.assertEqual(self.state.read_bytes(), before)
+        self.assertNotIn('worker', runtime.read_json(self.state)['review_allowances'][-1])
+        with patch.object(workflow, 'verify_config') as verify:
+            with self.assertRaisesRegex(ValueError, 'authorized correction inputs changed'):
+                workflow.review_prepare(self.state, self.repo, self.repo, {}, previous=key,
+                                        inputs_file=inputs['inputs'], remove_inputs=['spec', 'old_notes'])
+            verify.assert_not_called()
+
+    def test_removal_request_rejects_unknown_mandatory_and_current_sources(self):
+        observed, key, _ = self.obsolete_source_review()
+        for removed in (['missing'], ['ticket'], ['review_inputs'], ['verification_receipts']):
+            with self.subTest(removed=removed), self.assertRaises(ValueError):
+                self.rt.budget_request(key, self.repo, 'reason', 'scope', removed)
+        # Reintroducing the source into the current manifest invalidates its removal.
+        with patch.object(workflow, 'Runtime', return_value=self.rt):
+            capture = workflow.record_capture(self.state, self.log(runtime.read_json(self.fetch())), 'fixture-session', 'a' * 32)
+        self.inputs(observed, {'spec': capture['snapshot']})
+        with self.assertRaisesRegex(ValueError, 'current managed'):
+            self.rt.budget_request(key, self.repo, 'reason', 'scope', ['spec'])
+
+    def test_removal_approval_is_invalidated_by_changed_inputs_and_owner(self):
+        observed, key, _ = self.obsolete_source_review()
+        request = self.rt.budget_request(key, self.repo, 'reason', 'scope', ['spec'])
+        approval = self.approval(request)
+        self.inputs({**observed, 'body': 'Changed scope'})
+        with self.assertRaisesRegex(ValueError, 'changed'):
+            self.rt.budget_extend(request['request'], approval, 'fixture-session', None, self.repo)
+        self.inputs(observed)
+        with self.rt.transaction() as state: state['host_session'] = 'other-owner'
+        with self.assertRaisesRegex(ValueError, 'different owner'):
+            self.rt.budget_extend(request['request'], approval, 'fixture-session', None, self.repo)
+
+    def test_repairs_kill_guard_mutations_without_editing_files(self):
+        require = runtime.require
+        for test, message in [
+            ('test_raw_schema_five_prepare_cli_rejects_untyped_review_without_artifacts',
+             'schema 5 completeness requires bound typed review inputs'),
+            ('test_removal_outside_approved_scope_is_rejected_without_spending_grant',
+             'authorized correction inputs changed'),
+        ]:
+            def skip_guard(condition, text):
+                if not text.startswith(message): require(condition, text)
+            outcome = unittest.TestResult()
+            with self.subTest(guard=message), patch.object(runtime, 'require', side_effect=skip_guard):
+                LifecycleTests(test).run(outcome)
+                self.assertTrue(outcome.failures, 'guard mutation was not caught by an assertion: ' + str(outcome.errors))
+        source = textwrap.dedent(inspect.getsource(runtime.Runtime.merge_gate))
+        guard = 'if state["schema"] >= 5 and "review_inputs" not in worker["files"]:'
+        self.assertIn(guard, source)
+        mutated = {}
+        exec(compile(source.replace(guard, 'if False:'), '<merge-gate mutation>', 'exec'), vars(runtime), mutated)
+        outcome = unittest.TestResult()
+        with patch.object(runtime.Runtime, 'merge_gate', mutated['merge_gate']):
+            LifecycleTests('test_merge_gate_rejects_preexisting_untyped_schema_five_worker').run(outcome)
+        self.assertTrue(outcome.failures, 'merge-gate mutation survived: ' + str(outcome.errors))
+
+    def test_budget_request_cli_exposes_exact_removal_scope(self):
+        _, key, _ = self.obsolete_source_review()
+        process = subprocess.run([sys.executable, runtime.__file__, '--state', str(self.state), 'budget-request',
+                                  '--previous', key, '--worktree', str(self.repo), '--reason', 'obsolete',
+                                  '--scope', 'remove obsolete sources', '--remove-input', 'spec',
+                                  '--remove-input', 'old_notes'], capture_output=True, encoding='utf-8')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        value = json.loads(process.stdout)
+        self.assertEqual(set(value['removed_inputs']), {'spec', 'old_notes'})
+        binding = runtime.read_json(self.state)['review_allowances'][-1]['binding']
+        self.assertEqual(binding['removed_inputs'], value['removed_inputs'])
+        self.assertFalse(set(value['removed_inputs']) & set(binding['inputs']))
+
     def test_review_dispatch_uses_typed_files_and_cannot_downgrade(self):
         observed = self.project(); inputs = self.inputs(observed)
         with patch.object(review_inputs, 'github', return_value=observed):
@@ -209,7 +349,7 @@ class LifecycleTests(unittest.TestCase):
         before = runtime.Runtime.budget_binding(runtime.read_json(self.state), key, runtime.revision(self.repo))
         inputs = self.inputs(observed)
         after = runtime.Runtime.budget_binding(runtime.read_json(self.state), key, runtime.revision(self.repo))
-        self.assertNotIn('review_inputs', before['inputs'])
+        self.assertNotEqual(before['inputs']['review_inputs'], after['inputs']['review_inputs'])
         self.assertEqual(after['inputs']['review_inputs'], runtime.digest(inputs['inputs']))
         self.inputs({**observed, 'body': 'Corrected claim'})
         changed = runtime.Runtime.budget_binding(runtime.read_json(self.state), key, runtime.revision(self.repo))
@@ -228,6 +368,7 @@ class LifecycleTests(unittest.TestCase):
         self.rt.budget_extend(first['request'], old, 'fixture-session', None, self.repo)
         with self.rt.transaction() as state: state['host_session'] = 'new-owner'
         with self.assertRaises(ValueError): self.rt.prepare('completeness', {}, self.repo, previous=key)
+        support.typed_fixture(self, {'ticket': self.source})  # Recapture under the new owner before approval.
         second = self.rt.budget_request(key, self.repo, 'same allowance, new owner', 'scope')
         with self.assertRaises(ValueError): self.rt.budget_extend(first['request'], old, 'fixture-session', None, self.repo)
         fresh = self.approval(second, sessionId='new-owner')

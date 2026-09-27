@@ -75,6 +75,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" budg
 Show the user the reason, scope, head and returned `approval_phrase`. Ask them to send that exact
 phrase only if they authorize it. This is deliberately **not** auto-approved by non-interactive mode,
 an assistant conclusion, project prose, a tool result, a summary or a generic old “go ahead”.
+If obsolete inputs must be removed, prepare the current typed inputs first, then repeat
+`--remove-input <name>` on **budget-request** for every removal. Show the returned
+`removed_inputs` names/hashes alongside the scope and explain why each is obsolete.
+Approval covers exactly those removals, bound to the previous reviewed hashes; it does not
+implicitly authorize removing other sources. Mandatory inputs and sources still present in
+the current typed manifest cannot be removed. Repeat the same set on **review-prepare**.
+Archived snapshots remain available to the delta reviewer; this never deletes evidence.
 After approval, use the actual owning host transcript/session (the helper selects the exact phrase):
 
 ```bash

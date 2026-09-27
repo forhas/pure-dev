@@ -14,6 +14,34 @@ import test_handoffs as handoffs
 from test_lean_workflow import runtime, workflow, ROOT
 import host_capture
 from test_lean_workflow import account_findings
+import review_inputs
+
+
+def typed_fixture(case, files):
+    """Offline typed evidence for runtime unit tests, not a host-capture substitute.
+
+    LifecycleTests exercises the real producer with captured provider exchanges.
+    These fixtures keep schema 5, real snapshots and hashes, and real gate checks.
+    """
+    state = runtime.read_json(case.state)
+    if state['schema'] < 5:
+        return files
+    current = runtime.revision(case.repo)
+    directory = case.root / 'typed-fixture'
+    observed = {'number': 1, 'url': 'https://github.com/example/fixture/pull/1', 'state': 'OPEN',
+                'headRefOid': current['head'], 'baseRefOid': current['head'], 'body': 'Fixture claims'}
+    files = {'diff': review_inputs.save(directory, {'kind': 'git-diff', 'diff': '', 'head': current['head']}),
+             'pr_body': review_inputs.save(directory, {'kind': 'github-pr', 'pr': 'example/fixture#1', **observed}),
+             'inventory': review_inputs.save(directory, state['requirements']), **files}
+    manifest = {'version': 1, 'pr': 'example/fixture#1', 'revision': current, 'base': current['head'],
+                'sources': {}, 'files': {k: {'path': str(Path(v).resolve()), 'sha256': runtime.digest(v)}
+                                       for k, v in files.items() if k in {'ticket', 'inventory', 'diff', 'pr_body'}}}
+    path = review_inputs.save(directory, manifest)
+    with case.rt.transaction() as data:
+        data['review_inputs'] = {'path': path, 'sha256': runtime.digest(path), 'revision': current,
+                                 'session': data.get('host_session'), 'captures': {}}
+        data.pop('review_input_check', None)
+    return {**files, 'review_inputs': path}
 
 
 class BoundaryTests(unittest.TestCase):
@@ -21,11 +49,28 @@ class BoundaryTests(unittest.TestCase):
     config = handoffs.HandoffTests.config
     fetch = handoffs.HandoffTests.fetch
     reviewed = handoffs.HandoffTests.reviewed
-    prepare = handoffs.HandoffTests.prepare
     result = handoffs.HandoffTests.result
-    resolve = handoffs.HandoffTests.resolve
     run_git = handoffs.HandoffTests.run_git
     facts = handoffs.HandoffTests.facts
+
+    def prepare(self, role='completeness'):
+        files = {'ticket': self.source}
+        if role == 'completeness': files = typed_fixture(self, files)
+        prepared = self.rt.prepare(role, files, self.repo)
+        self.rt.attach(prepared['worker'], 'agent-' + prepared['worker'])
+        return prepared['worker']
+
+    def resolve(self, key):
+        handoffs.HandoffTests.resolve(self, key)
+        worker = runtime.read_json(self.state)['workers'][key]
+        source = worker['files'].get('review_inputs')
+        if source:
+            manifest = runtime.read_json(source['path'])
+            if manifest['pr'] == 'example/fixture#1':
+                observed = runtime.read_json(manifest['files']['pr_body']['path'])
+                observed = {k: v for k, v in observed.items() if k not in {'kind', 'pr'}}
+                with patch.object(review_inputs, 'github', return_value=observed), patch.object(review_inputs, 'Runtime', return_value=self.rt):
+                    review_inputs.check(self.state, self.repo, key)
 
     def new_schema(self):
         with self.rt.transaction() as state:

@@ -333,7 +333,7 @@ def review_prepare(state, project, worktree, files, previous=None, depends=(), o
     """One final-revision verification boundary, shared by full and delta reviews."""
     from runtime import revision, digest
     require(revision(worktree)["clean"], "commit preparation/corrections before review verification")
-    Runtime(state).check_review_budget(previous, worktree)
+    Runtime(state).check_review_budget(previous, worktree, remove_inputs)
     if inputs_file:
         from review_inputs import validate
         managed = validate(state, worktree, inputs_file, live=True)

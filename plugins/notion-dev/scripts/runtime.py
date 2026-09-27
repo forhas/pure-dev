@@ -846,6 +846,8 @@ class Runtime:
                 "review workers require a worktree revision")
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
+            require(role != "completeness" or state["schema"] < 5 or state.get("review_inputs"),
+                    "schema 5 completeness requires bound typed review inputs; use workflow review-inputs/review-prepare")
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
             require(not state.get("completed"), "resume explicitly before dispatching in a completed invocation")
             if role == "completeness":
@@ -878,6 +880,9 @@ class Runtime:
             # not leave half a packet on disk under an unregistered worker directory.
             baseline = self.delta_baseline(state, previous, current) if previous else None
             grant = self.correction_grant(state, previous, current) if previous else None
+            if grant:
+                require(set(remove_inputs) == set(grant["binding"].get("removed_inputs", {})),
+                        "authorized correction inputs changed; request authorization for the new scope")
             if baseline and state["schema"] >= 3:
                 old_files = baseline["worker"]["files"]
                 require(set(remove_inputs) <= set(old_files), "cannot remove an unknown input")
@@ -895,7 +900,7 @@ class Runtime:
                             for name, source in manifest["files"].items()), "typed review source mismatch")
             if grant:
                 logs = {r["log"] for r in state.get("verifications", [])}
-                require(not remove_inputs and all(name in snapshots and snapshots[name]["sha256"] == value
+                require(all(name in snapshots and snapshots[name]["sha256"] == value
                         for name, value in grant["binding"]["inputs"].items() if name != "verification_receipts"
                         and not (baseline["worker"]["files"].get(name, {}).get("path") in logs
                                  and snapshots.get(name, {}).get("path") in logs)),
@@ -1146,7 +1151,7 @@ class Runtime:
             self.event(state, "worker_answer", worker=key, question=question, paused_seconds=duration)
             return pending
 
-    def check_review_budget(self, previous, worktree):
+    def check_review_budget(self, previous, worktree, remove_inputs=()):
         """Fail before expensive verification; prepare checks again under its own lock."""
         current = revision(worktree)
         with self.transaction() as state:
@@ -1155,38 +1160,54 @@ class Runtime:
                     "account for every finding before another review")
             reviews = [w for w in state["workers"].values() if w["role"] == "completeness"]
             if previous:
+                grant = self.correction_grant(state, previous, current)
                 require(sum(bool(w.get("previous")) for w in reviews) < 2
-                        or self.correction_grant(state, previous, current),
+                        or grant,
                         "delta attempt budget exhausted; finalize preserves it. Use result-view and budget-request")
+                if grant:
+                    require(set(remove_inputs) == set(grant["binding"].get("removed_inputs", {})),
+                            "authorized correction inputs changed; request authorization for the new scope")
             elif state["schema"] >= 3:
                 require(sum(not w.get("previous") for w in reviews) < 2,
                         "full completeness attempt budget exhausted; preserve unresolved work and escalate")
 
     @staticmethod
-    def budget_binding(state, previous, current):
+    def budget_binding(state, previous, current, remove_inputs=()):
         baseline = state["workers"][previous]
-        inputs = {n: digest(s["path"]) for n, s in baseline["files"].items()}
+        removed = set(remove_inputs)
+        require(removed <= set(baseline["files"]), "cannot remove an unknown input")
+        require(not removed & {"ticket", "inventory", "diff", "pr_body", "review_inputs", "verification_receipts"},
+                "cannot remove mandatory review inputs")
+        inputs = {n: digest(s["path"]) for n, s in baseline["files"].items() if n not in removed}
         managed = state.get("review_inputs")
         if managed:
             require(managed["revision"] == current and managed["session"] == state.get("host_session")
                     and digest(managed["path"]) == managed["sha256"], "prepare current review-inputs before requesting correction authority")
             manifest = read_json(managed["path"])
+            require(not removed & set(manifest["files"]), "cannot remove current managed review inputs")
             inputs.update({k: digest(v["path"]) for k, v in manifest["files"].items()})
             inputs["review_inputs"] = managed["sha256"]
-        return {"previous": previous, "revision": current, "requirements": state["requirements"],
+        binding = {"previous": previous, "revision": current, "requirements": state["requirements"],
                 "inputs": inputs,
                 "attempts": sum(bool(w.get("previous")) for w in state["workers"].values())}
+        # Bind the reviewed identity, not the obsolete live file (which may be gone).
+        # Omit the new field for empty removals so existing unspent approvals survive.
+        if removed:
+            binding["removed_inputs"] = {n: baseline["files"][n]["sha256"] for n in sorted(removed)}
+        return binding
 
     def correction_grant(self, state, previous, current):
         requests = state.get("review_allowances", [])
         for request in reversed(requests):
             if (request.get("authority") and not request.get("worker") and not request.get("superseded")
                     and request["session"] == state.get("host_session")
-                    and request["binding"] == self.budget_binding(state, previous, current)):
+                    and request["binding"]["previous"] == previous
+                    and request["binding"] == self.budget_binding(
+                        state, previous, current, request["binding"].get("removed_inputs", {}))):
                 return request
         return None
 
-    def budget_request(self, previous, worktree, reason, scope):
+    def budget_request(self, previous, worktree, reason, scope, remove_inputs=()):
         require(reason.strip() and scope.strip(), "reason and bounded correction scope required")
         current = revision(worktree)
         require(current["clean"], "commit all coupled corrections before requesting their review")
@@ -1203,7 +1224,7 @@ class Runtime:
             require(baseline["requirements"] == state["requirements"], "changed requirements require full review, not an extension")
             require(not any(not w["terminated"] and not w.get("accepted") for w in state["workers"].values()),
                     "account for outstanding workers before requesting allowance")
-            binding = self.budget_binding(state, previous, current)
+            binding = self.budget_binding(state, previous, current, remove_inputs)
             require(binding["attempts"] >= 2, "use remaining default delta allowance first")
             request = {"id": uuid.uuid4().hex, "session": state["host_session"], "binding": binding,
                        "reason": reason, "scope": scope, "count": 1, "kind": "delta", "requested": self.clock.stamp()}
@@ -1215,8 +1236,9 @@ class Runtime:
             state.setdefault("review_allowances", []).append(request)
             self.event(state, "review_allowance_requested", request=request["id"], previous=previous)
         return {"request": request["id"], "kind": "delta", "count": 1, "scope": scope, "reason": reason,
+                "removed_inputs": binding.get("removed_inputs", {}),
                 "head": current["head"], "approval_phrase": request["approval_phrase"],
-                "instruction": "Ask the user to send this exact phrase only if they authorize this scope. "
+                "instruction": "Show reason, scope, head and removed_inputs; ask the user to send this exact phrase only if they authorize this scope. "
                                "Then budget-extend captures that actual user message. No automatic approval or budget reset."}
 
     def budget_extend(self, request_id, transcript, session, message_id, worktree):
@@ -1229,7 +1251,8 @@ class Runtime:
             require(not request.get("superseded"), "allowance request superseded; use the current challenge")
             require(not request.get("authority") and not request.get("worker"), "allowance already authorized or spent")
             require(session == state.get("host_session") == request["session"], "approval belongs to a different owner")
-            require(request["binding"] == self.budget_binding(state, request["binding"]["previous"], current),
+            require(request["binding"] == self.budget_binding(state, request["binding"]["previous"], current,
+                    request["binding"].get("removed_inputs", {})),
                     "review scope/head/inputs/counts changed; request new authorization")
             request["authority"] = user_approval(transcript, session, message_id, request["approval_phrase"],
                                                  request["requested"]["wall"], self.clock.stamp()["wall"])
@@ -1907,6 +1930,8 @@ class Runtime:
             worker = self.worker(state, key)
             self.validate_packet(worker)
             reasons = self.readiness(state) + self.ticket_freshness(state, worker)
+            if state["schema"] >= 5 and "review_inputs" not in worker["files"]:
+                reasons.append("schema 5 review lacks typed inputs; prepare a current typed review without resetting its budget")
             if "review_inputs" in worker["files"]:
                 checked = state.get("review_input_check") or {}
                 age = self.clock.stamp()["wall"] - checked.get("wall", 0)
@@ -2391,6 +2416,7 @@ def main():
     p = commands.add_parser("budget-request")
     p.add_argument("--previous", required=True); p.add_argument("--worktree", required=True)
     p.add_argument("--reason", required=True); p.add_argument("--scope", required=True)
+    p.add_argument("--remove-input", action="append", default=[])
     p = commands.add_parser("budget-extend")
     p.add_argument("--request", required=True); p.add_argument("--worktree", required=True)
     p.add_argument("--transcript", required=True); p.add_argument("--session", required=True)
@@ -2444,7 +2470,7 @@ def main():
     elif name == "refresh-ticket": result = runtime.refresh_ticket(args.worker, args.response, args.request, args.call_id)
     elif name == "ready": result = runtime.ready()
     elif name == "correction-needed": result = runtime.correction_needed(args.worktree, args.reason)
-    elif name == "budget-request": result = runtime.budget_request(args.previous, args.worktree, args.reason, args.scope)
+    elif name == "budget-request": result = runtime.budget_request(args.previous, args.worktree, args.reason, args.scope, args.remove_input)
     elif name == "budget-extend": result = runtime.budget_extend(args.request, args.transcript, args.session, args.message_id, args.worktree)
     elif name == "prepare":
         files = {}
