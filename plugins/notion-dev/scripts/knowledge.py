@@ -1334,7 +1334,7 @@ def retrieval_plan(state, purpose="lifecycle"):
     keys = [c["key"] for c in result["children"]]
     if len(keys) != len(set(keys)):
         raise ValueError("duplicate child keys")
-    for field in ("candidate_order", "stopped_keys", "unavailable_keys"):
+    for field in ("candidate_order", "stopped_keys", "unavailable_keys", "thread_blocked"):
         value = state.get(field, [])
         if not isinstance(value, list) or not all(isinstance(k, str) and KEY_RE.fullmatch(k) for k in value):
             raise ValueError(field + " must be a list of ticket keys")

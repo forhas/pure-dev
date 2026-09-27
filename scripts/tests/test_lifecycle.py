@@ -70,7 +70,8 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result['state']['epic']['status_class'], 'open')
 
     def test_malformed_optional_key_lists_are_malformed_state(self):
-        for field, value in (('candidate_order', None), ('stopped_keys', [['TEST-1']]), ('unavailable_keys', 'TEST-1')):
+        for field, value in (('candidate_order', None), ('stopped_keys', [['TEST-1']]), ('unavailable_keys', 'TEST-1'),
+                             ('thread_blocked', [['TEST-1']])):
             state = self.state(); state[field] = value
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
                 knowledge.retrieval_plan(state, 'select')
