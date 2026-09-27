@@ -166,6 +166,13 @@ class LifecycleTests(unittest.TestCase):
             paths.append(self.inputs(observed, {'spec': capture['snapshot']})['inputs'])
         self.assertEqual(paths[0], paths[1])
 
+    def test_schema_five_review_without_typed_inputs_is_refused_before_verification(self):
+        self.project()
+        with patch.object(workflow, 'verify_config', side_effect=AssertionError('verified untyped review')):
+            with self.assertRaisesRegex(ValueError, 'typed --inputs'):
+                workflow.review_prepare(self.state, self.repo, self.repo, {'ticket': self.source})
+        self.assertEqual(runtime.read_json(self.state)['workers'], {})
+
     def test_review_dispatch_uses_typed_files_and_cannot_downgrade(self):
         observed = self.project(); inputs = self.inputs(observed)
         with patch.object(review_inputs, 'github', return_value=observed):

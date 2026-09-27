@@ -347,7 +347,10 @@ def review_prepare(state, project, worktree, files, previous=None, depends=(), o
             require(old_sources <= set(managed) | set(remove_inputs), "refresh or explicitly remove previous typed sources; never inherit stale source captures")
         files = {**files, **managed}
     else:
-        require(not read_json(state).get("review_inputs"), "bound review inputs require --inputs; do not fall back to stale files")
+        identity = read_json(state)
+        require(not identity.get("review_inputs"), "bound review inputs require --inputs; do not fall back to stale files")
+        # Caller-supplied diff/PR files skip the merge gate's live-PR freshness check.
+        require(identity["schema"] < 5, "schema 5 reviews require typed --inputs from review-inputs")
     verified = verify_config(state, project, worktree, depends, outputs)
     if not verified["passed"]: return verified
     keys = [r["verification"] for r in verified["receipts"]]
