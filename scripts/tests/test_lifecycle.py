@@ -355,6 +355,24 @@ class LifecycleTests(unittest.TestCase):
         changed = runtime.Runtime.budget_binding(runtime.read_json(self.state), key, runtime.revision(self.repo))
         self.assertNotEqual(changed, after)
 
+    def test_typed_pr_body_only_delta_includes_changed_claims_and_retains_evidence(self):
+        observed = self.project(); inputs = self.inputs(observed)
+        prepared = self.rt.prepare('completeness', review_inputs.validate(self.state, self.repo, inputs['inputs']), self.repo)
+        key = prepared['worker']
+        self.rt.attach(key, 'body-review'); self.rt.publish(key, self.result()); self.rt.consume(key)
+        self.rt.accept(key); self.resolve(key)
+        inputs = self.inputs({**observed, 'body': 'Corrected independently checkable claim'})
+        delta = self.rt.prepare('completeness', review_inputs.validate(self.state, self.repo, inputs['inputs']),
+                                self.repo, previous=key)
+        index = runtime.read_json(runtime.read_json(delta['packet'])['delta']['path'])
+        changes = runtime.read_json(runtime.Runtime.ref_path(index, index['inputs']))['changes']
+        self.assertEqual({c['name'] for c in changes}, {'pr_body', 'review_inputs'})
+        body = next(c for c in changes if c['name'] == 'pr_body')
+        self.assertIn('Current reviewed facts', body['diff'])
+        self.assertIn('Corrected independently checkable claim', body['diff'])
+        self.assertEqual(index['evidence']['reuse_applicable'], len(self.inventory['items']))
+        self.assertEqual(Path(runtime.Runtime.ref_path(index, index['patch'])).stat().st_size, 0)
+
     def test_foreign_session_cannot_reuse_typed_inputs(self):
         inputs = self.inputs()
         with self.rt.transaction() as state: state['host_session'] = 'new-owner'
