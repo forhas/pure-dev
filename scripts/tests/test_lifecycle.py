@@ -69,6 +69,18 @@ class RetrievalTests(unittest.TestCase):
         self.assertIsNone(result['candidate'])
         self.assertEqual(result['state']['epic']['status_class'], 'open')
 
+    def test_progressive_next_exits_two_on_duplicate_children(self):
+        state = self.state(); state['children'].append(dict(state['children'][0]))
+        import tempfile
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup); root = Path(temp.name)
+        path = root / 'dup state.json'; path.write_text(json.dumps(state), encoding='utf-8')
+        brief = root / 'brief.md'; brief.write_text('# brief\n', encoding='utf-8')
+        proc = subprocess.run([sys.executable, str(ROOT / 'plugins/notion-dev/scripts/knowledge.py'), 'next',
+                               '--brief', str(brief), '--state', str(path), '--progressive'],
+                              capture_output=True, encoding='utf-8')
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertEqual(proc.stdout, '')
+
     def test_cli_and_unknown_as_ready_mutation(self):
         original = knowledge.retrieval_plan
         def broken(*args, **kwargs):

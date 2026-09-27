@@ -1526,7 +1526,10 @@ def cmd_next(a):
     except (OSError, ValueError) as e:
         die("next: cannot read state: %s" % e)
     _validate_state(state)
-    if getattr(a, "progressive", False): state = retrieval_plan(state)["state"]
+    if getattr(a, "progressive", False):
+        # Exit 1 means "write stdout over the brief"; malformed state must exit 2.
+        try: state = retrieval_plan(state)["state"]
+        except ValueError as e: die("next: malformed state: %s" % e)
     today = a.today or datetime.date.today().isoformat()
     reason_word, reason_key = (a.reason + [None])[:2] if a.reason else (None, None)
     if reason_word not in (None, "start", "stop", "create", "resolve", "new-info"):
