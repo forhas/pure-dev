@@ -69,6 +69,12 @@ class RetrievalTests(unittest.TestCase):
         self.assertIsNone(result['candidate'])
         self.assertEqual(result['state']['epic']['status_class'], 'open')
 
+    def test_malformed_optional_key_lists_are_malformed_state(self):
+        for field, value in (('candidate_order', None), ('stopped_keys', [['TEST-1']]), ('unavailable_keys', 'TEST-1')):
+            state = self.state(); state[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                knowledge.retrieval_plan(state, 'select')
+
     def test_progressive_next_exits_two_on_duplicate_children(self):
         state = self.state(); state['children'].append(dict(state['children'][0]))
         import tempfile
