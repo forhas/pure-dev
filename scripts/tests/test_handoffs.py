@@ -32,6 +32,9 @@ class HandoffTests(unittest.TestCase):
             self.code.write_text("original corrected\n", encoding="utf-8")
             self.run_git("add", "code.txt"); self.run_git("commit", "-qm", "fix")
         if inputs:
+            if runtime.read_json(self.state)['schema'] >= 5:
+                from test_boundaries import typed_fixture
+                inputs = typed_fixture(self, inputs)
             prepared = self.rt.prepare("completeness", inputs, self.repo)
             key = prepared["worker"]
             self.rt.attach(key, "agent-" + key)

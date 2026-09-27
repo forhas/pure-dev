@@ -198,7 +198,7 @@ class ReviewRepairTests(unittest.TestCase):
         key = self.exhausted(); request = self.rt.budget_request(key, self.repo, "reason", "scope")
         path = self.approval(request)
         self.code.write_text("changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(runtime.Invalid, "changed"):
+        with self.assertRaisesRegex(runtime.Invalid, "current review-inputs"):
             self.rt.budget_extend(request["request"], path, "fixture-session", "human-approval", self.repo)
         self.code.write_text("original\n", encoding="utf-8")
         self.rt.budget_extend(request["request"], path, "fixture-session", "human-approval", self.repo)
@@ -217,7 +217,7 @@ class ReviewRepairTests(unittest.TestCase):
         key = self.exhausted(); request = self.rt.budget_request(key, self.repo, "reason", "scope")
         self.rt.budget_extend(request["request"], self.approval(request), "fixture-session", "human-approval", self.repo)
         replacement = self.root / "different.md"; replacement.write_text("different source", encoding="utf-8")
-        with self.assertRaisesRegex(runtime.Invalid, "inputs changed"):
+        with self.assertRaisesRegex(runtime.Invalid, "typed review source mismatch"):
             self.rt.prepare("completeness", {"ticket": replacement}, self.repo, previous=key)
         # The original second full allowance can be used, but the grant adds no third.
         extra = self.reviewed(); self.resolve(extra)
@@ -277,9 +277,12 @@ class ReviewRepairTests(unittest.TestCase):
     def test_regressions_kill_guard_mutations_without_touching_tracked_files(self):
         ledger = runtime.finding_ledger
         binding = runtime.Runtime.budget_binding
-        def forget_revision(*args):
-            result = binding(*args); result.pop("revision")
-            return result
+        frozen = []
+        def forget_scope_changes(*args):
+            # Revision now also appears in the typed manifest hash. Mutate the
+            # actual invariant (recompute the scope), not just one redundant field.
+            if not frozen: frozen.append(binding(*args))
+            return copy.deepcopy(frozen[0])
         cases = [
             ("test_hidden_third_finding_cannot_be_lost_in_clipped_summary", runtime, "findings_accounted", lambda w: True),
             ("test_hidden_third_finding_cannot_be_lost_in_clipped_summary", runtime, "finding_ledger", lambda r: ledger(r)[:2]),
@@ -287,7 +290,7 @@ class ReviewRepairTests(unittest.TestCase):
             ("test_mandatory_unknown_and_unverified_cannot_be_disposed_away", runtime, "validate_findings", lambda r: None),
             ("test_approval_rejects_agent_tool_meta_foreign_stale_and_wrong_phrase", host_capture, "user_approval", lambda *a: {"invented": True}),
             ("test_exhausted_preparation_does_not_rerun_validation", workflow.Runtime, "check_review_budget", lambda *a: None),
-            ("test_extension_is_bound_to_revision_and_owner", runtime.Runtime, "budget_binding", staticmethod(forget_revision)),
+            ("test_extension_is_bound_to_revision_and_owner", runtime.Runtime, "budget_binding", staticmethod(forget_scope_changes)),
             ("test_exhausted_budget_requires_real_user_and_grants_only_one_delta", runtime.Runtime, "correction_grant", lambda *a: None),
         ]
         for name, owner, attribute, replacement in cases:

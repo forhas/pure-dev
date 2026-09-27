@@ -2,10 +2,21 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.41.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.42.1). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Review boundary repairs (0.42.1)
+
+- Schema-5 completeness requires typed inputs at raw runtime dispatch and at merge, not
+  only in the workflow wrapper. Older untyped schema-5 reviews need a current typed review;
+  existing history and budgets are retained. Schema-1–4 compatibility is unchanged.
+- Correction approval can explicitly name obsolete inputs with `budget-request --remove-input`.
+  Dispatch must remove exactly that approved set; prior snapshots remain available for review.
+  Mandatory inputs and sources still in the current typed manifest cannot be removed.
+
+These are correctness repairs, not measured token or runtime savings.
 
 ## Scoped lifecycle and current review evidence (0.42.0)
 

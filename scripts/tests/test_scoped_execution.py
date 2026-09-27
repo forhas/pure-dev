@@ -75,16 +75,16 @@ class ScopedExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(runtime.Invalid, 'artifact changed'): self.rt.result_view(key)
         self.assertEqual(runtime.read_json(self.state)['workers'][key]['result']['requirements'], self.result()['requirements'])
 
-    def test_pr_only_delta_supplies_exact_hunks_and_preserves_all_reuse_candidates(self):
+    def test_claim_only_delta_supplies_exact_hunks_and_preserves_all_reuse_candidates(self):
         self.new_schema()
         body = self.root / 'pr body café.md'; body.write_text('Four cases.\nOld test count.\n', encoding='utf-8')
-        baseline = self.reviewed(inputs={'ticket': self.source, 'pr_body': body}); self.resolve(baseline)
+        baseline = self.reviewed(inputs={'ticket': self.source, 'claim_text': body}); self.resolve(baseline)
         body.write_text('Four cases.\nCurrent verification receipt.\n', encoding='utf-8')
-        prepared = self.rt.prepare('completeness', {'pr_body': body}, self.repo, previous=baseline)
+        prepared = self.rt.prepare('completeness', {'claim_text': body}, self.repo, previous=baseline)
         packet = runtime.read_json(prepared['packet']); index = runtime.read_json(packet['delta']['path'])
         inputs = runtime.read_json(runtime.Runtime.ref_path(index, index['inputs']))
         self.assertEqual(len(inputs['changes']), 1)
-        self.assertEqual(inputs['changes'][0]['name'], 'pr_body')
+        self.assertEqual(inputs['changes'][0]['name'], 'claim_text')
         self.assertIn('-Old test count.', inputs['changes'][0]['diff'])
         self.assertIn('+Current verification receipt.', inputs['changes'][0]['diff'])
         self.assertEqual(index['evidence']['reuse_applicable'], len(self.inventory['items']))
@@ -109,9 +109,9 @@ class ScopedExecutionTests(unittest.TestCase):
     def test_input_diff_keeps_records_distinct_without_trailing_newline(self):
         self.new_schema()
         body = self.root / 'body.md'; body.write_text('old', encoding='utf-8')
-        key = self.reviewed(inputs={'ticket': self.source, 'pr_body': body}); self.resolve(key)
+        key = self.reviewed(inputs={'ticket': self.source, 'claim_text': body}); self.resolve(key)
         body.write_text('new', encoding='utf-8')
-        prepared = self.rt.prepare('completeness', {'pr_body': body}, self.repo, previous=key)
+        prepared = self.rt.prepare('completeness', {'claim_text': body}, self.repo, previous=key)
         index = runtime.read_json(runtime.read_json(prepared['packet'])['delta']['path'])
         diff = runtime.read_json(runtime.Runtime.ref_path(index, index['inputs']))['changes'][0]['diff']
         self.assertIn('\n-old\n\\ No newline at end of file\n+new\n', diff)
