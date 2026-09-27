@@ -232,6 +232,7 @@ class LifecycleTests(unittest.TestCase):
                            ('references/boundaries.md', 'review-inputs --state'),
                            ('skills/epic-doc/references/refresh.md', '--purpose lifecycle'),
                            ('skills/epic-doc/references/schedule.md', '--purpose select'),
+                           ('skills/epic-doc/references/bootstrap.md', 'lifecycle retrieval planner'),
                            ('skills/epic-update/SKILL.md', 'references/approved-followup.md')]:
             source = (plugin / name).read_text(encoding='utf-8')
             self.assertIn(text, source)
