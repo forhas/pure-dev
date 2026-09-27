@@ -1,8 +1,10 @@
 # Approved follow-up creation, without another interview
 
 Only for a lean run with a complete accepted independent finding AND an authorized `file`
-decision. Missing history/answers, legacy FAILED packets, or uncertain filing outcomes use
-`with-followups.md` instead. A model-written `decision: file` field does not itself grant authority.
+decision. Missing history/answers or legacy FAILED packets use `with-followups.md` instead.
+An uncertain outcome with a retained approved JSON packet stays on THIS path and reconciles its
+existing child journal. Never map it to a legacy Markdown packet name or a new operation identity.
+A model-written `decision: file` field does not itself grant authority.
 Keep the existing parent lock and record journal; no nested agent, new scheduler or lock.
 Use configured `knowledge.python` for `python3` below.
 
@@ -11,6 +13,10 @@ Use configured `knowledge.python` for `python3` below.
    of the original raw finding text>`. Derive the title once, persist both before any write.
    Read live epic children; fetch only title-matching candidates and confirm the exact marker
    in their Context. A title alone is not a match. A confirmed match is ALREADY-FILED, not a create.
+   On recovery inspect the original journal first. Confirmed children are skipped; attempted/
+   unknown children reconcile their frozen payload and exact provenance against live effects.
+   Finding an existing page must reconcile the original operation, not create a second write
+   identity. Retry only after proving no effect and recording failure through the existing protocol.
 2. Save a JSON packet outside git under the runtime, keyed by the finding identity:
    `title`, `goal`, `scope`, `evidence`, `provenance`, `source` (source ticket/PR references),
    `decision: "file"`, nonempty `requirements` and `acceptance` arrays, and explicit arrays
