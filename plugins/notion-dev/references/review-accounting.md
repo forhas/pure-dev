@@ -4,6 +4,12 @@ Use configured `knowledge.python` for the `python3` examples. Both Windows Git B
 use the same commands. These rules apply to internal completeness/correction review; they do
 not replace external review, requirement coverage, source freshness, validation or CI gates.
 
+Prepare current `workflow.py review-inputs` before requesting a correction allowance. A changed
+head, source or PR body needs a new bound challenge, not a prompt telling the reviewer to ignore
+old files. An authorized but unspent challenge can be superseded for a new session/scope; the
+old approval remains audit history and cannot dispatch. Once a worker spends the one correction
+allowance, no renewal is possible. Fresh conversations preserve the invocation and default caps.
+
 ## Consume once, judge all actions
 
 1. `runtime.py --state "$RUNTIME_STATE" consume --worker <id> --summary` returns the immutable

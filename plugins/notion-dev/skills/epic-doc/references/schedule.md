@@ -16,6 +16,16 @@ fetch every sibling: validate the candidate below. Disk bootstrap is the existin
 
 Return these references/fields to next-task; schedule does not select or fetch a candidate.
 The caller owns the following selection checks, once: resume an owned unresolved worktree first.
+For new selection run `knowledge.py retrieval-plan --purpose select --state <live-state.json>`
+(configured `knowledge.python`). Supply the brief's ordered keys as `candidate_order`, stop keys
+as `stopped_keys`, threads as `thread_blocked`, and a unique fresh-read `boundary`. Fetch only the
+returned `fetch` entries, annotate the checked candidate's `checked_boundary` and explicit
+`dependencies_known: true`, and repeat the planner until candidate or blocked. External status
+reads populate `external_statuses`; failed reads remain unknown and enter `unavailable_keys`
+for this boundary so the planner cannot request them indefinitely. If no candidate remains,
+report blocked with those failures, not epic complete. A changed content revision
+invalidates dependency content. Never reuse a boundary/status list after a write. The helper
+does not claim tickets: full requirements and live ownership remain mandatory below.
 Otherwise visit NEXT in order, then remaining live
 children in configured phase/step/numeric order. Candidates must be live unresolved children,
 not claimed elsewhere, not held by BLOCKED or an Open thread. Fetch the full candidate ticket

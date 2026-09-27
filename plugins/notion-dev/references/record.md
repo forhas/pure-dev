@@ -2,6 +2,10 @@
 
 Ticket and finalize execute this routine inline, once per merged ticket, using the existing
 runtime journal. No generic record agent, new investigation, or duplicated finalize path.
+For a recording-only fresh conversation begin with `workflow.py resume-view --state <state>`;
+adopt ownership through finalize, confirm MERGED, then consume record-next. Do not import the
+implementation conversation or reset the journal. Keep canonical technical facts by reference.
+Execute epic brief refresh inline with the lifecycle planner, not a delegated dependency scan.
 `python3` denotes configured `knowledge.python`, on Windows Git Bash and Ubuntu/WSL2.
 
 ## 1. Establish facts and authority before writes
@@ -192,6 +196,9 @@ with the corrected code/docs/PR claims; do not invent new rationale during recor
    approved FILING_DECISIONS, REPO_ROOT and LOCK_HELD. With no FILED items, take its short
    resolution-only path; do not load follow-up interview/creation instructions. Capture
    EPIC_REPORT and actual created ticket URLs. Missing epic is an explicit no-op.
+   Complete approved findings use its `approved-followup.md` builder path, not the general
+   create-task command or another interview. Preserve dedup, exact provenance, journaling and
+   readback. Unknown answers or historical failures use the existing recovery path.
 4. **cleanup:** first confirm MERGED and check the exact owned worktree/branch. Preserve a
    surviving PLAN/context artifact outside it. Do not force-remove dirty work or another
    session's checkout. Remove the owned clean worktree, then the merged local ticket branch;

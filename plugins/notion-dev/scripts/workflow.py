@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small local workflow operations. No Notion/GitHub calls, credentials or merge authority.
+"""Small workflow operations. No provider writes, credentials or merge authority.
 
 Run with knowledge.python. Provider writes remain with the host's authorized tools.
 """
@@ -293,11 +293,64 @@ def verify_config(state, project, worktree, depends=(), outputs=()):
     return {"passed": True, "receipts": receipts}
 
 
-def review_prepare(state, project, worktree, files, previous=None, depends=(), outputs=(), remove_inputs=()):
+def resume_view(state, worktree=None):
+    """Read-only handoff: references and unresolved state, not another conversation.
+
+    No ownership, authority, budget or journal mutation. The runtime remains the
+    canonical archive; this view must be regenerated after adopting its ownership.
+    """
+    from runtime import digest, revision, findings_accounted
+    identity = read_json(state)
+    workers = list(identity["workers"].values())
+    reviews = [w for w in workers if w["role"] == "completeness"]
+    latest = next((w for w in reversed(reviews) if not w["terminated"]), None)
+    inventory = identity.get("requirements") or {}
+    source = identity.get("ticket_source") or {}
+    directory = Path(state).resolve().parent
+    return {"runtime": str(Path(state).resolve()), "runtime_sha256": digest(state),
+            "run": identity["run"], "ticket": identity["ticket"], "schema": identity["schema"],
+            "stage": identity.get("stage"), "completed": identity.get("completed", False),
+            "revision": revision(worktree) if worktree else None,
+            "requirements": {"count": len(inventory.get("items", [])), "source": inventory.get("source"),
+                             "provider_response": source.get("response"),
+                             "source_sha256": inventory.get("source_sha256"),
+                             "instruction": "Read the full current ticket and inventory before review/implementation; never infer AC from this index."},
+            "context": str(directory / "context.md") if (directory / "context.md").exists() else None,
+            "review": ({"worker": latest["id"], "accepted": bool(latest.get("accepted")),
+                        "findings_accounted": findings_accounted(latest), "packet": latest["packet"],
+                        "revision": latest["revision"], "instruction": "Use result-view and its complete pages for unresolved findings; preserve dispositions."} if latest else None),
+            "attempts": {"full": sum(not w.get("previous") for w in reviews),
+                         "delta": sum(bool(w.get("previous")) for w in reviews),
+                         "authorized_corrections": sum(bool(r.get("authority")) for r in identity.get("review_allowances", []))},
+            "outstanding_workers": [w["id"] for w in workers if not w["terminated"] and not w.get("accepted")],
+            "record_plan": str(directory / "record/plan.json") if (directory / "record/plan.json").exists() else None,
+            "record_outcomes": {v["operation"]: v["outcome"] for v in identity.get("record_journal", [])},
+            "approval_transfer": False,
+            "instruction": "Reuse this invocation, not its conversation. Resolve workers/ownership, then use claim --resume or resume-pr. Re-capture current source under the new host session. Do not copy approval phrases or reset budgets. After verified merge use record-next, not a new review."}
+
+
+def review_prepare(state, project, worktree, files, previous=None, depends=(), outputs=(), remove_inputs=(), inputs_file=None):
     """One final-revision verification boundary, shared by full and delta reviews."""
     from runtime import revision, digest
     require(revision(worktree)["clean"], "commit preparation/corrections before review verification")
     Runtime(state).check_review_budget(previous, worktree)
+    if inputs_file:
+        from review_inputs import validate
+        managed = validate(state, worktree, inputs_file, live=True)
+        require(not set(files) & set(managed) and not set(remove_inputs) & set(managed), "cannot override managed review inputs")
+        require("spec" not in files, "spec requires a typed captured --source, not --file")
+        if previous:
+            prior = read_json(state)["workers"][previous]["files"]
+            old_sources = {"spec"} & set(prior)
+            if "review_inputs" in prior:
+                old_sources.update(read_json(prior["review_inputs"]["path"])["sources"])
+            require(old_sources <= set(managed) | set(remove_inputs), "refresh or explicitly remove previous typed sources; never inherit stale source captures")
+        files = {**files, **managed}
+    else:
+        identity = read_json(state)
+        require(not identity.get("review_inputs"), "bound review inputs require --inputs; do not fall back to stale files")
+        # Caller-supplied diff/PR files skip the merge gate's live-PR freshness check.
+        require(identity["schema"] < 5, "schema 5 reviews require typed --inputs from review-inputs")
     verified = verify_config(state, project, worktree, depends, outputs)
     if not verified["passed"]: return verified
     keys = [r["verification"] for r in verified["receipts"]]
@@ -953,7 +1006,13 @@ def main():
     p.add_argument("--worktree", required=True); p.add_argument("--previous")
     p.add_argument("--file", action="append", default=[]); p.add_argument("--depends", action="append", default=[])
     p.add_argument("--output", action="append", default=[])
+    p.add_argument("--inputs", help="workflow review-inputs manifest")
+    p = commands.add_parser("resume-view"); p.add_argument("--state", required=True); p.add_argument("--worktree")
+    p = commands.add_parser("review-inputs"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True)
+    p.add_argument("--pr", required=True); p.add_argument("--source", action="append", default=[])
+    p = commands.add_parser("review-check"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True); p.add_argument("--worker", required=True)
     p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True)
+    p = commands.add_parser("followup-body"); p.add_argument("--packet", required=True)
     p = commands.add_parser("record-capture"); p.add_argument("--state", required=True); p.add_argument("--page", required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
@@ -991,14 +1050,29 @@ def main():
     elif args.command == "claim": result = claim(args.project, args.preflight, args.ticket, args.title, args.state, args.resume)
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends, args.output)
+    elif args.command == "resume-view": result = resume_view(args.state, args.worktree)
+    elif args.command == "review-inputs":
+        from review_inputs import prepare
+        sources = {}
+        for entry in args.source:
+            name, sep, path = entry.partition("=")
+            require(sep and name and path and name not in sources, "--source requires unique name=capture-path")
+            sources[name] = path
+        result = prepare(args.state, args.worktree, args.pr, sources)
+    elif args.command == "review-check":
+        from review_inputs import check
+        result = check(args.state, args.worktree, args.worker)
     elif args.command == "review-prepare":
         files = {}
         for item in args.file:
             key, sep, path = item.partition("=")
             require(sep and key and path and key not in files, "--file requires unique name=path")
             files[key] = path
-        result = review_prepare(args.state, args.project, args.worktree, files, args.previous, args.depends, args.output, args.remove_input)
+        result = review_prepare(args.state, args.project, args.worktree, files, args.previous, args.depends, args.output, args.remove_input, args.inputs)
     elif args.command == "pr-body": result = render_pr_body(args.facts, args.output)
+    elif args.command == "followup-body":
+        from recording import followup_body
+        result = followup_body(json_input(args.packet))
     elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
     elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
     elif args.command == "record-page": result = record_page(args.state, args.snapshot, args.heading)

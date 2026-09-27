@@ -26,6 +26,7 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
    Reuse the refreshed brief; do not copy the whole bundle through the parent repeatedly.
    A failed provider read is not an empty epic.
 3. Resume an unresolved child with an owned resumable worktree before selecting new work.
+   Use schedule's `knowledge.py retrieval-plan` loop; do not start a sibling-body gatherer.
    Never take over another live run. Otherwise walk NEXT in order: require an exact live-child
    key, unresolved status, no BLOCKED entry, and resolved dependencies from the candidate's
    full `## Blocked by` section. Use configured status mappings.

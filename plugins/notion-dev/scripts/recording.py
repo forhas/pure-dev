@@ -4,6 +4,7 @@ The adapter still establishes live scope/schema/authority. Exact old_str edits l
 the provider reject changed anchors; this is not a transactional page revision API.
 """
 import re
+import math
 
 from host_capture import page_response
 from runtime import notion_source, require
@@ -26,13 +27,42 @@ def page_data(response):
     return {"page": identity, "url": response["url"], "properties": props, "content": body}
 
 
+def measured_fact(value):
+    """Compute reported arithmetic; do not infer causality or population validity."""
+    require(isinstance(value, dict) and value.get("kind") in {"ratio", "comparison"}, "unknown measured fact")
+    for key in ("unit", "population", "source"):
+        require(isinstance(value.get(key), str) and value[key].strip(), "measurement needs " + key)
+    def number(v):
+        require(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v), "finite measurement required")
+        return v
+    if value["kind"] == "ratio":
+        n, d = number(value.get("numerator")), number(value.get("denominator"))
+        require(0 <= n <= d and d > 0, "invalid count/denominator")
+        text = "%s/%s %s (%.2f%%)" % (n, d, value["unit"], 100 * n / d)
+    else:
+        before, after = value.get("baseline"), value.get("observed")
+        require(isinstance(before, dict) and before and isinstance(after, dict) and set(before) == set(after), "comparison columns must match")
+        for key in before: number(before[key]); number(after[key])
+        require(isinstance(value.get("nonincrease", False), bool), "nonincrease must be boolean")
+        require(not value.get("nonincrease") or all(after[k] <= before[k] for k in before), "nonincrease contradicted by measured column")
+        text = "; ".join("%s: %s → %s %s" % (k, before[k], after[k], value["unit"]) for k in sorted(before))
+    return text + ". Population/window: " + value["population"] + ". Source: " + value["source"] + ". No causal or significance inference."
+
+
 def pr_body(facts):
     """Stable implementation facts only; review status is a separate runtime view."""
     fields = ("requirement", "behavior", "validation", "risks", "mandatory")
     require(isinstance(facts, dict) and set(facts) == set(fields),
             "PR facts require requirement/behavior/validation/risks/mandatory; no review-history field")
     require(isinstance(facts["requirement"], str) and facts["requirement"].strip(), "requirement must be nonempty")
+    facts = dict(facts)
     for name in fields[1:]:
+        if isinstance(facts[name], dict):
+            require(all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", k) for k in facts[name]), "facts require stable semantic keys")
+            values = [measured_fact(v) if isinstance(v, dict) else v for v in facts[name].values()]
+            require(all(isinstance(v, str) and v.strip() for v in values), "named facts must be nonempty")
+            require(len(set(v.strip() for v in values)) == len(values), "duplicate named fact; replace the original key")
+            facts[name] = values
         require(isinstance(facts[name], list) and all(isinstance(v, str) and v.strip() for v in facts[name]),
                 name + " must be an explicit list of facts; preserve required wording")
     require(facts["behavior"] and facts["validation"], "behavior and actual validation evidence required")
@@ -40,6 +70,29 @@ def pr_body(facts):
     for name, title in (("behavior", "Behavior"), ("validation", "Validation"), ("risks", "Known risks"), ("mandatory", "Required disclosures")):
         if facts[name]: parts.append("## " + title + "\n\n" + "\n\n".join(facts[name]))
     return "\n\n".join(parts) + "\n"
+
+
+def followup_body(packet):
+    """Render already-approved requirements; missing answers require clarification.
+
+    This builder does not prove approval, dedup, project schema or provider effects.
+    The existing epic adapter/journal owns those boundaries.
+    """
+    require(isinstance(packet, dict), "follow-up packet must be an object")
+    for name in ("title", "goal", "scope", "evidence", "provenance", "source"):
+        require(isinstance(packet.get(name), str) and packet[name].strip(), "follow-up missing " + name)
+    require(packet.get("decision") == "file", "only approved filed findings use the builder")
+    for name in ("requirements", "acceptance", "edge_cases", "dependencies", "open_questions"):
+        require(isinstance(packet.get(name), list) and all(isinstance(v, str) and v.strip() for v in packet[name]), "follow-up missing explicit " + name)
+    require(packet["requirements"] and packet["acceptance"] and not packet["open_questions"], "clarify incomplete follow-up; do not invent acceptance or answers")
+    body = "## Requirements\n\n" + packet["goal"] + "\n\nScope: " + packet["scope"] + "\n\n"
+    body += "\n".join("- " + v for v in packet["requirements"])
+    body += "\n\n## Acceptance Criteria\n\n" + "\n".join("- [ ] " + v for v in packet["acceptance"])
+    body += "\n\n## Context\n\n" + packet["evidence"] + "\n\n" + packet["provenance"]
+    for name, heading in (("edge_cases", "Edge cases"), ("dependencies", "Blocked by")):
+        body += "\n\n## " + heading + "\n\n" + ("\n".join("- " + v for v in packet[name]) or "None (explicit in accepted finding).")
+    body += "\n\n## Open Questions\n\nNone.\n\n## Source\n\n" + packet["source"] + "\n"
+    return {"title": packet["title"], "body": body, "provenance": packet["provenance"]}
 
 
 def section_edits(body, sections):

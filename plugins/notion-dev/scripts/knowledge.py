@@ -1298,6 +1298,7 @@ def _validate_state(state):
             assert isinstance(c["id"], int) and isinstance(c["title"], str)
             assert c["status_class"] in STATUS_CLASSES
             assert isinstance(c.get("blocked_by", []), list)
+            assert all(isinstance(k, str) and KEY_RE.fullmatch(k) for k in c.get("blocked_by", []))
             assert isinstance(c.get("dependencies_known", True), bool)
             for p in ("phase", "step"):
                 assert c.get(p) is None or isinstance(c[p], int)
@@ -1317,6 +1318,67 @@ def _validate_state(state):
         die("next: malformed state JSON — expected {epic:{key,status_class}, "
             "children:[{key,id:int,title,status_class,blocked_by:[],phase:int|null,step:int|null}], "
             "thread_blocked:[], stop?:{key,phase,cause,worktree}}")
+
+
+def retrieval_plan(state, purpose="lifecycle"):
+    """Plan reads, never perform them. A fresh status boundary is caller-owned.
+
+    Dependency content is reusable only at this boundary or against an equal
+    trustworthy provider revision. Status/ownership always comes from live children.
+    Lifecycle writes do not need sibling bodies at all.
+    """
+    _validate_state(state)
+    if purpose not in {"lifecycle", "select"}:
+        raise ValueError("purpose must be lifecycle or select")
+    result = json.loads(json.dumps(state))
+    keys = [c["key"] for c in result["children"]]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate child keys")
+    for field in ("candidate_order", "stopped_keys", "unavailable_keys", "thread_blocked"):
+        value = state.get(field, [])
+        if not isinstance(value, list) or not all(isinstance(k, str) and KEY_RE.fullmatch(k) for k in value):
+            raise ValueError(field + " must be a list of ticket keys")
+    for child in result["children"]:
+        revision = child.get("content_revision")
+        known = child.get("dependencies_known") is True and (
+            (bool(result.get("boundary")) and child.get("checked_boundary") == result["boundary"]) or
+            (bool(revision) and revision == child.get("dependency_revision")))
+        child["dependencies_known"] = bool(known)
+        if not known: child["blocked_by"] = []
+    response = {"state": result, "fetch": [], "candidate": None,
+                "claim_requires_live_check": True}
+    if purpose == "lifecycle" or state["epic"]["status_class"] == "resolved": return response
+    stopped = set(state.get("stopped_keys", []))
+    _, _, candidates, _, resolved = derive_next(result, stopped)
+    # Prefer the brief's established order, but never let it establish eligibility.
+    order = {k: i for i, k in enumerate(state.get("candidate_order", []))}
+    candidates.sort(key=lambda c: (order.get(c["key"], len(order)), _order_key(c)))
+    by_key = {c["key"]: c for c in result["children"]}
+    for child in candidates:
+        if child["key"] in state.get("unavailable_keys", []): continue
+        if not child["dependencies_known"]:
+            response["fetch"] = [{"key": child["key"], "kind": "ticket", "reason": "unknown dependencies and requirements"}]
+            break
+        dependencies = child.get("blocked_by", [])
+        if set(dependencies) & set(state.get("unavailable_keys", [])): continue
+        if any((k in by_key or k in result.get("external_statuses", {})) and not resolved(k) for k in dependencies):
+            continue
+        missing = sorted(set(k for k in dependencies if k not in by_key and k not in result.get("external_statuses", {})))
+        if missing:
+            response["fetch"] = [{"key": k, "kind": "status", "reason": "external dependency"} for k in missing]
+            break
+        response["candidate"] = child["key"]
+        break
+    return response
+
+
+def cmd_retrieval_plan(a):
+    try:
+        with open(a.state, encoding="utf-8") as stream:
+            result = retrieval_plan(json.load(stream), a.purpose)
+        print(json.dumps(result, ensure_ascii=False))
+    except (OSError, ValueError) as error:
+        die("retrieval-plan: " + str(error))
 
 
 def derive_next(state, stopped_keys):
@@ -1468,6 +1530,10 @@ def cmd_next(a):
     except (OSError, ValueError) as e:
         die("next: cannot read state: %s" % e)
     _validate_state(state)
+    if getattr(a, "progressive", False):
+        # Exit 1 means "write stdout over the brief"; malformed state must exit 2.
+        try: state = retrieval_plan(state)["state"]
+        except ValueError as e: die("next: malformed state: %s" % e)
     today = a.today or datetime.date.today().isoformat()
     reason_word, reason_key = (a.reason + [None])[:2] if a.reason else (None, None)
     if reason_word not in (None, "start", "stop", "create", "resolve", "new-info"):
@@ -1812,7 +1878,13 @@ def main():
     p_next.add_argument("--reason", nargs="+", default=None,
                         help="start|stop|create|resolve <KEY>-<n>, or new-info; omitted = refresh")
     p_next.add_argument("--today", default=None, help="YYYY-MM-DD (default: today, UTC)")
+    p_next.add_argument("--progressive", action="store_true", help="discard unproven dependency cache; never imply unknown is ready")
     p_next.set_defaults(func=cmd_next)
+
+    p_retrieval = sub.add_parser("retrieval-plan", help="minimal next selection reads, or zero sibling body reads for lifecycle writes")
+    p_retrieval.add_argument("--state", required=True)
+    p_retrieval.add_argument("--purpose", choices=("lifecycle", "select"), default="lifecycle")
+    p_retrieval.set_defaults(func=cmd_retrieval_plan)
 
     p_lock = sub.add_parser("lock", help="the primary-checkout lock (spec §4)")
     lock_sub = p_lock.add_subparsers(dest="op", required=True)

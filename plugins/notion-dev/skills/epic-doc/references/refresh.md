@@ -14,17 +14,25 @@ under `## Open threads`.
 | `create <KEY>-<n>` | `/notion-dev:create-task` after a ticket gets an epic parent | none |
 | `drift` | `/notion-dev:next-task` step 1 on `DRIFT: true` | none |
 
-**Inputs, all live:** `fetchTicket(<epic-id>).status`, `listEpicChildren(<epic-id>)`, and one
-`fetchTicket` per unresolved child for its `## Blocked by` keys, `metadata.phaseProperty` and
-`metadata.stepProperty` — exactly what `record` step 2 fetches. `refresh` never reads the Notion
-epic page body and never runs `iwe`.
+**Inputs, all live:** `fetchTicket(<epic-id>).status` and `listEpicChildren(<epic-id>)`.
+No unresolved-child body scan, dependency gatherer or nested epic agent. Phase/step come from
+available list metadata; missing values remain null. `refresh` never reads the Notion epic
+page body and never runs `iwe`.
+
+Run `knowledge.py retrieval-plan --state <state.json> --purpose lifecycle` first. Its `fetch`
+is empty: start/stop/create/resolve/drift only need live statuses and known thread constraints.
+Use its normalized `state` for rendering. Unproven dependencies become `dependencies_known: false`,
+not ready. Retain dependency content only when `dependency_revision` equals the live trustworthy
+`content_revision`, or `checked_boundary` equals this fresh status list's unique `boundary`.
+Never manufacture revisions or carry boundary IDs across intervening writes. Without a provider
+revision, unread siblings remain unknown until selection; do not fetch them just to polish Next.
 
 **Derivation.** `python3` in every `knowledge.py` line below stands for `knowledge.python` from `$REPO_ROOT/.claude/notion-dev.config.json` (default `python3`; `python` or `py -3` on Windows, as `/notion-dev:init` recorded). Write the current brief (loaded from `origin/<epicBranch>` by the write path's
 step 2) to a temp file, assemble the state JSON (plus `stop: { key, phase,
 cause, worktree }` on a `stop`), and run
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" next --progressive --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>
 ```
 
 ```json
@@ -65,4 +73,4 @@ key. `stop` adds the bullet; `start` removes it. `Status: closed` and `epic comp
 the epic's live status is in the resolved set. Exit 0 means the brief was already true.
 
 **Outcome.** Byte-identical brief → `unchanged`, no commit, `COMMIT: none`. Otherwise commit
-through `
+through `write-path.md` with the existing primary lock and scoped pathspec.

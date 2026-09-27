@@ -30,7 +30,7 @@ Any failure → write nothing, return `EPIC-DOC: failed` with `CAUSE: <the asser
      stale dependency information; `blocked_by: []` alone must not pretend those dependencies
      were checked. Reuse a dependency list only with the same trustworthy content revision;
      without such a provider revision, leave it unknown. Run `knowledge.py next` as `refresh`
-     describes with `--reason resolve <ticket key>`; it labels these candidates `dependency check
+     describes with `--progressive --reason resolve <ticket key>`; it labels these candidates `dependency check
      pending`, not ready. The next selection fetches full candidate requirements/dependencies
      progressively. For checked dependencies outside the epic supply `external_statuses` from
      current reads; missing is unresolved. Open threads still determine `thread_blocked`.

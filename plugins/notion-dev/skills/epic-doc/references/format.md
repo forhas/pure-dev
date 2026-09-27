@@ -70,7 +70,7 @@ The `Seeded from` line exists only on a brief distilled from a pre-existing hand
 
 - **Every `## Open threads` bullet names what it blocks or which ticket it informs**, and — for a wait on someone else — what would clear it (`Unblocked by:`). A bullet that names neither is not a thread and is not written.
 - **No ticket history, no status table.** Notion is the ledger. The brief holds only what Notion cannot say: why, where we stand, what is waiting on whom, and what is next.
-- **`## Next` is an ordered recommendation, not a task list.** Item 1 is the single most recommended **unblocked** ticket with the reason it is first. Further items say what they wait for. The trailing `Blocked:` line names every unresolved child held by an open thread. When the epic is closed, the section reads `epic complete`.
+- **`## Next` is an ordered recommendation, not a task list.** When proven eligible, item 1 is the single most recommended **unblocked** ticket with its reason. Unread/stale dependencies instead say `dependency check pending`, including item 1 when none is proven ready; never fetch every sibling just to remove that label. Further items state known waits or pending checks. The trailing `Blocked:` line names every unresolved child held by an open thread. When the epic is closed, the section reads `epic complete`.
 - **The three lists of `## Next` partition the unresolved children with no overlap**: the numbered
   list (runnable now or after a listed dependency), `In progress:` (claimed — every child whose
   live status is `statusMap.inProgress`, comma-separated in numeric-id order, each

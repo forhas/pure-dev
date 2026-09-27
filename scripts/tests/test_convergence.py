@@ -28,8 +28,12 @@ class ConvergenceTests(unittest.TestCase):
     child = boundaries.BoundaryTests.child
     log = boundaries.BoundaryTests.log
 
-    def verified_project(self):
+    def verified_project(self, schema=5):
         self.new_schema()
+        # Schema 5 review-prepare requires typed review-inputs; tests of verification
+        # evidence alone use the schema-4 file-input compatibility path.
+        if schema != 5:
+            with self.rt.transaction() as state: state['schema'] = schema
         config = self.config()
         config['verify']['steps'][0].update(cmd="printf 'measured café' > report.json", outputs=['report.json'])
         runtime.atomic_json(self.repo / '.claude/notion-dev.config.json', config)
@@ -37,7 +41,7 @@ class ConvergenceTests(unittest.TestCase):
         self.run_git('add', '.'); self.run_git('commit', '-qm', 'verification setup')
 
     def test_outputs_are_archived_and_live_regeneration_does_not_destroy_review(self):
-        self.verified_project()
+        self.verified_project(schema=4)
         prepared = workflow.review_prepare(self.state, self.repo, self.repo, {'ticket': self.source})
         manifest = runtime.read_json(prepared['verification'])
         archived = manifest['receipts'][0]['outputs'][0]
@@ -56,7 +60,7 @@ class ConvergenceTests(unittest.TestCase):
                 workflow.review_prepare(self.state, self.repo, self.repo, {'ticket': self.source})
 
     def test_precommit_receipt_cannot_be_named_as_current_review_evidence(self):
-        self.verified_project(); self.code.write_text('correction', encoding='utf-8')
+        self.verified_project(schema=4); self.code.write_text('correction', encoding='utf-8')
         receipt = workflow.verify_config(self.state, self.repo, self.repo)['receipts'][0]
         self.run_git('add', 'code.txt'); self.run_git('commit', '-qm', 'correction')
         with self.assertRaisesRegex(ValueError, 'named test log is stale'):
@@ -82,7 +86,7 @@ class ConvergenceTests(unittest.TestCase):
         self.assertIn('generated evidence changed', ' '.join(runtime.Runtime.verification_reasons(state, [first['verification']], runtime.revision(self.repo))))
 
     def test_review_prepare_cli_uses_configured_steps_and_native_paths(self):
-        self.verified_project()
+        self.verified_project(schema=4)
         proc = subprocess.run([sys.executable, workflow.__file__, 'review-prepare', '--project', str(self.repo),
             '--worktree', str(self.repo), '--state', str(self.state), '--file', 'ticket=' + str(self.source)],
             capture_output=True, encoding='utf-8')

@@ -82,15 +82,11 @@ archives, not mutable reports. `workflow.py verify` already reuses receipts (no 
 Full/delta dispatch uses `workflow.py review-prepare` per review-and-merge.
 
 Push only the ticket branch. Open a PR against `git.prTargetBranch` or `git.baseBranch`.
-Keep its body small: requirement/outcome, actual behavior change, verified tests and known risks.
-Include all ticket-mandated disclosure/checklist/sign-off wording. Distinguish merge prerequisites
-from release-only obligations using the ticket's actual words. Do not invent sign-off.
-Avoid volatile counts, file line numbers and narratives unless necessary or generated from evidence.
-Render `pr-facts.json` (`requirement`: string; `behavior`, `validation`, `risks`, `mandatory`:
-string lists) with `workflow.py pr-body --facts <pr-facts.json> --output <pr-body.md>`.
-Use that file for the PR and frozen `pr_body`. Rendering is not verification. Correct to a new
-file, reconciling human edits and preserving mandatory wording. Review status stays in runtime,
-not a new PR-body history requiring another review.
+Render `pr-facts.json` with `workflow.py pr-body --facts <pr-facts.json> --output <pr-body.md>`.
+Use stable named facts per `references/boundaries.md`, retaining all mandatory disclosures and
+distinguishing merge prerequisites from release obligations. Never invent sign-off. Use the file
+for the PR; rendering is not verification. Correct facts in place to a new output file while
+preserving human edits. Review history stays in runtime, not the PR body.
 
 Through ticket-system, set the PR property. Save branch, tests, PR identity and the implementation
 summary in context. Defer the final Notion `Implementation` narrative to recording; preserve
