@@ -5,6 +5,11 @@ argument-hint: "[--non-interactive] [--context-file=<path>] [--reviewed-followup
 
 # /notion-dev:create-task
 
+Already-approved lean recording follow-ups use epic-update's `references/approved-followup.md`
+directly, without loading this general elaboration workflow. General creation, incomplete
+findings and legacy recovery retain this command. Standalone brief refresh uses the progressive
+lifecycle planner, never a scan of every unresolved child body.
+
 Create or elaborate a ticket in the configured ticket system.
 
 Args: `[<source>:]<ref>` or free prompt text.

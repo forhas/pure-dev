@@ -7,6 +7,23 @@ implementation owner, one combined independent code/completeness review, configu
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
 
+## Scoped lifecycle and current review evidence (0.42.0)
+
+- `knowledge.py retrieval-plan` requests no sibling bodies for start/stop/record/create;
+  selection checks candidates progressively and never calls unknown dependencies ready.
+- `workflow.py resume-view` supports a fresh conversation using the original runtime,
+  findings, budgets and recording journal. Ownership and approval do not transfer with text.
+- `review-inputs` derives the current diff and reads the live PR through `gh`; Notion specs
+  use actual host captures. `review-check` binds pre-merge freshness to the accepted worker.
+- Named PR facts avoid positional corrections; optional numerical facts compute arithmetic
+  while preserving population/window limitations. Review still checks the source and inference.
+- Fully specified approved follow-ups use a scoped renderer and the existing ticket adapter,
+  preserving provenance, deduplication, write-ahead journaling and readback without an interview.
+
+No review/test budget reduction or client-specific paths. Windows Git Bash and Ubuntu WSL2 use
+the same configured Python commands. Live token/time savings remain to be measured; offline
+regressions establish retrieval/evidence behavior, not a promise of a sub-200K ticket.
+
 ## Complete review accounting and bounded recovery (0.41.0)
 
 - Compact indexes and lossless pages expose every finding; result-hash-bound dispositions

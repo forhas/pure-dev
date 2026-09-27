@@ -7,6 +7,11 @@ ok()  { printf '  PASS  %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 . ./scripts/lib/assert.sh
 PYBIN=${KNOWLEDGE_PY:-python3}
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_lifecycle.py'; then
+  ok "scoped lifecycle retrieval, handoffs, typed inputs and approved recording"
+else
+  bad "scoped lifecycle retrieval, handoffs, typed inputs and approved recording"
+fi
 if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_lean_workflow.py'; then
   ok "lean runtime, workflow, recording and routing regressions"
 else

@@ -17,6 +17,7 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
    fetch the full ticket with ticket-system. Find the matching owned run marker/runtime in the
    primary `.claude/notion-dev/`. Resume that invocation, preserving review budgets and completed
    operations. Exhaustion uses `references/review-accounting.md`, never a fresh budget.
+   Start with `workflow.py resume-view --state <existing-state>`, not the previous conversation.
    A legacy flow marker or schema 1/2 runtime uses `references/legacy/finalize.md` instead.
 3. For a lean run, follow `references/lean-intake.md`'s resume/ownership rules. Stop before
    any write if another session owns it or an earlier worker is unaccounted for. Adopt the

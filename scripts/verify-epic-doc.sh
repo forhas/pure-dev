@@ -132,7 +132,7 @@ if [ -f "$ED" ]; then
   if [ -n "$RF" ] && [ -n "$WP" ] && [ -n "$R0" ] && [ -n "$R1" ]; then
     assert_present "template carries the \`In progress:\` line" "$ED" 1 "$R0" '^In progress: \[STO-72\] Backfill v2 — since 2026-09-15$'
     assert_present "refresh: the four reasons are \`start\`, \`stop\`, \`create\`, \`drift\`" "$ED" "$RF" "$WP" '`start <KEY>-<n>`.*`stop <KEY>-<n> <phase> <cause> <worktree-path>`.*`create <KEY>-<n>`.*`drift`'
-    assert_present "refresh: derivation is \`knowledge.py\` \`next\` with \`--brief\`, \`--state\`, \`--today\`" "$ED" "$RF" "$WP" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" next --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>'
+    assert_present "refresh: derivation uses progressive next with brief/state/today" "$ED" "$RF" "$WP" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge.py" next --progressive --brief <tmp brief> --state <tmp state.json> --today <YYYY-MM-DD>'
     assert_present "refresh: \`stop\` adds the bullet, \`start\` removes it" "$ED" "$RF" "$WP" '`stop` adds .* `start` removes'
     assert_present "refresh: byte-identical → \`unchanged\`, no commit" "$ED" "$RF" "$WP" 'Byte-identical .* `unchanged`, no commit'
     assert_present "refresh: the state JSON shape names \`status_class\`, \`blocked_by\`, \`thread_blocked\`" "$ED" "$RF" "$WP" '`status_class`.*`blocked_by`.*`thread_blocked`'

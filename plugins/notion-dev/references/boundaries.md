@@ -50,6 +50,19 @@ properties. Final Implementation/review history is written once during recording
 pre-merge narrative edit cannot wait, include it before its source is independently reviewed.
 Never ignore human changes under the same headings.
 
+PR facts use `requirement` (string) and `behavior`, `validation`, `risks`, `mandatory` (objects
+with stable semantic keys and fact-string values). Legacy lists remain readable; new corrections
+replace a key, not a positional array element or an appended competing explanation. Duplicate
+named paragraphs fail rendering. Review status stays outside these facts.
+For numerical claims a value may be `{kind:"ratio",numerator:19,denominator:71,unit:"errors",
+population:"retained tail only",source:"archive reference"}`, or `{kind:"comparison",
+baseline:{p50:100,p95:200},observed:{p50:104,p95:190},nonincrease:false,unit:"ms",
+population:"one run",source:"archive reference"}`. The renderer computes arithmetic and rejects
+a requested nonincrease contradicted by any column. It does not validate invented input numbers.
+Independent review must check source values and inference: a truncated tail sample cannot
+establish whole-run proportions or rank of bias, nor does admission shedding alone prove latency
+safety. Reuse immutable benchmark evidence when correcting prose; do not rerun merely to reword it.
+
 ## Compact delta publication
 
 Use `workflow.py review-prepare` for new full/delta dispatches. It verifies the committed tree
@@ -61,9 +74,30 @@ For independent targeted commands, `runtime.py verify --output PATH` also archiv
 Only named outputs are archived: never recursively collect build directories or secrets.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" review-prepare --project "$REPO_ROOT" --state "$RUNTIME_STATE" --worktree "$WORKTREE" --file "ticket=<source-path>" --file "inventory=<inventory-path>" --file "diff=<frozen-diff>" --file "pr_body=<frozen-pr-body>"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" review-inputs --state "$RUNTIME_STATE" --worktree "$WORKTREE" --pr <owner/repository#number>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" review-prepare --project "$REPO_ROOT" --state "$RUNTIME_STATE" --worktree "$WORKTREE" --inputs <returned-inputs-path>
 ```
-Supply actual paths. For delta add `--previous <accepted-worker>` and changed named inputs.
+The first helper reads the live PR with gh, verifies its HEAD, derives the actual base/head diff
+and snapshots the authoritative ticket/inventory. Fetch missing base commits through the host,
+then retry; never guess a base. For a Notion specification use live fetch → record-capture, then
+`review-inputs --source spec=<capture-path>`; arbitrary coverage/log files cannot become a spec.
+Do not dispatch with instructions to ignore stale inputs. New full/delta dispatches use this path;
+already-issued legacy packets remain readable without invented provenance. Extra immutable
+benchmark archives may use `--file <name>=<path>` under accurate labels.
+For schema 3/4 resumptions without host-capture ownership, keep the existing `--file` preparation
+adapter until the run finishes: regenerate diff/PR body from current git/gh, identify source
+provenance as unknown where unavailable, and have the reviewer inspect the actual source.
+Never present that adapter as a typed capture or mutate its schema/budget to opt in. Schema 1/2
+continues through the legacy entrypoint. Once a run binds typed inputs it cannot downgrade.
+For delta add `--previous <accepted-worker>` and changed named inputs. Refresh typed sources or
+explicitly remove obsolete ones; no implicit stale inheritance. Prepare inputs BEFORE requesting
+an extra correction-review allowance so its exact scope is authorized. `review-prepare` rechecks
+the live PR and budget before verification. Before merge run `workflow.py review-check --state
+<state> --worktree <path> --worker <accepted-review-id>`; changed body/base/head needs affected
+review, not a prose override. Its local receipt is bound to that worker/session for five minutes
+and required by merge-gate for typed packets. It performs no provider writes and does not
+replace the ticket freshness gate. A race after observation remains a provider API boundary;
+merge still uses --match-head-commit.
 Keep declared `--depends` consistent. Logs are in the generated manifest: do not supply an old
 test_log separately. Applicable inherited test-log inputs refresh to the new receipts.
 

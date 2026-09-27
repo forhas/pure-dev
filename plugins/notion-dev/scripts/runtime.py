@@ -885,11 +885,19 @@ class Runtime:
                     if name not in snapshots and name not in remove_inputs:
                         snapshots[name] = {"path": source["path"], "sha256": digest(source["path"])}
             require(bool(snapshots), "at least one input artifact is required")
+            if role == "completeness" and state.get("review_inputs"):
+                binding = state["review_inputs"]
+                require(binding["revision"] == current and binding["session"] == state.get("host_session")
+                        and "review_inputs" in snapshots and snapshots["review_inputs"]["sha256"] == binding["sha256"],
+                        "current typed review inputs required; use workflow review-inputs/review-prepare")
+                manifest = read_json(binding["path"])
+                require(all(name in snapshots and snapshots[name]["sha256"] == source["sha256"]
+                            for name, source in manifest["files"].items()), "typed review source mismatch")
             if grant:
                 logs = {r["log"] for r in state.get("verifications", [])}
                 require(not remove_inputs and all(name in snapshots and snapshots[name]["sha256"] == value
                         for name, value in grant["binding"]["inputs"].items() if name != "verification_receipts"
-                        and not (baseline["worker"]["files"][name]["path"] in logs
+                        and not (baseline["worker"]["files"].get(name, {}).get("path") in logs
                                  and snapshots.get(name, {}).get("path") in logs)),
                         "authorized correction inputs changed; request authorization for the new scope")
             verification_ids = []
@@ -1157,14 +1165,22 @@ class Runtime:
     @staticmethod
     def budget_binding(state, previous, current):
         baseline = state["workers"][previous]
+        inputs = {n: digest(s["path"]) for n, s in baseline["files"].items()}
+        managed = state.get("review_inputs")
+        if managed:
+            require(managed["revision"] == current and managed["session"] == state.get("host_session")
+                    and digest(managed["path"]) == managed["sha256"], "prepare current review-inputs before requesting correction authority")
+            manifest = read_json(managed["path"])
+            inputs.update({k: digest(v["path"]) for k, v in manifest["files"].items()})
+            inputs["review_inputs"] = managed["sha256"]
         return {"previous": previous, "revision": current, "requirements": state["requirements"],
-                "inputs": {n: digest(s["path"]) for n, s in baseline["files"].items()},
+                "inputs": inputs,
                 "attempts": sum(bool(w.get("previous")) for w in state["workers"].values())}
 
     def correction_grant(self, state, previous, current):
         requests = state.get("review_allowances", [])
         for request in reversed(requests):
-            if (request.get("authority") and not request.get("worker")
+            if (request.get("authority") and not request.get("worker") and not request.get("superseded")
                     and request["session"] == state.get("host_session")
                     and request["binding"] == self.budget_binding(state, previous, current)):
                 return request
@@ -1177,7 +1193,7 @@ class Runtime:
         with self.transaction() as state:
             require(state.get("host_session"), "bind the actual host session through workflow resume first")
             # One authorized correction review per invocation; a second grant would chain extra deltas.
-            require(not any(r.get("authority") for r in state.get("review_allowances", [])),
+            require(not any(r.get("authority") and r.get("worker") for r in state.get("review_allowances", [])),
                     "this invocation already used its one authorized correction review")
             baseline = self.worker(state, previous)
             reviews = [w for w in state["workers"].values() if w["role"] == "completeness" and not w["terminated"]]
@@ -1192,6 +1208,10 @@ class Runtime:
             request = {"id": uuid.uuid4().hex, "session": state["host_session"], "binding": binding,
                        "reason": reason, "scope": scope, "count": 1, "kind": "delta", "requested": self.clock.stamp()}
             request["approval_phrase"] = "Approve notion-dev " + state["run"] + " correction review " + request["id"]
+            # Renew an unspent challenge, not the allowance. Preserve its audit trail;
+            # only the new session/scope may be approved, and at most one worker spends it.
+            for old in state.get("review_allowances", []):
+                if not old.get("worker"): old["superseded"] = request["id"]
             state.setdefault("review_allowances", []).append(request)
             self.event(state, "review_allowance_requested", request=request["id"], previous=previous)
         return {"request": request["id"], "kind": "delta", "count": 1, "scope": scope, "reason": reason,
@@ -1206,6 +1226,7 @@ class Runtime:
             matches = [r for r in state.get("review_allowances", []) if r["id"] == request_id]
             require(len(matches) == 1, "unknown allowance request")
             request = matches[0]
+            require(not request.get("superseded"), "allowance request superseded; use the current challenge")
             require(not request.get("authority") and not request.get("worker"), "allowance already authorized or spent")
             require(session == state.get("host_session") == request["session"], "approval belongs to a different owner")
             require(request["binding"] == self.budget_binding(state, request["binding"]["previous"], current),
@@ -1886,6 +1907,14 @@ class Runtime:
             worker = self.worker(state, key)
             self.validate_packet(worker)
             reasons = self.readiness(state) + self.ticket_freshness(state, worker)
+            if "review_inputs" in worker["files"]:
+                checked = state.get("review_input_check") or {}
+                age = self.clock.stamp()["wall"] - checked.get("wall", 0)
+                if not (checked.get("worker") == key and checked.get("head") == current["head"]
+                        and checked.get("session") == state.get("host_session")
+                        and checked.get("sha256") == worker["files"]["review_inputs"]["sha256"]
+                        and 0 <= age <= 300):
+                    reasons.append("live reviewed PR inputs need workflow review-check")
             verification_reasons = self.verification_reasons(state, worker.get("verification_ids", []), current)
             reasons.extend(verification_reasons)
             if worker["role"] != "completeness" or worker["status"] != "consumed":

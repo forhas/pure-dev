@@ -68,6 +68,15 @@ explicitly optional sign-off branch as a new merge prerequisite. Run `requiremen
 
 ## Resume or claim
 
+Start a resume with `workflow.py resume-view --state <existing-state> [--worktree <path>]`.
+This read-only index references full evidence and identifies outstanding work; it is not an
+authorization or a replacement requirement inventory. Preserve the runtime, not the whole chat.
+After a long interruption in a large conversation, recommend a fresh conversation running
+`/notion-dev:finalize <pr>` with this runtime path. Do not automatically spawn a replacement,
+abandon live workers, or replay an old approval. If this host cannot safely switch sessions,
+continue with scoped retrieval or explain the handoff; no user-created test project is needed.
+Read the retained compact context and full current ticket; retrieve specific evidence as needed.
+
 Inspect `.claude/notion-dev/runs/<key>.json` before initializing a new ticket runtime. Reuse its
 runtime on a lean resume, including attempt budgets, receipts and journal. Refresh the source/
 inventory there only after resolving its old workers. A pre-0.36 run reads the legacy ticket
@@ -76,6 +85,8 @@ old: confirm its workers stopped and obtain takeover authority first. Do not aut
 For a schema-5 takeover, the authorized claim/resume-pr transfers host-session ownership using
 the retained readiness state first; then capture the new full source and re-establish readiness
 before any implementation/review or Notion write. Do not capture under the old session identity.
+Regenerate resume-view after adoption. Approval is host-session/head/input bound, so a new session
+must obtain its own challenge/approval when required; it never receives a fresh default budget.
 
 Fresh runs initialize the returned runtime with `init --run <invocation> --ticket <key>`.
 After readiness, claim with:
@@ -101,6 +112,7 @@ Do not copy secrets into logs or commit runtime artifacts.
 Through ticket-system set `inProgress` and the started/branch record; use configured mappings.
 For an epic, refresh its start brief under the existing `knowledge.py lock` start section,
 passing `LOCK_HELD: true`; release afterwards. Resolve interactive choices before taking locks.
+Use the lifecycle retrieval planner inline; do not dispatch another epic/dependency agent.
 If that advances the base, fetch and fast-forward a clean fresh ticket branch before coding.
 Never reset a resumed branch. A brief refresh failure is reported without claiming it succeeded.
 
@@ -111,6 +123,9 @@ At each stage run `runtime.py stage <name>` and `workflow.py marker --path "$RUN
 or use an unrelated ambient Claude variable. For worker waits use runtime's one-shot yield.
 
 On a stop, preserve existing work and owned artifacts, update the marker with cause, and give
-the actual resume command. Do not change Notion to a failure status. A held primary lock must
+the actual resume command plus runtime path. For a long/large-context run, explicitly tell the
+user to run that command in a fresh conversation after workers/ownership are settled; give this
+handoff BEFORE a long user wait, not only after the old history has already been re-cached.
+Do not change Notion to a failure status. A held primary lock must
 not be released while any record writer could still run; never create a replacement writer
 to recover a missing report. `finalize` on a MERGED PR uses recording recovery only.

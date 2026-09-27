@@ -88,8 +88,8 @@ our bookkeeping changes before the evidence freeze, not into an avoidable post-r
 Never discard new human requirements while reconciling. Then freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
 body and verification receipt/log references outside the worktree. Run readiness. Prepare
 role `completeness` through `workflow.py review-prepare`, using the exact command/archived-output
-rules in `references/boundaries.md`, not a bare prepare. It verifies the committed tree before
-dispatch. Add `--previous <accepted-worker>` for delta. Dispatch one independent
+rules in `references/boundaries.md`, including its typed `review-inputs` and claim checks.
+It verifies the committed tree before dispatch. Add `--previous <accepted-worker>` for delta. Dispatch one independent
 general-purpose worker with the generated runtime context/contract and these charges:
 
 - Check the entire ticket against inventory, including prerequisites outside AC.
@@ -174,7 +174,8 @@ Immediately before merge:
    Re-inventory/review changed requirements; if only the 5-minute receipt expired, fetch again
    without repeating unchanged review. Then `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
    must pass. It covers requirements, code review, citations, snapshots, corrections and workers.
-6. Respect explicit user merge approval conditions. Merge using configured strategy and
+6. For typed packets run `workflow.py review-check` per boundaries; changed PR facts need review.
+   Respect explicit user merge approval conditions. Merge using configured strategy and
    `gh pr merge <pr> --<strategy> --match-head-commit <reviewed-head>`.
    On error re-read state before retrying; the merge may already have happened.
 
