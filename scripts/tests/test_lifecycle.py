@@ -236,6 +236,8 @@ class LifecycleTests(unittest.TestCase):
             source = (plugin / name).read_text(encoding='utf-8')
             self.assertIn(text, source)
             with self.assertRaises(AssertionError): self.assertIn(text, source.replace(text, 'REMOVED'))
+        review = (plugin / 'skills/review-and-merge/SKILL.md').read_text(encoding='utf-8')
+        self.assertLess(review.index('workflow.py review-check'), review.index('merge-gate --worker'))
 
     def test_review_check_is_bound_to_accepted_worker_and_expires(self):
         observed = self.project(); inputs = self.inputs(observed)

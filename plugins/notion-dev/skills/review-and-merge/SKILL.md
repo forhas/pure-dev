@@ -172,10 +172,10 @@ Immediately before merge:
    with --request, --response and --call-id per references/runtime.md.
    Status queries and old local copies do not qualify. Failed/changed/stale receipts block.
    Re-inventory/review changed requirements; if only the 5-minute receipt expired, fetch again
-   without repeating unchanged review. Then `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
+   without repeating unchanged review. For typed packets run `workflow.py review-check` per
+   boundaries first; changed PR facts need review. Then `runtime.py --state "$RUNTIME_STATE" merge-gate --worker <accepted-review-id> --worktree "$WORKTREE"`
    must pass. It covers requirements, code review, citations, snapshots, corrections and workers.
-6. For typed packets run `workflow.py review-check` per boundaries; changed PR facts need review.
-   Respect explicit user merge approval conditions. Merge using configured strategy and
+6. Respect explicit user merge approval conditions. Merge using configured strategy and
    `gh pr merge <pr> --<strategy> --match-head-commit <reviewed-head>`.
    On error re-read state before retrying; the merge may already have happened.
 
