@@ -73,7 +73,8 @@ one claim: replace it with an artifact reference or remove it.
 epic-doc `schedule` runs `knowledge.py epic-goal` and returns its `recommendation`, which binds
 next-task before it selects anything (resuming owned unfinished work still comes first):
 
-- `close` — the brief's `Done when:` list holds. Select nothing: the select plan returns no
+- `close` — the brief's `Done when:` list holds and no `Re-scope pending` thread exists (a
+  pending spec change is re-checked first, since it may change the goal). Select nothing: the select plan returns no
   candidate once `goal_met: true` is passed. Interactive mode offers closing the epic plus the
   one re-home batch (epic-update step 4); non-interactive reports `goal met` with the `rehome`
   list and stops.

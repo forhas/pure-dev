@@ -1882,9 +1882,13 @@ def epic_goal(text, state, log_text=None, window=3, threshold=1.0, budget=BRIEF_
         entries = resolution_entries(log_text)
         result["followups"] = followup_rate(entries, window, threshold)
         result["followups"]["children_after_goal"] = len(result["rehome"])
+    # A pending spec change comes first: it may change the goal itself, so closing (and
+    # re-homing) before the children are re-checked against it would act on a stale goal.
+    open_epic = state["epic"]["status_class"] != "resolved"
     result["recommendation"] = (
-        "close" if goal["goal"] == "met" and state["epic"]["status_class"] != "resolved" else
-        "rescope" if result.get("followups", {}).get("rescope") or result["rescope_pending"] else
+        "rescope" if result["rescope_pending"] and open_epic else
+        "close" if goal["goal"] == "met" and open_epic else
+        "rescope" if result.get("followups", {}).get("rescope") else
         "repair-goal" if goal["goal"] == "invalid" else "continue")
     return result
 

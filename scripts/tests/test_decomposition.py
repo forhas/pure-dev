@@ -633,6 +633,9 @@ class GenericityTests(unittest.TestCase):
                               "changed in spec v3, 2026-09-20. Unblocked by: task-breakdown re-scope.\n")
         result = goal(self, pivot, live_state(open_goal=True))
         self.assertEqual(result["recommendation"], "rescope")
+        met = goal(self, pivot, live_state())
+        self.assertEqual((met["goal"], met["recommendation"]), ("met", "rescope"),
+                         "a pending spec change is re-checked before the epic closes")
         self.assertEqual(len(result["rescope_pending"]), 1)
         self.assertEqual(goal(self, BRIEF, live_state(open_goal=True))["rescope_pending"], [])
 
