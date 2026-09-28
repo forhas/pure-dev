@@ -193,6 +193,12 @@ class ExecutionTests(unittest.TestCase):
         _, excluded = corrections.sources(self.repo, {})
         self.assertEqual(excluded.get('repo:dangling'), 'symlink: missing-target')
 
+    def test_scan_reports_tracked_path_absent_from_worktree(self):
+        self.run_git('update-index', '--skip-worktree', 'code.txt'); (self.repo / 'code.txt').unlink()
+        values, excluded = corrections.sources(self.repo, {})
+        self.assertNotIn('repo:code.txt', values)
+        self.assertIn('repo:code.txt', excluded)
+
     def test_scan_reports_uninitialized_submodules_without_crawling_dependencies(self):
         self.run_git('update-index', '--add', '--cacheinfo', '160000', runtime.git(self.repo, 'rev-parse', 'HEAD'), 'vendor/example')
         values, excluded = corrections.sources(self.repo, {})

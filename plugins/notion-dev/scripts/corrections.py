@@ -26,7 +26,8 @@ def sources(worktree, files):
             continue
         if path.is_symlink():  # Before exists(): a dangling link is still reported.
             excluded["repo:" + name] = "symlink: " + os.readlink(str(path))
-        elif not path.exists(): continue  # Committed deletions are absent from ls-files.
+        elif not path.exists():  # Sparse/skip-worktree or unstaged deletion: never silently unscanned.
+            excluded["repo:" + name] = "tracked path absent from worktree"
         elif path.is_dir():
             excluded["repo:" + name] = "non-file tracked path"
         else:
