@@ -51,6 +51,7 @@ assert_has "intake scans for declared folds" $ND/references/lean-intake.md 'work
 assert_has "approved follow-ups compute their destination from config" \
   $ND/skills/epic-update/references/approved-followup.md '--config <primary-config>`'
 assert_has "a spec change writes the re-scope thread" $ND/skills/epic-doc/references/note.md '**Re-scope pending** —'
+assert_has "record prunes on the token overrun too" $ND/skills/epic-doc/references/record.md 'or over its retrieve-token share'
 assert_has "the brief budget follows the retrieve budget" $ND/skills/epic-doc/references/schedule.md '--retrieve-budget <knowledge.retrieveBudget>'
 assert_has "the config schema declares the convergence knobs" $ND/schema/notion-dev.config.schema.json '"nonGoalDestination"'
 exit $(( fails > 0 ))
