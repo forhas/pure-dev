@@ -263,6 +263,10 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertIn("COMMIT: deferred", start.stderr)
         drift = self.knowledge("next", "--brief", str(self.write("brief.md", brief)), *args)
         self.assertIn("COMMIT: deferred", drift.stderr)
+        # A claim plus a real scheduling change (a dependency now resolved) must commit.
+        waiting = brief.replace("2. [EX-6] Stale JSDoc — ready", "2. [EX-6] Stale JSDoc — after EX-2")
+        waited = self.knowledge("next", "--brief", str(self.write("brief.md", waiting)), *args)
+        self.assertIn("COMMIT: needed", waited.stderr)
         stopped = brief.replace("## Open threads\n", "## Open threads\n- **[EX-5] stopped at validation** — "
                                 "tests; worktree at ../w. Unblocked by: /notion-dev:ticket EX-5 (resumes).\n")
         resumed = self.knowledge("next", "--brief", str(self.write("brief.md", stopped)), "--reason", "start", "EX-5", *args)

@@ -1469,6 +1469,16 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
     return out
 
 
+def _render_with_recorded_claims(state, stopped, prev_items, prev_ip, today):
+    """`## Next` as rendered if every child's claim were still the one the brief records."""
+    recorded = json.loads(json.dumps(state))
+    for c in recorded["children"]:
+        if c["status_class"] != "resolved":
+            c["status_class"] = "in_progress" if c["key"] in prev_ip else "open"
+    inprog, blocked, numbered, first, resolved = derive_next(recorded, stopped)
+    return render_next(recorded, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
+
+
 def render_goal_met(rehome):
     out = ["## Next", GOAL_MET_LINE]
     if rehome:
@@ -1612,6 +1622,9 @@ def cmd_next(a):
 
     header_idx = next(i for i, ln in enumerate(lines) if HEADER_RE.match(ln))
     ns, ne = _section(lines, "## Next")
+    prev_region = lines[ns:ne]
+    while prev_region and prev_region[-1].strip() == "":
+        prev_region = prev_region[:-1]
     prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed, prev_ip_titles = _parse_next(lines[ns + 1:ne])
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
     # A met `Done when:` list decides closure, not the child count: nothing is recommended,
@@ -1656,8 +1669,12 @@ def cmd_next(a):
     # A claim (start, or a drift that is only in-progress bookkeeping) is re-checked live by
     # every reader. Unless it also clears a stop bullet or repairs other drift, the next
     # record rewrites `## Next` anyway, so committing it to base is bookkeeping no run needs.
-    claim_only = reason_word in (None, "start") and not removed_stop and all(
-        CLAIM_DRIFT_RE.match(f) for f in findings)
+    # Proof, not classification: re-rendered with the claims the brief already records, the
+    # region must equal the one on disk. Anything else that changed (a dependency now ready, a
+    # reworded reason) makes it differ, and then the refresh commits.
+    claim_only = (reason_word in (None, "start") and not removed_stop and not goal_met and findings
+                  and all(CLAIM_DRIFT_RE.match(f) for f in findings)
+                  and _render_with_recorded_claims(state, stopped, prev_items, prev_ip, today) == prev_region)
     if changed:
         sys.stderr.write("COMMIT: %s\n" % ("deferred" if claim_only else "needed"))
     sys.exit(1 if changed else 0)
