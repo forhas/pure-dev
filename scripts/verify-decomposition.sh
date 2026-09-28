@@ -23,7 +23,7 @@ assert_has "re-home needs the user's confirmation" \
 assert_has "the resolution entry separates non-goal follow-ups" \
   $ND/skills/epic-update/references/with-followups.md '**Follow-ups filed outside the goal** —'
 assert_has "approved follow-ups route non-goal work off the epic" \
-  $ND/skills/epic-update/references/approved-followup.md 'create the page with NO epic relation'
+  $ND/skills/epic-update/references/approved-followup.md 'create the page with NO epic'
 assert_has "judgments are validated with the configured threshold" \
   $ND/references/review-accounting.md 'judge-findings --worker <id> --judgments <file> --config <primary-config>'
 assert_has "mandatory absorb forbids filing" $ND/references/review-findings.md 'Mandatory absorb — filing is not allowed'
@@ -43,5 +43,12 @@ assert_has "task-breakdown has a re-scope mode" $ND/skills/task-breakdown/SKILL.
 assert_has "the record stage guide loads the release ledger" \
   $ND/scripts/execution.py '"Release obligations are one ledger"'
 assert_has "the reviewer contract charges its own sibling sweep" $ND/scripts/runtime.py 'contract["scope_rules"]'
+assert_has "design review reads the project's failure-mode classes" $ND/references/scope.md 'workflow.py failure-modes --config <primary-config>'
+assert_has "criterion 3 is measured without generated paths" $ND/references/review-findings.md 'workflow.py changed-lines'
+assert_has "intake scans for declared folds" $ND/references/lean-intake.md 'workflow.py fold-scan'
+assert_has "approved follow-ups compute their destination from config" \
+  $ND/skills/epic-update/references/approved-followup.md '--config <primary-config>`'
+assert_has "a spec change writes the re-scope thread" $ND/skills/epic-doc/references/note.md '**Re-scope pending** —'
+assert_has "the brief budget follows the retrieve budget" $ND/skills/epic-doc/references/schedule.md '--retrieve-budget <knowledge.retrieveBudget>'
 assert_has "the config schema declares the convergence knobs" $ND/schema/notion-dev.config.schema.json '"nonGoalDestination"'
 exit $(( fails > 0 ))

@@ -49,7 +49,7 @@ def measured_fact(value):
     return text + ". Population/window: " + value["population"] + ". Source: " + value["source"] + ". No causal or significance inference."
 
 
-def pr_body(facts):
+def pr_body(facts, units=()):
     """Stable implementation facts only; review status is a separate runtime view."""
     fields = ("requirement", "behavior", "validation", "risks", "mandatory")
     require(isinstance(facts, dict) and set(facts) == set(fields),
@@ -62,9 +62,10 @@ def pr_body(facts):
         raw = facts[name]
         values = [raw] if isinstance(raw, str) else list(raw.values()) if isinstance(raw, dict) else raw
         for value in values if isinstance(values, list) else []:
-            figures = unreferenced_figures(value) if isinstance(value, str) else []
+            figures = unreferenced_figures(value, units) if isinstance(value, str) else []
             require(not figures, "quantitative claim %r needs an (artifact: <test, receipt, export or diff>) "
-                    "reference or a measured fact; restating a figure is not evidence" % (figures[:1] or [""])[0])
+                    "reference, a (spec: <section>) citation for a specified parameter, or a measured fact; "
+                    "restating a figure is not evidence" % (figures[:1] or [""])[0])
     facts = dict(facts)
     for name in fields[1:]:
         if isinstance(facts[name], dict):
@@ -82,7 +83,7 @@ def pr_body(facts):
     return "\n\n".join(parts) + "\n"
 
 
-def followup_body(packet):
+def followup_body(packet, convergence=None):
     """Render already-approved requirements; missing answers require clarification.
 
     This builder does not prove approval, dedup, project schema or provider effects.
@@ -94,12 +95,23 @@ def followup_body(packet):
     require(packet.get("decision") == "file", "only approved filed findings use the builder")
     for name in ("acceptance", "edge_cases", "dependencies", "open_questions", "premises_to_verify", "hypothesis"):
         require(isinstance(packet.get(name), list) and all(isinstance(v, str) and v.strip() for v in packet[name]), "follow-up missing explicit " + name)
-    from scope import destination_problems
+    from scope import destination_problems, route_followup
     goal = packet.get("blocks_goal")
     require(isinstance(goal, dict) and goal.get("value") in {"yes", "no"}
             and isinstance(goal.get("reason"), str) and goal["reason"].strip(),
             "follow-up needs blocks_goal {value: yes|no, reason}")
-    problems = destination_problems(goal["value"], packet.get("destination"), packet.get("source_epic"))
+    for name in ("labels", "surface"):
+        require(isinstance(packet.get(name, []), list) and all(isinstance(v, str) and v.strip() for v in packet.get(name, [])),
+                name + " must be a list of nonempty strings")
+    routed = False
+    if convergence is not None:
+        # With the project's config the destination is computed, not chosen: a routing
+        # rule (e.g. a severity that gates a launch) or meta-work cannot be overridden.
+        expected, why = route_followup(goal["value"], packet.get("labels", []), convergence)
+        require(packet.get("destination") == expected,
+                "destination must be %r (%s), not %r" % (expected, why, packet.get("destination")))
+        routed = not why.startswith(("blocks the epic goal", "does not block"))
+    problems = destination_problems(goal["value"], packet.get("destination"), packet.get("source_epic"), routed)
     require(not problems, "; ".join(problems))
     # A claim the filer did not verify cannot become a requirement: every requirement
     # cites a verified fact, and unverified directions stay a labelled hypothesis.
@@ -125,6 +137,11 @@ def followup_body(packet):
     body += "\n\n## Hypothesis — verify before implementing\n\n" + ("\n".join("- " + v for v in packet["hypothesis"]) or "None.")
     body += "\n\n## Context\n\n" + packet["evidence"] + "\n\n" + packet["provenance"]
     body += "\n\nBlocks epic goal: " + goal["value"] + " — " + goal["reason"]
+    if packet.get("surface"):
+        body += "\n\n## Surface\n\n" + "\n".join("- " + v for v in packet["surface"])
+    if packet.get("lands_with"):
+        require(re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+", str(packet["lands_with"])), "lands_with must be a ticket key")
+        body += "\n\nLands with: [" + packet["lands_with"] + "] — fold into that ticket's change when it starts."
     for name, heading in (("edge_cases", "Edge cases"), ("dependencies", "Blocked by")):
         body += "\n\n## " + heading + "\n\n" + ("\n".join("- " + v for v in packet[name]) or "None (explicit in accepted finding).")
     body += "\n\n## Open Questions\n\nNone.\n\n## Source\n\n" + packet["source"] + "\n"

@@ -26,8 +26,8 @@ Dispositions for agreed findings:
   and safety guarantees. A protocol/API change may size the fix but never excuses deferring
   a defect in this PR's own guarantee.
 - **file:** genuinely separate work only. Cite one criterion: (1) a new public interface,
-  dependency/config or migration outside the surface this ticket already changes — a new env
-  var or error code needed to make THIS ticket's guarantee hold is absorbed, not filed; (2) an
+  dependency/config or migration outside the surface this ticket already changes — a new setting, status or error
+  value needed to make THIS ticket's guarantee hold is absorbed, not filed; (2) an
   unsettled design decision outside the ticket; (3) work large enough to obscure the ticket's
   review: more changed lines than `convergence.fileThresholdLines` (default 800) or a second
   independent design question. Touching another file is not a criterion. Preserve the approved
@@ -43,12 +43,15 @@ is still filing its own gap; (b) `sibling`: another instance of the defect class
 fixes (the outcome plan's sibling sweep finds them); (c) `changed-code-docs`: docs, JSDoc,
 comments, generated specs or tests describing code this PR changes; (d) `same-epic-rework`: a
 correction to text or wording this same epic introduced earlier — rework is absorbed, never
-re-ticketed. Every `file` judgment states `absorb_class: "none"` after checking these, plus
+re-ticketed. Rework prompted by a new product or spec decision is not (d): it is a new
+requirement, filed or scheduled on its own, never forced into an unrelated open PR. Every `file` judgment states `absorb_class: "none"` after checking these, plus
 `blocks_goal: yes|no` with a one-line `blocks_goal_reason`: `yes` only when the work is needed
 for an item of the epic's `Done when:` list. The filer proposes it; interactive runs confirm it
 with the user; a non-interactive run with no `Done when:` item to cite records `no`.
 `runtime.py judge-findings` refuses a `file` that breaks these rules (pass `--config` for the
-configured threshold), so the rule is not a wording choice.
+configured threshold), so the rule is not a wording choice. Measure criterion 3 with
+`workflow.py changed-lines`, which excludes the project's `generatedPaths`. Optional `labels`
+(a severity, `security`, `meta`) drive the follow-up's computed destination (`references/scope.md`).
 - **blocked:** an actual external cause (authority, credentials, unreachable required service),
   naming cause and unblocker. Length, complexity and needing a protocol change are not external.
   Do not turn a blocker into a follow-up ticket; required blocked work stops the merge.

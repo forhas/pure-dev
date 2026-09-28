@@ -162,8 +162,8 @@ def result_contract(role, items, version=RESULT_CONTRACT_VERSION):
                 contract["required"][name]["findings"] = [finding_contract()]
             contract["scope_rules"] = ("When the diff fixes a defect, search the tree for other instances of the same defect class; "
                                        "an unfixed sibling, a known gap of the feature this ticket adds, or stale docs/comments/tests of changed code "
-                                       "is a mandatory absorb finding, never file. A figure in the PR body without an (artifact: ...) reference "
-                                       "or measured-fact source is a claims finding.")
+                                       "is a mandatory absorb finding, never file. A figure in the PR body without an (artifact: ...) reference, "
+                                       "a (spec: ...) citation for a specified parameter, or a measured-fact source is a claims finding.")
             contract["finding_rules"] = "Enumerate every defect in its owning section, never only in citation/report. Affirmative observations belong in evidence. Mandatory incorrect claims, missing validation and unknown coverage block; advisory means genuinely optional. Explicitly verified resolved findings may remain as history. findings verdict with only advisory/resolved items can pass; unverified never passes. Parent must account for every indexed item before acceptance."
         if version >= 3:
             contract["required"]["recording"] = {"release_obligations": [], "claim_corrections": [], "technical_delta": []}

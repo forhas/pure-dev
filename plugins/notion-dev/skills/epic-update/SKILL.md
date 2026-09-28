@@ -37,8 +37,10 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
 4. **The goal decides closure, not the child count.** Run (configured `knowledge.python`)
    `knowledge.py epic-goal --brief <brief from origin/<epicBranch>> --state <live-state.json>
    --log <epic body with this entry's lines> --window <convergence.rateWindow> --threshold
-   <convergence.rateThreshold> --budget <convergence.briefBudget>` over the live child list from
-   step 3. `goal: met` means **goal-complete**: interactive runs propose closing the epic and
+   <convergence.rateThreshold> --budget <convergence.briefBudget> --retrieve-budget
+   <knowledge.retrieveBudget> --retrieve-share <convergence.briefRetrieveShare>` (omit a flag whose key
+   is unset) over the live child list from step 3. When this resolution changed the epic's source
+   spec or a recorded decision, the record adds a `Re-scope pending` thread (`note.md` test 3). `goal: met` means **goal-complete**: interactive runs propose closing the epic and
    the single re-home batch below; non-interactive runs do not close — they record `goal met`
    in the resolution entry, and `## Next` renders the goal-met form so next-task stops
    recommending this epic's children. `open`/`invalid` leave the epic open (report an

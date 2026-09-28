@@ -164,7 +164,8 @@ No `phase`, no `step`, no `dependsOn` — all three are independent bug fixes. E
 ## Re-scope mode — an epic that is not converging
 
 Invoked by `/notion-dev:next-task` when `knowledge.py epic-goal` recommends `rescope` (its
-FOLLOWUP_RATE exceeded `convergence.rateThreshold`), and for a same-surface bundle offer.
+FOLLOWUP_RATE exceeded `convergence.rateThreshold`, or the brief has a `Re-scope pending` thread
+after a spec or decision change), and for a same-surface bundle offer.
 Input: the brief's `## Goal` (with any `Done when:` list) and the open children — titles,
 bodies, `Follow-up-of:` provenance and each child's follow-up GENERATION. Still pure analysis:
 the caller performs every change, and only after the user confirms each one.
@@ -174,7 +175,7 @@ Output one proposal per open child, each with a one-line reason:
 ```
 {
   kind: "rescope",
-  groups: [ { surface: "<shared files, DTO, error code or contract item>", keys: ["<KEY>-<n>", …] } ],
+  groups: [ { surface: "<shared files or contract item>", keys: ["<KEY>-<n>", …] } ],
   proposals: [
     { key: "<KEY>-<n>", action: "keep" | "merge-into" | "rehome" | "drop", into?: "<KEY>-<n>",
       blocks_goal: "yes" | "no", reason: "…" }
@@ -183,9 +184,13 @@ Output one proposal per open child, each with a one-line reason:
 }
 ```
 
-Rules: group children by shared surface first; `merge-into` folds same-surface work (a sibling
-defect, a reworded message, a stale comment) into one ticket so it is one run and one PR;
-`rehome` moves `blocks_goal: no` work to `convergence.nonGoalDestination`; `drop` is only for a
+Rules: group children by shared surface first (a follow-up's `## Surface` section names it);
+a child whose text says it folds into or lands with another is `merge-into` that one;
+`merge-into` folds same-surface work (a sibling defect, a reworded message, a stale comment) into
+one ticket so it is one run and one PR; `rehome` moves non-goal work to its computed destination
+(`references/scope.md`: `convergence.destinations`, meta-work, `nonGoalDestination`); `drop` is only for a
 path with no current consumer or a premise already disproved, with the re-open trigger. A
 generation-2+ child whose premise is unverified is proposed for re-verification, never kept
-as-is. Prefer fewer, larger tickets that the goal needs over preserving the child count.
+as-is. Prefer fewer, larger tickets that the goal needs over preserving the child count. Record the
+dependency order you establish (`Blocked by`, Phase/Step) on every surviving child, and remove
+the brief's `Re-scope pending` thread only after every open child was re-checked.

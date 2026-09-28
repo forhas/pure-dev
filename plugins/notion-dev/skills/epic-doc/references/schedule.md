@@ -16,8 +16,9 @@ fetch every sibling: validate the candidate below. Disk bootstrap is the existin
 
 Also run `knowledge.py epic-goal --brief <brief> --state <live-state.json> [--log <resolution
 log>] --window <convergence.rateWindow> --threshold <convergence.rateThreshold> --budget
-<convergence.briefBudget>` (omit a flag only when its key is unset) over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
-`brief.over_budget` and `release.warnings`. A `goal: met` epic passes `goal_met: true` into the
+<convergence.briefBudget> --retrieve-budget <knowledge.retrieveBudget> --retrieve-share
+<convergence.briefRetrieveShare>` (omit a flag only when its key is unset) over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
+`brief.over_budget`, `rescope_pending` and `release.warnings`. A `goal: met` epic passes `goal_met: true` into the
 select plan, which then returns no candidate.
 Return these references/fields to next-task; schedule does not select or fetch a candidate.
 The caller owns the following selection checks, once: resume an owned unresolved worktree first.

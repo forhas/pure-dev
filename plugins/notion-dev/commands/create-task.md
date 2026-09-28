@@ -90,7 +90,8 @@ requirements, acceptance tests, edge cases, dependencies and provenance. Every i
 changing answer must be explicit in that evidence; missing/ambiguous is not an empty list.
 When complete, write those facts as the JSON packet epic-update's `approved-followup.md` step 2
 defines and render the body with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py"
-followup-body --packet <packet.json> --output <body.json>` (configured `knowledge.python`); use
+followup-body --packet <packet.json> --output <body.json> --config <primary-config>` (configured
+`knowledge.python`); use
 its `body` unchanged, preserve the exact pinned title/provenance, and proceed to 2.2 without
 interviewer or proxy respondent. A refusal names what is missing — an uncited requirement, no
 verified facts, no `blocks_goal` — and sends the item to the normal interview for exactly that. Do not invent a

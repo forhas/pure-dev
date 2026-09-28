@@ -76,6 +76,25 @@ and reduced median total tokens/time. Keep <200K peak context and roughly <1h as
 not achieved measurements. If parent context still dominates, the next measured slice
 is knowledge retrieval and command/stage separation, not weaker completeness checks.
 
+## Generic convergence (0.45.0)
+
+**What changed.** A genericity audit against both client projects (an HTTP service and a
+contract system) moved every project-shaped rule of 0.44.0 behind a config key or a project file:
+failure-mode classes, figure units and spec citations, generated paths for filing criterion 3,
+label-based follow-up routing (so a launch-gating finding is not un-parented), meta-work off
+product epics, and a brief budget checked against the retrieve budget. Three generic efficiency
+gaps are closed: declared fold targets are absorbed at intake, follow-ups carry their surface and
+dependencies into the next `## Next`, and a spec or decision change triggers the re-scope pass.
+
+**Cost.** No review seat, round or base commit is added. `references/scope.md` grows ~2.5 KB and
+is loaded only at the stages that need it; the entry points are unchanged. The fold scan adds one
+ticket-system search and fetches only its hits; `failure-modes` and `changed-lines` are local
+commands. Native dependency relations are not adopted: the ticket-system reference keeps blocking
+order in the `## Blocked by` body section by design, and follow-up dependencies now reach the
+brief at the filing boundary instead.
+
+**Disposition: `blocked`** on the same measurement as 0.44.0 below — the next three real epics.
+
 ## Epic convergence (0.44.0)
 
 **What changed.** `references/scope.md` lists each rule and the helper that enforces it:

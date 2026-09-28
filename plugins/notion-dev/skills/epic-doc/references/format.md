@@ -29,7 +29,7 @@ Seeded from docs/STO-67-release-plan.md (last at a1b2c3d) · 2026-09-13
 Done when:
 - [STO-70] resolved
 - [STO-71] verdict recorded
-- external: customer confirms v1.4.2 fixes the report — open
+- external: the requester confirms v1.4.2 fixes the report — open
 
 ## Where we stand
 <3-6 sentences: what has landed, what changed the picture recently>
@@ -44,8 +44,8 @@ Done when:
   approaches with why>
 
 ## Release obligations
-- [STO-67] wire error code 4012 added — sign-off: yes — gate: none — released: no
-- commitment: retry fix for the customer — for: v1.5 — ticket: [STO-70] — released: no
+- [STO-67] new status value in the public schema — sign-off: yes — gate: none — released: no
+- commitment: retry fix for the requesting team — for: v1.5 — ticket: [STO-70] — released: no
 
 ## Next
 1. **[STO-70] Backfill historic wallets** — unblocked; depends on nothing open. Why now: …
@@ -93,14 +93,16 @@ Without the list, closure falls back to every child resolved. `bootstrap` and `r
 the list from the Overview's stated outcome or the seed's explicit goal; never invent one from
 the current child count — an epic with no stated finish line keeps the fallback.
 
-**`## Release obligations` is one ledger** (`references/boundaries.md`): every merged-but-
-unreleased obligation as `- [<KEY>-<n>] <obligation> — sign-off: yes|no — gate: <gate|none> —
+**`## Release obligations` is one ledger** (`references/boundaries.md`): `released` means the
+change reached its consumers — a versioned release, a deployment or an activation, whichever the
+project ships by. Every merged-but-undelivered obligation as `- [<KEY>-<n>] <obligation> — sign-off: yes|no — gate: <gate|none> —
 released: yes|no`, and every deliverable promised to someone as `- commitment: <deliverable> —
-for: <whom or release> — ticket: [<KEY>-<n>] — released: yes|no`. Sign-off is requested once per
+for: <whom, or which release or deployment> — ticket: [<KEY>-<n>] — released: yes|no`. Sign-off is requested once per
 release from this list. A released item is removed at the next `record`.
 
 **Rules of content.**
 
+- **A `- **Re-scope pending** — <what changed>, <date>. Unblocked by: task-breakdown re-scope.` thread** marks a spec or decision change the open children were not re-checked against; `epic-goal` recommends a re-scope pass while it exists, and only that pass removes it.
 - **Every `## Open threads` bullet names what it blocks or which ticket it informs**, and — for a wait on someone else — what would clear it (`Unblocked by:`). A bullet that names neither is not a thread and is not written.
 - **No ticket history, no status table.** Notion is the ledger. The brief holds only what Notion cannot say: why, where we stand, what is waiting on whom, and what is next.
 - **`## Next` is an ordered recommendation, not a task list.** When proven eligible, item 1 is the single most recommended **unblocked** ticket with its reason. Unread/stale dependencies instead say `dependency check pending`, including item 1 when none is proven ready; never fetch every sibling just to remove that label. Further items state known waits or pending checks. The trailing `Blocked:` line names every unresolved child held by an open thread. When the epic is closed, the section reads `epic complete`.

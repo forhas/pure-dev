@@ -272,7 +272,74 @@
           "minimum": 500,
           "default": 3000,
           "description": "Characters above which workflow.py pr-body warns. Reasoning belongs in the knowledge capture."
-        }
+        },
+          "failureModeClasses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "description": "The project's failure-mode classes for a design review of a new or changed contract surface (e.g. an HTTP service: client-acted verdicts, timeouts and concurrency, connection lifetime, upstream outage; a contract system: access control, re-entrancy, parameter bounds, storage/ABI compatibility). Wins over failureModeReference. Absent both, a neutral fallback list is used."
+          },
+          "failureModeReference": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?![A-Za-z]:)(?!/)(?!\\.\\.(/|$))(?!.*/\\.\\.(/|$))[^\\\\\\u0000]+$",
+            "description": "Repo-relative path of a project file listing its failure-mode classes, one bullet per class. Read only at the design review (workflow.py failure-modes)."
+          },
+          "figureUnits": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Extra units that make a number a quantitative PR-body claim, beside the generic built-ins (%, x, ms, s, minutes, days, bytes, tokens, lines, requests, calls). Add domain units (a currency, gas, bps) and counted nouns (tests)."
+          },
+          "generatedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Glob or directory prefixes of generated files (lockfiles, codegen, exported API specs) that workflow.py changed-lines excludes from filing criterion 3's size."
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "match",
+                "to"
+              ],
+              "properties": {
+                "match": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Regex matched (full, case-insensitive) against a finding's labels, e.g. severity:(critical|high)."
+                },
+                "to": {
+                  "type": "string",
+                  "pattern": "^(epic|backlog|related|epic:[A-Z][A-Z0-9]{1,9}-\\d+)$"
+                }
+              }
+            },
+            "description": "Ordered label -> destination rules for filed follow-ups; the first match wins over metaDestination and the blocks_goal routing. Use it so a finding that gates a launch or release keeps a parent instead of landing in the backlog. The plugin never interprets a label."
+          },
+          "metaDestination": {
+            "type": "string",
+            "pattern": "^(backlog|related|epic:[A-Z][A-Z0-9]{1,9}-\\d+)$",
+            "default": "backlog",
+            "description": "Where a follow-up labelled meta (tooling, CI, knowledge bundle, plugin) is filed: never under the product epic it was found in."
+          },
+          "briefRetrieveShare": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "default": 0.5,
+            "description": "Share of knowledge.retrieveBudget the epic brief may use (estimated at 4 bytes per token). Over it, or over briefBudget lines, epic-goal reports brief.over_budget."
+          }
       }
     }
   }
