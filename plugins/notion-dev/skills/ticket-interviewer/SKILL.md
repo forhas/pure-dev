@@ -58,6 +58,7 @@ Before leaving the interview, the ticket body must satisfy every dimension below
 - **Acceptance criteria** — each an observable, testable condition of "done"?
 - **Edge cases** — empty inputs, concurrency, failure modes, backwards compatibility?
 - **Dependencies / prereqs** — other work, external services, access the user must arrange?
+- **Verified premises** (review follow-ups) — every requirement rests on a cited verified fact; an unverified claim sits under `## Premises to verify`, a proposed fix under `## Hypothesis — verify before implementing`, never in Requirements or acceptance criteria.
 - **Data shape** — if data is involved, is the schema / format defined?
 
 Do not proceed to the summary with any lingering ambiguity on any dimension.

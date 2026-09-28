@@ -68,6 +68,15 @@ Extract every mandatory requirement, constraint, prerequisite and AC into the ru
 as that intake guide specifies; record release-only obligations without treating an
 explicitly optional sign-off branch as a new merge prerequisite. Run `requirements` and `ready`.
 
+**Premises first.** When the ticket has a `## Premises to verify` section (follow-ups carry one),
+`ready` stays false until each premise is checked against the code, before planning: write
+`[{"text": "<premise verbatim>", "verdict": "holds|false|moot", "evidence": "<file:line or
+command output>", "correction": "<what is actually true>"}]` and run `runtime.py premises
+--checks <file>`. A `false` premise is corrected as a ticket comment (the frozen text stays
+untouched) and stated in the PR. A `moot` verdict — a false premise that makes the ticket
+pointless — stops the run with a `drop` recommendation instead of building. The `## Hypothesis
+— verify before implementing` section is a lead, never a requirement.
+
 ## Resume or claim
 
 Start a resume with `workflow.py resume-view --state <existing-state> [--worktree <path>]`.

@@ -166,6 +166,22 @@ class KnowledgeGoalTests(unittest.TestCase):
         released = BRIEF.replace("gate: contract test — released: no", "gate: contract test — released: yes")
         self.assertEqual(self.goal(brief=released)["release"]["warnings"], [])
 
+    def test_bookkeeping_counts_brief_commits_per_resolution(self):
+        repo = self.root / "repo"
+        (repo / "knowledge" / "epic").mkdir(parents=True)
+        git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+        git("init", "-q"); git("config", "user.email", "t@example.invalid"); git("config", "user.name", "t")
+        brief = repo / "knowledge" / "epic" / "EX-1-example.md"
+        for n in range(3):
+            brief.write_text(BRIEF + "\n" * n, encoding="utf-8", newline="\n")
+            git("add", "."); git("commit", "-qm", "docs(epic): EX-1 %d" % n)
+        log = resolution_log([("EX-2", [], None), ("EX-3", [], None)])
+        proc = self.knowledge("epic-goal", "--brief", str(brief), "--state", str(self.write("s.json", live_state())),
+                              "--log", str(self.write("log.md", log)), "--repo", str(repo))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["bookkeeping"],
+                         {"brief_commits": 3, "resolutions": 2, "per_resolution": 1.5})
+
     def test_brief_budget_is_reported(self):
         result = self.goal(BRIEF, None, None, "--budget", "20")
         self.assertTrue(result["brief"]["over_budget"])

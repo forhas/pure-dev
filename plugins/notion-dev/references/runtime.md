@@ -170,6 +170,8 @@ finding. Independent reviewers distinguish mandatory/advisory/unknown, with evid
 Unknown and unresolved mandatory findings must be blocking; filing/dropping cannot waive them.
 An enumerated advisory-only `findings` verdict can pass after parent accounting; older ambiguous
 verdicts cannot. Keep affirmative observations in audit evidence, not the findings list.
+The contract's `scope_rules` also charge the reviewer with its own sibling sweep of a fixed
+defect class and with auditing PR-body figures for artifact references, not their prose.
 
 Version 3 additionally requires `recording`: `release_obligations` and `claim_corrections`
 (lists of strings), plus `technical_delta` (fact/evidence objects). Use explicit [] for none.

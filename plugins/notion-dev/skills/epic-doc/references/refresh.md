@@ -72,5 +72,9 @@ with each key's `since` preserved, and `Blocked:` from the threads' keys plus ev
 key. `stop` adds the bullet; `start` removes it. `Status: closed` and `epic complete` exactly when
 the epic's live status is in the resolved set. Exit 0 means the brief was already true.
 
-**Outcome.** Byte-identical brief → `unchanged`, no commit, `COMMIT: none`. Otherwise commit
+**Outcome.** Byte-identical brief → `unchanged`, no commit, `COMMIT: none`. When stderr says
+`COMMIT: deferred` — a `start` or `drift` whose only change is in-progress claim bookkeeping,
+which every reader re-checks live — write nothing, commit nothing and return `unchanged` with
+`COMMIT: none (deferred to the next record)`; the next `record` rewrites `## Next` anyway.
+Otherwise (`COMMIT: needed`: a stop bullet, a cleared thread, a status change) commit
 through `write-path.md` with the existing primary lock and scoped pathspec.

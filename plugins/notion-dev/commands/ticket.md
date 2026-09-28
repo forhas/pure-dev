@@ -41,8 +41,8 @@ function/call-site/test/docs changes into separate worker tasks. The implementat
 correct test setup, helper choices and line ranges without asking permission to deviate from
 a proposed implementation; requirements and explicit user decisions still govern.
 
-Keep decision/reason/evidence/release obligations in context.md; derive summaries from those
-facts, with detail by reference rather than copying the same conditions into every artifact.
+Keep decision/reason/evidence/release obligations in context.md; summarize by reference.
+Apply `references/scope.md` to the plan: sibling sweep, failure-mode classes, filing rules.
 
 **Design review when warranted:** unresolved architecture, financial/security invariants,
 migration/data-loss risk, or a public contract change merits a bounded independent `plan`
@@ -84,7 +84,7 @@ archives, not mutable reports. `workflow.py verify` already reuses receipts (no 
 Full/delta dispatch uses `workflow.py review-prepare` per review-and-merge.
 
 Push only the ticket branch. Open a PR against `git.prTargetBranch` or `git.baseBranch`.
-Render `pr-facts.json` with `workflow.py pr-body --facts <pr-facts.json> --output <pr-body.md>`.
+Render `pr-facts.json` with `workflow.py pr-body --facts pr-facts.json --output <pr-body.md> --config <config>`.
 Use stable named facts per `references/boundaries.md`, retaining all mandatory disclosures and
 distinguishing merge prerequisites from release obligations. Never invent sign-off. Use the file
 for the PR; rendering is not verification. Correct facts in place to a new output file while

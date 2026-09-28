@@ -84,6 +84,12 @@ Then run:
 /notion-dev:create-task --non-interactive --context-file=<packet> [--reviewed-followup] --epic="<epic name>" --parent=<EPIC_ID> --title="<derived title>" --provenance="<PROVENANCE>" [--assignee=<TICKET_ASSIGNEE>] [--no-proxy] prompt:<finding title>
 ```
 
+**A `blocks_goal: no` item leaves the epic.** Omit `--epic`/`--parent` for the `backlog` and
+`related` destinations (`convergence.nonGoalDestination`), or pass the debt epic's name and id
+for `epic:<KEY>-<n>`; the packet still names the source epic in its provenance, and step 5
+lists the item on **Follow-ups filed outside the goal**. A missing `blocks_goal` judgment is
+`no` on a non-interactive run and a question on an interactive one.
+
 **Include `--no-proxy` exactly when the caller passed `NO_PROXY: true`**, and never otherwise. **It goes before the `prompt:` argument, like every other flag here** — `create-task` parses flags off the **front** of the argument string, before its source-selector rule runs, so a flag trailing `prompt:<finding title>` is read as prompt text and silently does nothing, leaving the dispatched unit free to spawn the proxy respondent exactly as before. It is passed by legacy `/notion-dev:ticket` Phase 8's *dispatched* record unit (`references/legacy/record.md` step 8.2) and by nothing else: a dispatched unit cannot wait on a grandchild agent, so a proxy respondent spawned from in there ends the unit with no `RECORD:` block and its answers arrive after the run is over. Lean ticket and finalize share the inline `references/record.md` routine and omit `NO_PROXY`. Every other inline caller — the orchestrator's inline recovery, legacy `/notion-dev:finalize` on **every** one of its paths (it never reads `references/legacy/record.md`; it invokes this skill from its own `## Phase 3 — Record`), an interactive run — omits it and keeps the proxy respondent, which is what stops the agent that wrote the finding from answering its own interview. `create-task`'s proxy-respondent section owns the rule; this line only forwards it. Include `--assignee=<TICKET_ASSIGNEE>` only when `TICKET_ASSIGNEE` (step 1) is non-empty. When it's empty — the resolved ticket had no assignee — omit the flag entirely and let create-task's own Phase 2.75 `defaultAssignee` resolution decide; that fallback is exactly what Phase 2.75 already does for any caller that doesn't pass `--assignee`, so no special-casing is needed here.
 
 Record `FILED` = `[{ id, title, url }]` for each newly created ticket, `ALREADY_FILED` = `[{ id, title, url }]` for each item deduped against an existing child, `DROPPED` = the items the user chose to drop (each with its rationale), and `FAILED` = the items whose `create-task` invocation itself failed, **each paired with the `<n>` packet identity recorded for it above**. These last two are **not interchangeable**, and must be tracked and reported separately: `DROPPED` is a permanent user decision that **closes the item out** rather than blocking closure (see step 4); `FAILED` is a transient failure that a later invocation retries automatically (see step 1a), and it is specifically `FAILED`'s packet identity that step 5 must serialize onto the log line and step 1a must parse back — `DROPPED` items are never retried, so they need no packet reference. A create-task failure is **non-fatal**: log it, add the item (with its packet identity) to `FAILED` — never to `DROPPED`, which would misrepresent a filing error as a deliberate decision and, per step 1a, permanently stop it from ever being retried — continue. When `REVIEW_REPORT` has no deferred follow-ups, all four lists are empty and this step is a no-op.
@@ -93,6 +99,12 @@ Record `FILED` = `[{ id, title, url }]` for each newly created ticket, `ALREADY_
 The mirror is refreshed only on resolution, so between resolutions it lags reality; the live view is Notion's Parent task relation column, and the section exists so the epic reads as a coherent document.
 
 **4. Close the epic.** Evaluate against the child list step 3 already fetched — read *after* step 2 filed its follow-ups, so new tickets are in it. Do not re-query.
+
+**Goal first.** When the brief has a `Done when:` list, SKILL.md step 4's `knowledge.py
+epic-goal` decides instead of condition 1: `goal: met` replaces "every child resolved" (the
+open non-goal children are re-home candidates, closed over only after the user confirms the
+re-home batch; non-interactive records `goal met` and does not close). Conditions 2–4 still
+apply. Without the list, the conditions below are unchanged.
 
 Close only when **all** of:
 1. Every child other than the just-resolved one has a status in the resolved set. This is the sole **live-state** signal among the four — it comes from step 3's fresh `listEpicChildren` call, so it reflects the epic's actual, current state regardless of what any prior invocation did.
@@ -124,6 +136,8 @@ The comment goes on the **epic page**, not the resolved ticket — the epic is w
 ### [<KEY>-<id>] resolved — <YYYY-MM-DD HH:MM UTC>
 **Summary** — <2-4 sentences: what was actually done, distilled from the ticket's ## Implementation section and the merge>
 **Follow-ups filed** — [<KEY>-69] Backfill historic wallets · <url>    (`FILED` ∪ `ALREADY_FILED`; omit the line when both are empty — this is the first log entry to record this ticket's resolution regardless of which invocation actually created the follow-up ticket)
+**Follow-ups filed outside the goal** — [<KEY>-70] Stale JSDoc · backlog · <url>    (the `blocks_goal: no` items, created at `convergence.nonGoalDestination`; omit the line when there are none. Only the line above counts toward the follow-up rate)
+**Goal** — met, or open: <unsatisfied Done when items>    (omit when the brief has no `Done when:` list)
 **Follow-ups dropped** — <item> — <rationale>, …                   (omit the line when DROPPED is empty. When DROPPED is the **unknown** sentinel, write the line as the literal `UNKNOWN — review report unavailable`. **A `LEGACY_SKIPPED` item re-serialized onto this line has no rationale to render** — the pre-`0.13.0` prompt never asked for one — so write it as `<item> — no rationale recorded (declined before 0.13.0)`. Never fabricate a rationale for one, and never emit a bare `<item> —` with nothing after the separator: step 1a splits this line on that separator, so a dangling one corrupts the parse of every item after it.)
 **Legacy follow-ups closed over** — <item>, …                      (omit the line when LEGACY_SKIPPED is empty — **emptiness is the only condition**. Write it whether or not this invocation closed the epic: the line is how legacy provenance survives step 5 re-serializing every drop onto the `**Follow-ups dropped**` line, and step 1a reads it back. Suppressing it on a no-close invocation is what would let the next one close silently. These were declined before `0.13.0` under the old "left undone" semantics and carry no rationale; when this invocation did close, step 4a also commented on the epic.)
 **Follow-ups failed to file** — <item> · packet:<n>, …                 (omit the line when FAILED is empty. Each item carries its packet identity as ` · packet:<n>` — the exact `<n>` from `followup-<KEY>-<id>-<n>.md` (step 2) — so a later recovery invocation (step 1a) reuses it verbatim instead of recomputing it from a filtered list. When FAILED is the **unknown** sentinel, write the line as the literal `UNKNOWN — review report unavailable, filing failures could not be determined` instead — no items, no packet references. These are transient — a later invocation retries each one automatically, per step 1a.)
@@ -147,6 +161,9 @@ ALREADY-FILED: <KEY>-71                   (or `none`)
 DROPPED: <one-liner>, …                   (or `none` or `unknown`)
 FAILED-TO-FILE: <one-liner>, …            (or `none` or `unknown`)
 CHILDREN: <resolved>/<total> resolved
+GOAL: met | open | undefined | invalid    (from knowledge.py epic-goal, SKILL.md step 4)
+FOLLOWUP_RATE: <rate> over <n> (threshold <t>)[ — rescope]
+GENERATION: <max follow-up depth>
 ```
 
 **There is deliberately no `degraded` value.** One was documented here previously and no step ever emitted it; both definitions it carried turned out to describe states this skill cannot reach or cannot observe, and no caller ever keyed on it (`/notion-dev:ticket` and `/notion-dev:finalize` branch only on `none` and `already-recorded`). Do not reintroduce it without a step that actually returns it. The three states it was reached for are each already encoded elsewhere:

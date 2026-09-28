@@ -14,6 +14,10 @@ under its normal lock/write path. Unknown dependency-order drift alone is not a 
 fetch every sibling: validate the candidate below. Disk bootstrap is the existing
 `record --bootstrap` path, not an ad-hoc write.
 
+Also run `knowledge.py epic-goal --brief <brief> --state <live-state.json> [--log <resolution
+log>]` over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
+`brief.over_budget` and `release.warnings`. A `goal: met` epic passes `goal_met: true` into the
+select plan, which then returns no candidate.
 Return these references/fields to next-task; schedule does not select or fetch a candidate.
 The caller owns the following selection checks, once: resume an owned unresolved worktree first.
 For new selection run `knowledge.py retrieval-plan --purpose select --state <live-state.json>`

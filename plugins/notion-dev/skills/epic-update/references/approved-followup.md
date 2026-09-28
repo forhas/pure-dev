@@ -19,10 +19,19 @@ Use configured `knowledge.python` for `python3` below.
    identity. Retry only after proving no effect and recording failure through the existing protocol.
 2. Save a JSON packet outside git under the runtime, keyed by the finding identity:
    `title`, `goal`, `scope`, `evidence`, `provenance`, `source` (source ticket/PR references),
-   `decision: "file"`, nonempty `requirements` and `acceptance` arrays, and explicit arrays
-   `edge_cases`, `dependencies`, `open_questions`. Empty means explicitly established empty,
-   not unread. Keep the raw accepted finding and approval reference beside it. Unknown answers
-   take the normal clarification path; never invent them to satisfy the builder.
+   `decision: "file"`, nonempty `verified_facts` (`[{fact, citation}]`, each cited by file:line,
+   command output or primary source you checked), nonempty `requirements` (`[{text, facts:
+   [<verified fact numbers>]}]`) and `acceptance` (observable artifacts only), explicit arrays
+   `premises_to_verify` (claims taken from the reviewer, unchecked), `hypothesis` (a proposed fix
+   direction — never a requirement), `edge_cases`, `dependencies`, `open_questions`, plus
+   `blocks_goal: {value, reason}` from the judgment, `destination` and `source_epic`. Empty
+   means explicitly established empty, not unread. Keep the raw accepted finding and approval
+   reference beside it. Unknown answers take the normal clarification path; never invent them
+   to satisfy the builder. The builder refuses an uncited requirement.
+   **Destination:** `blocks_goal: yes` → `"epic"` (a child of the validated epic, as before).
+   `no` → configured `convergence.nonGoalDestination` (default `backlog`): `backlog` and
+   `related` create the page with NO epic relation (`related` is linked from the resolution
+   entry); `epic:<KEY>-<n>` names a standing debt epic, validated like any epic parent.
 3. Load ticket-system **createTicket**'s live schema/parent/assignee rules. Save an approved
    create recipe (one page) with `name`, `target`, `tool: "mcp__notion__notion-create-pages"`,
    `title_property: "<configured title key>"`, and `input` containing actual parent and page
@@ -31,19 +40,20 @@ Use configured `knowledge.python` for `python3` below.
    writes UTF-8/LF directly and returns its path/hash. Pass that file directly to
    `record-children --writes <writes.json>`; do not read stdout through inline Python, retype
    the rendered content, or pass a large JSON object as a shell argument.
-   Use the generated title/body, validated parent epic,
+   Use the generated title/body, the destination's parent epic (none for backlog/related),
    configured epic property and normal Backlog mapping. Carry the resolved ticket's assignee
    when present; otherwise honor configured defaultAssignee after live eligibility validation.
    Load only createTicket and needed schema/assignee references, not create-task/input-source/
    interviewer. Preserve required project properties and return/report the created id/title/url.
 4. Declare the exact create call as a child of the existing epic-record operation and begin
-   BEFORE dispatch. Parent relation and provenance are in that SAME create call, not appended
-   later. Capture the real exchange; fetch the new page and verify title, body/provenance,
+   BEFORE dispatch. Parent relation (when the destination has one) and provenance are in that
+   SAME create call, not appended later. Capture the real exchange; fetch the new page and verify title, body/provenance,
    parent, project/status/assignee before confirming. Never claim success from the launch alone.
    Lost response → reconcile title candidates plus exact marker; no blind create retry.
    Failure/unknown → retain packet path, journal and cause; do not treat as user-dropped.
-5. Return FILED/ALREADY-FILED with verified URLs, explicit failed/unknown items and packet
-   paths. Continue epic-update with a NEW child list after creates; it refreshes Tasks, checks
+5. Return FILED/ALREADY-FILED with verified URLs and each item's `blocks_goal`, explicit
+   failed/unknown items and packet paths. Dedup for a non-goal item reads the destination's
+   candidates (debt-epic children, or a title search) instead of this epic's children. Continue epic-update with a NEW child list after creates; it refreshes Tasks, checks
    closure, logs resolution once. The enclosing epic brief uses the lifecycle retrieval planner:
    no additional create-time refresh or sibling-body scan.
 

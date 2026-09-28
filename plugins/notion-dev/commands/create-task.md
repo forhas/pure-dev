@@ -95,6 +95,17 @@ only the missing questions; non-interactive cannot invent authority. This except
 the proxy policy only for this fully specified, already independently reviewed case. General
 prompts, existing-ticket elaboration and legacy packets retain their normal interview.
 
+**Every follow-up is verified before it is filed** (fast path, interview path and epic-update
+alike). Its body separates `## Verified facts` — each with a citation (file:line, command
+output, primary-source link) — from `## Premises to verify`, and any proposed fix direction goes
+under `## Hypothesis — verify before implementing`, never under Requirements or an acceptance
+criterion. A requirement cites the verified fact it rests on; a claim the filer did not verify
+is relabelled as a premise, never kept as a requirement. Acceptance criteria name observable
+artifacts only (a test, an output, a response). `workflow.py followup-body` refuses a packet
+that breaks this, and the ticket's first run checks every premise (`lean-intake.md`).
+The follow-up also states `Blocks epic goal: yes|no — <reason>`: `no` goes to
+`convergence.nonGoalDestination` (default `backlog`, no epic parent) instead of `--parent`.
+
 Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confidence}` from Phase 1. The skill:
 
 - Calibrates interview depth to `confidence` (high / medium / low).

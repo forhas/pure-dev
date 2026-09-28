@@ -62,6 +62,19 @@ a requested nonincrease contradicted by any column. It does not validate invente
 Independent review must check source values and inference: a truncated tail sample cannot
 establish whole-run proportions or rank of bias, nor does admission shedding alone prove latency
 safety. Reuse immutable benchmark evidence when correcting prose; do not rerun merely to reword it.
+Any other string fact carrying a figure (a unit, percentage or multiplier) must cite the artifact
+that produced it — `(artifact: test_name)`, a verification receipt, an exported JSON/CSV or a
+generated diff — or rendering fails. Restating a figure in a sentence is not evidence, and the
+combined reviewer audits the artifact references, not the prose around them.
+
+## Release obligations are one ledger
+
+Every merged-but-unreleased obligation — a wire/contract change needing sign-off, a release note,
+a config line, a measurement that gates the release — is one `## Release obligations` item in
+the epic brief (epic-doc `format.md`), with its source ticket, whether sign-off is needed and the
+automated gate (if any) that surfaces it. Request sign-off once per release from that list, not
+per ticket. A deliverable promised to someone is a `commitment:` item; next-task warns when it
+is merged but unreleased while later children keep adding obligations ahead of it.
 
 ## Compact delta publication
 

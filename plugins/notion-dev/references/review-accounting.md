@@ -30,11 +30,15 @@ allowance, no renewal is possible. Fresh conversations preserve the invocation a
    ]}
    ```
 
+   A `file` action also carries `criterion`, `absorb_class: "none"`, `blocks_goal`,
+   `blocks_goal_reason` (and `changed_lines` or `second_design_question` for criterion 3);
+   a `drop` with `no_consumer: true` carries `reopen_trigger` — see `review-findings.md`.
    Use each ID exactly once, including recording claim corrections/release obligations.
    Actions: `absorb`, `file`, `drop`, `blocked`, `record`. Supply a substantive rationale and
    evidence, not an acknowledgment. `record` preserves an already-accepted fact or release-only
    obligation; it is not permission to defer pre-merge work. `file` needs real tracking per triage.
-   `judge-findings --worker <id> --judgments <file>` validates hash, retrieval and coverage.
+   `judge-findings --worker <id> --judgments <file> --config <primary-config>` validates hash,
+   retrieval, coverage and the filing rules.
    Then `accept --worker <id>`. Zero actions needs no judgment file. A valid nonpassing result
    can be accepted for correction, but dispositions never override the independent verdict.
 
@@ -69,7 +73,8 @@ locations (always include `input:pr_body`), retired literal anchors or a no-lite
 disposition `corrected`/`not-applicable`, and evidence. It scans all tracked files and current
 source inputs for those anchors, not just the edited file. Remaining occurrences block until
 corrected or explained individually in `retained: {"<source>": "<why valid here>"}`—for example
-a quoted negative test. Do not add blanket exemptions. A stale source/head requires a new
+a quoted negative test. Do not add blanket exemptions. A prose-claim finding also names
+`claim` and `method`; a third consecutive `rewrite` of one claim is refused. A stale source/head requires a new
 worksheet; transfer only still-applicable dispositions. This is the existing finding ledger's
 preflight view, not a second review or proof of semantic correctness.
 Symlink targets and submodule contents are not silently crawled: the view lists these

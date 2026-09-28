@@ -134,7 +134,7 @@ GUIDES = {
     "review": {"runtime.md": ["Independent review and deltas"],
                "boundaries.md": ["One factual owner; freeze author-written ticket narrative", "Compact delta publication"]},
     "merge": {"runtime.md": ["Fresh authoritative ticket at the merge boundary"]},
-    "record": {"boundaries.md": ["Canonical recording and execution", "Measurement"]},
+    "record": {"boundaries.md": ["Release obligations are one ledger", "Canonical recording and execution", "Measurement"]},
 }
 
 
