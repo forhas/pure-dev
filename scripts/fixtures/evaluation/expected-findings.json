@@ -19,6 +19,14 @@
       "why_it_survives_a_weak_review": "The wrong value is returned rather than raised, so nothing downstream reports an error."
     },
     {
+      "id": "memoization-key-sibling",
+      "class": "sibling-instance",
+      "requirement": "AC2",
+      "summary": "The cache warmer keys on the name alone too: the same defect class one site over. A run that fixes only resolve() leaves every warmed entry unreachable.",
+      "detectable_by": "oracle",
+      "why_it_survives_a_weak_review": "Fixing the reported site makes AC2's own example pass; only a sibling sweep of the defect class finds the second writer of the cache."
+    },
+    {
       "id": "config-validation",
       "class": "configuration",
       "requirement": "AC3",

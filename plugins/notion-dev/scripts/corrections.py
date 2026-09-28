@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from runtime import digest, finding_ledger, findings_accounted, read_json, require, revision
+from runtime import atomic_json, digest, finding_ledger, findings_accounted, read_json, require, revision
 from execution import json_file
 
 
@@ -44,6 +44,35 @@ def sources(worktree, files):
     return values, excluded
 
 
+PROSE_ROUNDS = 2
+
+
+def prose_cap(state, previous, items):
+    """Two prose rewrites of one claim that each drew a new finding are the limit.
+
+    An item naming a `claim` (its PR fact key or claim label) records how it was
+    corrected. A third `rewrite` is refused: the claim becomes an artifact reference
+    or is removed. History is keyed by the reviewed baseline, so re-running the
+    same batch is idempotent and each correction round counts once.
+    """
+    path = Path(state).resolve().parent / "prose-corrections.json"
+    history = read_json(path) if path.exists() else {}
+    for item in items:
+        claim = item.get("claim")
+        if claim is None: continue
+        require(isinstance(claim, str) and claim.strip(), "claim must name the corrected PR fact or claim")
+        method = item.get("method")
+        require(method in {"rewrite", "artifact", "remove"}, "a named claim is corrected by rewrite, artifact or remove")
+        rounds = [r for r in history.get(claim, []) if r["previous"] != previous]
+        prior = [r["method"] for r in rounds][-PROSE_ROUNDS:]
+        require(method != "rewrite" or prior != ["rewrite"] * PROSE_ROUNDS,
+                "claim %r was rewritten in %d consecutive rounds and drew a new finding each time; "
+                "replace it with an artifact reference or remove it" % (claim, PROSE_ROUNDS))
+        history[claim] = rounds + [{"previous": previous, "method": method}]
+    if any(item.get("claim") is not None for item in items):
+        atomic_json(path, history)
+
+
 def batch(state, previous, worktree, inputs, checklist=None):
     from review_inputs import validate
     identity = read_json(state)
@@ -75,7 +104,7 @@ def batch(state, previous, worktree, inputs, checklist=None):
         path = Path(state).resolve().parent / ("correction-batch-" + token + ".json")
         template = {"binding": token, "items": [{"id": e["id"], "finding": e["evidence"],
             "anchors": [], "no_literal_reason": "", "locations": ["input:pr_body"],
-            "disposition": "", "evidence": "", "retained": {}} for e in entries]}
+            "disposition": "", "evidence": "", "retained": {}, "claim": None, "method": ""} for e in entries]}
         # This is the author's editable worksheet, not accepted review evidence.
         if not path.exists(): json_file(template, path)
         index = path.with_name("correction-sources-" + token + ".json")
@@ -85,6 +114,7 @@ def batch(state, previous, worktree, inputs, checklist=None):
                 "inputs": [k for k in values if k.startswith("input:")], "excluded": excluded, "instruction":
                 "For EVERY finding list reported locations, retired literal anchors (or explain no literal), "
                 "disposition corrected/not-applicable and evidence. Include current PR body. "
+                "A prose-claim finding names its claim and method rewrite/artifact/remove; a third rewrite is refused. "
                 "Scan results identify all remaining occurrences; retain one only with a source-specific explanation. "
                 "Pass the completed file as review-prepare --corrections; no new agent or self-approved verdict."}
     supplied = read_json(checklist)
@@ -108,6 +138,7 @@ def batch(state, previous, worktree, inputs, checklist=None):
         retained = item.get("retained", {})
         require(isinstance(retained, dict) and all(k in values and isinstance(v, str) and v.strip() for k, v in retained.items()),
                 "retained occurrences require source-specific evidence")
+    prose_cap(state, previous, items)
     # One source in memory/read at a time, not an eager copy of the repository per finding.
     for name, source in values.items():
         data = source.read_bytes() if isinstance(source, Path) else source

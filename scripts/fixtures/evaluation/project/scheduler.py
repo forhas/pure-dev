@@ -6,8 +6,9 @@ decides whether the workflow found what a competent review has to find.
 
 Nothing here is derived from any client's source. The defect CLASSES are what was
 preserved from the case that motivated the fixture: a concurrency cap that does not
-hold, a memoization key that loses part of the identity, and a validator that
-reinterprets an unusable value instead of refusing it.
+hold, a memoization key that loses part of the identity (twice: a fix of one site
+leaves its sibling), and a validator that reinterprets an unusable value instead of
+refusing it.
 
 Do not "fix" this file. Its defects are the fixture. `../reference/scheduler.py` is
 the corrected twin the oracle is proven against.
@@ -75,6 +76,16 @@ def resolve(name, version, registry, cache):
     value = registry[(name, version)]
     cache[key] = value
     return value
+
+
+def warm(requests, registry, cache):
+    """Prefill the registry cache so a later walk resolves without lookups."""
+    for name, version in requests:
+        # DEFECT (memoization-key-sibling): the same defect class one site over. A run
+        # that fixes only `resolve` leaves the prefilled entries unreachable, so every
+        # warmed request is looked up again.
+        cache[name] = registry[(name, version)]
+    return len(cache)
 
 
 def resolve_all(requests, registry, cache=None):

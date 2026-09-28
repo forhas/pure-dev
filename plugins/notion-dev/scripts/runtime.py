@@ -26,6 +26,9 @@ import tempfile
 import time
 import uuid
 
+# Sibling helpers (scope, host_capture) import lazily; loading this file by path must find them.
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 SCHEMA = 5
 SCHEMAS = (1, 2, 3, 4, SCHEMA)
@@ -787,8 +790,28 @@ class Runtime:
             capture = state.get("host_captures", {}).get(source["response"])
             if not capture or capture["session"] != state.get("host_session"):
                 return ["ticket source predates this host session; capture-ticket again"]
-        return [f"{item['id']}: {item['readiness']}" for item in inventory["items"]
-                if item["readiness"] != "ready"]
+        from scope import premise_problems
+        premises = state.get("premises") or {}
+        checks = premises.get("checks") if premises.get("source_sha256") == inventory["source_sha256"] else None
+        reasons = premise_problems(Path(inventory["source"]).read_text(encoding="utf-8"), checks)
+        return reasons + [f"{item['id']}: {item['readiness']}" for item in inventory["items"]
+                          if item["readiness"] != "ready"]
+
+    def premises(self, checks):
+        """Premises a follow-up ticket declares are checked against code before planning."""
+        from scope import premise_items, premise_problems
+        with self.transaction() as state:
+            inventory = state["requirements"]
+            require(inventory, "record requirements before checking premises")
+            text = Path(inventory["source"]).read_text(encoding="utf-8")
+            require(premise_items(text), "this ticket declares no premises to verify")
+            problems = [p for p in premise_problems(text, checks) if not p.startswith("a false premise makes")]
+            require(not problems, "; ".join(problems))
+            state["premises"] = {"source_sha256": inventory["source_sha256"], "checks": checks}
+            verdicts = Counter(c["verdict"] for c in checks)
+            self.event(state, "premises_checked", **{k: verdicts[k] for k in ("holds", "false", "moot")})
+        return {"checked": len(checks), "false": verdicts["false"], "moot": verdicts["moot"],
+                "action": "stop and recommend drop" if verdicts["moot"] else "plan from the corrected premises"}
 
     def ready(self):
         with self.transaction() as state:
@@ -1103,7 +1126,11 @@ class Runtime:
                                  "pages": len(finding_pages(result)), "complete": not entries,
                                  "accounted": findings_accounted(worker)}}
 
-    def judge_findings(self, key, judgment):
+    def judge_findings(self, key, judgment, config=None):
+        from scope import DEFAULT_FILE_THRESHOLD_LINES, disposition_problems
+        threshold = DEFAULT_FILE_THRESHOLD_LINES
+        if config:
+            threshold = read_json(config).get("convergence", {}).get("fileThresholdLines", threshold)
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(worker["role"] == "completeness" and worker["status"] == "consumed" and not worker["terminated"],
@@ -1123,6 +1150,8 @@ class Runtime:
                 require(d.get("action") in {"absorb", "file", "drop", "blocked", "record"}
                         and all(isinstance(d.get(k), str) and d[k].strip() for k in ("rationale", "evidence")),
                         "judgment needs action, rationale and evidence; it never overrides the independent verdict")
+                problems = disposition_problems(d, threshold)
+                require(not problems, d["id"] + ": " + "; ".join(problems))
             worker["finding_accounting"] = True
             worker["finding_judgments"] = judgment
             self.event(state, "findings_judged", worker=key, count=len(ids), result_sha256=judgment["result_sha256"])
@@ -2344,6 +2373,22 @@ class Runtime:
             self.event(state, "publication_probed", worker=key, finding=finding)
         return outcome
 
+    @staticmethod
+    def scope_metrics(state):
+        """Epic convergence inputs: judged follow-ups, premise corrections, start-to-merge time."""
+        actions, goal = Counter(), Counter()
+        for worker in state["workers"].values():
+            for d in worker.get("finding_judgments", {}).get("dispositions", []):
+                actions[d.get("action")] += 1
+                if d.get("action") == "file": goal[d.get("blocks_goal", "unknown")] += 1
+        checks = (state.get("premises") or {}).get("checks") or []
+        events = state["events"]
+        begun = next((e for e in events if e["kind"] == "stage_started"), None)
+        merged = next((e for e in events if e["kind"] == "stage_started" and e.get("stage") == "record"), None)
+        return {"dispositions": dict(actions), "filed_by_blocks_goal": dict(goal),
+                "premises": dict(Counter(c.get("verdict") for c in checks)),
+                "start_to_record_seconds": elapsed(begun, merged) if begun and merged else None}
+
     def summary(self):
         with self.transaction() as state:
             workers = [{k: w[k] for k in ("id", "role", "status", "agent_id", "terminated")}
@@ -2413,6 +2458,7 @@ class Runtime:
                             if outcome != "confirmed"),
                         "correction_causes": (state.get("correction") or {}).get("reasons", []),
                         "stages_measured": [s["stage"] for s in spans]},
+                    "scope": self.scope_metrics(state),
                     "model_usage": "unknown until raw telemetry is imported; never inferred from characters"}
 
 
@@ -2424,6 +2470,8 @@ def main():
     p.add_argument("--legacy", action="store_true", help="only for an explicitly selected legacy build flow; never changes an existing invocation")
     p = commands.add_parser("stage"); p.add_argument("name")
     p = commands.add_parser("requirements"); p.add_argument("--source", required=True); p.add_argument("--inventory", required=True)
+    p = commands.add_parser("premises", help="record each premise-to-verify check before planning")
+    p.add_argument("--checks", required=True)
     p = commands.add_parser("ticket-source"); p.add_argument("--response", required=True); p.add_argument("--config", required=True)
     p = commands.add_parser("capture-ticket"); p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT"))
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", "")); p.add_argument("--call-id"); p.add_argument("--page")
@@ -2453,7 +2501,7 @@ def main():
         if name == "consume": p.add_argument("--summary", action="store_true")
         if name == "result-view":
             p.add_argument("--section"); p.add_argument("--page", type=int)
-        if name == "judge-findings": p.add_argument("--judgments", required=True)
+        if name == "judge-findings": p.add_argument("--judgments", required=True); p.add_argument("--config")
         if name in {"question", "answer"}: p.add_argument("--text", required=True)
         if name == "answer": p.add_argument("--question", required=True)
         if name == "resolve-citations": p.add_argument("--citations", required=True)
@@ -2489,6 +2537,7 @@ def main():
     if name == "init": result = runtime.init(args.run, args.ticket, args.legacy)
     elif name == "stage": result = runtime.stage(args.name)
     elif name == "requirements": result = runtime.requirements(args.source, read_json(args.inventory))
+    elif name == "premises": result = runtime.premises(read_json(args.checks))
     elif name == "ticket-source": result = runtime.ticket_source(args.response, args.config)
     elif name == "capture-ticket": result = runtime.capture_ticket(args.transcript, args.session, args.call_id, args.config, args.worker, args.request, args.page)
     elif name == "refresh-ticket": result = runtime.refresh_ticket(args.worker, args.response, args.request, args.call_id)
@@ -2512,7 +2561,7 @@ def main():
     elif name == "wait": result = runtime.wait(args.worker, args.seconds)
     elif name == "consume": result = runtime.consume(args.worker, args.summary)
     elif name == "result-view": result = runtime.result_view(args.worker, args.section, args.page)
-    elif name == "judge-findings": result = runtime.judge_findings(args.worker, read_json(args.judgments))
+    elif name == "judge-findings": result = runtime.judge_findings(args.worker, read_json(args.judgments), args.config)
     elif name == "accept": result = runtime.accept(args.worker)
     elif name == "resolve-citations": result = runtime.resolve_citations(args.worker, read_json(args.citations))
     elif name == "evidence": result = runtime.evidence(args.worker)

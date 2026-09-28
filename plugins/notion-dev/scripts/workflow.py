@@ -599,17 +599,26 @@ def record_page(state, snapshot, heading=None):
             "content": page["content"][headings[i].start():headings[i + 1].start() if i + 1 < len(headings) else len(page["content"])]}
 
 
-def render_pr_body(facts_file, output):
+PR_BODY_BUDGET = 3000
+
+
+def render_pr_body(facts_file, output, config=None):
     from recording import pr_body
     body = pr_body(json_input(facts_file))
+    budget = read_json(config).get("convergence", {}).get("prBodyBudget", PR_BODY_BUDGET) if config else PR_BODY_BUDGET
     target = Path(output)
     # Never overwrite a hand-edited body by accident; corrections use a new file.
     if target.exists(): require(target.read_text(encoding="utf-8") == body, "PR output exists with different content; use a new output path")
     else:
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("x", encoding="utf-8", newline="\n") as stream: stream.write(body)
-    return {"body": str(target.resolve()), "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
-            "instruction": "Review actual facts and mandatory disclosures. Rendering is not verification. Freeze this exact body as pr_body; do not append a review-history narrative."}
+    result = {"body": str(target.resolve()), "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+              "characters": len(body), "budget": budget,
+              "instruction": "Review actual facts and mandatory disclosures. Rendering is not verification. Freeze this exact body as pr_body; do not append a review-history narrative."}
+    if len(body) > budget:
+        result["warning"] = ("body is %d characters, over the %d budget: move reasoning and rejected "
+                             "alternatives to the knowledge capture and cite artifacts instead" % (len(body), budget))
+    return result
 
 
 def record_run(state, operation):
@@ -1065,7 +1074,7 @@ def main():
     p = commands.add_parser("review-inputs"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True)
     p.add_argument("--pr", required=True); p.add_argument("--source", action="append", default=[])
     p = commands.add_parser("review-check"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True); p.add_argument("--worker", required=True)
-    p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True)
+    p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True); p.add_argument("--config")
     p = commands.add_parser("followup-body"); p.add_argument("--packet", required=True)
     p.add_argument("--output", help="write UTF-8 JSON directly instead of returning full body")
     p.add_argument("--recipe", help="single approved create recipe; fills only title/content and emits record-children input")
@@ -1149,7 +1158,7 @@ def main():
         from execution import guide
         print(guide(args.stage))
         return 0
-    elif args.command == "pr-body": result = render_pr_body(args.facts, args.output)
+    elif args.command == "pr-body": result = render_pr_body(args.facts, args.output, args.config)
     elif args.command == "followup-body":
         from recording import followup_body
         require(not args.recipe or args.output, "--recipe requires --output")

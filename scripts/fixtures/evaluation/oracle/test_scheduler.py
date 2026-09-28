@@ -53,6 +53,14 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(scheduler.resolve("parser", "2", REGISTRY, cache), "parser-v2")
         self.assertEqual(scheduler.resolve("parser", "1", REGISTRY, cache), "parser-v1")
 
+    def test_memoization_key_sibling(self):
+        """memoization-key-sibling: warming uses the same whole-identity key as resolving."""
+        cache = {}
+        scheduler.warm([("parser", "1"), ("parser", "2")], REGISTRY, cache)
+        outcome = scheduler.resolve_all([("parser", "1"), ("parser", "2")], REGISTRY, cache)
+        self.assertEqual(outcome["values"], ["parser-v1", "parser-v2"])
+        self.assertEqual(outcome["registry_lookups"], 0, "warmed entries were looked up again")
+
     def test_config_validation(self):
         """config-validation: an unusable limit is refused, never reinterpreted."""
         for limit in (0, -1):

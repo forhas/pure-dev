@@ -83,6 +83,13 @@ def resolve(name, version, registry, cache):
     return value
 
 
+def warm(requests, registry, cache):
+    """Prefill the registry cache under the same whole-identity key `resolve` reads."""
+    for name, version in requests:
+        cache[(name, version)] = registry[(name, version)]
+    return len(cache)
+
+
 def resolve_all(requests, registry, cache=None):
     """Resolve a request list, reporting how many registry lookups it really took."""
     cache = {} if cache is None else cache

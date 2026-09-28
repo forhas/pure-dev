@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """knowledge.py — the mechanical checks notion-dev's knowledge skill needs and iwe lacks.
 
-Subcommands: check | touched | migrate | next | lock. Exit 0 clean, 1 findings, 2 cannot run.
+Subcommands: check | touched | migrate | next | retrieval-plan | epic-goal | lock.
+Exit 0 clean, 1 findings, 2 cannot run.
 Never parses YAML: frontmatter comes from `iwe find -f json`; shape from `iwe schema validate`.
 Exit 2 is never downgraded: a check that cannot run says so and fails. An iwe call that
 exits non-zero for any reason other than reported violations, or whose JSON does not parse,
@@ -1221,6 +1222,12 @@ def _parse_next_item(s):
 IN_PROGRESS_RE = re.compile(r"^In progress: (.*)$")
 IN_PROGRESS_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?) — since (\d{4}-\d{2}-\d{2})")
 BLOCKED_RE = re.compile(r"^Blocked: (.*)$")
+CLAIM_DRIFT_RE = re.compile(r"^drift: (?:In progress line missing|[A-Z][A-Z0-9]{1,9}-\d+ listed as "
+                            r"(?:next|blocked), live status in_progress|[A-Z][A-Z0-9]{1,9}-\d+ listed as "
+                            r"in progress, live status open)$")
+GOAL_MET_LINE = "goal met — propose closing the epic; re-home the open children"
+REHOME_RE = re.compile(r"^Re-home: (.*)$")
+REHOME_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?)(?=, \[[A-Z][A-Z0-9]{1,9}-\d+\] |$)")
 HEADER_RE = re.compile(r"^(Epic: .*? · Status: )(open|closed)( · Updated: )(\d{4}-\d{2}-\d{2}) after (.*)$")
 STOP_BULLET_RE = re.compile(r"^- \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] stopped at ")
 STATUS_CLASSES = ("resolved", "in_progress", "open")
@@ -1264,6 +1271,14 @@ def _parse_next(body):
     for s in logical:
         if s == "epic complete":
             complete = True
+            continue
+        if s == GOAL_MET_LINE:
+            complete = "goal"
+            continue
+        m = REHOME_RE.match(s)
+        if m:
+            for rm in REHOME_ITEM_RE.finditer(m.group(1)):
+                items.append({"key": rm.group(1), "title": rm.group(2), "reason": "", "bold": False})
             continue
         it = _parse_next_item(s)
         if it:
@@ -1348,6 +1363,10 @@ def retrieval_plan(state, purpose="lifecycle"):
     response = {"state": result, "fetch": [], "candidate": None,
                 "claim_requires_live_check": True}
     if purpose == "lifecycle" or state["epic"]["status_class"] == "resolved": return response
+    if state.get("goal_met") is True:
+        # epic-goal reported the Done when list satisfied: select nothing; offer close/re-home.
+        response["goal_met"] = True
+        return response
     stopped = set(state.get("stopped_keys", []))
     _, _, candidates, _, resolved = derive_next(result, stopped)
     # Prefer the brief's established order, but never let it establish eligibility.
@@ -1441,6 +1460,17 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
     if blocked:
         out.append("Blocked: " + ", ".join(c["key"] for c in sorted(blocked, key=lambda c: c["id"]))
                    + " (see Open threads).")
+    return out
+
+
+def render_goal_met(inprog, rehome, prev_in_progress, today):
+    out = ["## Next", GOAL_MET_LINE]
+    if rehome:
+        out.append("Re-home: " + ", ".join("[%s] %s" % (c["key"], c["title"]) for c in rehome))
+    if inprog:
+        out.append("In progress: " + ", ".join(
+            "[%s] %s — since %s" % (c["key"], c["title"], prev_in_progress.get(c["key"], today))
+            for c in sorted(inprog, key=lambda c: c["id"])))
     return out
 
 
@@ -1558,12 +1588,15 @@ def cmd_next(a):
     if ns is None:
         die("next: no `## Next` heading")
     ts, te = _section(lines, "## Open threads")
+    removed_stop = False
     if reason_word == "stop" and ts is None:
         die("next: no `## Open threads` heading, needed for --reason stop")
 
     if ts is not None:
         if reason_word == "start":
+            before_start = len(lines)
             lines, te = _remove_stop_bullet(lines, ts, te, reason_key)
+            removed_stop = len(lines) != before_start
         elif reason_word == "stop":
             stop = state.get("stop")
             if not stop or stop.get("key") != reason_key:
@@ -1578,7 +1611,14 @@ def cmd_next(a):
     ns, ne = _section(lines, "## Next")
     prev_items, prev_ip, prev_bl, _prev_complete, prev_unparsed, prev_ip_titles = _parse_next(lines[ns + 1:ne])
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
-    region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
+    # A met `Done when:` list decides closure, not the child count: nothing is recommended,
+    # and every open child outside the goal is listed for re-homing instead.
+    goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved")
+    if goal_met:
+        numbered, blocked, first = sorted(blocked + numbered, key=_order_key), [], None
+        region = render_goal_met(inprog, numbered, prev_ip, today)
+    else:
+        region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
     tail = []
     k = ne
     while k > ns + 1 and lines[k - 1].strip() == "":
@@ -1589,6 +1629,9 @@ def cmd_next(a):
     hm = HEADER_RE.match(lines[header_idx])
     findings = drift_findings(state, prev_items, prev_ip, prev_bl, hm.group(2), inprog, blocked, numbered,
                               prev_ip_titles)
+    if goal_met != (_prev_complete == "goal"):
+        findings.append("drift: goal %s, ## Next %s goal-met form" % (
+            ("met", "not in") if goal_met else ("open", "still in")))
     findings += ["drift: unparsed line in ## Next: %s" % u[:60] for u in prev_unparsed]
     live_status = "closed" if state["epic"]["status_class"] == "resolved" else "open"
     # A header whose Status disagrees with the live epic is itself a change: without it a
@@ -1605,7 +1648,222 @@ def cmd_next(a):
     for f in findings:
         sys.stderr.write(f + "\n")
     sys.stderr.write("DRIFT: %d\n" % len(findings))
+    # A claim (start, or a drift that is only in-progress bookkeeping) is re-checked live by
+    # every reader. Unless it also clears a stop bullet or repairs other drift, the next
+    # record rewrites `## Next` anyway, so committing it to base is bookkeeping no run needs.
+    claim_only = reason_word in (None, "start") and not removed_stop and all(
+        CLAIM_DRIFT_RE.match(f) for f in findings)
+    if changed:
+        sys.stderr.write("COMMIT: %s\n" % ("deferred" if claim_only else "needed"))
     sys.exit(1 if changed else 0)
+
+
+# ---------------------------------------------------------------------------
+# epic-goal — goal-based closure, follow-up rate and the release ledger
+# ---------------------------------------------------------------------------
+
+DONE_TICKET_RE = re.compile(r"^- \[([A-Z][A-Z0-9]{1,9}-\d+)\] (resolved|verdict recorded)(?: — .*)?$")
+DONE_EXTERNAL_RE = re.compile(r"^- external: (.+) — (met|open)$")
+RESOLUTION_RE = re.compile(r"^#{2,4} \[([A-Z][A-Z0-9]{1,9}-\d+)\] resolved\b")
+FILED_RE = re.compile(r"^\*\*Follow-ups filed\*\* — (.*)$")
+FILED_OUTSIDE_RE = re.compile(r"^\*\*Follow-ups filed outside the goal\*\* — (.*)$")
+OBLIGATION_RE = re.compile(
+    r"^- \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.+?) — sign-off: (yes|no) — gate: (.+?) — released: (yes|no)$")
+COMMITMENT_RE = re.compile(
+    r"^- commitment: (.+?) — for: (.+?) — ticket: \[([A-Z][A-Z0-9]{1,9}-\d+)\] — released: (yes|no)$")
+BRIEF_BUDGET = 150
+
+
+def _logical(lines):
+    out = []
+    for ln in lines:
+        if ln.strip() == "":
+            continue
+        if ln[:1] in (" ", "\t") and out:
+            out[-1] = out[-1] + " " + ln.strip()
+        else:
+            out.append(ln.rstrip())
+    return out
+
+
+def done_when(lines):
+    """The `Done when:` list under `## Goal`: (items, errors), or (None, []) if absent."""
+    gs, ge = _section(lines, "## Goal")
+    if gs is None:
+        return None, []
+    body = lines[gs + 1:ge]
+    start = next((i for i, ln in enumerate(body) if ln.strip() == "Done when:"), None)
+    if start is None:
+        return None, []
+    items, errors = [], []
+    for s in _logical(body[start + 1:]):
+        if not s.startswith("- "):
+            break
+        m = DONE_TICKET_RE.match(s)
+        if m:
+            items.append({"kind": "ticket", "key": m.group(1), "required": m.group(2)})
+            continue
+        m = DONE_EXTERNAL_RE.match(s)
+        if m:
+            items.append({"kind": "external", "condition": m.group(1), "state": m.group(2)})
+            continue
+        errors.append("unparsed Done when item: %s" % s[:60])
+    if not items and not errors:
+        errors.append("Done when: has no items")
+    return items, errors
+
+
+def goal_state(lines, state):
+    """met | open | undefined (no Done when list) | invalid. Unknown is never met."""
+    items, errors = done_when(lines)
+    if items is None:
+        return {"goal": "undefined", "done_when": [], "errors": []}
+    by_key = {c["key"]: c["status_class"] for c in state["children"]}
+    external = state.get("external_statuses", {})
+    for item in items:
+        if item["kind"] == "ticket":
+            # A verdict ticket resolves when its verdict is recorded; a dropped build-or-drop
+            # is resolved through the configured resolved set. Both read live status.
+            item["status"] = by_key.get(item["key"], external.get(item["key"], "unknown"))
+            item["satisfied"] = item["status"] == "resolved"
+        else:
+            item["satisfied"] = item["state"] == "met"
+    goal = "invalid" if errors else ("met" if all(i["satisfied"] for i in items) else "open")
+    return {"goal": goal, "done_when": items, "errors": errors}
+
+
+def rehome_candidates(state, goal):
+    named = {i["key"] for i in goal["done_when"] if i["kind"] == "ticket"}
+    return sorted((c for c in state["children"] if c["status_class"] != "resolved" and c["key"] not in named),
+                  key=_order_key)
+
+
+def resolution_entries(text):
+    """Resolution Log entries in page order, merged per ticket (a retry adds an entry)."""
+    entries, current = {}, None
+    for ln in _logical(text.replace("\r\n", "\n").split("\n")):
+        m = RESOLUTION_RE.match(ln.strip())
+        if m:
+            current = entries.setdefault(m.group(1), {"key": m.group(1), "goal": [], "outside": [], "split": False})
+            continue
+        if ln.startswith("#"):
+            current = None
+            continue
+        if current is None:
+            continue
+        # Keys come from each item's `[KEY]` label only; a URL may repeat the key.
+        m = FILED_OUTSIDE_RE.match(ln.strip())
+        if m:
+            for k in re.findall(r"\[(" + KEY_RE.pattern + r")\]", m.group(1)):
+                if k not in current["outside"]: current["outside"].append(k)
+            current["split"] = True
+            continue
+        m = FILED_RE.match(ln.strip())
+        if m:
+            for k in re.findall(r"\[(" + KEY_RE.pattern + r")\]", m.group(1)):
+                if k not in current["goal"]: current["goal"].append(k)
+    return list(entries.values())
+
+
+def followup_rate(entries, window, threshold):
+    recent = entries[-window:] if window > 0 else []
+    filed = sum(len(e["goal"]) for e in recent)
+    rate = round(filed / len(recent), 3) if recent else 0.0
+    generation = {}
+    for e in entries:
+        for k in e["goal"] + e["outside"]:
+            generation[k] = max(generation.get(k, 0), generation.get(e["key"], 0) + 1)
+    return {"window": window, "resolutions": len(recent), "filed_goal": filed,
+            "filed_outside": sum(len(e["outside"]) for e in recent), "rate": rate, "threshold": threshold,
+            "rescope": len(recent) == window and window > 0 and rate > threshold,
+            "legacy_entries": sum(not e["split"] for e in recent),
+            "generation": {"max": max(generation.values(), default=0),
+                           "by_key": dict(sorted(generation.items()))}}
+
+
+def release_ledger(lines, state):
+    rs, re_ = _section(lines, "## Release obligations")
+    if rs is None:
+        return {"present": False, "obligations": [], "commitments": [], "errors": [], "warnings": []}
+    obligations, commitments, errors = [], [], []
+    for s in _logical(lines[rs + 1:re_]):
+        m = OBLIGATION_RE.match(s)
+        if m:
+            obligations.append({"key": m.group(1), "obligation": m.group(2), "signoff": m.group(3) == "yes",
+                                "gate": m.group(4), "released": m.group(5) == "yes"})
+            continue
+        m = COMMITMENT_RE.match(s)
+        if m:
+            commitments.append({"deliverable": m.group(1), "for": m.group(2), "key": m.group(3),
+                                "released": m.group(4) == "yes"})
+            continue
+        if s.startswith("- "):
+            errors.append("unparsed release obligation: %s" % s[:60])
+    status = {c["key"]: c["status_class"] for c in state["children"]}
+    unreleased = [o for o in obligations if not o["released"]]
+    warnings = []
+    for c in commitments:
+        if c["released"] or status.get(c["key"]) != "resolved":
+            continue
+        ahead = sorted({o["key"] for o in unreleased if o["key"] != c["key"]})
+        if ahead:
+            warnings.append("commitment %r (%s) is merged but unreleased while %s add unreleased obligations "
+                            "ahead of it" % (c["deliverable"], c["key"], ", ".join(ahead)))
+    return {"present": True, "obligations": obligations, "commitments": commitments, "errors": errors,
+            "unreleased": len(unreleased), "signoff_pending": sum(o["signoff"] for o in unreleased),
+            "warnings": warnings}
+
+
+def bookkeeping_commits(repo, ref, brief):
+    try:
+        rel = os.path.relpath(os.path.abspath(brief), os.path.abspath(repo)).replace(os.sep, "/")
+        out = subprocess.run(["git", "-C", repo, "log", "--format=%H", ref, "--", rel],
+                             capture_output=True, encoding="utf-8", check=True).stdout
+    except (OSError, subprocess.CalledProcessError, ValueError) as e:
+        die("epic-goal: cannot count brief commits: %s" % e)
+    return len(out.split())
+
+
+def epic_goal(text, state, log_text=None, window=3, threshold=1.0, budget=BRIEF_BUDGET):
+    lines = normalise_text(text).split("\n")
+    goal = goal_state(lines, state)
+    result = {**goal, "epic_status": state["epic"]["status_class"],
+              "rehome": [{"key": c["key"], "title": c["title"], "status_class": c["status_class"]}
+                         for c in rehome_candidates(state, goal)] if goal["goal"] == "met" else [],
+              "brief": {"lines": len(lines) - (1 if lines and lines[-1] == "" else 0), "budget": budget},
+              "release": release_ledger(lines, state)}
+    result["brief"]["over_budget"] = result["brief"]["lines"] > budget
+    if log_text is not None:
+        entries = resolution_entries(log_text)
+        result["followups"] = followup_rate(entries, window, threshold)
+        result["followups"]["children_after_goal"] = len(result["rehome"])
+    result["recommendation"] = (
+        "close" if goal["goal"] == "met" and state["epic"]["status_class"] != "resolved" else
+        "rescope" if result.get("followups", {}).get("rescope") else
+        "repair-goal" if goal["goal"] == "invalid" else "continue")
+    return result
+
+
+def cmd_epic_goal(a):
+    try:
+        with open(a.brief, encoding="utf-8", newline=None) as fh:
+            text = fh.read()
+        with open(a.state, encoding="utf-8") as fh:
+            state = json.load(fh)
+        log_text = None
+        if a.log:
+            with open(a.log, encoding="utf-8", newline=None) as fh:
+                log_text = fh.read()
+    except (OSError, ValueError) as e:
+        die("epic-goal: %s" % e)
+    _validate_state(state)
+    result = epic_goal(text, state, log_text, a.window, a.threshold, a.budget)
+    if a.repo:
+        commits = bookkeeping_commits(a.repo, a.ref, a.brief)
+        count = len(resolution_entries(log_text)) if log_text is not None else None
+        result["bookkeeping"] = {"brief_commits": commits, "resolutions": count,
+                                 "per_resolution": round(commits / count, 3) if count else None}
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -1885,6 +2143,17 @@ def main():
     p_retrieval.add_argument("--state", required=True)
     p_retrieval.add_argument("--purpose", choices=("lifecycle", "select"), default="lifecycle")
     p_retrieval.set_defaults(func=cmd_retrieval_plan)
+
+    p_goal = sub.add_parser("epic-goal", help="goal-based closure, follow-up rate, generation and release ledger of an epic brief")
+    p_goal.add_argument("--brief", required=True)
+    p_goal.add_argument("--state", required=True, help="live-state JSON (the `next` shape)")
+    p_goal.add_argument("--log", help="the epic page's Resolution Log (or whole body) as UTF-8 text")
+    p_goal.add_argument("--window", type=int, default=3, help="resolutions in the follow-up rate (convergence.rateWindow)")
+    p_goal.add_argument("--threshold", type=float, default=1.0, help="rate above which to re-scope (convergence.rateThreshold)")
+    p_goal.add_argument("--budget", type=int, default=BRIEF_BUDGET, help="brief line budget (convergence.briefBudget)")
+    p_goal.add_argument("--repo", help="count brief commits in this repository (bookkeeping per resolution)")
+    p_goal.add_argument("--ref", default="HEAD", help="branch that carries the brief (git.prTargetBranch or git.baseBranch)")
+    p_goal.set_defaults(func=cmd_epic_goal)
 
     p_lock = sub.add_parser("lock", help="the primary-checkout lock (spec §4)")
     lock_sub = p_lock.add_subparsers(dest="op", required=True)

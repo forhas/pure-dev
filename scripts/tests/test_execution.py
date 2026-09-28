@@ -36,7 +36,9 @@ class ExecutionTests(unittest.TestCase):
         packet = self.root / 'packet café.json'
         runtime.atomic_json(packet, dict(title='Café — שלום', goal='Preserve · text', scope='generic',
             evidence='observed', provenance='approved finding', source='fixture', decision='file',
-            requirements=['Exact UTF-8'], acceptance=['No corruption'], edge_cases=[], dependencies=[], open_questions=[]))
+            requirements=[{'text': 'Exact UTF-8', 'facts': [1]}], acceptance=['No corruption'], edge_cases=[], dependencies=[], open_questions=[],
+            verified_facts=[{'fact': 'observed', 'citation': 'fixture'}], premises_to_verify=[], hypothesis=[],
+            blocks_goal={'value': 'yes', 'reason': 'goal item'}, destination='epic'))
         recipe = self.root / 'recipe.json'
         runtime.atomic_json(recipe, {'name': 'followup', 'target': 'database', 'title_property': 'Name',
             'tool': 'mcp__notion__notion-create-pages', 'input': {'parent': {'data_source_id': 'a' * 32},

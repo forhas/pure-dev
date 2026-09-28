@@ -55,6 +55,16 @@ def pr_body(facts):
     require(isinstance(facts, dict) and set(facts) == set(fields),
             "PR facts require requirement/behavior/validation/risks/mandatory; no review-history field")
     require(isinstance(facts["requirement"], str) and facts["requirement"].strip(), "requirement must be nonempty")
+    # A figure is a claim: it cites the artifact that produced it (test, receipt, export,
+    # diff) or arrives as a measured fact carrying its source. Prose restatement is refused.
+    from scope import unreferenced_figures
+    for name in fields:
+        raw = facts[name]
+        values = [raw] if isinstance(raw, str) else list(raw.values()) if isinstance(raw, dict) else raw
+        for value in values if isinstance(values, list) else []:
+            figures = unreferenced_figures(value) if isinstance(value, str) else []
+            require(not figures, "quantitative claim %r needs an (artifact: <test, receipt, export or diff>) "
+                    "reference or a measured fact; restating a figure is not evidence" % (figures[:1] or [""])[0])
     facts = dict(facts)
     for name in fields[1:]:
         if isinstance(facts[name], dict):
@@ -82,17 +92,44 @@ def followup_body(packet):
     for name in ("title", "goal", "scope", "evidence", "provenance", "source"):
         require(isinstance(packet.get(name), str) and packet[name].strip(), "follow-up missing " + name)
     require(packet.get("decision") == "file", "only approved filed findings use the builder")
-    for name in ("requirements", "acceptance", "edge_cases", "dependencies", "open_questions"):
+    for name in ("acceptance", "edge_cases", "dependencies", "open_questions", "premises_to_verify", "hypothesis"):
         require(isinstance(packet.get(name), list) and all(isinstance(v, str) and v.strip() for v in packet[name]), "follow-up missing explicit " + name)
-    require(packet["requirements"] and packet["acceptance"] and not packet["open_questions"], "clarify incomplete follow-up; do not invent acceptance or answers")
+    from scope import destination_problems
+    goal = packet.get("blocks_goal")
+    require(isinstance(goal, dict) and goal.get("value") in {"yes", "no"}
+            and isinstance(goal.get("reason"), str) and goal["reason"].strip(),
+            "follow-up needs blocks_goal {value: yes|no, reason}")
+    problems = destination_problems(goal["value"], packet.get("destination"), packet.get("source_epic"))
+    require(not problems, "; ".join(problems))
+    # A claim the filer did not verify cannot become a requirement: every requirement
+    # cites a verified fact, and unverified directions stay a labelled hypothesis.
+    facts = packet.get("verified_facts")
+    require(isinstance(facts, list) and facts and all(
+        isinstance(f, dict) and all(isinstance(f.get(k), str) and f[k].strip() for k in ("fact", "citation"))
+        for f in facts), "follow-up needs verified_facts [{fact, citation}] (file:line, command output or primary source)")
+    requirements = packet.get("requirements")
+    require(isinstance(requirements, list) and requirements and all(
+        isinstance(r, dict) and isinstance(r.get("text"), str) and r["text"].strip()
+        and isinstance(r.get("facts"), list) and r["facts"]
+        and all(isinstance(i, int) and not isinstance(i, bool) and 1 <= i <= len(facts) for i in r["facts"])
+        for r in requirements),
+        "every requirement cites verified_facts by number; move an unverified claim to premises_to_verify or hypothesis")
+    require(packet["acceptance"] and not packet["open_questions"], "clarify incomplete follow-up; do not invent acceptance or answers")
     body = "## Requirements\n\n" + packet["goal"] + "\n\nScope: " + packet["scope"] + "\n\n"
-    body += "\n".join("- " + v for v in packet["requirements"])
+    body += "\n".join("- " + r["text"] + " (verified: " + ", ".join("fact %d" % i for i in r["facts"]) + ")"
+                       for r in requirements)
     body += "\n\n## Acceptance Criteria\n\n" + "\n".join("- [ ] " + v for v in packet["acceptance"])
+    body += "\n\n## Verified facts\n\n" + "\n".join(
+        "%d. %s — %s" % (i, f["fact"], f["citation"]) for i, f in enumerate(facts, 1))
+    body += "\n\n## Premises to verify\n\n" + ("\n".join("- " + v for v in packet["premises_to_verify"]) or "None.")
+    body += "\n\n## Hypothesis — verify before implementing\n\n" + ("\n".join("- " + v for v in packet["hypothesis"]) or "None.")
     body += "\n\n## Context\n\n" + packet["evidence"] + "\n\n" + packet["provenance"]
+    body += "\n\nBlocks epic goal: " + goal["value"] + " — " + goal["reason"]
     for name, heading in (("edge_cases", "Edge cases"), ("dependencies", "Blocked by")):
         body += "\n\n## " + heading + "\n\n" + ("\n".join("- " + v for v in packet[name]) or "None (explicit in accepted finding).")
     body += "\n\n## Open Questions\n\nNone.\n\n## Source\n\n" + packet["source"] + "\n"
-    return {"title": packet["title"], "body": body, "provenance": packet["provenance"]}
+    return {"title": packet["title"], "body": body, "provenance": packet["provenance"],
+            "blocks_goal": goal["value"], "destination": packet["destination"]}
 
 
 def section_edits(body, sections):
