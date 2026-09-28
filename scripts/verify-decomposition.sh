@@ -33,8 +33,9 @@ assert_has "ticket renders the PR body with its config" $ND/commands/ticket.md '
 assert_has "next-task is bound by the goal recommendation" $ND/commands/next-task.md 'epic-goal `recommendation`'
 assert_has "schedule passes a met goal into the select plan" $ND/skills/epic-doc/references/schedule.md 'goal_met: true'
 assert_has "refresh honours a deferred commit" $ND/skills/epic-doc/references/refresh.md 'COMMIT: deferred'
-assert_has "the brief template carries a Done when list" $ND/skills/epic-doc/references/format.md 'Done when:'
-assert_has "the brief template carries the release ledger" $ND/skills/epic-doc/references/format.md '## Release obligations'
+FMT=$ND/skills/epic-doc/references/format.md
+assert_present "the brief template carries a Done when list" "$FMT" 1 "$(total_lines "$FMT")" '^Done when:$'
+assert_present "the brief template carries the release ledger" "$FMT" 1 "$(total_lines "$FMT")" '^## Release obligations$'
 assert_has "task-breakdown has a re-scope mode" $ND/skills/task-breakdown/SKILL.md '## Re-scope mode'
 assert_has "the record stage guide loads the release ledger" \
   $ND/scripts/execution.py '"Release obligations are one ledger"'

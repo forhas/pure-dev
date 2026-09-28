@@ -175,7 +175,7 @@ assert_has "file payloads are exercised under the Windows code page" \
 # git pathspecs are forward-slash on both platforms; a native Windows separator matches nothing
 # and reports zero brief commits instead of failing.
 assert_has "epic-goal hands git a forward-slash brief path" \
-  plugins/notion-dev/scripts/knowledge.py '.replace(os.sep, "/")'
+  plugins/notion-dev/scripts/knowledge.py 'rel = os.path.relpath(os.path.abspath(brief), os.path.abspath(repo)).replace(os.sep, "/")'
 assert_has "both platform suites execute the epic-convergence regressions" \
   scripts/verify-decomposition.sh "-p 'test_decomposition.py'"
 
