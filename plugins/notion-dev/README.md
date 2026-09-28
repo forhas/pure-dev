@@ -2,10 +2,26 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.43.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.44.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Epic convergence (0.44.0)
+
+Small epics stop expanding. A brief's `## Goal` may carry a `Done when:` list; when it holds the
+epic is goal-complete (`knowledge.py epic-goal`), `## Next` stops recommending children and the
+open ones are offered as one user-confirmed re-home batch. Every filed follow-up states
+`blocks_goal`; non-goal work goes to `convergence.nonGoalDestination` (default backlog), not the
+epic. `judge-findings` refuses filing a ticket's own gap, a sibling instance, docs of changed
+code or same-epic rework, and requires a real size threshold for "too large". Follow-ups
+separate cited verified facts from premises and hypotheses, and a run checks each premise
+(`runtime.py premises`) before planning, stopping on a moot ticket. A follow-up rate above the
+threshold turns next-task into a re-scope recommendation. PR-body figures cite an artifact or
+fail rendering, a claim rewritten twice cannot be rewritten a third time, briefs carry a
+release-obligation ledger and a line budget, and claim-only start refreshes no longer commit.
+The evaluation fixture gains a sibling defect a one-site fix misses. See
+[scope](references/scope.md). Savings are unmeasured until the next three epics are compared.
 
 ## Execution and convergence (0.43.0)
 
@@ -397,6 +413,7 @@ Key fields:
 - `reviewer` — PR reviewer selection: `"codex"` (default) or `"copilot"`. Set during `/notion-dev:init`; can be changed by re-running that command.
 - `ticketSystem.statusMap.{done, cancelled}` — **read-only** entries (defaults `"Done"` / `"Cancelled"`). Together with `implemented` they form the *resolved set*: the statuses that count as finished when deciding whether an Epic's children are all done and the Epic should close. No plugin command ever moves a ticket into these states — they exist purely so the Epic-close check understands your board. `/notion-dev:init` asks which of your live Status options belong in the set.
 - `reviewsCap` — maximum external review rounds on the lean path; default **3**, with explicit positive values honored. Internal review has two full/two delta attempts per invocation, including failed attempts. No budget waives required work. Legacy workflows retain their documented 15-round default. Init and review never rewrite this key.
+- `convergence` — hand-edited epic-convergence knobs, preserved by init like `reviewsCap`: `nonGoalDestination` (`backlog` default, `related`, or `epic:<KEY>-<n>`), `rateWindow` (3) and `rateThreshold` (1.0) for the follow-up circuit breaker, `fileThresholdLines` (800) for filing criterion 3, `briefBudget` (150 lines) and `prBodyBudget` (3000 characters). See [scope](references/scope.md).
 
 ### Reviewer configuration
 

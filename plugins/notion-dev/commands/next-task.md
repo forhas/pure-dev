@@ -23,8 +23,8 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
    guidance, not authoritative ticket requirements or live statuses.
 2. If BOOTSTRAP or DRIFT requires a brief write, use epic-doc's bootstrap/refresh operation
    under the primary lock, commit/push through its established write path, and release the lock.
-   Reuse the refreshed brief; do not copy the whole bundle through the parent repeatedly.
-   A failed provider read is not an empty epic.
+   Reuse the refreshed brief. A failed provider read is not an empty epic. Schedule's
+   epic-goal `recommendation` binds selection per `references/scope.md` §Selection.
 3. Resume an unresolved child with an owned resumable worktree before selecting new work.
    Use schedule's `knowledge.py retrieval-plan` loop; do not start a sibling-body gatherer.
    Never take over another live run. Otherwise walk NEXT in order: require an exact live-child

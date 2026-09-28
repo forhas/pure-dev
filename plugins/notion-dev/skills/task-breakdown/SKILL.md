@@ -160,3 +160,32 @@ Output:
 ```
 
 No `phase`, no `step`, no `dependsOn` — all three are independent bug fixes. Epic gives them a shared tag; nothing more.
+
+## Re-scope mode — an epic that is not converging
+
+Invoked by `/notion-dev:next-task` when `knowledge.py epic-goal` recommends `rescope` (its
+FOLLOWUP_RATE exceeded `convergence.rateThreshold`), and for a same-surface bundle offer.
+Input: the brief's `## Goal` (with any `Done when:` list) and the open children — titles,
+bodies, `Follow-up-of:` provenance and each child's follow-up GENERATION. Still pure analysis:
+the caller performs every change, and only after the user confirms each one.
+
+Output one proposal per open child, each with a one-line reason:
+
+```
+{
+  kind: "rescope",
+  groups: [ { surface: "<shared files, DTO, error code or contract item>", keys: ["<KEY>-<n>", …] } ],
+  proposals: [
+    { key: "<KEY>-<n>", action: "keep" | "merge-into" | "rehome" | "drop", into?: "<KEY>-<n>",
+      blocks_goal: "yes" | "no", reason: "…" }
+  ],
+  done_when?: [ "- [<KEY>-<n>] resolved", … ]   // only when the brief has none and the Overview states the outcome
+}
+```
+
+Rules: group children by shared surface first; `merge-into` folds same-surface work (a sibling
+defect, a reworded message, a stale comment) into one ticket so it is one run and one PR;
+`rehome` moves `blocks_goal: no` work to `convergence.nonGoalDestination`; `drop` is only for a
+path with no current consumer or a premise already disproved, with the re-open trigger. A
+generation-2+ child whose premise is unverified is proposed for re-verification, never kept
+as-is. Prefer fewer, larger tickets that the goal needs over preserving the child count.

@@ -26,11 +26,29 @@ Dispositions for agreed findings:
   and safety guarantees. A protocol/API change may size the fix but never excuses deferring
   a defect in this PR's own guarantee.
 - **file:** genuinely separate work only. Cite one criterion: (1) a new public interface,
-  dependency/config or migration outside the requirement; (2) an unsettled design decision
-  outside the ticket; (3) work large enough to obscure the ticket's review. Touching another
-  file is not a criterion. Preserve the approved packet and criterion for epic-update.
+  dependency/config or migration outside the surface this ticket already changes — a new env
+  var or error code needed to make THIS ticket's guarantee hold is absorbed, not filed; (2) an
+  unsettled design decision outside the ticket; (3) work large enough to obscure the ticket's
+  review: more changed lines than `convergence.fileThresholdLines` (default 800) or a second
+  independent design question. Touching another file is not a criterion. Preserve the approved
+  packet and criterion for epic-update.
 - **drop:** insignificant/speculative/low-value work, with a concrete rationale. Never hide
   a real requirement defect, failed test or unverified mandatory claim under this label.
+  A finding about a path with no current consumer (the ticket or epic records that the consumer
+  stopped using it) is dropped with `no_consumer: true` and the `reopen_trigger` that revives it.
+
+**Mandatory absorb — filing is not allowed** for (a) `own-feature`: a defect in, or known gap
+of, the feature or guarantee this ticket introduces — shipping it "with a documented limitation"
+is still filing its own gap; (b) `sibling`: another instance of the defect class this ticket
+fixes (the outcome plan's sibling sweep finds them); (c) `changed-code-docs`: docs, JSDoc,
+comments, generated specs or tests describing code this PR changes; (d) `same-epic-rework`: a
+correction to text or wording this same epic introduced earlier — rework is absorbed, never
+re-ticketed. Every `file` judgment states `absorb_class: "none"` after checking these, plus
+`blocks_goal: yes|no` with a one-line `blocks_goal_reason`: `yes` only when the work is needed
+for an item of the epic's `Done when:` list. The filer proposes it; interactive runs confirm it
+with the user; a non-interactive run with no `Done when:` item to cite records `no`.
+`runtime.py judge-findings` refuses a `file` that breaks these rules (pass `--config` for the
+configured threshold), so the rule is not a wording choice.
 - **blocked:** an actual external cause (authority, credentials, unreachable required service),
   naming cause and unblocker. Length, complexity and needing a protocol change are not external.
   Do not turn a blocker into a follow-up ticket; required blocked work stops the merge.
@@ -54,6 +72,11 @@ From round three onward do not introduce optional cosmetic churn. No round limit
 unfinished mandatory work mergeable. Empty/no-actionable feedback on unchanged code ends the
 external loop; do not retrigger merely for a new report or reply.
 
+A prose claim (PR body, docs) that drew a finding names its `claim` and `method`
+(`rewrite`/`artifact`/`remove`) in the correction worksheet. After two consecutive rewrites that
+each drew a new finding, `correction-batch` refuses a third: replace the claim with an artifact
+reference or remove it.
+
 ## One bounded deferred-work sweep
 
 Skip entirely when no FILED or termination-deferred candidates exist. Otherwise, once before
@@ -70,6 +93,6 @@ work stops with the exact evidence and resume command.
 ## Return durable dispositions
 
 Persist ABSORBED, FILED, DROPPED and BLOCKED lists, plus declined suggestions separately.
-Every absorbed item names a real fix; every filed item retains criterion and packet; blocked
+Every absorbed item names a real fix; every filed item retains criterion, `blocks_goal` and packet; blocked
 items retain cause/unblocker. Empty lists explicitly say none. Include reviewed SHAs, rounds,
 fix commits and runtime result references. Ticket/epic consumers use these facts directly.

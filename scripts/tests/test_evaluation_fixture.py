@@ -28,9 +28,26 @@ ORACLE = FIXTURE / "oracle/test_scheduler.py"
 FINDINGS = json.loads((FIXTURE / "expected-findings.json").read_text(encoding="utf-8"))
 
 
+def write_lf(path, text):
+    """UTF-8/LF on both platforms; `Path.write_text(newline=)` needs Python 3.10."""
+    with open(str(path), "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+
+
 def run_oracle(implementation):
     environment = dict(os.environ, EVAL_SCHEDULER=str(FIXTURE / implementation),
                        PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.run([sys.executable, str(ORACLE), "-v"], capture_output=True,
+                          encoding="utf-8", env=environment)
+
+
+def failed_tests(outcome):
+    # The failure blocks, not the verbose progress lines, which list every test run.
+    return set(re.findall(r"^(?:FAIL|ERROR): (test_\w+) \(", outcome.stderr, re.M))
+
+
+def run_oracle_at(directory):
+    environment = dict(os.environ, EVAL_SCHEDULER=str(directory), PYTHONDONTWRITEBYTECODE="1")
     return subprocess.run([sys.executable, str(ORACLE), "-v"], capture_output=True,
                           encoding="utf-8", env=environment)
 
@@ -54,7 +71,7 @@ class EvaluationFixtureTests(unittest.TestCase):
         """Not merely 'fails': fails on each defect, so none can rot unnoticed."""
         outcome = run_oracle("project")
         self.assertEqual(outcome.returncode, 1, outcome.stdout + outcome.stderr)
-        failed = set(re.findall(r"^(test_\w+) \(", outcome.stderr, re.M))
+        failed = failed_tests(outcome)
         expected = {"test_" + f["id"].replace("-", "_") for f in FINDINGS["findings"]
                     if f["detectable_by"] == "oracle"}
         self.assertEqual(failed, expected)
@@ -93,6 +110,17 @@ class EvaluationFixtureTests(unittest.TestCase):
         recorded = rt.requirements(FIXTURE / "ticket.md", inventory)
         self.assertEqual(recorded["requirements"], len(inventory["items"]))
         self.assertTrue(rt.ready()["passed"])
+
+    def test_fixing_only_the_reported_site_still_fails_the_sibling_sweep(self):
+        """A run that fixes `resolve` alone leaves the same defect in `warm`."""
+        source = (FIXTURE / "project/scheduler.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("    key = name\n"), 1)
+        half = Path(self.temp.name) / "half"
+        half.mkdir()
+        write_lf(half / "scheduler.py", source.replace("    key = name\n", "    key = (name, version)\n"))
+        failed = failed_tests(run_oracle_at(half))
+        self.assertNotIn("test_memoization_key", failed)
+        self.assertIn("test_memoization_key_sibling", failed)
 
     def test_the_pull_request_body_states_a_figure_the_workload_contradicts(self):
         body = (FIXTURE / "pr-body.md").read_text(encoding="utf-8")

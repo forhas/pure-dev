@@ -456,7 +456,11 @@ class FactTests(unittest.TestCase):
     def packet(self):
         return {'title': 'Bound retry', 'goal': 'Keep failures bounded', 'scope': 'Worker retry only',
                 'evidence': 'Accepted finding evidence', 'provenance': 'Follow-up-of: TEST-1 · finding-hash: abc',
-                'source': 'https://example.invalid/pr/7', 'decision': 'file', 'requirements': ['Retry once'],
+                'source': 'https://example.invalid/pr/7', 'decision': 'file',
+                'requirements': [{'text': 'Retry once', 'facts': [1]}],
+                'verified_facts': [{'fact': 'A transient failure is not retried', 'citation': 'worker.py:42'}],
+                'premises_to_verify': [], 'hypothesis': ['A single retry is enough'],
+                'blocks_goal': {'value': 'no', 'reason': 'hardening beyond the epic goal'}, 'destination': 'backlog',
                 'acceptance': ['Transient failure recovers once'], 'edge_cases': ['Permanent failure'],
                 'dependencies': [], 'open_questions': []}
 

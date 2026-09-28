@@ -231,6 +231,49 @@
       "minimum": 1,
       "default": 3,
       "description": "Maximum external review rounds on the lean path; default 3. Explicit positive values are honored. Independent internal review uses runtime full/delta budgets, not a second copy of this cap. Legacy workflows retain their documented 15-round default. Hand-edited: init and review do not rewrite this key. A cap never authorizes merging unmet mandatory work."
+    },
+    "convergence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Hand-edited knobs that keep an epic converging. Init never prompts for them and preserves them on reconfigure, like reviewsCap.",
+      "properties": {
+        "nonGoalDestination": {
+          "type": "string",
+          "pattern": "^(backlog|related|epic:[A-Z][A-Z0-9]{1,9}-\\d+)$",
+          "default": "backlog",
+          "description": "Where a filed follow-up with blocks_goal: no is created: backlog (no parent), related (no parent, linked from the epic's resolution entry) or epic:<KEY>-<n> (a standing debt epic). blocks_goal: yes follow-ups stay children of their epic."
+        },
+        "rateWindow": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Resolutions over which knowledge.py epic-goal computes FOLLOWUP_RATE."
+        },
+        "rateThreshold": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0,
+          "description": "FOLLOWUP_RATE above which next-task recommends a re-scope pass instead of selecting another child."
+        },
+        "fileThresholdLines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 800,
+          "description": "Filing criterion 3 (large enough to obscure review) needs more changed lines than this, or a second independent design question."
+        },
+        "briefBudget": {
+          "type": "integer",
+          "minimum": 40,
+          "default": 150,
+          "description": "Line budget of an epic brief; over it, record prunes and links settled decisions to concepts before adding."
+        },
+        "prBodyBudget": {
+          "type": "integer",
+          "minimum": 500,
+          "default": 3000,
+          "description": "Characters above which workflow.py pr-body warns. Reasoning belongs in the knowledge capture."
+        }
+      }
     }
   }
 }

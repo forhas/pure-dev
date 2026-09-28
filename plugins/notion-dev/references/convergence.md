@@ -76,6 +76,27 @@ and reduced median total tokens/time. Keep <200K peak context and roughly <1h as
 not achieved measurements. If parent context still dominates, the next measured slice
 is knowledge retrieval and command/stage separation, not weaker completeness checks.
 
+## Epic convergence (0.44.0)
+
+**What changed.** `references/scope.md` lists each rule and the helper that enforces it:
+goal-based closure (`knowledge.py epic-goal`, the goal-met `## Next` form), `blocks_goal` on
+every filed follow-up with non-goal work routed off the epic, mandatory-absorb and size rules
+in `judge-findings`, verified-fact follow-ups and intake premise checks, artifact-bound PR
+figures and a prose-rewrite cap, the follow-up rate breaker, a release-obligation ledger, a
+brief budget and deferred claim-only refreshes. The evaluation fixture gains a sibling
+defect that a one-site fix leaves behind.
+
+**What it does not change.** Review seats, golden tests, requirement coverage and the merge
+gate are untouched; fewer, larger review units, not less review. A filed follow-up still needs
+its packet, dedup and journal.
+
+**Disposition: `blocked`** — the plan's success criteria (follow-up rate at or below 0.5, no
+children created after goal-complete without an explicit user choice, at most two bookkeeping
+commits per merge, lower median per-ticket overhead, no drop in defects caught before merge)
+are measured on the next three real epics against the archived baseline, which offline tests
+cannot provide. `epic-goal --log --repo` and `runtime.py summary`'s `scope` produce the
+per-epic and per-ticket figures; running them on those epics is the unblocking step.
+
 ## Measured-delta slice (0.35.0)
 
 This slice repairs the delta path itself and makes the next change measurable. It adds

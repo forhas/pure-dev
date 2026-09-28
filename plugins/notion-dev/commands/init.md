@@ -381,7 +381,7 @@ Create directory `.claude/` if missing. Write `.claude/notion-dev.config.json` w
 
 Always write `reviewer` explicitly (unlike the omit-when-default properties above) — it is exempt from the "omit when equal to default" convention, so it appears in the config even when the answer was the default `codex`.
 
-**Preserve `reviewsCap` on reconfigure.** `reviewsCap` (the review-loop round cap; see the schema and README) is a hand-edited knob that init never prompts for. When reconfiguring an existing config, carry any `reviewsCap` it already contained through to the rewritten file verbatim — this rewrite is from collected values, so a value init never collects would otherwise be silently dropped, and the next review loop would lose the user's documented setting. A fresh init omits the key (lean defaults to 3 external rounds; legacy defaults to 15).
+**Preserve `reviewsCap` on reconfigure.** `reviewsCap` (the review-loop round cap; see the schema and README) is a hand-edited knob that init never prompts for. When reconfiguring an existing config, carry any `reviewsCap` it already contained through to the rewritten file verbatim — this rewrite is from collected values, so a value init never collects would otherwise be silently dropped, and the next review loop would lose the user's documented setting. A fresh init omits the key (lean defaults to 3 external rounds; legacy defaults to 15). The `convergence` block (see the schema) is preserved the same way, verbatim.
 
 Write/update `.mcp.json` at the repo root with merged `mcpServers`.
 

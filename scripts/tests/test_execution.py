@@ -36,7 +36,9 @@ class ExecutionTests(unittest.TestCase):
         packet = self.root / 'packet café.json'
         runtime.atomic_json(packet, dict(title='Café — שלום', goal='Preserve · text', scope='generic',
             evidence='observed', provenance='approved finding', source='fixture', decision='file',
-            requirements=['Exact UTF-8'], acceptance=['No corruption'], edge_cases=[], dependencies=[], open_questions=[]))
+            requirements=[{'text': 'Exact UTF-8', 'facts': [1]}], acceptance=['No corruption'], edge_cases=[], dependencies=[], open_questions=[],
+            verified_facts=[{'fact': 'observed', 'citation': 'fixture'}], premises_to_verify=[], hypothesis=[],
+            blocks_goal={'value': 'yes', 'reason': 'goal item'}, destination='epic'))
         recipe = self.root / 'recipe.json'
         runtime.atomic_json(recipe, {'name': 'followup', 'target': 'database', 'title_property': 'Name',
             'tool': 'mcp__notion__notion-create-pages', 'input': {'parent': {'data_source_id': 'a' * 32},
@@ -147,7 +149,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(generated['passed'])
         path = Path(generated['checklist']); data = runtime.read_json(path)
         item = data['items'][0]; item.update(anchors=['retired claim'], locations=['input:pr_body', 'repo:code.txt'],
-            disposition='corrected', evidence='corrected prose')
+            disposition='corrected', evidence='corrected prose', claim='retired-claim', method='rewrite')
         runtime.atomic_json(path, data)
         checked = corrections.batch(self.state, key, self.repo, inputs, path)
         self.assertFalse(checked['passed'])
@@ -175,6 +177,7 @@ class ExecutionTests(unittest.TestCase):
         path = Path(generated['checklist']); value = runtime.read_json(path)
         for item in value['items']:
             item.update(anchors=['retired claim'], disposition='not-applicable', evidence='quoted negative test',
+                        claim='retired-claim', method='rewrite',
                         retained={'repo:code.txt': 'old text remains intentionally quoted for a negative test'})
         runtime.atomic_json(path, value)
         observed = runtime.read_json(runtime.read_json(inputs)['files']['pr_body']['path'])

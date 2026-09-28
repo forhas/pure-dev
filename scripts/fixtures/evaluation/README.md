@@ -13,7 +13,7 @@ the **classes** of defect, not any source, ticket number, algorithm or provider 
 |---|---|
 | `ticket.md` | The authoritative requirement source. Two mandatory constraints sit in `## Notes`, outside the acceptance list, and one acceptance criterion is ticked while unimplemented. |
 | `requirements.json` | The intake oracle: the inventory a correct reading of the whole ticket produces. Loads through `runtime.py requirements`. |
-| `project/scheduler.py` | The candidate under review. **Carries seeded defects on purpose — do not fix it.** |
+| `project/scheduler.py` | The candidate under review. **Carries seeded defects on purpose — do not fix it.** One defect class appears at two sites, so a run that fixes only the reported one fails the sibling check. |
 | `reference/scheduler.py` | The corrected twin. The oracle passes against this one. |
 | `oracle/test_scheduler.py` | The hidden regression suite, specified from the ticket rather than from either implementation. |
 | `pr-body.md` | A pull request body containing one false quantitative claim. |
