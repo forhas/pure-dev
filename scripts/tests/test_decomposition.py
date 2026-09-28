@@ -550,6 +550,11 @@ class GenericityTests(unittest.TestCase):
                 recording.pr_body({**facts, "behavior": [claim]}, units)
         recording.pr_body({**facts, "behavior": ["769 tests pass (artifact: forge test --json)"]}, units)
         recording.pr_body({**facts, "behavior": ["the seed window is 14 days (spec: §9)"]})
+        for unsupported in ("latency fell 50% (spec: timeout §2)",
+                            "the window is 14 days (spec: §9) and cuts 120 ms per call",
+                            "(spec: §9) the window is 14 days"):
+            with self.subTest(unsupported=unsupported), self.assertRaises(ValueError):
+                recording.pr_body({**facts, "behavior": [unsupported]})
         with self.assertRaises(ValueError):
             recording.pr_body({**facts, "behavior": ["the seed window is 14 days"]})
         facts_file = self.root / "facts.json"

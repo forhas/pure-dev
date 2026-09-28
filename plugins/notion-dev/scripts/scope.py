@@ -83,9 +83,14 @@ BUILTIN_UNITS = (r"%", r"percent\b", r"[x×](?![\w])", r"-?fold\b", r"ms\b", r"m
                  r"s\b", r"secs?\b", r"seconds?\b", r"min\b", r"minutes?\b", r"h\b", r"hours?\b",
                  r"days?\b", r"[KMGT]i?B\b", r"kB\b", r"bytes?\b", r"tokens?\b", r"lines?\b",
                  r"requests?\b", r"calls?\b", r"lookups?\b", r"queries\b", r"round-?trips?\b")
-# A figure cites what produced it: an artifact (test, receipt, export, generated diff), or,
-# for a parameter the spec defines rather than a measurement, the spec section.
-ARTIFACT_RE = re.compile(r"[\[(](?:artifact|spec):\s*[^\])\s][^\])]*[\])]")
+# A figure cites what produced it: an artifact (test, receipt, export, generated diff) covers
+# the fact. A spec section covers only a parameter the spec defines, so it must directly follow
+# that one figure, and never a claimed change, which is a measurement whatever the spec says.
+ARTIFACT_RE = re.compile(r"[\[(]artifact:\s*[^\])\s][^\])]*[\])]")
+SPEC_AFTER_RE = re.compile(r"\s*[\[(]spec:\s*[^\])\s][^\])]*[\])]")
+CHANGE_RE = re.compile(r"\b(?:fell|falls?|drops?|dropped|rose|rises?|grew|grows?|improved?|improves|reduced?|"
+                       r"reduces|reduction|faster|slower|fewer|saves?|saved|cuts?|removes?|removed|"
+                       r"increased?|increases|decreased?|decreases|speedup|regress(?:ed|ion)?)\b", re.I)
 
 
 def figure_regex(extra_units=()):
@@ -101,7 +106,9 @@ def unreferenced_figures(value, extra_units=()):
     if ARTIFACT_RE.search(value):
         return []
     pattern = figure_regex(extra_units) if extra_units else FIGURE_RE
-    return [m.group(0) for m in pattern.finditer(value)]
+    change = bool(CHANGE_RE.search(value))
+    return [m.group(0) for m in pattern.finditer(value)
+            if change or not SPEC_AFTER_RE.match(value, m.end())]
 
 
 # A neutral fallback, used only when the project names none. Projects list their own classes

@@ -61,8 +61,9 @@ items it touches) and optional `lands_with`, so the next selection can order and
 
 `workflow.py pr-body --config <primary-config>` refuses a figure (a number with a unit,
 percentage or multiplier, plus the project's `figureUnits` such as a currency, `gas` or a
-counted noun like `tests`) that cites neither `(artifact: …)` nor, for a parameter the spec
-defines rather than a measurement, `(spec: <section>)`, and is not a measured fact. It warns
+counted noun like `tests`) that cites neither `(artifact: …)` nor, directly after a parameter
+the spec defines, `(spec: <section>)` — which never covers a claimed change such as "fell" or
+"faster" — and is not a measured fact. It warns
 over `prBodyBudget` [3000] characters. Reasoning and rejected alternatives go to the knowledge
 capture once, not the PR body. `correction-batch` refuses a third consecutive prose rewrite of
 one claim: replace it with an artifact reference or remove it.
