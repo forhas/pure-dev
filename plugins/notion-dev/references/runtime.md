@@ -89,10 +89,17 @@ the original can still run.
 
 There is exactly one waiter for a worker:
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime.py" --state "$RUNTIME_STATE" wait --worker <id> --seconds 60
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" await-worker --state "$RUNTIME_STATE" --worker <id> --seconds 60
 ```
+This wraps the same bounded runtime wait and immediately consumes a published result into
+the complete finding index, without accepting it or waiting for a chat notification. Follow
+`judge-result` through review-accounting. Exit 1 is pending, not a failed worker.
+The low-level `runtime.py wait --worker <id> --seconds 60` remains available for legacy callers.
 Use a foreground blocking host call. If the host backgrounds that call, await that existing
-task; do not launch another sleeper, status loop, file poll or waiter. On a pending return,
+task through the host's task-output/continuation tool; do not launch another sleeper, status
+loop, file poll or waiter. Never wrap this command in a shell loop or `until grep`: waiting
+on a wrapper's output hides ready results. After the host task finishes, inspect once for a
+late result before another bounded wait. On a pending return,
 use the host's continuation mechanism. If mailbox delivery requires ending the parent turn:
 `yield --worker <id> --marker "$RUN_MARKER" --session "$NOTION_DEV_SESSION_ID"`, then yield
 without a completion report. This one-shot permission belongs to the current marker/session;

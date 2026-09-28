@@ -1011,8 +1011,14 @@ class Runtime:
             self.event(state, "worker_prepared", worker=key, role=role,
                        input_bytes=input_bytes, packet_bytes=packet_path.stat().st_size,
                        delta_bytes=(packet.get("delta") or {}).get("bytes"))
+        waiter = [sys.executable, str(Path(__file__).with_name("workflow.py").resolve()),
+                  "await-worker", "--state", str(self.path), "--worker", key, "--seconds", "60"]
         return {"worker": key, "state": str(self.path), "role": role,
-                "timeout_seconds": timeout, "revision": current, "packet": str(packet_path)}
+                "timeout_seconds": timeout, "revision": current, "packet": str(packet_path),
+                "parent_wait": {"argv": waiter, "command": " ".join(shlex.quote(a) for a in waiter),
+                    "instruction": "After attach, run once in the foreground. If backgrounded, await that same host task; "
+                                   "never wrap in polling/grep/sleep loops. judge-result still requires complete accounting and acceptance. "
+                                   "If worker report writes are forbidden, await the same agent's final host response instead."}}
 
     def publication_kit(self, key, directory, packet):
         """An editable, deliberately nonpassing submission and exact Git Bash/WSL command."""
@@ -1238,7 +1244,13 @@ class Runtime:
         return {"request": request["id"], "kind": "delta", "count": 1, "scope": scope, "reason": reason,
                 "removed_inputs": binding.get("removed_inputs", {}),
                 "head": current["head"], "approval_phrase": request["approval_phrase"],
-                "instruction": "Show reason, scope, head and removed_inputs; ask the user to send this exact phrase only if they authorize this scope. "
+                "resume": {"runtime": str(self.path.resolve()),
+                           "command": "/notion-dev:finalize <existing-pr>",
+                           "prompt": "In a fresh conversation, resume the existing PR with runtime " + str(self.path.resolve()) +
+                                     ". Start with workflow.py resume-view, preserve evidence/history/budgets, adopt ownership safely, "
+                                     "and issue a NEW approval challenge for this session. Do not replay the phrase below."},
+                "instruction": "If approval may wait, offer the fresh-conversation resume prompt FIRST to avoid reloading this large history. "
+                               "Show reason, scope, head and removed_inputs; ask the user to send this exact phrase only if they authorize this scope in THIS session. "
                                "Then budget-extend captures that actual user message. No automatic approval or budget reset."}
 
     def budget_extend(self, request_id, transcript, session, message_id, worktree):
@@ -1662,6 +1674,8 @@ class Runtime:
     def publish(self, key, result):
         require(isinstance(result, dict) and isinstance(result.get("report"), str)
                 and result["report"].strip(), "result requires a nonempty report, not a launch acknowledgement")
+        submitted_bytes = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        compact = result.get("delta_result")
         with self.transaction() as state:
             worker = self.worker(state, key)
             require(not worker["terminated"], "worker was confirmed terminated; reconcile late output explicitly")
@@ -1687,6 +1701,10 @@ class Runtime:
             # prose duplicated into both `report` and the per-criterion records; copying
             # the prose here to measure it would be the same mistake one layer down.
             self.event(state, "worker_result_ready", worker=key, role=worker["role"],
+                       submitted_bytes=submitted_bytes,
+                       delta_reuse=({"requirements": len(compact["reused_requirement_ids"]),
+                                     "sections": len(compact["reused_sections"]),
+                                     "updated_sections": len(compact["updated_sections"])} if compact else None),
                        result_bytes=len(json.dumps(result, ensure_ascii=False).encode("utf-8")),
                        report_bytes=len(result["report"].encode("utf-8")))
         return {"worker": key, "status": "result_ready", "artifact": artifact}
@@ -2254,7 +2272,12 @@ class Runtime:
                             "confirmed operation is terminal; do not reset it to replay side effects")
                     require(outcome != "planned" or latest["outcome"] == "planned",
                             "an executed operation cannot be reset to planned; reconcile its outcome")
+                    if operation in state.get("record_discrepancies", {}) and outcome == "confirmed":
+                        require(latest["outcome"] == "confirmed",
+                                "host discrepancy requires record-accept-discrepancy, not raw confirmation")
                     if outcome == "attempted":
+                        require(operation not in state.get("record_discrepancies", {}),
+                                "recorded host discrepancy requires non-replay reconciliation")
                         require(latest["outcome"] in {"planned", "failed"},
                                 "completed or uncertain operation cannot be blindly retried; reconcile first")
             state.setdefault("record_journal", []).append(entry)
@@ -2274,6 +2297,7 @@ class Runtime:
                         "record operation identity changed; reconcile, then use a new explicit operation revision")
                 action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
                           if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
+                if action != "skip" and operation in state.get("record_discrepancies", {}): action = "reconcile"
             else:
                 require(not state.get("completed"), "resume explicitly before planning new recording")
                 latest = {"operation": operation, "target": target, "data_sha256": payload_hash,

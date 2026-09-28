@@ -135,20 +135,22 @@ if [ -f "$KS" ]; then
       "$KS" "$C0" "$U0" '## Updates'
     assert_present "capture: re-reads touched concepts via \`knowledge.py touched <merge-sha>\`" \
       "$KS" "$C0" "$U0" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" touched <merge-sha>'
-    assert_count "knowledge skill: \`knowledge.py check\` gates capture, curate, and migrate (cited 3 times)" \
-      "$KS" 1 "$L" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" check' 3
-    assert_present "capture: \`Write nothing\` when \`check\` exits non-zero" \
-      "$KS" "$C0" "$U0" '\*\*Write nothing\*\* when `check` exits non-zero'
-    assert_present "capture: \`check\` failing reverts via \`git checkout -- <knowledge.dir>\`" \
-      "$KS" "$C0" "$U0" 'git checkout -- <knowledge\.dir>'
+    assert_count "knowledge skill: direct \`knowledge.py check\` gates curate and migrate" \
+      "$KS" 1 "$L" 'python3 "\$\{CLAUDE_PLUGIN_ROOT\}/scripts/knowledge\.py" check' 2
+    assert_present "capture: combined \`knowledge-commit\` binds producer status before commit" \
+      "$KS" "$C0" "$U0" 'workflow\.py" knowledge-commit .*--run <lock-owner-run>'
+    assert_has "capture helper refuses failed producer before git commit" \
+      "$ND/scripts/execution.py" 'if proc.returncode: return receipt'
     assert_present "capture: records \`partial:knowledge-capture\` on check failure or push rejection" \
       "$KS" "$C0" "$U0" 'partial:knowledge-capture'
-    assert_present "capture: commits by pathspec with \`git commit --only -m\` \`docs(knowledge): capture <KEY>-<n>\` -- \`<knowledge.dir>\`" \
-      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): capture <KEY>-<n>" -- <knowledge\.dir>'
-    assert_present "capture: the fact-note form commits \`docs(knowledge): note <KEY>-<n>\` ... -- \`<knowledge.dir>\` (regex bridges the em dash and short-fact text with .* since they are not the load-bearing part of the claim)" \
-      "$KS" "$C0" "$U0" 'git commit --only -m "docs\(knowledge\): note <KEY>-<n> .*-- <knowledge\.dir>'
-    assert_present "capture: stages with \`git add -- <knowledge.dir>\`" \
-      "$KS" "$C0" "$U0" 'git add -- <knowledge\.dir>'
+    assert_present "capture: retains \`docs(knowledge): capture <KEY>-<n>\` subject" \
+      "$KS" "$C0" "$U0" '--message "docs\(knowledge\): capture <KEY>-<n>"'
+    assert_present "capture: retains \`docs(knowledge): note <KEY>-<n>\` subject" \
+      "$KS" "$C0" "$U0" 'docs\(knowledge\): note <KEY>-<n>'
+    assert_has "capture helper stages only the knowledge path" \
+      "$ND/scripts/execution.py" 'git(root, "add", "--", relative)'
+    assert_has "capture helper commits only the knowledge path" \
+      "$ND/scripts/execution.py" 'git(root, "commit", "--only", "-m", message, "--", relative)'
     assert_present "capture: output block states all four \`KNOWLEDGE:\` values" \
       "$KS" "$C0" "$U0" '^KNOWLEDGE: captured \| empty \| failed \| unavailable'
     assert_present "capture: output block's \`COMMIT: <sha> | none\` line" \

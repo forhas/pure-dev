@@ -117,33 +117,23 @@ moved, or marked; `log.md` gets one dated entry for this capture, naming the tic
 
 **6. Check, commit, push.**
 
+With the existing primary lock held, run the combined gate (configured knowledge.python):
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" knowledge-commit --project "$REPO_ROOT" --branch <epicBranch> --run <lock-owner-run> --message "docs(knowledge): capture <KEY>-<n>"
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge.py" check --dir <knowledge.dir> \
-  --plugin-root "${CLAUDE_PLUGIN_ROOT}" --extra-types <knowledge.extraTypes joined with commas> \
-  --warn-bytes <knowledge.warnBytes>
-```
+For `--fact` use subject `docs(knowledge): note <KEY>-<n> — <short fact>` instead.
+It runs `knowledge.py check` using the project's config (including extraTypes/warnBytes),
+captures the actual producer exit code and full log, binds the checked knowledge bytes,
+and performs a path-scoped `git commit --only` only on success. It neither pushes nor
+commits unrelated staged work. Do not replace it with a `check | tail; echo $?` pipeline:
+that reports the formatter's success, not the validator's.
 
-`--extra-types` takes one comma-separated string, not the config's JSON array: `["commitment",
-"node"]` is passed as `commitment,node`. Passing the array verbatim makes every declared type
-directory read as undeclared, which fails `check` and — by the rule below — silently discards the
-whole capture on every merge.
-
-**Write nothing** when `check` exits non-zero, and never downgrade its exit 2: restore the
-working tree with `git checkout -- <knowledge.dir>` **and** `git clean -fd -- <knowledge.dir>`,
-then fail as the paragraph below describes, carrying the check's first finding line as the cause.
-Both halves are needed: a concept this capture **created** is untracked, `git checkout --` does
-not remove it, and a survivor breaks precondition 4 on every later capture — one failed capture
-would disable the hook until someone cleaned the tree by hand. A check that cannot run and says
-nothing is the outcome both clients learned to fear.
-
-Otherwise stage and commit by pathspec — never the whole index, since a caller's precondition
-permits an exempt setup file to sit staged:
-
-```
-git add -- <knowledge.dir>
-git commit --only -m "docs(knowledge): capture <KEY>-<n>" -- <knowledge.dir>
-git commit --only -m "docs(knowledge): note <KEY>-<n> — <short fact>" -- <knowledge.dir>   # --fact form
-```
+Nonzero/operational failure means **no commit or push**. Inspect the returned log, fix only
+this operation's owned edits, then rerun the gate. If capture cannot finish, preserve/report
+its failed evidence and owned edits for explicit recovery; do not discard a directory with
+checkout/reset/clean. A failed best-effort capture is visible, not a successful recording.
+The existing preconditions, lock and write-path push checks still apply. A commit hook that
+changes validated content fails the post-commit check: do not push; correct and revalidate.
 
 This block **is** step 3 ("Derive and commit") of `notion-dev:epic-doc`'s five steps, reached
 through `## The write path`, with the two subjects above and the pathspec `-- <knowledge.dir>`;

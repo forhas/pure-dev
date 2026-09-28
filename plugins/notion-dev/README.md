@@ -2,10 +2,23 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.42.1). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.43.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Execution and convergence (0.43.0)
+
+The live two-client investigation drove portable UTF-8 follow-up files, a producer-status
+check-and-commit gate for knowledge, immediate consumption of ready worker results, and a
+clean-baseline mutation preflight. Typed delta preparation checks a current correction
+worksheet before spending another review: retired claims are searched across tracked files
+and current PR/source inputs, with explicit justification for retained occurrences.
+Stage guides route existing contracts; long approval stops offer an evidence-preserving
+fresh-conversation handoff. Existing budgets, independent review and freshness checks remain.
+Already-created pages with a text discrepancy have a narrow, user-authorized non-replay
+recovery path; ordinary receipt matching is unchanged. No client-specific rules or provider
+credentials are added. Live token/time savings still require the next real-ticket run.
 
 ## Review boundary repairs (0.42.1)
 

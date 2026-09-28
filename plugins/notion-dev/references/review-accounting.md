@@ -60,7 +60,34 @@ impact on every requirement. Unchanged evidence may be reused only with existing
 Documentation-only empirical claims still need evidence review. Broader uncertainty requires full
 review, not relabeling full work as delta. Keep recording facts outside the reviewed tree.
 
+For schema-5 typed deltas, after refreshing review-inputs run:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" correction-batch --state "$RUNTIME_STATE" --previous <accepted-worker> --worktree "$WORKTREE" --inputs <current-inputs>
+```
+Complete its worksheet for every finding: actual affected `repo:<path>` / `input:<name>`
+locations (always include `input:pr_body`), retired literal anchors or a no-literal reason,
+disposition `corrected`/`not-applicable`, and evidence. It scans all tracked files and current
+source inputs for those anchors, not just the edited file. Remaining occurrences block until
+corrected or explained individually in `retained: {"<source>": "<why valid here>"}`—for example
+a quoted negative test. Do not add blanket exemptions. A stale source/head requires a new
+worksheet; transfer only still-applicable dispositions. This is the existing finding ledger's
+preflight view, not a second review or proof of semantic correctness.
+Symlink targets and submodule contents are not silently crawled: the view lists these
+exclusions. Inspect a relevant excluded dependency explicitly and bind its needed evidence
+as a review input; the independent reviewer still checks indirect effects.
+Pass it to `review-prepare --corrections <worksheet>`. Missing/incomplete accounting stops
+before verification or another worker is allocated. Pass the returned `correction_preflight`
+reference to the reviewer as an UNTRUSTED author checklist, never as authoritative input or
+permission to reduce scope. It checks location completeness, retained text and indirect
+effects against the actual current sources, and may reject the author's dispositions.
+An empty defect ledger needs no worksheet; release/recording obligations remain downstream.
+
 ## Exhaustion is a decision, not a fresh invocation
+
+At an approval stop offer the returned fresh-conversation `resume` prompt FIRST if the user
+may return later. Supply the actual PR number and runtime path. In the same conversation the
+current approval challenge still works; a fresh conversation must adopt ownership and issue
+its own challenge. Never copy the old phrase across sessions or reset the budget.
 
 `finalize` keeps the run, original two-full/two-delta defaults, cumulative attempt/event history
 and existing gates. Report outstanding index IDs, unreviewed head/claims and actual next decision.

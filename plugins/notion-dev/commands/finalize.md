@@ -51,5 +51,9 @@ has already been removed. Save the returned marker as RUN_MARKER. A running fore
 or unaccounted worker blocks adoption. Preserve the original runtime and invocation identity.
 
 Non-interactive follows authorized work through completion. Worker waits/questions follow
-`references/runtime.md`; safe yield is not abandonment. Never repeat provider writes because
+`workflow.py guide --stage dispatch`; safe yield is not abandonment. For a large paused run,
+prefer a fresh conversation with this command and the existing runtime path; start from
+resume-view and referenced evidence, not the prior chat. Re-issue any required session-bound
+approval challenge after adoption; this is context recovery, never a fresh attempt budget.
+Never repeat provider writes because
 a human-readable report is malformed. Never override a user's no-agent or no-merge instruction.
