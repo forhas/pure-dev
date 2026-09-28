@@ -27,8 +27,10 @@ the primary config (schema defaults in brackets).
 <primary-config>` refuses a `file` without `criterion`, `absorb_class: "none"`, `blocks_goal`
 and `blocks_goal_reason`, a mandatory-absorb class filed, criterion 3 under
 `fileThresholdLines` [800] without a second design question, and a no-consumer drop without
-its `reopen_trigger`. `workflow.py followup-body` refuses a follow-up whose requirement cites
-no verified fact, and routes `blocks_goal: no` to `nonGoalDestination` [backlog].
+its `reopen_trigger`. `workflow.py followup-body` (epic-update's approved path and
+create-task's `--reviewed-followup` fast path) refuses a follow-up whose requirement cites no
+verified fact, and refuses a destination that contradicts `blocks_goal`; the caller supplies
+the destination from `nonGoalDestination` [backlog].
 
 ## PR body
 

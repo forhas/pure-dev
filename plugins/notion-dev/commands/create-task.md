@@ -88,21 +88,26 @@ Show a short preview to the user.
 accepted independent finding, evidence and recorded filing decision. Check goal, scope,
 requirements, acceptance tests, edge cases, dependencies and provenance. Every implementation-
 changing answer must be explicit in that evidence; missing/ambiguous is not an empty list.
-When complete, compose the normal ticket sections from those facts, preserve the exact pinned
-title/provenance, and proceed to 2.2 without interviewer or proxy respondent. Do not invent a
+When complete, write those facts as the JSON packet epic-update's `approved-followup.md` step 2
+defines and render the body with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py"
+followup-body --packet <packet.json> --output <body.json>` (configured `knowledge.python`); use
+its `body` unchanged, preserve the exact pinned title/provenance, and proceed to 2.2 without
+interviewer or proxy respondent. A refusal names what is missing — an uncited requirement, no
+verified facts, no `blocks_goal` — and sends the item to the normal interview for exactly that. Do not invent a
 solution or widen the finding. If anything is missing, use the normal interview below, asking
 only the missing questions; non-interactive cannot invent authority. This exception overrides
 the proxy policy only for this fully specified, already independently reviewed case. General
 prompts, existing-ticket elaboration and legacy packets retain their normal interview.
 
-**Every follow-up is verified before it is filed** (fast path, interview path and epic-update
-alike). Its body separates `## Verified facts` — each with a citation (file:line, command
+**Every follow-up is verified before it is filed.** Its body separates `## Verified facts` — each with a citation (file:line, command
 output, primary-source link) — from `## Premises to verify`, and any proposed fix direction goes
 under `## Hypothesis — verify before implementing`, never under Requirements or an acceptance
 criterion. A requirement cites the verified fact it rests on; a claim the filer did not verify
 is relabelled as a premise, never kept as a requirement. Acceptance criteria name observable
-artifacts only (a test, an output, a response). `workflow.py followup-body` refuses a packet
-that breaks this, and the ticket's first run checks every premise (`lean-intake.md`).
+artifacts only (a test, an output, a response). On the fast path and epic-update's approved
+path `workflow.py followup-body` refuses a packet that breaks this; on the interview path the
+interviewer's clarity audit relabels an uncited claim as a premise before the summary is
+confirmed. Either way the ticket's first run checks every premise (`lean-intake.md`).
 The follow-up also states `Blocks epic goal: yes|no — <reason>`: `no` goes to
 `convergence.nonGoalDestination` (default `backlog`, no epic parent) instead of `--parent`.
 
