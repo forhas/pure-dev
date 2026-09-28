@@ -79,12 +79,14 @@ its required state (`resolved`, or `verdict recorded` for a build-or-drop decisi
 the live resolved set) or a named external condition marked `met`/`open` by a human.
 `knowledge.py epic-goal` evaluates it; an unknown ticket or an unparsed item is never met. When
 it holds the epic is **goal-complete** and the `## Next` body is, instead of a numbered list,
-the goal-met line and a `Re-home:` line of every other open child — a claimed one included, so
+the goal-met line and a `Re-home:` list of every other open child, one per line — a claimed one included, so
 it matches `epic-goal`'s close-time re-home batch:
 
 ```
 goal met — propose closing the epic; re-home the open children
-Re-home: [STO-73] Connection audit, [STO-74] Stale JSDoc
+Re-home:
+- [STO-73] Connection audit
+- [STO-74] Stale JSDoc
 ```
 
 Without the list, closure falls back to every child resolved. `bootstrap` and `record` derive

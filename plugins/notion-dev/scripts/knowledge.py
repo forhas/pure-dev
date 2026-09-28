@@ -1226,8 +1226,9 @@ CLAIM_DRIFT_RE = re.compile(r"^drift: (?:In progress line missing|[A-Z][A-Z0-9]{
                             r"(?:next|blocked), live status in_progress|[A-Z][A-Z0-9]{1,9}-\d+ listed as "
                             r"in progress, live status open)$")
 GOAL_MET_LINE = "goal met — propose closing the epic; re-home the open children"
-REHOME_RE = re.compile(r"^Re-home: (.*)$")
-REHOME_ITEM_RE = re.compile(r"\[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*?)(?=, \[[A-Z][A-Z0-9]{1,9}-\d+\] |$)")
+# One child per line: a title may itself contain `, [KEY]`, so no inline separator is safe.
+REHOME_RE = re.compile(r"^Re-home:$")
+REHOME_ITEM_RE = re.compile(r"^- \[([A-Z][A-Z0-9]{1,9}-\d+)\] (.*)$")
 HEADER_RE = re.compile(r"^(Epic: .*? · Status: )(open|closed)( · Updated: )(\d{4}-\d{2}-\d{2}) after (.*)$")
 STOP_BULLET_RE = re.compile(r"^- \*\*\[([A-Z][A-Z0-9]{1,9}-\d+)\] stopped at ")
 STATUS_CLASSES = ("resolved", "in_progress", "open")
@@ -1268,17 +1269,22 @@ def _parse_next(body):
             logical.append(ln.strip())
 
     items, in_progress, blocked, complete, unparsed, ip_titles = [], {}, [], False, [], {}
+    rehome = False
     for s in logical:
+        if rehome:
+            rm = REHOME_ITEM_RE.match(s)
+            if rm:
+                items.append({"key": rm.group(1), "title": rm.group(2), "reason": "", "bold": False})
+                continue
+            rehome = False
         if s == "epic complete":
             complete = True
             continue
         if s == GOAL_MET_LINE:
             complete = "goal"
             continue
-        m = REHOME_RE.match(s)
-        if m:
-            for rm in REHOME_ITEM_RE.finditer(m.group(1)):
-                items.append({"key": rm.group(1), "title": rm.group(2), "reason": "", "bold": False})
+        if REHOME_RE.match(s):
+            rehome = True
             continue
         it = _parse_next_item(s)
         if it:
@@ -1466,7 +1472,8 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
 def render_goal_met(rehome):
     out = ["## Next", GOAL_MET_LINE]
     if rehome:
-        out.append("Re-home: " + ", ".join("[%s] %s" % (c["key"], c["title"]) for c in rehome))
+        out.append("Re-home:")
+        out.extend("- [%s] %s" % (c["key"], c["title"]) for c in rehome)
     return out
 
 

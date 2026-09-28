@@ -210,7 +210,7 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertIn("drift: goal met, ## Next not in goal-met form", first.stderr)
         region = first.stdout.split("## Next\n", 1)[1]
         self.assertTrue(region.startswith("goal met — propose closing the epic"))
-        self.assertIn("Re-home: [EX-5] Connection audit, [EX-6] Stale JSDoc", region)
+        self.assertIn("Re-home:\n- [EX-5] Connection audit\n- [EX-6] Stale JSDoc\n", region)
         self.assertNotRegex(region, r"(?m)^1\. ")
         write_lf(brief, first.stdout)
         again = self.knowledge("next", "--brief", str(brief), "--state", str(state), "--today", "2026-09-02")
@@ -230,12 +230,21 @@ class KnowledgeGoalTests(unittest.TestCase):
                               "--state", str(self.write("state.json", state)), "--today", "2026-09-02")
         region = proc.stdout.split("## Next\n", 1)[1]
         self.assertEqual(batch, ["EX-5", "EX-6"])
-        self.assertIn("Re-home: [EX-5] Connection audit, [EX-6] Stale JSDoc", region)
+        self.assertIn("Re-home:\n- [EX-5] Connection audit\n- [EX-6] Stale JSDoc\n", region)
         self.assertNotIn("In progress:", region)
         brief = self.write("brief.md", proc.stdout)
         again = self.knowledge("next", "--brief", str(brief), "--state", str(self.write("state.json", state)),
                                "--today", "2026-09-02")
         self.assertEqual(again.returncode, 0, again.stderr)
+
+    def test_a_title_carrying_a_ticket_reference_round_trips_without_drift(self):
+        state = live_state()
+        state["children"][3]["title"] = "Audit, [EX-99] compatible mode"
+        args = ["--state", str(self.write("state.json", state)), "--today", "2026-09-02"]
+        first = self.knowledge("next", "--brief", str(self.write("brief.md", BRIEF)), *args)
+        again = self.knowledge("next", "--brief", str(self.write("brief.md", first.stdout)), *args)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertIn("DRIFT: 0", again.stderr)
 
     def test_next_without_done_when_is_unchanged(self):
         brief = BRIEF.replace("Done when:\n- [EX-2] resolved\n- [EX-3] resolved\n- [EX-4] verdict recorded\n", "")
