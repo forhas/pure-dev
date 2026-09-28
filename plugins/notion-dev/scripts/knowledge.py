@@ -1719,12 +1719,13 @@ def goal_state(lines, state):
     if items is None:
         return {"goal": "undefined", "done_when": [], "errors": []}
     by_key = {c["key"]: c["status_class"] for c in state["children"]}
-    external = state.get("external_statuses", {})
     for item in items:
         if item["kind"] == "ticket":
             # A verdict ticket resolves when its verdict is recorded; a dropped build-or-drop
-            # is resolved through the configured resolved set. Both read live status.
-            item["status"] = by_key.get(item["key"], external.get(item["key"], "unknown"))
+            # is resolved through the configured resolved set. Both read live status. Only a
+            # live CHILD can satisfy an item: `external_statuses` describe dependencies outside
+            # the epic, and a condition outside it is written as `external:`, never as a key.
+            item["status"] = by_key.get(item["key"], "unknown")
             item["satisfied"] = item["status"] == "resolved"
         else:
             item["satisfied"] = item["state"] == "met"

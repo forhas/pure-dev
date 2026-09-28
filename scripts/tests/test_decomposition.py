@@ -127,6 +127,9 @@ class KnowledgeGoalTests(unittest.TestCase):
         result = self.goal(brief=unknown)
         self.assertEqual(result["goal"], "open")
         self.assertEqual(result["done_when"][-1]["status"], "unknown")
+        outside = {**live_state(), "external_statuses": {"EX-9": "resolved"}}
+        self.assertEqual(self.goal(brief=unknown, state=outside)["goal"], "open",
+                         "a resolved dependency outside the epic is not a child goal item")
         external = BRIEF.replace("- [EX-4] verdict recorded", "- external: customer confirms the fix — open")
         self.assertEqual(self.goal(brief=external)["goal"], "open")
         self.assertEqual(self.goal(brief=external.replace("— open", "— met"))["goal"], "met")
