@@ -35,7 +35,7 @@ Done when:
 <3-6 sentences: what has landed, what changed the picture recently>
 
 ## Open threads
-- **Waiting on customer logs** for v1.4.2 deployed 2026-07-20 — blocks STO-22, STO-23.
+- **Waiting on requester logs** for v1.4.2 deployed 2026-07-20 — blocks STO-22, STO-23.
   Unblocked by: logs attached to STO-22.
 - **Caveat** — the cache TTL chosen in STO-67 assumes ≤10k wallets; revisit in STO-71.
 

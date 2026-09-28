@@ -629,6 +629,9 @@ class GenericityTests(unittest.TestCase):
         tight = goal(self, wide, live_state(open_goal=True), None, "--retrieve-budget", "2000")
         self.assertTrue(tight["brief"]["over_budget"], "few lines, but over the retrieve share")
         self.assertEqual(tight["brief"]["token_budget"], 1000)
+        shared = goal(self, wide, live_state(open_goal=True), None, "--retrieve-budget", "2000", "--retrieve-share", "0.9")
+        self.assertEqual(shared["brief"]["token_budget"], 1800)
+        self.assertFalse(shared["brief"]["over_budget"], "a larger configured share admits the same brief")
         pivot = BRIEF.replace("## Open threads\n", "## Open threads\n- **Re-scope pending** — seed parameters "
                               "changed in spec v3, 2026-09-20. Unblocked by: task-breakdown re-scope.\n")
         result = goal(self, pivot, live_state(open_goal=True))

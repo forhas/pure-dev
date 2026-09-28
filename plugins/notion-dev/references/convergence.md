@@ -86,7 +86,7 @@ product epics, and a brief budget checked against the retrieve budget. Three gen
 gaps are closed: declared fold targets are absorbed at intake, follow-ups carry their surface and
 dependencies into the next `## Next`, and a spec or decision change triggers the re-scope pass.
 
-**Cost.** No review seat, round or base commit is added. `references/scope.md` grows ~2.5 KB and
+**Cost.** No review seat, round or base commit is added. `references/scope.md` grows ~3.1 KB and
 is loaded only at the stages that need it; the entry points are unchanged. The fold scan adds one
 ticket-system search and fetches only its hits; `failure-modes` and `changed-lines` are local
 commands. Native dependency relations are not adopted: the ticket-system reference keeps blocking

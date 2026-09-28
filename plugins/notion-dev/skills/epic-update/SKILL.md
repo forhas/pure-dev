@@ -40,7 +40,7 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    <convergence.rateThreshold> --budget <convergence.briefBudget> --retrieve-budget
    <knowledge.retrieveBudget> --retrieve-share <convergence.briefRetrieveShare>` (omit a flag whose key
    is unset) over the live child list from step 3. When this resolution changed the epic's source
-   spec or a recorded decision, the record adds a `Re-scope pending` thread (`note.md` test 3). `goal: met` means **goal-complete**: interactive runs propose closing the epic and
+   spec or a recorded decision, epic-doc `record` adds a `Re-scope pending` thread (`record.md` step 2). `goal: met` means **goal-complete**: interactive runs propose closing the epic and
    the single re-home batch below; non-interactive runs do not close — they record `goal met`
    in the resolution entry, and `## Next` renders the goal-met form so next-task stops
    recommending this epic's children. `open`/`invalid` leave the epic open (report an
