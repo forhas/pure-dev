@@ -236,6 +236,21 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(after[-1]['data_sha256'], before[-1]['data_sha256'])
         with self.assertRaises(ValueError): record_recovery.approve(self.state, operation, transcript, 'fixture-session')
 
+    def test_failed_mismatched_create_stays_retryable_without_quarantine(self):
+        _, _, plan = self.record()
+        expected = {'parent': {'page_id': 'b' * 32}, 'pages': [{'properties': {'Name': 'A follow-up'}, 'content': 'text'}]}
+        operation = self.child(plan['epic-record']['operation'], {'host_call': {
+            'name': 'mcp__notion__notion-create-pages', 'input': expected}})
+        workflow.record_input(self.state, operation, begin=True)
+        self.clock.seconds = datetime.now(timezone.utc).timestamp() - 1790000000
+        actual = copy.deepcopy(expected); actual['pages'][0]['content'] = 'other text'
+        transcript = self.log({'error': 'rejected'}, 'create', name='mcp__notion__notion-create-pages',
+                              args=actual, offset=0, error=True)
+        with self.assertRaises(ValueError): workflow.record_receipt(self.state, operation, transcript, 'fixture-session')
+        self.assertNotIn(operation, runtime.read_json(self.state).get('record_discrepancies', {}))
+        workflow.record_outcome(self.state, operation, 'failed', 'provider rejected the call')
+        self.assertEqual(workflow.record_input(self.state, operation, begin=True)['action'], 'execute')
+
     def test_recovery_rejects_agent_approval_changed_evidence_and_duplicate_creates(self):
         operation, transcript, actual = self.discrepancy_setup()
         request = record_recovery.request(self.state, operation, transcript, 'fixture-session', 'create', 'readback', 'difference checked')

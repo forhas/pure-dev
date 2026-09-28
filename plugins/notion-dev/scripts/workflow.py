@@ -681,7 +681,16 @@ def record_receipt(state, operation, transcript, session, call_id=None, readback
     candidates = calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"],
         predicate=lambda item: equivalent_write(expected, {"name": item.get("name"), "input": item.get("input")})) if attempts else []
     if attempts and (len(candidates) > 1 or (not call_id and not candidates)):
-        possible = calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"])
+        # A delivered error response stays retryable; an undelivered result is still
+        # possible side-effect evidence and keeps the no-replay quarantine.
+        def failed(candidate):
+            try:
+                exchange(transcript, session, candidate)
+                return False
+            except ValueError as error:
+                return "failed host tool response" in str(error)
+        possible = [c for c in calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"])
+                    if not failed(c)]
         if possible:
             with Runtime(state).transaction() as data:
                 data.setdefault("record_discrepancies", {}).setdefault(operation, {
