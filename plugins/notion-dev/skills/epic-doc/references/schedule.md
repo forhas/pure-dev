@@ -15,7 +15,8 @@ fetch every sibling: validate the candidate below. Disk bootstrap is the existin
 `record --bootstrap` path, not an ad-hoc write.
 
 Also run `knowledge.py epic-goal --brief <brief> --state <live-state.json> [--log <resolution
-log>]` over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
+log>] --window <convergence.rateWindow> --threshold <convergence.rateThreshold> --budget
+<convergence.briefBudget>` (omit a flag only when its key is unset) over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
 `brief.over_budget` and `release.warnings`. A `goal: met` epic passes `goal_met: true` into the
 select plan, which then returns no candidate.
 Return these references/fields to next-task; schedule does not select or fetch a candidate.

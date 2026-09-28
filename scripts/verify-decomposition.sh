@@ -31,6 +31,7 @@ assert_has "intake records premise checks before planning" $ND/references/lean-i
 assert_has "ticket applies the scope rules to its plan" $ND/commands/ticket.md 'references/scope.md'
 assert_has "ticket renders the PR body with its config" $ND/commands/ticket.md '--config <config>'
 assert_has "next-task is bound by the goal recommendation" $ND/commands/next-task.md 'epic-goal `recommendation`'
+assert_has "schedule applies the configured follow-up window" $ND/skills/epic-doc/references/schedule.md '--window <convergence.rateWindow>'
 assert_has "schedule passes a met goal into the select plan" $ND/skills/epic-doc/references/schedule.md 'goal_met: true'
 assert_has "refresh honours a deferred commit" $ND/skills/epic-doc/references/refresh.md 'COMMIT: deferred'
 FMT=$ND/skills/epic-doc/references/format.md
