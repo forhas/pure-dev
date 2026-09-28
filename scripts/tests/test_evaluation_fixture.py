@@ -28,6 +28,12 @@ ORACLE = FIXTURE / "oracle/test_scheduler.py"
 FINDINGS = json.loads((FIXTURE / "expected-findings.json").read_text(encoding="utf-8"))
 
 
+def write_lf(path, text):
+    """UTF-8/LF on both platforms; `Path.write_text(newline=)` needs Python 3.10."""
+    with open(str(path), "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+
+
 def run_oracle(implementation):
     environment = dict(os.environ, EVAL_SCHEDULER=str(FIXTURE / implementation),
                        PYTHONDONTWRITEBYTECODE="1")
@@ -111,8 +117,7 @@ class EvaluationFixtureTests(unittest.TestCase):
         self.assertEqual(source.count("    key = name\n"), 1)
         half = Path(self.temp.name) / "half"
         half.mkdir()
-        (half / "scheduler.py").write_text(source.replace("    key = name\n", "    key = (name, version)\n"),
-                                           encoding="utf-8", newline="\n")
+        write_lf(half / "scheduler.py", source.replace("    key = name\n", "    key = (name, version)\n"))
         failed = failed_tests(run_oracle_at(half))
         self.assertNotIn("test_memoization_key", failed)
         self.assertIn("test_memoization_key_sibling", failed)

@@ -20,6 +20,12 @@ import scope
 KNOWLEDGE = ROOT / "plugins/notion-dev/scripts/knowledge.py"
 FIXTURE = ROOT / "scripts/fixtures/evaluation"
 
+
+def write_lf(path, text):
+    """UTF-8/LF on both platforms; `Path.write_text(newline=)` needs Python 3.10."""
+    with open(str(path), "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+
 BRIEF = """---
 type: Epic
 title: "[EX-1] Example epic"
@@ -95,7 +101,7 @@ class KnowledgeGoalTests(unittest.TestCase):
     def write(self, name, value):
         path = self.root / name
         data = value if isinstance(value, str) else json.dumps(value)
-        path.write_text(data, encoding="utf-8", newline="\n")
+        write_lf(path, data)
         return path
 
     def knowledge(self, *args):
@@ -179,7 +185,7 @@ class KnowledgeGoalTests(unittest.TestCase):
         git("init", "-q"); git("config", "user.email", "t@example.invalid"); git("config", "user.name", "t")
         brief = repo / "knowledge" / "epic" / "EX-1-example.md"
         for n in range(3):
-            brief.write_text(BRIEF + "\n" * n, encoding="utf-8", newline="\n")
+            write_lf(brief, BRIEF + "\n" * n)
             git("add", "."); git("commit", "-qm", "docs(epic): EX-1 %d" % n)
         log = resolution_log([("EX-2", [], None), ("EX-3", [], None)])
         proc = self.knowledge("epic-goal", "--brief", str(brief), "--state", str(self.write("s.json", live_state())),
@@ -203,7 +209,7 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertTrue(region.startswith("goal met — propose closing the epic"))
         self.assertIn("Re-home: [EX-5] Connection audit, [EX-6] Stale JSDoc", region)
         self.assertNotRegex(region, r"(?m)^1\. ")
-        brief.write_text(first.stdout, encoding="utf-8", newline="\n")
+        write_lf(brief, first.stdout)
         again = self.knowledge("next", "--brief", str(brief), "--state", str(state), "--today", "2026-09-02")
         self.assertEqual(again.returncode, 0, again.stderr)
         self.assertIn("DRIFT: 0", again.stderr)
@@ -413,10 +419,9 @@ class PremiseTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
         self.ticket = root / "ticket.md"
-        self.ticket.write_text("## Requirements\n\n- Retry once\n\n## Premises to verify\n\n"
+        write_lf(self.ticket, "## Requirements\n\n- Retry once\n\n## Premises to verify\n\n"
                                "- The server returns 503 for transient failures\n- The helper is unused\n\n"
-                               "## Hypothesis — verify before implementing\n\n- Wrap the call\n",
-                               encoding="utf-8", newline="\n")
+                               "## Hypothesis — verify before implementing\n\n- Wrap the call\n")
         self.rt = runtime.Runtime(root / "state.json")
         self.rt.init("premises", "EX-2")
         self.rt.requirements(self.ticket, {
