@@ -186,6 +186,13 @@ class ExecutionTests(unittest.TestCase):
         worker = runtime.read_json(self.state)['workers'][prepared['worker']]
         self.assertNotIn('correction_batch', worker['files'])
 
+    def test_scan_reports_dangling_tracked_symlink(self):
+        try: os.symlink('missing-target', str(self.repo / 'dangling'))
+        except (OSError, NotImplementedError): self.skipTest('symlinks unavailable on this host')
+        self.run_git('add', 'dangling')
+        _, excluded = corrections.sources(self.repo, {})
+        self.assertEqual(excluded.get('repo:dangling'), 'symlink: missing-target')
+
     def test_scan_reports_uninitialized_submodules_without_crawling_dependencies(self):
         self.run_git('update-index', '--add', '--cacheinfo', '160000', runtime.git(self.repo, 'rev-parse', 'HEAD'), 'vendor/example')
         values, excluded = corrections.sources(self.repo, {})

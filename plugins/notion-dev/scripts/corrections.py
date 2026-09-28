@@ -24,9 +24,9 @@ def sources(worktree, files):
         if metadata.startswith("160000 "):
             excluded["repo:" + name] = "gitlink: " + metadata
             continue
-        if not path.exists(): continue  # Committed deletions are absent from ls-files.
-        if path.is_symlink():
+        if path.is_symlink():  # Before exists(): a dangling link is still reported.
             excluded["repo:" + name] = "symlink: " + os.readlink(str(path))
+        elif not path.exists(): continue  # Committed deletions are absent from ls-files.
         elif path.is_dir():
             excluded["repo:" + name] = "non-file tracked path"
         else:
