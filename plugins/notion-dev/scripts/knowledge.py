@@ -1694,6 +1694,12 @@ OBLIGATION_RE = re.compile(
 COMMITMENT_RE = re.compile(
     r"^- commitment: (.+?) — for: (.+?) — ticket: \[([A-Z][A-Z0-9]{1,9}-\d+)\] — released: (yes|no)$")
 BRIEF_BUDGET = 150
+# The brief is the root of every `retrieve`, so its real ceiling is the retrieve token budget,
+# not a line count: a short brief with long lines can crowd out every linked concept.
+RETRIEVE_BUDGET = 8000
+BRIEF_RETRIEVE_SHARE = 0.5
+BYTES_PER_TOKEN = 4  # a conservative estimate for mixed prose; iwe's own count is authoritative
+RESCOPE_RE = re.compile(r"^- \*\*Re-scope pending\*\* — (.+)$")
 
 
 def _logical(lines):
@@ -1847,21 +1853,41 @@ def bookkeeping_commits(repo, ref, brief):
     return len(out.split())
 
 
-def epic_goal(text, state, log_text=None, window=3, threshold=1.0, budget=BRIEF_BUDGET):
+def rescope_pending(lines):
+    """`- **Re-scope pending** — <what changed>` bullets: a spec or decision change the open
+    children have not been re-checked against. The follow-up rate never sees a pivot."""
+    ts, te = _section(lines, "## Open threads")
+    if ts is None:
+        return []
+    return [m.group(1) for m in (RESCOPE_RE.match(s) for s in _logical(lines[ts + 1:te])) if m]
+
+
+def epic_goal(text, state, log_text=None, window=3, threshold=1.0, budget=BRIEF_BUDGET,
+              retrieve_budget=RETRIEVE_BUDGET, retrieve_share=BRIEF_RETRIEVE_SHARE):
     lines = normalise_text(text).split("\n")
     goal = goal_state(lines, state)
+    size = len(normalise_text(text).encode("utf-8"))
+    tokens = -(-size // BYTES_PER_TOKEN)
     result = {**goal, "epic_status": state["epic"]["status_class"],
               "rehome": [{"key": c["key"], "title": c["title"], "status_class": c["status_class"]}
                          for c in rehome_candidates(state, goal)] if goal["goal"] == "met" else [],
-              "brief": {"lines": len(lines) - (1 if lines and lines[-1] == "" else 0), "budget": budget},
-              "release": release_ledger(lines, state)}
-    result["brief"]["over_budget"] = result["brief"]["lines"] > budget
+              "brief": {"lines": len(lines) - (1 if lines and lines[-1] == "" else 0), "budget": budget,
+                        "bytes": size, "estimated_tokens": tokens,
+                        "token_budget": int(retrieve_budget * retrieve_share)},
+              "release": release_ledger(lines, state),
+              "rescope_pending": rescope_pending(lines)}
+    result["brief"]["over_budget"] = (result["brief"]["lines"] > budget
+                                      or tokens > result["brief"]["token_budget"])
     if log_text is not None:
         entries = resolution_entries(log_text)
         result["followups"] = followup_rate(entries, window, threshold)
         result["followups"]["children_after_goal"] = len(result["rehome"])
+    # A pending spec change comes first: it may change the goal itself, so closing (and
+    # re-homing) before the children are re-checked against it would act on a stale goal.
+    open_epic = state["epic"]["status_class"] != "resolved"
     result["recommendation"] = (
-        "close" if goal["goal"] == "met" and state["epic"]["status_class"] != "resolved" else
+        "rescope" if result["rescope_pending"] and open_epic else
+        "close" if goal["goal"] == "met" and open_epic else
         "rescope" if result.get("followups", {}).get("rescope") else
         "repair-goal" if goal["goal"] == "invalid" else "continue")
     return result
@@ -1880,7 +1906,7 @@ def cmd_epic_goal(a):
     except (OSError, ValueError) as e:
         die("epic-goal: %s" % e)
     _validate_state(state)
-    result = epic_goal(text, state, log_text, a.window, a.threshold, a.budget)
+    result = epic_goal(text, state, log_text, a.window, a.threshold, a.budget, a.retrieve_budget, a.retrieve_share)
     if a.repo:
         commits = bookkeeping_commits(a.repo, a.ref, a.brief)
         count = len(resolution_entries(log_text)) if log_text is not None else None
@@ -2174,6 +2200,9 @@ def main():
     p_goal.add_argument("--window", type=int, default=3, help="resolutions in the follow-up rate (convergence.rateWindow)")
     p_goal.add_argument("--threshold", type=float, default=1.0, help="rate above which to re-scope (convergence.rateThreshold)")
     p_goal.add_argument("--budget", type=int, default=BRIEF_BUDGET, help="brief line budget (convergence.briefBudget)")
+    p_goal.add_argument("--retrieve-budget", type=int, default=RETRIEVE_BUDGET, help="knowledge.retrieveBudget (tokens)")
+    p_goal.add_argument("--retrieve-share", type=float, default=BRIEF_RETRIEVE_SHARE,
+                        help="share of the retrieve budget the brief may use (convergence.briefRetrieveShare)")
     p_goal.add_argument("--repo", help="count brief commits in this repository (bookkeeping per resolution)")
     p_goal.add_argument("--ref", default="HEAD", help="branch that carries the brief (git.prTargetBranch or git.baseBranch)")
     p_goal.set_defaults(func=cmd_epic_goal)

@@ -69,12 +69,15 @@ combined reviewer audits the artifact references, not the prose around them.
 
 ## Release obligations are one ledger
 
-Every merged-but-unreleased obligation — a wire/contract change needing sign-off, a release note,
-a config line, a measurement that gates the release — is one `## Release obligations` item in
+A *release* is whatever makes a change reach its consumers — a versioned release, a deployment
+(test or production) or an activation; consumers may be external or internal. Every
+merged-but-undelivered obligation — a contract change its consumers must accept, a release note,
+a config line, a measurement that gates delivery — is one `## Release obligations` item in
 the epic brief (epic-doc `format.md`), with its source ticket, whether sign-off is needed and the
 automated gate (if any) that surfaces it. Request sign-off once per release from that list, not
-per ticket. A deliverable promised to someone is a `commitment:` item; next-task warns when it
-is merged but unreleased while later children keep adding obligations ahead of it.
+per ticket; who signs off is project knowledge (its instructions file), never plugin logic. A
+deliverable promised to someone is a `commitment:` item; next-task warns when it is merged but
+undelivered while later children keep adding obligations ahead of it.
 
 ## Compact delta publication
 

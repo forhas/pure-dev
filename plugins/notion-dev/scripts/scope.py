@@ -44,13 +44,21 @@ def disposition_problems(d, threshold=DEFAULT_FILE_THRESHOLD_LINES):
             large = isinstance(size, int) and not isinstance(size, bool) and size > threshold
             if not large and not text(d.get("second_design_question")):
                 problems.append("criterion 3 needs changed_lines above %d or a second_design_question" % threshold)
+    labels = d.get("labels", [])
+    if not (isinstance(labels, list) and all(text(l) for l in labels)):
+        problems.append("labels must be a list of nonempty strings (they drive convergence.destinations)")
     if action == "drop" and d.get("no_consumer") is True and not text(d.get("reopen_trigger")):
         problems.append("a no-consumer drop records its reopen_trigger")
     return problems
 
 
-def destination_problems(blocks_goal, destination, source_epic=None):
+def destination_problems(blocks_goal, destination, source_epic=None, routed=False):
     """Where a filed follow-up is created: goal work stays under the epic, other work leaves it."""
+    if routed:
+        # A project routing rule chose it; only the shape is checked here.
+        if destination in ("epic",) + DESTINATIONS or re.fullmatch(r"epic:[A-Z][A-Z0-9]{1,9}-\d+", str(destination)):
+            return []
+        return ["routed destination must be epic, backlog, related or epic:<KEY>-<n>"]
     if blocks_goal == "yes":
         return [] if destination == "epic" else ["a goal-blocking follow-up is a child of its epic"]
     if blocks_goal != "no":
@@ -68,19 +76,124 @@ def destination_problems(blocks_goal, destination, source_epic=None):
 
 
 # A figure is a number with a unit, a percentage or a multiplier. Ticket keys, versions,
-# HTTP codes and bare counts in identifiers are not quantitative claims.
-FIGURE_RE = re.compile(
-    r"(?<![\w.-])\d+(?:[.,]\d+)?\s*(?:%|percent\b|[x×](?![\w])|-?fold\b|ms\b|milliseconds?\b|"
-    r"s\b|secs?\b|seconds?\b|min\b|minutes?\b|h\b|hours?\b|days?\b|[KMGT]i?B\b|kB\b|bytes?\b|"
-    r"tokens?\b|lines?\b|requests?\b|calls?\b|lookups?\b|queries\b|round-?trips?\b)", re.I)
+# HTTP codes and bare counts in identifiers are not quantitative claims. The built-in units
+# are generic measurement units; a project adds its own domain units (a currency, `gas`,
+# `bps`, or a counted noun such as `tests`) through `convergence.figureUnits`.
+BUILTIN_UNITS = (r"%", r"percent\b", r"[x×](?![\w])", r"-?fold\b", r"ms\b", r"milliseconds?\b",
+                 r"s\b", r"secs?\b", r"seconds?\b", r"min\b", r"minutes?\b", r"h\b", r"hours?\b",
+                 r"days?\b", r"[KMGT]i?B\b", r"kB\b", r"bytes?\b", r"tokens?\b", r"lines?\b",
+                 r"requests?\b", r"calls?\b", r"lookups?\b", r"queries\b", r"round-?trips?\b")
+# A figure cites what produced it: an artifact (test, receipt, export, generated diff) covers
+# the fact. A spec section covers only a parameter the spec defines, so it must directly follow
+# that one figure, and never a claimed change, which is a measurement whatever the spec says.
 ARTIFACT_RE = re.compile(r"[\[(]artifact:\s*[^\])\s][^\])]*[\])]")
+SPEC_AFTER_RE = re.compile(r"\s*[\[(]spec:\s*[^\])\s][^\])]*[\])]")
+CHANGE_RE = re.compile(r"\b(?:fell|falls?|drops?|dropped|rose|rises?|grew|grows?|improved?|improves|reduced?|"
+                       r"reduces|reduction|faster|slower|fewer|saves?|saved|cuts?|removes?|removed|"
+                       r"increased?|increases|decreased?|decreases|speedup|regress(?:ed|ion)?)\b", re.I)
 
 
-def unreferenced_figures(value):
-    """Figures in a PR fact that carries no artifact reference."""
+def figure_regex(extra_units=()):
+    extra = [re.escape(u) + (r"\b" if re.match(r".*\w$", u) else "") for u in extra_units]
+    return re.compile(r"(?<![\w.-])\d+(?:[.,]\d+)?\s*(?:" + "|".join(list(BUILTIN_UNITS) + extra) + ")", re.I)
+
+
+FIGURE_RE = figure_regex()
+
+
+def unreferenced_figures(value, extra_units=()):
+    """Figures in a PR fact that carry neither an artifact nor a spec citation."""
     if ARTIFACT_RE.search(value):
         return []
-    return [m.group(0) for m in FIGURE_RE.finditer(value)]
+    pattern = figure_regex(extra_units) if extra_units else FIGURE_RE
+    change = bool(CHANGE_RE.search(value))
+    return [m.group(0) for m in pattern.finditer(value)
+            if change or not SPEC_AFTER_RE.match(value, m.end())]
+
+
+# A neutral fallback, used only when the project names none. Projects list their own classes
+# (`convergence.failureModeClasses`) or point at a file in their repo that does
+# (`convergence.failureModeReference`), so no project type's threat model lives here.
+NEUTRAL_FAILURE_MODES = (
+    "correctness of every decision a consumer acts on",
+    "authorization: who may invoke it, and who acts first",
+    "input and parameter bounds",
+    "irreversible or one-shot state transitions",
+    "resource bounds: time, concurrency, size, cost",
+    "lifetime and cleanup of acquired resources",
+    "behaviour when a dependency fails or is slow",
+    "compatibility of the published surface for existing consumers",
+)
+
+
+def failure_mode_classes(convergence, project_root):
+    """(classes, source): the project's list, its reference file, or the neutral fallback."""
+    import os
+    classes = convergence.get("failureModeClasses")
+    if classes:
+        return list(classes), "convergence.failureModeClasses"
+    reference = convergence.get("failureModeReference")
+    if reference:
+        path = os.path.join(project_root, reference)
+        with open(path, encoding="utf-8") as stream:
+            items = [re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", line).strip() for line in stream
+                     if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)]
+        if not items:
+            raise ValueError("failureModeReference lists no classes (one bullet per class): " + reference)
+        return items, reference
+    return list(NEUTRAL_FAILURE_MODES), "neutral fallback"
+
+
+def is_generated(path, globs):
+    """A path the project declares generated (lockfiles, codegen, exported specs)."""
+    import fnmatch
+    return any(fnmatch.fnmatchcase(path, g) or fnmatch.fnmatchcase(path, g.rstrip("/") + "/*")
+               or path.startswith(g.rstrip("/") + "/") for g in globs)
+
+
+def route_followup(blocks_goal, labels, convergence):
+    """(destination, reason). Project routing rules win, then meta-work, then the goal judgment.
+
+    The plugin never knows what a label means: `convergence.destinations` maps a label
+    pattern (e.g. a severity) to a destination, so a finding the project must not lose
+    (one that gates its launch or release) is not quietly sent to the backlog.
+    """
+    labels = [str(l) for l in labels or []]
+    for i, rule in enumerate(convergence.get("destinations") or []):
+        if any(re.fullmatch(rule["match"], l, re.I) for l in labels):
+            return rule["to"], "convergence.destinations[%d] (%s)" % (i, rule["match"])
+    if "meta" in labels:
+        return convergence.get("metaDestination", "backlog"), "meta-work (tooling, knowledge, plugin) stays off product epics"
+    if blocks_goal == "yes":
+        return "epic", "blocks the epic goal"
+    return convergence.get("nonGoalDestination", "backlog"), "does not block the epic goal"
+
+
+FOLD_RE = re.compile(r"\b(?:fold(?:ed|s)?\s+into|land(?:s|ed)?\s+(?:with|before|alongside)|"
+                     r"merge(?:d|s)?\s+into|absorb(?:ed)?\s+(?:into|by))\s*:?\s+\[?%s\]?(?!\w|-\w)", re.I)
+
+
+NEGATION_RE = re.compile(r"\b(?:not|never|no longer|don'?t|doesn'?t|won'?t|shouldn'?t|mustn'?t|cannot|can'?t)"
+                         r"(?:\s+\w+){0,2}\s*$", re.I)
+
+
+def fold_declarations(target, pages):
+    """Open siblings whose own text declares they belong in `target`'s change.
+
+    A negated phrase ("do not land with X", "must not merge into X") declares the opposite,
+    so it is skipped; any affirmative occurrence in the same text still counts.
+    """
+    pattern = re.compile(FOLD_RE.pattern % re.escape(target), re.I)
+    found = []
+    for page in pages:
+        if page.get("key") == target:
+            continue
+        text = page.get("text", "")
+        for m in pattern.finditer(text):
+            if not NEGATION_RE.search(text[max(0, m.start() - 40):m.start()]):
+                found.append({"key": page["key"], "excerpt": m.group(0)})
+                break
+    return found
 
 
 PREMISES_HEADING_RE = re.compile(r"^#{1,4}\s+Premises to verify\b", re.I)

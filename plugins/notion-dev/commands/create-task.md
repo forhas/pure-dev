@@ -90,7 +90,8 @@ requirements, acceptance tests, edge cases, dependencies and provenance. Every i
 changing answer must be explicit in that evidence; missing/ambiguous is not an empty list.
 When complete, write those facts as the JSON packet epic-update's `approved-followup.md` step 2
 defines and render the body with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py"
-followup-body --packet <packet.json> --output <body.json>` (configured `knowledge.python`); use
+followup-body --packet <packet.json> --output <body.json> --config <primary-config>` (configured
+`knowledge.python`); use
 its `body` unchanged, preserve the exact pinned title/provenance, and proceed to 2.2 without
 interviewer or proxy respondent. A refusal names what is missing — an uncited requirement, no
 verified facts, no `blocks_goal` — and sends the item to the normal interview for exactly that. Do not invent a
@@ -108,8 +109,10 @@ artifacts only (a test, an output, a response). On the fast path and epic-update
 path `workflow.py followup-body` refuses a packet that breaks this; on the interview path the
 interviewer's clarity audit relabels an uncited claim as a premise before the summary is
 confirmed. Either way the ticket's first run checks every premise (`lean-intake.md`).
-The follow-up also states `Blocks epic goal: yes|no — <reason>`: `no` goes to
-`convergence.nonGoalDestination` (default `backlog`, no epic parent) instead of `--parent`.
+The follow-up also states `Blocks epic goal: yes|no — <reason>`. Its parent is the rendered
+result's computed `destination`, never the invocation's `--parent`: `epic` → the `--parent` epic;
+`epic:<KEY>-<n>` → that epic, resolved and validated like any epic parent; `backlog` or
+`related` → no parent and no Epic select, even when `--epic`/`--parent` were passed.
 
 Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confidence}` from Phase 1. The skill:
 
@@ -205,7 +208,7 @@ Runs only when Phase 2.5 returned `kind: "single"`. Skipped entirely for mission
    - **Pick another** — show the full `findEpics()` list as sub-choices.
    - **No epic** — proceed unattached; `EPIC_ID = undefined`.
 
-**Non-interactive mode** never prompts here: use `--epic` / `--parent` when supplied, else attach to nothing.
+**Non-interactive mode** never prompts here: use `--epic` / `--parent` when supplied, else attach to nothing. A `--reviewed-followup` rendered through `followup-body` attaches exactly as its computed `destination` says (Phase 2.1), overriding both flags.
 
 ---
 

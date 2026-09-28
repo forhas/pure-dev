@@ -32,7 +32,8 @@ allowance, no renewal is possible. Fresh conversations preserve the invocation a
 
    A `file` action also carries `criterion`, `absorb_class: "none"`, `blocks_goal`,
    `blocks_goal_reason` (and `changed_lines` or `second_design_question` for criterion 3);
-   a `drop` with `no_consumer: true` carries `reopen_trigger` — see `review-findings.md`.
+   a `drop` with `no_consumer: true` carries `reopen_trigger`; any finding may carry `labels`
+   (they route a filed follow-up) — see `review-findings.md`.
    Use each ID exactly once, including recording claim corrections/release obligations.
    Actions: `absorb`, `file`, `drop`, `blocked`, `record`. Supply a substantive rationale and
    evidence, not an acknowledgment. `record` preserves an already-accepted fact or release-only

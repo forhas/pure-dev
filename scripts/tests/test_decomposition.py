@@ -37,7 +37,7 @@ epic: EX-1
 Epic: https://example.invalid/ex-1 · Status: open · Updated: 2026-09-01 after refresh
 
 ## Why
-A customer-reported failure.
+A reported failure.
 
 ## Goal
 Close the reported failure and record a build-or-drop verdict.
@@ -54,9 +54,9 @@ Work started.
 ## Decisions & constraints
 
 ## Release obligations
-- [EX-2] wire error code 4012 added — sign-off: yes — gate: none — released: no
-- [EX-5] DTO field renamed — sign-off: yes — gate: contract test — released: no
-- commitment: fixed retry for the customer — for: next release — ticket: [EX-2] — released: no
+- [EX-2] new status value in the public schema — sign-off: yes — gate: none — released: no
+- [EX-5] stored field renamed — sign-off: yes — gate: contract test — released: no
+- commitment: fixed retry for the requesting team — for: next deployment — ticket: [EX-2] — released: no
 
 ## Next
 1. **[EX-5] Connection audit** — first in phase order
@@ -506,6 +506,149 @@ class ProseCapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "claims finding names its claim"):
                 corrections.prose_cap(state, "review-4", [{"id": "claims:1", "claim": None, "method": ""}])
             corrections.prose_cap(state, "review-4", [{"id": "code_review:1", "claim": None, "method": ""}])
+
+
+class GenericityTests(unittest.TestCase):
+    """Every project-specific rule is a config value or project file, with a neutral fallback."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="genericity-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def config(self, **convergence):
+        path = self.root / "config.json"
+        runtime.atomic_json(path, {"convergence": convergence})
+        return str(path)
+
+    def cli(self, *args):
+        proc = subprocess.run([sys.executable, workflow.__file__, *args], capture_output=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_failure_mode_classes_come_from_config_then_project_file_then_neutral_fallback(self):
+        listed = self.cli("failure-modes", "--config", self.config(failureModeClasses=["reentrancy", "access control"]),
+                          "--project", str(self.root))
+        self.assertEqual(listed["classes"], ["reentrancy", "access control"])
+        write_lf(self.root / "threats.md", "# Threat model\n\nIntro prose.\n\n- client-acted verdicts\n1. upstream outage\n")
+        referenced = self.cli("failure-modes", "--config", self.config(failureModeReference="threats.md"), "--project", str(self.root))
+        self.assertEqual((referenced["classes"], referenced["source"]), (["client-acted verdicts", "upstream outage"], "threats.md"))
+        neutral = self.cli("failure-modes", "--config", self.config(), "--project", str(self.root))
+        self.assertEqual(neutral["source"], "neutral fallback")
+        self.assertEqual(neutral["classes"], list(scope.NEUTRAL_FAILURE_MODES))
+        for word in ("endpoint", "upstream", "customer", "DTO", "wire"):
+            self.assertNotIn(word, " ".join(scope.NEUTRAL_FAILURE_MODES), "the fallback names no project type")
+        write_lf(self.root / "empty.md", "no bullets here\n")
+        with self.assertRaisesRegex(ValueError, "lists no classes"):
+            scope.failure_mode_classes({"failureModeReference": "empty.md"}, str(self.root))
+
+    def test_project_units_and_spec_citations_decide_what_a_figure_is(self):
+        facts = {"requirement": "Seed window", "behavior": [], "validation": ["Suite passed"], "risks": [], "mandatory": []}
+        units = ["bps", "ETH", "tests"]
+        for claim in ("slippage stays under 32 bps", "seeds 1 ETH", "769 tests pass"):
+            recording.pr_body({**facts, "behavior": [claim]})  # generic defaults do not know these units
+            with self.subTest(claim=claim), self.assertRaisesRegex(ValueError, "artifact"):
+                recording.pr_body({**facts, "behavior": [claim]}, units)
+        recording.pr_body({**facts, "behavior": ["769 tests pass (artifact: forge test --json)"]}, units)
+        recording.pr_body({**facts, "behavior": ["the seed window is 14 days (spec: §9)"]})
+        for unsupported in ("latency fell 50% (spec: timeout §2)",
+                            "the window is 14 days (spec: §9) and cuts 120 ms per call",
+                            "(spec: §9) the window is 14 days"):
+            with self.subTest(unsupported=unsupported), self.assertRaises(ValueError):
+                recording.pr_body({**facts, "behavior": [unsupported]})
+        with self.assertRaises(ValueError):
+            recording.pr_body({**facts, "behavior": ["the seed window is 14 days"]})
+        facts_file = self.root / "facts.json"
+        runtime.atomic_json(facts_file, {**facts, "behavior": ["769 tests pass"]})
+        with self.assertRaisesRegex(ValueError, "artifact"):
+            workflow.render_pr_body(str(facts_file), str(self.root / "a.md"), self.config(figureUnits=units))
+        workflow.render_pr_body(str(facts_file), str(self.root / "b.md"), self.config())
+
+    def test_changed_lines_excludes_declared_generated_paths(self):
+        repo = self.root / "repo"; repo.mkdir()
+        git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+        git("init", "-q"); git("config", "user.email", "t@example.invalid"); git("config", "user.name", "t")
+        write_lf(repo / "src.txt", "a\n"); git("add", "."); git("commit", "-qm", "base"); git("branch", "base")
+        (repo / "gen").mkdir()
+        write_lf(repo / "src.txt", "a\nb\nc\n")
+        write_lf(repo / "gen" / "out.json", "x\n" * 900)
+        write_lf(repo / "package-lock.json", "y\n" * 50)
+        git("add", "."); git("commit", "-qm", "change")
+        counted = self.cli("changed-lines", "--worktree", str(repo), "--base", "base",
+                           "--config", self.config(generatedPaths=["gen/", "*-lock.json"]))
+        self.assertEqual(counted["changed_lines"], 2)
+        self.assertEqual(counted["excluded_generated"], {"gen/out.json": 900, "package-lock.json": 50})
+        self.assertEqual(self.cli("changed-lines", "--worktree", str(repo), "--base", "base")["changed_lines"], 952)
+
+    def test_routing_rules_then_meta_then_goal_judgment(self):
+        conv = {"destinations": [{"match": "severity:(critical|high)", "to": "epic:EX-90"}],
+                "metaDestination": "related", "nonGoalDestination": "backlog"}
+        self.assertEqual(scope.route_followup("no", ["severity:critical"], conv)[0], "epic:EX-90")
+        self.assertEqual(scope.route_followup("yes", ["SEVERITY:HIGH"], conv)[0], "epic:EX-90")
+        self.assertEqual(scope.route_followup("yes", ["meta"], conv)[0], "related")
+        self.assertEqual(scope.route_followup("yes", ["severity:low"], conv)[0], "epic")
+        self.assertEqual(scope.route_followup("no", [], conv)[0], "backlog")
+        self.assertEqual(scope.route_followup("no", ["meta"], {})[0], "backlog")
+        self.assertTrue(scope.disposition_problems({"action": "drop", "labels": "security"}))
+
+    def test_followup_destination_is_computed_under_config(self):
+        packet = FollowupPacketTests.packet(self, labels=["severity:critical"], destination="backlog")
+        conv = {"destinations": [{"match": "severity:critical", "to": "epic"}]}
+        with self.assertRaisesRegex(ValueError, "destination must be 'epic'"):
+            recording.followup_body(packet, conv)
+        recording.followup_body({**packet, "destination": "epic"}, conv)  # routed, though blocks_goal is no
+        with self.assertRaises(ValueError):
+            recording.followup_body({**packet, "destination": "epic"})  # without config the goal judgment rules
+        meta = FollowupPacketTests.packet(self, labels=["meta"], destination="epic",
+                                          blocks_goal={"value": "yes", "reason": "tooling"})
+        with self.assertRaisesRegex(ValueError, "destination must be 'backlog'"):
+            recording.followup_body(meta, {})
+
+    def test_declared_folds_round_trip_from_packet_to_scan(self):
+        body = recording.followup_body(FollowupPacketTests.packet(
+            self, lands_with="EX-7", surface=["src/retry.py", "the retry setting"]))["body"]
+        self.assertIn("## Surface\n\n- src/retry.py", body)
+        pages = self.root / "pages.json"
+        runtime.atomic_json(pages, [{"key": "EX-8", "text": body}, {"key": "EX-9", "text": "please fold into EX-70 later"},
+                                    {"key": "EX-10", "text": "Land before [EX-7], it shares the schema"},
+                                    {"key": "EX-11", "text": "land with EX-7-hotfix branch"},
+                                    {"key": "EX-12", "text": "merge into EX-7."},
+                                    {"key": "EX-13", "text": "Do not land with EX-7; it must not merge into EX-7"},
+                                    {"key": "EX-14", "text": "never fold into EX-7. Update: land with EX-7 after all"},
+                                    {"key": "EX-7", "text": "fold into EX-7"}])
+        found = self.cli("fold-scan", "--ticket", "EX-7", "--pages", str(pages))["declared"]
+        self.assertEqual([f["key"] for f in found], ["EX-8", "EX-10", "EX-12", "EX-14"])
+        with self.assertRaises(ValueError):
+            recording.followup_body(FollowupPacketTests.packet(self, lands_with="soon"))
+
+    def test_brief_budget_follows_the_retrieve_budget_and_a_spec_change_requests_rescope(self):
+        goal = KnowledgeGoalTests.goal
+        self.write = lambda name, value: KnowledgeGoalTests.write(self, name, value)
+        self.knowledge = lambda *a: KnowledgeGoalTests.knowledge(self, *a)
+        wide = BRIEF.replace("Work started.", "Work started. " + "x" * 6000)
+        self.assertFalse(goal(self, wide, live_state(open_goal=True))["brief"]["over_budget"])
+        tight = goal(self, wide, live_state(open_goal=True), None, "--retrieve-budget", "2000")
+        self.assertTrue(tight["brief"]["over_budget"], "few lines, but over the retrieve share")
+        self.assertEqual(tight["brief"]["token_budget"], 1000)
+        shared = goal(self, wide, live_state(open_goal=True), None, "--retrieve-budget", "2000", "--retrieve-share", "0.9")
+        self.assertEqual(shared["brief"]["token_budget"], 1800)
+        self.assertFalse(shared["brief"]["over_budget"], "a larger configured share admits the same brief")
+        pivot = BRIEF.replace("## Open threads\n", "## Open threads\n- **Re-scope pending** — seed parameters "
+                              "changed in spec v3, 2026-09-20. Unblocked by: task-breakdown re-scope.\n")
+        result = goal(self, pivot, live_state(open_goal=True))
+        self.assertEqual(result["recommendation"], "rescope")
+        met = goal(self, pivot, live_state())
+        self.assertEqual((met["goal"], met["recommendation"]), ("met", "rescope"),
+                         "a pending spec change is re-checked before the epic closes")
+        self.assertEqual(len(result["rescope_pending"]), 1)
+        self.assertEqual(goal(self, BRIEF, live_state(open_goal=True))["rescope_pending"], [])
+
+    def test_schema_declares_every_new_key(self):
+        schema = json.loads((ROOT / "plugins/notion-dev/schema/notion-dev.config.schema.json").read_text(encoding="utf-8"))
+        keys = schema["properties"]["convergence"]["properties"]
+        for key in ("failureModeClasses", "failureModeReference", "figureUnits", "generatedPaths",
+                    "destinations", "metaDestination", "briefRetrieveShare"):
+            self.assertIn(key, keys)
+        self.assertFalse(schema["properties"]["convergence"]["additionalProperties"])
 
 
 if __name__ == "__main__":

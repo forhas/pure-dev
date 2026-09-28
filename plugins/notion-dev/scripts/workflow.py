@@ -599,13 +599,29 @@ def record_page(state, snapshot, heading=None):
             "content": page["content"][headings[i].start():headings[i + 1].start() if i + 1 < len(headings) else len(page["content"])]}
 
 
+def changed_lines(worktree, base, config=None):
+    """Filing criterion 3's size: added+deleted lines, minus paths the project declares generated."""
+    from scope import is_generated
+    globs = read_json(config).get("convergence", {}).get("generatedPaths", []) if config else []
+    out = subprocess.run(["git", "-C", str(worktree), "diff", "--numstat", "--no-renames", base + "...HEAD"],
+                         capture_output=True, encoding="utf-8", check=True).stdout
+    counted, excluded = 0, {}
+    for line in out.splitlines():
+        added, deleted, path = line.split("\t", 2)
+        n = 0 if added == "-" else int(added) + int(deleted)  # binary files carry no line count
+        if is_generated(path, globs): excluded[path] = n
+        else: counted += n
+    return {"changed_lines": counted, "excluded_generated": excluded, "generated_paths": globs}
+
+
 PR_BODY_BUDGET = 3000
 
 
 def render_pr_body(facts_file, output, config=None):
     from recording import pr_body
-    body = pr_body(json_input(facts_file))
-    budget = read_json(config).get("convergence", {}).get("prBodyBudget", PR_BODY_BUDGET) if config else PR_BODY_BUDGET
+    convergence = read_json(config).get("convergence", {}) if config else {}
+    body = pr_body(json_input(facts_file), convergence.get("figureUnits", ()))
+    budget = convergence.get("prBodyBudget", PR_BODY_BUDGET)
     target = Path(output)
     # Never overwrite a hand-edited body by accident; corrections use a new file.
     if target.exists(): require(target.read_text(encoding="utf-8") == body, "PR output exists with different content; use a new output path")
@@ -1078,6 +1094,13 @@ def main():
     p = commands.add_parser("followup-body"); p.add_argument("--packet", required=True)
     p.add_argument("--output", help="write UTF-8 JSON directly instead of returning full body")
     p.add_argument("--recipe", help="single approved create recipe; fills only title/content and emits record-children input")
+    p.add_argument("--config", help="primary config: the destination is computed from convergence routing, not chosen")
+    p = commands.add_parser("failure-modes", help="the project's failure-mode classes for a design review")
+    p.add_argument("--config", required=True); p.add_argument("--project", required=True)
+    p = commands.add_parser("changed-lines", help="changed lines against a base, excluding declared generated paths")
+    p.add_argument("--worktree", required=True); p.add_argument("--base", required=True); p.add_argument("--config")
+    p = commands.add_parser("fold-scan", help="open siblings whose own text declares they fold into this ticket")
+    p.add_argument("--ticket", required=True); p.add_argument("--pages", required=True, help="JSON [{key, text}] of the fetched candidates")
     p = commands.add_parser("record-capture"); p.add_argument("--state", required=True); p.add_argument("--page", required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
@@ -1164,8 +1187,20 @@ def main():
         require(not args.recipe or args.output, "--recipe requires --output")
         if args.output:
             from execution import followup_file
-            result = followup_file(args.packet, args.output, args.recipe)
-        else: result = followup_body(json_input(args.packet))
+            result = followup_file(args.packet, args.output, args.recipe, args.config)
+        else: result = followup_body(json_input(args.packet), read_json(args.config).get("convergence", {}) if args.config else None)
+    elif args.command == "failure-modes":
+        from scope import failure_mode_classes
+        classes, source = failure_mode_classes(read_json(args.config).get("convergence", {}), args.project)
+        result = {"classes": classes, "source": source, "instruction":
+                  "The design-review brief enumerates each class; the outcome plan covers it or defers it explicitly "
+                  "(a deferral is filed with blocks_goal: no only when it does not block the epic goal)."}
+    elif args.command == "changed-lines": result = changed_lines(args.worktree, args.base, args.config)
+    elif args.command == "fold-scan":
+        from scope import fold_declarations
+        found = fold_declarations(args.ticket, json_input(args.pages))
+        result = {"declared": found, "instruction": "Absorb each declared sibling into this change (mandatory absorb: sibling) "
+                  "and close it as merged after the merge, or record why not in context.md and the PR. Unattended runs absorb too."}
     elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
     elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
     elif args.command == "record-page": result = record_page(args.state, args.snapshot, args.heading)

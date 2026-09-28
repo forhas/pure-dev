@@ -20,9 +20,10 @@ def json_file(value, output):
     return {"file": str(path), "sha256": digest(path), "bytes": path.stat().st_size}
 
 
-def followup_file(packet, output, recipe=None):
+def followup_file(packet, output, recipe=None, config=None):
     from recording import followup_body
-    rendered = followup_body(read_json(packet))
+    convergence = read_json(config).get("convergence", {}) if config else None
+    rendered = followup_body(read_json(packet), convergence)
     if recipe:
         # The adapter supplies live schema/association/approval decisions. Only the
         # title/content slots are filled here; no inferred provider properties.
