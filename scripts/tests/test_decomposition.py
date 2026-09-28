@@ -329,6 +329,7 @@ class FilingRuleTests(unittest.TestCase):
             self.assertEqual(scope.destination_problems("no", good, "EX-1"), [])
         self.assertTrue(scope.destination_problems("no", "epic:EX-1", "EX-1"))
         self.assertTrue(scope.destination_problems("no", "epic"))
+        self.assertTrue(scope.destination_problems("no", "epic:EX-1"), "an unknown source epic cannot be excluded")
 
 
 class JudgmentTests(unittest.TestCase):

@@ -60,7 +60,9 @@ def destination_problems(blocks_goal, destination, source_epic=None):
     match = re.fullmatch(r"epic:([A-Z][A-Z0-9]{1,9}-\d+)", str(destination))
     if not match:
         return ["non-goal destination must be backlog, related or epic:<KEY>-<n>"]
-    if source_epic and match.group(1) == source_epic:
+    if not source_epic:
+        return ["an epic:<KEY>-<n> destination needs source_epic to prove it is not the source epic"]
+    if match.group(1) == source_epic:
         return ["a non-goal follow-up cannot be filed under the epic whose goal it does not block"]
     return []
 
