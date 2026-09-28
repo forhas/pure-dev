@@ -251,6 +251,14 @@ class ExecutionTests(unittest.TestCase):
         workflow.record_outcome(self.state, operation, 'failed', 'provider rejected the call')
         self.assertEqual(workflow.record_input(self.state, operation, begin=True)['action'], 'execute')
 
+    def test_wrong_call_id_still_quarantines_observed_post_begin_create(self):
+        operation, transcript, _ = self.discrepancy_setup()
+        with self.assertRaises(ValueError):
+            workflow.record_receipt(self.state, operation, transcript, 'fixture-session', call_id='stale-id')
+        self.assertIn(operation, runtime.read_json(self.state).get('record_discrepancies', {}))
+        workflow.record_outcome(self.state, operation, 'failed', 'wrong id supplied')
+        self.assertEqual(workflow.record_input(self.state, operation, begin=True)['action'], 'reconcile')
+
     def test_recovery_rejects_agent_approval_changed_evidence_and_duplicate_creates(self):
         operation, transcript, actual = self.discrepancy_setup()
         request = record_recovery.request(self.state, operation, transcript, 'fixture-session', 'create', 'readback', 'difference checked')

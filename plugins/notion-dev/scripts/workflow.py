@@ -680,7 +680,8 @@ def record_receipt(state, operation, transcript, session, call_id=None, readback
     # Two identical writes after one begin may both have taken effect; never keep only one.
     candidates = calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"],
         predicate=lambda item: equivalent_write(expected, {"name": item.get("name"), "input": item.get("input")})) if attempts else []
-    if attempts and (len(candidates) > 1 or (not call_id and not candidates)):
+    # An explicit call ID is not trusted to rule out an observed post-begin write.
+    if attempts and (len(candidates) != 1 or (call_id and call_id not in candidates)):
         # A delivered error response stays retryable; an undelivered result is still
         # possible side-effect evidence and keeps the no-replay quarantine.
         def failed(candidate):
