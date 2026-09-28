@@ -1791,14 +1791,14 @@ def resolution_entries(text):
 def followup_rate(entries, window, threshold):
     recent = entries[-window:] if window > 0 else []
     filed = sum(len(e["goal"]) for e in recent)
-    rate = round(filed / len(recent), 3) if recent else 0.0
+    exact = filed / len(recent) if recent else 0.0  # decide on the exact quotient, report it rounded
     generation = {}
     for e in entries:
         for k in e["goal"] + e["outside"]:
             generation[k] = max(generation.get(k, 0), generation.get(e["key"], 0) + 1)
     return {"window": window, "resolutions": len(recent), "filed_goal": filed,
-            "filed_outside": sum(len(e["outside"]) for e in recent), "rate": rate, "threshold": threshold,
-            "rescope": len(recent) == window and window > 0 and rate > threshold,
+            "filed_outside": sum(len(e["outside"]) for e in recent), "rate": round(exact, 3), "threshold": threshold,
+            "rescope": len(recent) == window and window > 0 and exact > threshold,
             "legacy_entries": sum(not e["split"] for e in recent),
             "generation": {"max": max(generation.values(), default=0),
                            "by_key": dict(sorted(generation.items()))}}

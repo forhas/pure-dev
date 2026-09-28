@@ -162,6 +162,12 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertEqual(result["followups"]["resolutions"], 1)
         self.assertEqual(result["followups"]["filed_goal"], 2)
 
+    def test_the_breaker_compares_the_exact_rate_not_its_rounding(self):
+        log = resolution_log([("EX-2", ["EX-7"], None), ("EX-3", ["EX-8"], None), ("EX-4", [], None)])
+        result = self.goal(BRIEF, live_state(open_goal=True), log, "--threshold", "0.6668")
+        self.assertEqual(result["followups"]["rate"], 0.667)
+        self.assertFalse(result["followups"]["rescope"])
+
     def test_non_goal_followups_do_not_count_toward_the_rate(self):
         log = resolution_log([("EX-2", [], ["EX-7", "EX-8"]), ("EX-3", ["EX-9"], ["EX-10"]),
                               ("EX-4", [], ["EX-11"])])
