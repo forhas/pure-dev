@@ -29,6 +29,8 @@ assert_has "judgments are validated with the configured threshold" \
 assert_has "mandatory absorb forbids filing" $ND/references/review-findings.md 'Mandatory absorb — filing is not allowed'
 assert_has "the create-task fast path renders through the verified builder" \
   $ND/commands/create-task.md 'followup-body --packet <packet.json> --output <body.json>'
+assert_has "the create-task parent follows the computed destination" \
+  $ND/commands/create-task.md "result's computed \`destination\`, never the invocation's \`--parent\`"
 assert_has "intake records premise checks before planning" $ND/references/lean-intake.md 'runtime.py premises'
 assert_has "ticket applies the scope rules to its plan" $ND/commands/ticket.md 'references/scope.md'
 assert_has "ticket renders the PR body with its config" $ND/commands/ticket.md '--config <config>'

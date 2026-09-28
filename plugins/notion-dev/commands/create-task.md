@@ -109,8 +109,10 @@ artifacts only (a test, an output, a response). On the fast path and epic-update
 path `workflow.py followup-body` refuses a packet that breaks this; on the interview path the
 interviewer's clarity audit relabels an uncited claim as a premise before the summary is
 confirmed. Either way the ticket's first run checks every premise (`lean-intake.md`).
-The follow-up also states `Blocks epic goal: yes|no — <reason>`: `no` goes to
-`convergence.nonGoalDestination` (default `backlog`, no epic parent) instead of `--parent`.
+The follow-up also states `Blocks epic goal: yes|no — <reason>`. Its parent is the rendered
+result's computed `destination`, never the invocation's `--parent`: `epic` → the `--parent` epic;
+`epic:<KEY>-<n>` → that epic, resolved and validated like any epic parent; `backlog` or
+`related` → no parent and no Epic select, even when `--epic`/`--parent` were passed.
 
 Invoke `notion-dev:ticket-interviewer`, passing `{title, body, sourceRef, confidence}` from Phase 1. The skill:
 
@@ -206,7 +208,7 @@ Runs only when Phase 2.5 returned `kind: "single"`. Skipped entirely for mission
    - **Pick another** — show the full `findEpics()` list as sub-choices.
    - **No epic** — proceed unattached; `EPIC_ID = undefined`.
 
-**Non-interactive mode** never prompts here: use `--epic` / `--parent` when supplied, else attach to nothing.
+**Non-interactive mode** never prompts here: use `--epic` / `--parent` when supplied, else attach to nothing. A `--reviewed-followup` rendered through `followup-body` attaches exactly as its computed `destination` says (Phase 2.1), overriding both flags.
 
 ---
 
