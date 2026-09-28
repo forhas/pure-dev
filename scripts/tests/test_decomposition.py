@@ -610,9 +610,11 @@ class GenericityTests(unittest.TestCase):
         pages = self.root / "pages.json"
         runtime.atomic_json(pages, [{"key": "EX-8", "text": body}, {"key": "EX-9", "text": "please fold into EX-70 later"},
                                     {"key": "EX-10", "text": "Land before [EX-7], it shares the schema"},
+                                    {"key": "EX-11", "text": "land with EX-7-hotfix branch"},
+                                    {"key": "EX-12", "text": "merge into EX-7."},
                                     {"key": "EX-7", "text": "fold into EX-7"}])
         found = self.cli("fold-scan", "--ticket", "EX-7", "--pages", str(pages))["declared"]
-        self.assertEqual([f["key"] for f in found], ["EX-8", "EX-10"])
+        self.assertEqual([f["key"] for f in found], ["EX-8", "EX-10", "EX-12"])
         with self.assertRaises(ValueError):
             recording.followup_body(FollowupPacketTests.packet(self, lands_with="soon"))
 

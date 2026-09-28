@@ -170,7 +170,7 @@ def route_followup(blocks_goal, labels, convergence):
 
 
 FOLD_RE = re.compile(r"\b(?:fold(?:ed|s)?\s+into|land(?:s|ed)?\s+(?:with|before|alongside)|"
-                     r"merge(?:d|s)?\s+into|absorb(?:ed)?\s+(?:into|by))\s*:?\s+\[?%s\]?(?![\d])", re.I)
+                     r"merge(?:d|s)?\s+into|absorb(?:ed)?\s+(?:into|by))\s*:?\s+\[?%s\]?(?!\w|-\w)", re.I)
 
 
 def fold_declarations(target, pages):
