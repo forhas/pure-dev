@@ -77,12 +77,17 @@ class ExecutionTests(unittest.TestCase):
 
     def test_failing_producer_never_commits_even_when_output_formatter_would_succeed(self):
         folder, branch = self.knowledge_setup(); before = runtime.git(self.repo, 'rev-parse', 'HEAD')
+        receipts = []
         for code in (1, 2):
             with self.checker(code): result = execution.knowledge_commit(self.repo, branch, 'fixture', 'docs: check')
+            receipts.append(result)
             self.assertFalse(result['passed']); self.assertEqual(result['exit_code'], code)
             self.assertEqual(runtime.git(self.repo, 'rev-parse', 'HEAD'), before)
             self.assertEqual(Path(result['log']).read_bytes(), b'full producer diagnostics\n')
             self.assertEqual((folder / 'concept.md').read_text(encoding='utf-8'), 'candidate café')
+        # A retry on an unchanged tree keeps the earlier attempt's audited log intact.
+        self.assertNotEqual(receipts[0]['log'], receipts[1]['log'])
+        self.assertEqual(runtime.digest(Path(receipts[0]['log'])), receipts[0]['log_sha256'])
 
     def test_successful_knowledge_commit_preserves_unrelated_staged_work(self):
         _, branch = self.knowledge_setup()

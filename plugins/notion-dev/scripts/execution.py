@@ -79,10 +79,11 @@ def knowledge_commit(project, branch, run, message):
             "hold the existing primary writer lock under --run before check/commit")
     require(message.strip(), "commit message required")
     before_head, before = git(root, "rev-parse", "HEAD"), tree_digest(directory)
-    log = local_dir(root) / ("knowledge-check-" + before + ".log")
+    # One immutable log per attempt: a retry must not rewrite evidence already receipted.
+    log = local_dir(root) / ("knowledge-check-" + before + "-" + os.urandom(6).hex() + ".log")
     command = [sys.executable, str(Path(__file__).with_name("knowledge.py")), "check",
                "--config", str(config_path), "--dir", str(directory)]
-    with log.open("wb") as stream:
+    with log.open("xb") as stream:
         proc = subprocess.run(command, cwd=str(root), stdout=stream, stderr=subprocess.STDOUT,
                               env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
     receipt = {"passed": False, "exit_code": proc.returncode, "log": str(log),
