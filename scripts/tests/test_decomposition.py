@@ -483,6 +483,9 @@ class ProseCapTests(unittest.TestCase):
             corrections.prose_cap(state, "review-3", [{"claim": "other", "method": "rewrite"}])
             with self.assertRaises(ValueError):
                 corrections.prose_cap(state, "review-4", [{"claim": "x", "method": "reword"}])
+            with self.assertRaisesRegex(ValueError, "claims finding names its claim"):
+                corrections.prose_cap(state, "review-4", [{"id": "claims:1", "claim": None, "method": ""}])
+            corrections.prose_cap(state, "review-4", [{"id": "code_review:1", "claim": None, "method": ""}])
 
 
 if __name__ == "__main__":

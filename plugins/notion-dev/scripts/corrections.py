@@ -59,6 +59,10 @@ def prose_cap(state, previous, items):
     history = read_json(path) if path.exists() else {}
     for item in items:
         claim = item.get("claim")
+        # A finding from the reviewer's `claims` audit IS a prose-claim finding: it cannot
+        # opt out of the cap by leaving the worksheet's default null in place.
+        require(claim is not None or not str(item.get("id", "")).startswith("claims:"),
+                "a claims finding names its claim and method (rewrite/artifact/remove)")
         if claim is None: continue
         require(isinstance(claim, str) and claim.strip(), "claim must name the corrected PR fact or claim")
         method = item.get("method")

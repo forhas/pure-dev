@@ -149,7 +149,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(generated['passed'])
         path = Path(generated['checklist']); data = runtime.read_json(path)
         item = data['items'][0]; item.update(anchors=['retired claim'], locations=['input:pr_body', 'repo:code.txt'],
-            disposition='corrected', evidence='corrected prose')
+            disposition='corrected', evidence='corrected prose', claim='retired-claim', method='rewrite')
         runtime.atomic_json(path, data)
         checked = corrections.batch(self.state, key, self.repo, inputs, path)
         self.assertFalse(checked['passed'])
@@ -177,6 +177,7 @@ class ExecutionTests(unittest.TestCase):
         path = Path(generated['checklist']); value = runtime.read_json(path)
         for item in value['items']:
             item.update(anchors=['retired claim'], disposition='not-applicable', evidence='quoted negative test',
+                        claim='retired-claim', method='rewrite',
                         retained={'repo:code.txt': 'old text remains intentionally quoted for a negative test'})
         runtime.atomic_json(path, value)
         observed = runtime.read_json(runtime.read_json(inputs)['files']['pr_body']['path'])

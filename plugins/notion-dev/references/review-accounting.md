@@ -73,7 +73,7 @@ locations (always include `input:pr_body`), retired literal anchors or a no-lite
 disposition `corrected`/`not-applicable`, and evidence. It scans all tracked files and current
 source inputs for those anchors, not just the edited file. Remaining occurrences block until
 corrected or explained individually in `retained: {"<source>": "<why valid here>"}`—for example
-a quoted negative test. Do not add blanket exemptions. A prose-claim finding also names
+a quoted negative test. Do not add blanket exemptions. Every `claims:` finding also names
 `claim` and `method`; a third consecutive `rewrite` of one claim is refused. A stale source/head requires a new
 worksheet; transfer only still-applicable dispositions. This is the existing finding ledger's
 preflight view, not a second review or proof of semantic correctness.
