@@ -59,7 +59,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" record-plan --state "$RUNTIM
 ```
 Schema 5 adds `--review-worker <final-accepted-id>` (omit only for verified MERGED recovery
 without a surviving review; the helper records unknown coverage). Read the recording section of
-`references/boundaries.md` for record-next, record-view, record-receipt and record-run.
+`references/boundaries.md` through `workflow.py guide --stage record` for record-next,
+record-view, record-receipt and record-run.
 They reuse this journal; no new scheduler or provider authority.
 
 Schema-4/5 runs emit version-3 immutable payloads and stable operation IDs. The helper

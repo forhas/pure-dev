@@ -23,8 +23,15 @@ Use configured `knowledge.python` for `python3` below.
    `edge_cases`, `dependencies`, `open_questions`. Empty means explicitly established empty,
    not unread. Keep the raw accepted finding and approval reference beside it. Unknown answers
    take the normal clarification path; never invent them to satisfy the builder.
-3. `workflow.py followup-body --packet <packet.json>` returns the exact title/body/provenance.
-   Use ticket-system **createTicket** directly with that title/body, validated parent epic,
+3. Load ticket-system **createTicket**'s live schema/parent/assignee rules. Save an approved
+   create recipe (one page) with `name`, `target`, `tool: "mcp__notion__notion-create-pages"`,
+   `title_property: "<configured title key>"`, and `input` containing actual parent and page
+   properties. Omit title/content: the builder fills those exact slots without a Python pipe.
+   `workflow.py followup-body --packet <packet.json> --recipe <recipe.json> --output <writes.json>`
+   writes UTF-8/LF directly and returns its path/hash. Pass that file directly to
+   `record-children --writes <writes.json>`; do not read stdout through inline Python, retype
+   the rendered content, or pass a large JSON object as a shell argument.
+   Use the generated title/body, validated parent epic,
    configured epic property and normal Backlog mapping. Carry the resolved ticket's assignee
    when present; otherwise honor configured defaultAssignee after live eligibility validation.
    Load only createTicket and needed schema/assignee references, not create-task/input-source/

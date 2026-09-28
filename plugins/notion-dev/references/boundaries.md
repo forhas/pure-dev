@@ -141,6 +141,24 @@ only an explicit adapter judgment bound to the intent/call/readback hashes can c
 is host judgment, not provider attestation. It never dispatches or reverses a write. Read `references/record.md`'s recovery
 and host-mediated-operation rules before handling mismatches; do not repair them with more writes.
 
+An actual different-text create is NOT equivalent formatting. `record-receipt` quarantines
+that operation against replay even if someone later labels it failed. For one already-created
+page whose parent/properties/title match exactly, use `workflow.py record-discrepancy --state
+<state> --operation <id> --call-id <actual-create> --readback-call-id <fresh-fetch> --explanation
+"<complete difference and effect assessment>"`. It captures both texts and fresh readback,
+returns an explicit user approval challenge, and performs no provider write. Show the evidence;
+only an actual matching parent-user response allows `record-accept-discrepancy --state <state>
+--operation <id>`. The five-minute decision window binds the observed page and session; if
+expired, fetch and request again. It appends an **accepted discrepancy**, not a claim the
+original intent matched. Report that distinction. Duplicate creates, retargeted properties,
+unsupported responses or unapproved differences remain unresolved; no automatic normalization,
+payload rewrite, synthetic receipt or retry. Other operation kinds retain their existing
+explicit reconciliation contract. Recovery never grants authority to change the provider.
+After an authorized session takeover, the original write may be captured with paired
+`--write-transcript <original-log> --write-session <original-session>`; fresh readback and
+approval still belong to the CURRENT owning session. Neither the old approval nor its page
+snapshot transfers authority. Unsupported/missing original evidence remains unresolved.
+
 Schema-5 record-facts holds observed merge/target/config facts, NOT requirements/review/verification.
 Use `record-plan --state <state> --facts <facts.json> --review-worker <final-accepted-id>`.
 It selects the actual result, inventory and runtime verification receipts; no consume wrapper,

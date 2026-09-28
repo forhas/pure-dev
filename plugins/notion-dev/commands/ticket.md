@@ -41,20 +41,22 @@ function/call-site/test/docs changes into separate worker tasks. The implementat
 correct test setup, helper choices and line ranges without asking permission to deviate from
 a proposed implementation; requirements and explicit user decisions still govern.
 
-`context.md` owns the compact decision record: decision, essential reason, evidence and release
-obligations. Other summaries derive from these facts, not new explanations. Required detail
-stays accessible by reference; do not copy the same condition list into every surface by default.
+Keep decision/reason/evidence/release obligations in context.md; derive summaries from those
+facts, with detail by reference rather than copying the same conditions into every artifact.
 
 **Design review when warranted:** unresolved architecture, financial/security invariants,
 migration/data-loss risk, or a public contract change merits a bounded independent `plan`
-worker via `references/runtime.md`. Give it the short decision record and authoritative
+worker via `workflow.py guide --stage dispatch`. Give it the short decision record and authoritative
 requirements, not implementation code written in advance. Resolve its required findings before
 coding. For a bug, reproduce the failure and inspect root cause; delegate a separate scout
 only for a concrete unanswered question that benefits from independent investigation.
 
 Implement and test in the worktree. Preserve unrelated changes. Use existing helpers. Validate
 the actual behavior, including test isolation and assertions that could pass without exercising
-the new path. Update contract/docs/generated files required by the ticket. Do not waive release
+the new path. Before mutation tests run `workflow.py mutation-baseline --worktree "$WORKTREE"`:
+commit the implementation first or use an isolated copy; never use git checkout/reset/clean
+to restore uncommitted implementation. Restore only explicitly owned mutation paths and
+verify the restored baseline. Update contract/docs/generated files required by the ticket. Do not waive release
 approval, credentials or scope decisions in non-interactive mode. Ask only for genuinely missing
 authority or requirements; stop honestly if they cannot be resolved.
 
@@ -115,7 +117,7 @@ keep evidence outside disposable worktrees. `OUTCOME: resolved` is valid only th
 ## Failure and waiting
 
 Non-interactive continues authorized work without suppressing missing authority. Follow
-`references/runtime.md` for worker waits, delivery and cancellation; pending is unfinished,
+`workflow.py guide --stage dispatch` for worker waits, delivery and cancellation; pending is unfinished,
 not failed. No duplicate waiters.
 
 On failure preserve the branch/worktree/PR and runtime. Update the owned marker to `stopped`

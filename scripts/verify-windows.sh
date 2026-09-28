@@ -168,6 +168,10 @@ assert_has "review preparation exercises configured steps and native paths" \
   scripts/tests/test_convergence.py 'def test_review_prepare_cli_uses_configured_steps_and_native_paths(self):'
 assert_has "both platform suites execute the convergence regressions" \
   scripts/verify-lean-workflow.sh "-p 'test_convergence.py'"
+assert_has "both platform suites execute the execution regressions" \
+  scripts/verify-lean-workflow.sh "-p 'test_execution.py'"
+assert_has "file payloads are exercised under the Windows code page" \
+  scripts/tests/test_execution.py "'PYTHONIOENCODING': 'cp1252'"
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

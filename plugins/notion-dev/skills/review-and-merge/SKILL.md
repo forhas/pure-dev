@@ -12,7 +12,9 @@ For a schema 1/2 runtime or explicit legacy build flow, read
 `${CLAUDE_PLUGIN_ROOT}/references/legacy/review-and-merge.md` instead; do not reset the run.
 
 Use configured knowledge.python for all `python3` examples. Native Windows runs in Git Bash.
-Read `references/runtime.md` before dispatch. No mandatory external build-framework skill.
+Load `workflow.py guide --stage dispatch` before dispatch and `--stage review` for review
+preparation; these select complete authoritative sections without loading intake/recording.
+No mandatory external build-framework skill.
 
 ## 1. Resolve and stabilize
 
@@ -88,19 +90,12 @@ our bookkeeping changes before the evidence freeze, not into an avoidable post-r
 Never discard new human requirements while reconciling. Then freeze the authoritative ticket, inventory, committed diff against the actual PR base, live PR
 body and verification receipt/log references outside the worktree. Run readiness. Prepare
 role `completeness` through `workflow.py review-prepare`, using the exact command/archived-output
-rules in `references/boundaries.md`, including its typed `review-inputs` and claim checks.
-It verifies the committed tree before dispatch. Add `--previous <accepted-worker>` for delta. Dispatch one independent
-general-purpose worker with the generated runtime context/contract and these charges:
-
-- Check the entire ticket against inventory, including prerequisites outside AC.
-- Review implementation, contracts, error paths, test isolation and edge cases; tests must
-  exercise the claimed behavior, not pass because of earlier calls or unrelated fixtures.
-- Return met / not-met / unverified with evidence for every inventory ID.
-- Audit claims and caveats in changed code/docs/PR body. Preserve release-only obligations
-  without making up a merge prerequisite or claiming approval that was never given.
-- Return code_review, requirements_complete, requirement verdicts, blocking_findings and
-  structured claims/caveats/triage audits (including evidence and finding dispositions) in
-  the generated JSON contract. A failed check is a valid nonpassing report, not malformed output.
+rules in the review guide, including its typed `review-inputs` and claim checks.
+It verifies the committed tree before dispatch. Add `--previous <accepted-worker>` for delta.
+Dispatch one independent general-purpose worker with the generated context/result_contract.
+The review guide owns its code_review, full-source/inventory, test isolation, edge-case and
+claims/caveats/triage charges. Cover every requirement, including prerequisites outside AC;
+preserve release-only obligations. A failed check is an honest nonpassing result, not malformed output.
 
 Freeze author-written ticket narrative until recording. Continue required live status/ownership
 checks and property updates, but keep review-history/Implementation corrections in the canonical
@@ -126,10 +121,8 @@ verdicts with valid evidence. Do not rerun a full review merely to generate new 
 Broader uncertainty requires full review within two-full/two-delta budgets. Exhaustion stops;
 `references/review-accounting.md` permits one explicitly authorized correction review, never a reset.
 
-Before delta, batch corrections across affected code/docs/PR occurrences: search for retired
-assertions and replace them in place. Keep Notion narrative changes in accepted recording facts.
-New factual assertions require evidence/review even if non-blocking. Derive summaries from the
-single decision/reason/evidence/release-obligation record.
+Before delta complete review-accounting's correction-batch over code/docs/current PR body;
+pass `--corrections` to preparation. Keep Notion narrative in accepted recording facts.
 
 Resolve baseline citations BEFORE delta. Follow `references/boundaries.md`'s compact publication:
 start with input diffs/source hunks/prior judgments, retrieve affected sections, check indirect

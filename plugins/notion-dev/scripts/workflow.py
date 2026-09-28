@@ -329,7 +329,7 @@ def resume_view(state, worktree=None):
             "instruction": "Reuse this invocation, not its conversation. Resolve workers/ownership, then use claim --resume or resume-pr. Re-capture current source under the new host session. Do not copy approval phrases or reset budgets. After verified merge use record-next, not a new review."}
 
 
-def review_prepare(state, project, worktree, files, previous=None, depends=(), outputs=(), remove_inputs=(), inputs_file=None):
+def review_prepare(state, project, worktree, files, previous=None, depends=(), outputs=(), remove_inputs=(), inputs_file=None, corrections=None):
     """One final-revision verification boundary, shared by full and delta reviews."""
     from runtime import revision, digest
     require(revision(worktree)["clean"], "commit preparation/corrections before review verification")
@@ -351,6 +351,16 @@ def review_prepare(state, project, worktree, files, previous=None, depends=(), o
         require(not identity.get("review_inputs"), "bound review inputs require --inputs; do not fall back to stale files")
         # Caller-supplied diff/PR files skip the merge gate's live-PR freshness check.
         require(identity["schema"] < 5, "schema 5 reviews require typed --inputs from review-inputs")
+    correction_preflight = None
+    if previous and inputs_file and read_json(state)["schema"] >= 5:
+        from corrections import batch
+        checked = batch(state, previous, worktree, inputs_file, corrections)
+        if not checked["passed"]: return {**checked, "action": "complete-correction-batch"}
+        if corrections:
+            # Author preflight is not authoritative review input. Inheriting this
+            # worksheet would bind the next allowance to the previous worksheet and
+            # falsely expand/invalidate scope on every correction round.
+            correction_preflight = {k: checked[k] for k in ("checklist", "sha256", "binding")}
     verified = verify_config(state, project, worktree, depends, outputs)
     if not verified["passed"]: return verified
     keys = [r["verification"] for r in verified["receipts"]]
@@ -373,7 +383,8 @@ def review_prepare(state, project, worktree, files, previous=None, depends=(), o
                 inputs[name] = fresh[old["command_sha256"]]
     inputs["verification_receipts"] = str(manifest)
     result = Runtime(state).prepare("completeness", inputs, worktree, previous=previous, remove_inputs=remove_inputs)
-    return {"passed": True, **result, "verification": str(manifest), "verification_sha256": digest(manifest)}
+    return {"passed": True, **result, "verification": str(manifest), "verification_sha256": digest(manifest),
+            "correction_preflight": correction_preflight}
 
 
 def record_plan(state, facts_file, review_worker=None):
@@ -669,6 +680,22 @@ def record_receipt(state, operation, transcript, session, call_id=None, readback
     # Two identical writes after one begin may both have taken effect; never keep only one.
     candidates = calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"],
         predicate=lambda item: equivalent_write(expected, {"name": item.get("name"), "input": item.get("input")})) if attempts else []
+    # An explicit call ID is not trusted to rule out an observed post-begin write.
+    if attempts and (len(candidates) != 1 or (call_id and call_id not in candidates)):
+        # A delivered error response stays retryable; an undelivered result is still
+        # possible side-effect evidence and keeps the no-replay quarantine.
+        def failed(candidate):
+            try:
+                exchange(transcript, session, candidate)
+                return False
+            except ValueError as error:
+                return "failed host tool response" in str(error)
+        possible = [c for c in calls_since(transcript, session, expected["name"], None, attempts[-1]["wall"])
+                    if not failed(c)]
+        if possible:
+            with Runtime(state).transaction() as data:
+                data.setdefault("record_discrepancies", {}).setdefault(operation, {
+                    "call_ids": possible, "reason": "ambiguous or different host calls after begin; no replay"})
     require(len(candidates) <= 1,
             "multiple matching host calls after begin; reconcile, never select one")
     call_id = call_id or (candidates[0] if readback_call_id and candidates else
@@ -676,6 +703,12 @@ def record_receipt(state, operation, transcript, session, call_id=None, readback
     observed = exchange(transcript, session, call_id)
     call = observed["call"]["item"]
     actual = {"name": call.get("name"), "input": call.get("input")}
+    if not equivalent_write(expected, actual) and attempts and timestamp(observed["call"]["timestamp"]) >= attempts[-1]["wall"]:
+        # A differing successful host exchange is possible side-effect evidence,
+        # never permission to relabel failed and retry the frozen create.
+        with Runtime(state).transaction() as data:
+            data.setdefault("record_discrepancies", {}).setdefault(operation, {
+                "call_id": call_id, "reason": "actual host arguments differ; reconcile without replay"})
     if readback_call_id:
         from host_capture import notion_fetch
         require(equivalent_write(expected, actual), "host arguments materially differ; no automatic reconciliation")
@@ -851,6 +884,7 @@ def record_input(state, operation, begin=False, field=None):
         content = {field: content[field]}
     action = ("skip" if latest["outcome"] == "confirmed" else "reconcile"
               if latest["outcome"] in {"attempted", "unknown-outcome"} else "execute")
+    if action != "skip" and operation in data.get("record_discrepancies", {}): action = "reconcile"
     if begin and action == "execute":
         if operation in parents and parents[operation].get("requires_children"):
             manifest = child_payload_path(directory, operation + ":manifest")
@@ -873,6 +907,9 @@ def record_outcome(state, operation, outcome, provider_id=None):
     plan = read_json(directory / "plan.json")
     parent = next((p for p in plan if p["operation"] == operation), None)
     identity = read_json(state)
+    if outcome == "confirmed" and current["action"] != "skip":
+        require(operation not in identity.get("record_discrepancies", {}),
+                "known host discrepancy needs explicit non-replay recovery, not an ordinary confirmation")
     if identity["schema"] >= 5 and outcome == "confirmed" and current["action"] != "skip" and not parent:
         if "host_call" in current["data"]:
             receipt = identity.get("host_operation_receipts", {}).get(operation)
@@ -908,6 +945,9 @@ def record_summary(state):
     with Runtime(path).transaction() as data:
         latest = {entry["operation"]: entry for entry in data["record_journal"]}
         child_sets = data.get("record_child_sets", {})
+        accepted_discrepancies = [{"operation": k, "evidence": v["evidence"], "sha256": v["sha256"],
+                                   "request": v["id"], "provider_id": v["provider_id"]}
+                                  for k, v in data.get("record_discrepancies", {}).items() if v.get("authority")]
     outcomes = {}
     for operation in plan:
         receipt = latest.get(operation["operation"], {})
@@ -942,7 +982,10 @@ def record_summary(state):
             unresolved.append(operation["operation"])
     blocking = [k for k in unresolved if record_kind(k, kinds) not in BEST_EFFORT_RECORD]
     fields["ISSUES"] = ", ".join(unresolved) if unresolved else "none"
+    if accepted_discrepancies:
+        fields["ISSUES"] = (", ".join(unresolved) + "; " if unresolved else "") + "accepted text discrepancies: " + ", ".join(d["operation"] for d in accepted_discrepancies)
     result = {"record": fields, "passed": not blocking, "unresolved": unresolved,
+              "accepted_discrepancies": accepted_discrepancies,
               "blocking_unresolved": blocking,
               "best_effort_unresolved": [k for k in unresolved if k not in blocking],
               "report": "RECORD:\n" + "\n".join(k + ": " + v for k, v in fields.items())}
@@ -1007,12 +1050,25 @@ def main():
     p.add_argument("--file", action="append", default=[]); p.add_argument("--depends", action="append", default=[])
     p.add_argument("--output", action="append", default=[])
     p.add_argument("--inputs", help="workflow review-inputs manifest")
+    p.add_argument("--corrections", help="completed current correction-batch worksheet")
+    p = commands.add_parser("correction-batch"); p.add_argument("--state", required=True)
+    p.add_argument("--previous", required=True); p.add_argument("--worktree", required=True)
+    p.add_argument("--inputs", required=True); p.add_argument("--checklist")
+    p = commands.add_parser("await-worker"); p.add_argument("--state", required=True)
+    p.add_argument("--worker", required=True); p.add_argument("--seconds", type=float, default=60)
+    p = commands.add_parser("mutation-baseline"); p.add_argument("--worktree", required=True)
+    p = commands.add_parser("knowledge-commit"); p.add_argument("--project", required=True)
+    p.add_argument("--branch", required=True); p.add_argument("--run", required=True); p.add_argument("--message", required=True)
+    p = commands.add_parser("guide"); p.add_argument("--stage", required=True,
+        choices=("intake", "dispatch", "review", "merge", "record"))
     p = commands.add_parser("resume-view"); p.add_argument("--state", required=True); p.add_argument("--worktree")
     p = commands.add_parser("review-inputs"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True)
     p.add_argument("--pr", required=True); p.add_argument("--source", action="append", default=[])
     p = commands.add_parser("review-check"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True); p.add_argument("--worker", required=True)
     p = commands.add_parser("pr-body"); p.add_argument("--facts", required=True); p.add_argument("--output", required=True)
     p = commands.add_parser("followup-body"); p.add_argument("--packet", required=True)
+    p.add_argument("--output", help="write UTF-8 JSON directly instead of returning full body")
+    p.add_argument("--recipe", help="single approved create recipe; fills only title/content and emits record-children input")
     p = commands.add_parser("record-capture"); p.add_argument("--state", required=True); p.add_argument("--page", required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT")); p.add_argument("--call-id")
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
@@ -1033,6 +1089,14 @@ def main():
     p.add_argument("--readback-call-id", required=True)
     p.add_argument("--readback-verdict", help="adapter judgment bound to returned intent/call/readback hashes")
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
+    p = commands.add_parser("record-discrepancy"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT"))
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
+    p.add_argument("--call-id", required=True); p.add_argument("--readback-call-id", required=True); p.add_argument("--explanation", required=True)
+    p.add_argument("--write-transcript"); p.add_argument("--write-session")
+    p = commands.add_parser("record-accept-discrepancy"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT"))
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", "")); p.add_argument("--message-id")
     p = commands.add_parser("record-child"); p.add_argument("--state", required=True); p.add_argument("--parent", required=True)
     p.add_argument("--name", required=True); p.add_argument("--target", required=True); p.add_argument("--payload", required=True)
     p = commands.add_parser("record-input"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
@@ -1068,11 +1132,31 @@ def main():
             key, sep, path = item.partition("=")
             require(sep and key and path and key not in files, "--file requires unique name=path")
             files[key] = path
-        result = review_prepare(args.state, args.project, args.worktree, files, args.previous, args.depends, args.output, args.remove_input, args.inputs)
+        result = review_prepare(args.state, args.project, args.worktree, files, args.previous, args.depends, args.output, args.remove_input, args.inputs, args.corrections)
+    elif args.command == "correction-batch":
+        from corrections import batch
+        result = batch(args.state, args.previous, args.worktree, args.inputs, args.checklist)
+    elif args.command == "await-worker":
+        from execution import await_worker
+        result = await_worker(args.state, args.worker, args.seconds)
+    elif args.command == "mutation-baseline":
+        from execution import mutation_baseline
+        result = mutation_baseline(args.worktree)
+    elif args.command == "knowledge-commit":
+        from execution import knowledge_commit
+        result = knowledge_commit(args.project, args.branch, args.run, args.message)
+    elif args.command == "guide":
+        from execution import guide
+        print(guide(args.stage))
+        return 0
     elif args.command == "pr-body": result = render_pr_body(args.facts, args.output)
     elif args.command == "followup-body":
         from recording import followup_body
-        result = followup_body(json_input(args.packet))
+        require(not args.recipe or args.output, "--recipe requires --output")
+        if args.output:
+            from execution import followup_file
+            result = followup_file(args.packet, args.output, args.recipe)
+        else: result = followup_body(json_input(args.packet))
     elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
     elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
     elif args.command == "record-page": result = record_page(args.state, args.snapshot, args.heading)
@@ -1083,6 +1167,13 @@ def main():
     elif args.command == "record-observed": result = record_observed(args.state, args.operation, args.receipt)
     elif args.command == "record-receipt": result = record_receipt(args.state, args.operation, args.transcript, args.session, args.call_id)
     elif args.command == "record-reconcile": result = record_receipt(args.state, args.operation, args.transcript, args.session, args.call_id, args.readback_call_id, args.readback_verdict)
+    elif args.command == "record-discrepancy":
+        from record_recovery import request
+        result = request(args.state, args.operation, args.transcript, args.session, args.call_id, args.readback_call_id, args.explanation,
+                         args.write_transcript, args.write_session)
+    elif args.command == "record-accept-discrepancy":
+        from record_recovery import approve
+        result = approve(args.state, args.operation, args.transcript, args.session, args.message_id)
     elif args.command == "record-child": result = record_child(args.state, args.parent, args.name, args.target, args.payload)
     elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
     elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)

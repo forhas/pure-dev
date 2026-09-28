@@ -50,7 +50,9 @@ On schema 5, after `init`, run `capture-ticket --page <notion-page-uuid>
 The helper selects the actual call ID, extracts the complete host response and generates ticket.md. Never transcribe the
 response, invent a call ID, or patch/copy an old capture. If the completed exchange has not yet
 been flushed to the host log, wait for that existing delivery and retry capture, not the fetch.
-Unsupported/missing host evidence stops explicitly; see `references/boundaries.md`.
+Unsupported/missing host evidence stops explicitly. Load only the intake protocol with
+`workflow.py guide --stage intake` (the Requirements and evidence / Actual host captures
+sections of runtime.md and boundaries.md), not their later review/record sections.
 Existing schema-4 runs keep `ticket-source --response <capture.json> --config <primary-config>`.
 
 Use already-retrieved ticket-scoped context if available, otherwise knowledge
@@ -63,7 +65,7 @@ Resolve ambiguity before implementation. Interactive: batch genuinely blocking q
 Non-interactive: make evidence-backed implementation choices, but never invent a prerequisite,
 approval or credential. Preserve external blockers and stop if mandatory readiness is unknown.
 Extract every mandatory requirement, constraint, prerequisite and AC into the runtime inventory
-as `references/runtime.md` specifies; record release-only obligations without treating an
+as that intake guide specifies; record release-only obligations without treating an
 explicitly optional sign-off branch as a new merge prerequisite. Run `requirements` and `ready`.
 
 ## Resume or claim

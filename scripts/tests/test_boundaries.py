@@ -378,8 +378,8 @@ class BoundaryTests(unittest.TestCase):
         self.clock.seconds = wall - 1790000000
         before = self.log({'ok': True}, name='ProviderWrite', args=args, offset=-1)
         with self.assertRaisesRegex(workflow.Invalid, 'predates'): workflow.record_receipt(self.state, operation, before, 'fixture-session', 'actual-1')
-        wrong = self.log({'ok': True}, name='ProviderWrite', args={'status': 'wrong'}, offset=0)
-        with self.assertRaisesRegex(workflow.Invalid, 'arguments'): workflow.record_receipt(self.state, operation, wrong, 'fixture-session', 'actual-1')
+        # Successful wrong-argument calls now quarantine the operation; that negative
+        # path is isolated in test_execution rather than overwritten with a good log.
         self.clock.seconds = datetime.now(timezone.utc).timestamp() - 1790000000
         correct = self.log({'ok': True}, name='ProviderWrite', args=args, offset=0)
         workflow.record_receipt(self.state, operation, correct, 'fixture-session')
