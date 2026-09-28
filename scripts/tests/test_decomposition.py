@@ -147,6 +147,12 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertEqual(result["followups"]["generation"]["max"], 3)
         self.assertEqual(result["followups"]["generation"]["by_key"]["EX-11"], 3)
 
+    def test_a_retry_entry_for_the_same_ticket_counts_its_followups_once(self):
+        log = resolution_log([("EX-2", ["EX-7"], None), ("EX-2", ["EX-7", "EX-8"], None)])
+        result = self.goal(BRIEF, live_state(open_goal=True), log, "--window", "1")
+        self.assertEqual(result["followups"]["resolutions"], 1)
+        self.assertEqual(result["followups"]["filed_goal"], 2)
+
     def test_non_goal_followups_do_not_count_toward_the_rate(self):
         log = resolution_log([("EX-2", [], ["EX-7", "EX-8"]), ("EX-3", ["EX-9"], ["EX-10"]),
                               ("EX-4", [], ["EX-11"])])
