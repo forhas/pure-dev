@@ -173,11 +173,27 @@ FOLD_RE = re.compile(r"\b(?:fold(?:ed|s)?\s+into|land(?:s|ed)?\s+(?:with|before|
                      r"merge(?:d|s)?\s+into|absorb(?:ed)?\s+(?:into|by))\s*:?\s+\[?%s\]?(?!\w|-\w)", re.I)
 
 
+NEGATION_RE = re.compile(r"\b(?:not|never|no longer|don'?t|doesn'?t|won'?t|shouldn'?t|mustn'?t|cannot|can'?t)"
+                         r"(?:\s+\w+){0,2}\s*$", re.I)
+
+
 def fold_declarations(target, pages):
-    """Open siblings whose own text declares they belong in `target`'s change."""
+    """Open siblings whose own text declares they belong in `target`'s change.
+
+    A negated phrase ("do not land with X", "must not merge into X") declares the opposite,
+    so it is skipped; any affirmative occurrence in the same text still counts.
+    """
     pattern = re.compile(FOLD_RE.pattern % re.escape(target), re.I)
-    return [{"key": p["key"], "excerpt": m.group(0)} for p in pages
-            if p.get("key") != target for m in [pattern.search(p.get("text", ""))] if m]
+    found = []
+    for page in pages:
+        if page.get("key") == target:
+            continue
+        text = page.get("text", "")
+        for m in pattern.finditer(text):
+            if not NEGATION_RE.search(text[max(0, m.start() - 40):m.start()]):
+                found.append({"key": page["key"], "excerpt": m.group(0)})
+                break
+    return found
 
 
 PREMISES_HEADING_RE = re.compile(r"^#{1,4}\s+Premises to verify\b", re.I)
