@@ -222,6 +222,21 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertIn("drift: goal open, ## Next still in goal-met form", reopened.stderr)
         self.assertIn("1. **[EX-3]", reopened.stdout)
 
+    def test_goal_met_rehome_line_matches_the_close_batch_including_claimed_children(self):
+        state = live_state()
+        state["children"][4]["status_class"] = "in_progress"
+        batch = [c["key"] for c in self.goal(state=state)["rehome"]]
+        proc = self.knowledge("next", "--brief", str(self.write("brief.md", BRIEF)),
+                              "--state", str(self.write("state.json", state)), "--today", "2026-09-02")
+        region = proc.stdout.split("## Next\n", 1)[1]
+        self.assertEqual(batch, ["EX-5", "EX-6"])
+        self.assertIn("Re-home: [EX-5] Connection audit, [EX-6] Stale JSDoc", region)
+        self.assertNotIn("In progress:", region)
+        brief = self.write("brief.md", proc.stdout)
+        again = self.knowledge("next", "--brief", str(brief), "--state", str(self.write("state.json", state)),
+                               "--today", "2026-09-02")
+        self.assertEqual(again.returncode, 0, again.stderr)
+
     def test_next_without_done_when_is_unchanged(self):
         brief = BRIEF.replace("Done when:\n- [EX-2] resolved\n- [EX-3] resolved\n- [EX-4] verdict recorded\n", "")
         proc = self.knowledge("next", "--brief", str(self.write("brief.md", brief)),

@@ -1463,14 +1463,10 @@ def render_next(state, inprog, blocked, numbered, first, resolved, prev_items, p
     return out
 
 
-def render_goal_met(inprog, rehome, prev_in_progress, today):
+def render_goal_met(rehome):
     out = ["## Next", GOAL_MET_LINE]
     if rehome:
         out.append("Re-home: " + ", ".join("[%s] %s" % (c["key"], c["title"]) for c in rehome))
-    if inprog:
-        out.append("In progress: " + ", ".join(
-            "[%s] %s — since %s" % (c["key"], c["title"], prev_in_progress.get(c["key"], today))
-            for c in sorted(inprog, key=lambda c: c["id"])))
     return out
 
 
@@ -1615,8 +1611,10 @@ def cmd_next(a):
     # and every open child outside the goal is listed for re-homing instead.
     goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved")
     if goal_met:
-        numbered, blocked, first = sorted(blocked + numbered, key=_order_key), [], None
-        region = render_goal_met(inprog, numbered, prev_ip, today)
+        # Every open child outside the goal is re-homed, a claimed one included, so this list
+        # matches epic-goal's close-time batch exactly; ownership is re-checked live anyway.
+        numbered, blocked, inprog, first = sorted(blocked + numbered + inprog, key=_order_key), [], [], None
+        region = render_goal_met(numbered)
     else:
         region = render_next(state, inprog, blocked, numbered, first, resolved, prev_items, prev_ip, today)
     tail = []
