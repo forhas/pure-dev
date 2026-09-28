@@ -10,7 +10,7 @@ the primary config (schema defaults in brackets).
 - **Sibling sweep.** When the ticket fixes a defect, `context.md`'s outcome plan records the
   search (command or query) that finds other instances of the same defect class, what it found,
   and each instance's disposition. Found siblings are absorbed (review-findings' mandatory-absorb
-  case `sibling`) unless a filing criterion applies. The combined reviewer runs its own sweep
+  case `sibling`); a sibling is never filed. The combined reviewer runs its own sweep
   (the result contract's `scope_rules`), because it never sees this plan.
 - **Failure-mode classes.** When the ticket adds a public endpoint or contract surface, the
   design-review brief enumerates: correctness of each verdict the client acts on; resource
