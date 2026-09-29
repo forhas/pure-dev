@@ -604,13 +604,16 @@ def changed_lines(worktree, base, config=None):
     from scope import is_generated
     globs = read_json(config).get("convergence", {}).get("generatedPaths", []) if config else []
     out = subprocess.run(["git", "-C", str(worktree), "diff", "--numstat", "-z", "--no-renames", base + "...HEAD"],
-                         capture_output=True, encoding="utf-8", check=True).stdout
+                         capture_output=True, encoding="utf-8", errors="surrogateescape", check=True).stdout
+    # `-z` paths are raw bytes: decode reversibly so a non-UTF-8 name is still counted, and
+    # escape it only when reported, where strict UTF-8 output would otherwise fail.
     counted, excluded = 0, {}
     for line in out.split("\0"):
         if not line: continue
         added, deleted, path = line.split("\t", 2)
         n = 0 if added == "-" else int(added) + int(deleted)  # binary files carry no line count
-        if is_generated(path, globs): excluded[path] = n
+        if is_generated(path, globs):
+            excluded[path.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")] = n
         else: counted += n
     return {"changed_lines": counted, "excluded_generated": excluded, "generated_paths": globs}
 

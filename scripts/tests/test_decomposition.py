@@ -5,6 +5,7 @@ Synthetic epics and tickets only; no client data, live providers or spawned agen
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -588,6 +589,22 @@ class GenericityTests(unittest.TestCase):
         self.assertEqual(counted["changed_lines"], 2)
         self.assertEqual(counted["excluded_generated"], {"gen/out.json": 900, "package-lock.json": 50})
         self.assertEqual(self.cli("changed-lines", "--worktree", str(repo), "--base", "base")["changed_lines"], 952)
+
+    def test_changed_lines_survives_a_non_utf8_tracked_name(self):
+        repo = self.root / "raw"; repo.mkdir()
+        git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+        git("init", "-q"); git("config", "user.email", "t@example.invalid"); git("config", "user.name", "t")
+        write_lf(repo / "a.txt", "a\n"); git("add", "."); git("commit", "-qm", "base"); git("branch", "base")
+        try:
+            name = os.fsencode(str(repo)) + b"/gen-\xff.txt"
+            with open(name, "wb") as stream: stream.write(b"x\n" * 3)
+        except (OSError, ValueError):
+            self.skipTest("this filesystem refuses non-UTF-8 names")
+        write_lf(repo / "a.txt", "a\nb\n"); git("add", "-A"); git("commit", "-qm", "change")
+        counted = self.cli("changed-lines", "--worktree", str(repo), "--base", "base",
+                           "--config", self.config(generatedPaths=["gen-*"]))
+        self.assertEqual(counted["changed_lines"], 1)
+        self.assertEqual(list(counted["excluded_generated"].values()), [3])
 
     def test_routing_rules_then_meta_then_goal_judgment(self):
         conv = {"destinations": [{"match": "severity:(critical|high)", "to": "epic:EX-90"}],
