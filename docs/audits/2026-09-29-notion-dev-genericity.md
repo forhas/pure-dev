@@ -198,6 +198,7 @@ Measured UTF-8 sizes against 0.45.0 (not model tokens):
 | `commands/next-task.md` | 3911 | 0 |
 | `commands/finalize.md` | 4402 | 0 |
 | `skills/review-and-merge/SKILL.md` | 13279 | 0 |
+| `references/lean-intake.md` | 10320 | -4 |
 | `references/scope.md` | 8228 | +1049 |
 | `references/boundaries.md` | 19598 | +175 |
 | `skills/epic-update/SKILL.md` | 5618 | +460 |
