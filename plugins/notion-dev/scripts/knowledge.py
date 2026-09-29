@@ -1629,7 +1629,10 @@ def cmd_next(a):
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
     # A met `Done when:` list decides closure, not the child count: nothing is recommended,
     # and every open child outside the goal is listed for re-homing instead.
-    goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved")
+    # A pending spec change vetoes the goal-met form exactly as it vetoes epic-goal's `close`:
+    # the children are re-checked against the changed spec before anything is re-homed.
+    goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved"
+                and not rescope_pending(lines))
     if goal_met:
         # Every open child outside the goal is re-homed, a claimed one included, so this list
         # matches epic-goal's close-time batch exactly; ownership is re-checked live anyway.

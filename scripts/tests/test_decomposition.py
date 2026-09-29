@@ -252,6 +252,16 @@ class KnowledgeGoalTests(unittest.TestCase):
         self.assertEqual(again.returncode, 0, again.stderr)
         self.assertIn("DRIFT: 0", again.stderr)
 
+    def test_a_pending_rescope_suppresses_the_goal_met_form(self):
+        pivot = BRIEF.replace("## Open threads\n", "## Open threads\n- **Re-scope pending** — spec v3 changed "
+                              "the window, 2026-09-20. Unblocked by: task-breakdown re-scope.\n")
+        proc = self.knowledge("next", "--brief", str(self.write("brief.md", pivot)),
+                              "--state", str(self.write("state.json", live_state())), "--today", "2026-09-02")
+        region = proc.stdout.split("## Next\n", 1)[1]
+        self.assertNotIn("goal met", region)
+        self.assertNotIn("Re-home:", region)
+        self.assertIn("1. **[EX-5] Connection audit**", region)
+
     def test_next_without_done_when_is_unchanged(self):
         brief = BRIEF.replace("Done when:\n- [EX-2] resolved\n- [EX-3] resolved\n- [EX-4] verdict recorded\n", "")
         proc = self.knowledge("next", "--brief", str(self.write("brief.md", brief)),
