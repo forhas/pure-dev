@@ -103,6 +103,12 @@ def followup_body(packet, convergence=None):
     for name in ("labels", "surface"):
         require(isinstance(packet.get(name, []), list) and all(isinstance(v, str) and v.strip() for v in packet.get(name, [])),
                 name + " must be a list of nonempty strings")
+    if any(label.casefold() == "meta" for label in packet.get("labels", [])):
+        destination = packet.get("destination")
+        require(destination != "epic", "meta work cannot return to its source epic")
+        if isinstance(destination, str) and destination.startswith("epic:"):
+            require(packet.get("source_epic") and destination != "epic:" + packet["source_epic"],
+                    "meta work needs a known, different destination from its source epic")
     routed = False
     if convergence is not None:
         # With the project's config the destination is computed, not chosen: a routing

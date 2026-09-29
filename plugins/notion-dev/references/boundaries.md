@@ -64,7 +64,9 @@ establish whole-run proportions or rank of bias, nor does admission shedding alo
 safety. Reuse immutable benchmark evidence when correcting prose; do not rerun merely to reword it.
 Any other string fact carrying a figure (a unit, percentage or multiplier) must cite the artifact
 that produced it — `(artifact: test_name)`, a verification receipt, an exported JSON/CSV or a
-generated diff — or rendering fails. Restating a figure in a sentence is not evidence, and the
+generated diff — or, for a defined parameter only, an immediately following `(spec: <section>)`.
+Use configured `figureUnits`; spec citations never substantiate a measured improvement.
+Otherwise rendering fails. Restating a figure in a sentence is not evidence, and the
 combined reviewer audits the artifact references, not the prose around them.
 
 ## Release obligations are one ledger

@@ -100,6 +100,10 @@ The mirror is refreshed only on resolution, so between resolutions it lags reali
 
 **4. Close the epic.** Evaluate against the child list step 3 already fetched — read *after* step 2 filed its follow-ups, so new tickets are in it. Do not re-query.
 
+**Spec changes first.** Apply SKILL.md step 4's current-resolution spec/decision changes in
+memory before evaluation. `recommendation: rescope` vetoes closure and re-home on this path
+too, even when all children resolved; the existing record commit persists the pending thread.
+
 **Goal first.** When the brief has a `Done when:` list, SKILL.md step 4's `knowledge.py
 epic-goal` decides instead of condition 1: `goal: met` replaces "every child resolved" (the
 open non-goal children are re-home candidates, closed over only after the user confirms the

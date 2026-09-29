@@ -68,9 +68,9 @@ Extract every mandatory requirement, constraint, prerequisite and AC into the ru
 as that intake guide specifies; record release-only obligations without treating an
 explicitly optional sign-off branch as a new merge prerequisite. Run `requirements` and `ready`.
 
-**Declared folds.** For a ticket under an epic, run `references/scope.md`'s intake fold scan
-(one search for this key, fetch only its hits, `workflow.py fold-scan`) before planning; absorb
-every declared sibling or record why not.
+**Declared folds.** Follow `references/scope.md`'s pre-plan `workflow.py fold-scan` path:
+scoped discovery, prerequisite checks and approved requirement consolidation; no automatic
+sibling closure or claim that title search covers bodies.
 
 **Premises first.** When the ticket has a `## Premises to verify` section (follow-ups carry one),
 `ready` stays false until each premise is checked against the code, before planning: write

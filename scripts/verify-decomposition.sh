@@ -15,6 +15,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'te
 else
   bad "goal closure, filing rules, verified follow-ups, PR artifacts, premises and rate breaker"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN -m unittest discover -s scripts/tests -p 'test_genericity_recheck.py'; then
+  ok "genericity boundary regressions"
+else
+  bad "genericity boundary regressions"
+fi
 # Each rule is only as real as the helper call the instruction routes to.
 assert_has "epic-update decides closure from the goal helper" \
   $ND/skills/epic-update/SKILL.md 'knowledge.py epic-goal --brief'
@@ -54,4 +59,13 @@ assert_has "a spec change writes the re-scope thread" $ND/skills/epic-doc/refere
 assert_has "record prunes on the token overrun too" $ND/skills/epic-doc/references/record.md 'or over its retrieve-token share'
 assert_has "the brief budget follows the retrieve budget" $ND/skills/epic-doc/references/schedule.md '--retrieve-budget <knowledge.retrieveBudget>'
 assert_has "the config schema declares the convergence knobs" $ND/schema/notion-dev.config.schema.json '"nonGoalDestination"'
+assert_has "fold discovery does not mistake title search for body search" $ND/references/scope.md 'title/property search is NOT body'
+assert_has "folds retain scoped approval" $ND/references/scope.md 'obtain explicit scoped approval'
+assert_has "folds consolidate complete requirements" $ND/references/scope.md 'consolidate ALL requirements/constraints/AC'
+assert_has "current resolution is evaluated before epic closure" $ND/skills/epic-update/SKILL.md 'Before evaluating closure'
+assert_has "pending spec change vetoes closure" $ND/skills/epic-update/SKILL.md 'recommendation: rescope'
+assert_has "legacy filing also obeys spec-change veto" $ND/skills/epic-update/references/with-followups.md 'recommendation: rescope'
+assert_has "closure preserves follow-up routing" $ND/skills/epic-update/SKILL.md 'apply the same label/meta routing'
+assert_has "breakdown scopes shared history" $ND/skills/task-breakdown/SKILL.md 'do not copy the full'
+assert_lacks "file count does not force ticket splitting" $ND/skills/task-breakdown/SKILL.md '>8 files'
 exit $(( fails > 0 ))

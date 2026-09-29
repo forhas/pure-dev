@@ -600,7 +600,7 @@ class GenericityTests(unittest.TestCase):
             recording.followup_body({**packet, "destination": "epic"})  # without config the goal judgment rules
         meta = FollowupPacketTests.packet(self, labels=["meta"], destination="epic",
                                           blocks_goal={"value": "yes", "reason": "tooling"})
-        with self.assertRaisesRegex(ValueError, "destination must be 'backlog'"):
+        with self.assertRaisesRegex(ValueError, "meta.*source epic"):
             recording.followup_body(meta, {})
 
     def test_declared_folds_round_trip_from_packet_to_scan(self):

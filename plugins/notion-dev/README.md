@@ -2,10 +2,19 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.45.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.45.1). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Genericity boundary repairs (0.45.1)
+
+Project references stay inside the project, generated-path counts handle literal Unicode
+Git paths, and meta-work cannot route back to its product epic. Fold scans distinguish
+prerequisites from proposed merges and retain approval/requirement boundaries. Pending spec
+changes veto epic closure. Decomposition follows coherent deliverables, not file counts or
+copied histories. No new config keys, review rounds or mandatory provider scans.
+See [the recheck and client transfer report](../../docs/audits/2026-09-29-notion-dev-genericity.md).
 
 ## Generic convergence (0.45.0)
 
@@ -17,7 +26,7 @@ filing criterion 3 is measured by `workflow.py changed-lines`, excluding `genera
 follow-up's destination is computed from its labels (`destinations`, then meta-work →
 `metaDestination`, then `blocks_goal`), so a finding that gates a launch keeps a parent; and the
 brief budget also counts against `knowledge.retrieveBudget` (`briefRetrieveShare`). New generic
-mechanisms: declared fold targets are absorbed at intake (`workflow.py fold-scan`), follow-ups
+mechanisms: declared fold targets are checked at intake (`workflow.py fold-scan`), follow-ups
 carry `surface`, `Blocked by` and `lands_with`, and a `Re-scope pending` thread written on a spec
 or decision change triggers the re-scope pass. Release vocabulary covers deployments and
 internal consumers. See [scope](references/scope.md). Savings stay unmeasured.
