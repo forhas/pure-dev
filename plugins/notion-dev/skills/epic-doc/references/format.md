@@ -115,5 +115,9 @@ release from this list. A released item is removed at the next `record`.
   the claim wins. Item 1 is never in progress. A stopped run is one thread bullet,
   `- **[<KEY>-<n>] stopped at <phase>** — <cause>; worktree at <path>. Unblocked by: /notion-dev:ticket <KEY>-<n> (resumes).`,
   and its key is `Blocked:` until a `start` removes the bullet.
-- **Budget: `convergence.briefBudget` lines (default 150).** Over it, `record` prunes before it adds: settled decisions and constraints move to knowledge concepts and are linked from the brief, not restated in it. It never prunes a thread that still names an unresolved ticket, a `Done when:` item or an unreleased obligation. `epic-goal` reports `brief.over_budget`.
+- **Budget:** both `convergence.briefBudget` lines (default 150) and `briefRetrieveShare` of
+  `knowledge.retrieveBudget` (estimated from UTF-8 bytes, not a tokenizer guarantee). Over either,
+  `record` prunes settled decisions into linked concepts. It never prunes unresolved threads,
+  `Re-scope pending`, `Done when:` items or undelivered obligations; if protected content alone
+  exceeds budget, report it rather than truncate. `epic-goal` reports `brief.over_budget`.
 - **Human edits are first-class.** A person may edit the file (for example, "logs arrived — STO-22 unblocked") and commit it. `record` applies a diff evidenced by its inputs and preserves every line it has no evidence to change.

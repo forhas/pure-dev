@@ -1629,7 +1629,10 @@ def cmd_next(a):
     inprog, blocked, numbered, first, resolved = derive_next(state, stopped)
     # A met `Done when:` list decides closure, not the child count: nothing is recommended,
     # and every open child outside the goal is listed for re-homing instead.
-    goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved")
+    # A pending spec change vetoes the goal-met form exactly as it vetoes epic-goal's `close`:
+    # the children are re-checked against the changed spec before anything is re-homed.
+    goal_met = (goal_state(lines, state)["goal"] == "met" and state["epic"]["status_class"] != "resolved"
+                and not rescope_pending(lines))
     if goal_met:
         # Every open child outside the goal is re-homed, a claimed one included, so this list
         # matches epic-goal's close-time batch exactly; ownership is re-checked live anyway.
@@ -1868,14 +1871,15 @@ def epic_goal(text, state, log_text=None, window=3, threshold=1.0, budget=BRIEF_
     goal = goal_state(lines, state)
     size = len(normalise_text(text).encode("utf-8"))
     tokens = -(-size // BYTES_PER_TOKEN)
+    pending = rescope_pending(lines)
     result = {**goal, "epic_status": state["epic"]["status_class"],
               "rehome": [{"key": c["key"], "title": c["title"], "status_class": c["status_class"]}
-                         for c in rehome_candidates(state, goal)] if goal["goal"] == "met" else [],
+                         for c in rehome_candidates(state, goal)] if goal["goal"] == "met" and not pending else [],
               "brief": {"lines": len(lines) - (1 if lines and lines[-1] == "" else 0), "budget": budget,
                         "bytes": size, "estimated_tokens": tokens,
                         "token_budget": int(retrieve_budget * retrieve_share)},
               "release": release_ledger(lines, state),
-              "rescope_pending": rescope_pending(lines)}
+              "rescope_pending": pending}
     result["brief"]["over_budget"] = (result["brief"]["lines"] > budget
                                       or tokens > result["brief"]["token_budget"])
     if log_text is not None:

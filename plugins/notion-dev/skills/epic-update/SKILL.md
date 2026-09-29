@@ -39,8 +39,12 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    --log <epic body with this entry's lines> --window <convergence.rateWindow> --threshold
    <convergence.rateThreshold> --budget <convergence.briefBudget> --retrieve-budget
    <knowledge.retrieveBudget> --retrieve-share <convergence.briefRetrieveShare>` (omit a flag whose key
-   is unset) over the live child list from step 3. When this resolution changed the epic's source
-   spec or a recorded decision, epic-doc `record` adds a `Re-scope pending` thread (`record.md` step 2). `goal: met` means **goal-complete**: interactive runs propose closing the epic and
+   is unset) over the live child list from step 3. **Before evaluating closure**, apply any
+   spec/decision change from THIS resolution to an in-memory brief with `Re-scope pending`;
+   epic-doc record persists that same thread in its existing commit. A
+   `recommendation: rescope` vetoes closure and re-home, even with `goal: met` or all children
+   resolved; carry the pending decision, never clear it in ordinary recording. Otherwise
+   `goal: met` means **goal-complete**: interactive runs propose closing the epic and
    the single re-home batch below; non-interactive runs do not close — they record `goal met`
    in the resolution entry, and `## Next` renders the goal-met form so next-task stops
    recommending this epic's children. `open`/`invalid` leave the epic open (report an
@@ -49,9 +53,12 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    complete known review has no unfiled wanted follow-ups and existing log/history has no
    unknown or failed filing obligations. A merge is not a deployment: use the plugin's
    implemented mapping, never a release status. Otherwise leave epic status unchanged and state why.
-   **Re-home on close:** one batch action moves every `rehome` child to the non-goal destination
-   (`convergence.nonGoalDestination`) with a one-line reason each, only after the user confirms
-   the batch. Never delete, merge or drop a ticket without that confirmation.
+   **Re-home on close:** apply the same label/meta routing as filing to each `rehome` child,
+   reusing its verified packet/classification. Unknown labels need an explicit destination
+   decision, not a blanket backlog default. A route back to this epic prevents closure until
+   the user revises the goal or authorizes a suitable gating destination. Present one batch
+   with reasons, only after the user confirms apply it. Never delete, merge or drop a ticket
+   without that confirmation.
 5. Append one dated resolution entry only after those operations are checked. Include ticket,
    PR, absorbed/dropped/blocked outcomes, child counts and
    next blocker or epic complete. Use the established `### [<key>] resolved — <UTC>` shape;

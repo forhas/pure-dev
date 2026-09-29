@@ -18,8 +18,9 @@ Also run `knowledge.py epic-goal --brief <brief> --state <live-state.json> [--lo
 log>] --window <convergence.rateWindow> --threshold <convergence.rateThreshold> --budget
 <convergence.briefBudget> --retrieve-budget <knowledge.retrieveBudget> --retrieve-share
 <convergence.briefRetrieveShare>` (omit a flag only when its key is unset) over the same boundary and return its GOAL, FOLLOWUP_RATE, GENERATION, `rehome`,
-`brief.over_budget`, `rescope_pending` and `release.warnings`. A `goal: met` epic passes `goal_met: true` into the
-select plan, which then returns no candidate.
+`brief.over_budget`, `rescope_pending` and `release.warnings`. Handle `recommendation: rescope`
+before any closure or new selection. Only `recommendation: close` passes `goal_met: true` into
+the select plan, which then returns no candidate.
 Return these references/fields to next-task; schedule does not select or fetch a candidate.
 The caller owns the following selection checks, once: resume an owned unresolved worktree first.
 For new selection run `knowledge.py retrieval-plan --purpose select --state <live-state.json>`

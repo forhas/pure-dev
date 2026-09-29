@@ -603,13 +603,17 @@ def changed_lines(worktree, base, config=None):
     """Filing criterion 3's size: added+deleted lines, minus paths the project declares generated."""
     from scope import is_generated
     globs = read_json(config).get("convergence", {}).get("generatedPaths", []) if config else []
-    out = subprocess.run(["git", "-C", str(worktree), "diff", "--numstat", "--no-renames", base + "...HEAD"],
-                         capture_output=True, encoding="utf-8", check=True).stdout
+    out = subprocess.run(["git", "-C", str(worktree), "diff", "--numstat", "-z", "--no-renames", base + "...HEAD"],
+                         capture_output=True, encoding="utf-8", errors="surrogateescape", check=True).stdout
+    # `-z` paths are raw bytes: decode reversibly so a non-UTF-8 name is still counted, and
+    # escape it only when reported, where strict UTF-8 output would otherwise fail.
     counted, excluded = 0, {}
-    for line in out.splitlines():
+    for line in out.split("\0"):
+        if not line: continue
         added, deleted, path = line.split("\t", 2)
         n = 0 if added == "-" else int(added) + int(deleted)  # binary files carry no line count
-        if is_generated(path, globs): excluded[path] = n
+        if is_generated(path, globs):
+            excluded[path.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")] = n
         else: counted += n
     return {"changed_lines": counted, "excluded_generated": excluded, "generated_paths": globs}
 
@@ -1199,8 +1203,12 @@ def main():
     elif args.command == "fold-scan":
         from scope import fold_declarations
         found = fold_declarations(args.ticket, json_input(args.pages))
-        result = {"declared": found, "instruction": "Absorb each declared sibling into this change (mandatory absorb: sibling) "
-                  "and close it as merged after the merge, or record why not in context.md and the PR. Unattended runs absorb too."}
+        result = {"declared": found, "coverage": "supplied pages only", "instruction":
+                  "Validate live ownership, dependencies and current intent. 'before' is a prerequisite, not a merge. "
+                  "Resolve conflicting declarations; 'with' proposes a merge-into, never authorizes it. "
+                  "Before implementation obtain scoped user approval, consolidate full requirements into the target, "
+                  "then capture/inventory/review it normally. Otherwise record why not or stop; unattended is not authority. "
+                  "No automatic closure or complete-discovery claim; see references/scope.md."}
     elif args.command == "record-capture": result = record_capture(args.state, args.transcript, args.session, args.page, args.call_id)
     elif args.command == "record-build": result = record_build(args.state, args.parent, args.config, args.snapshot, args.spec)
     elif args.command == "record-page": result = record_page(args.state, args.snapshot, args.heading)

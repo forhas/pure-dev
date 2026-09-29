@@ -128,14 +128,23 @@ NEUTRAL_FAILURE_MODES = (
 
 def failure_mode_classes(convergence, project_root):
     """(classes, source): the project's list, its reference file, or the neutral fallback."""
-    import os
+    from pathlib import Path, PurePosixPath
     classes = convergence.get("failureModeClasses")
-    if classes:
+    if "failureModeClasses" in convergence:
+        if not isinstance(classes, list) or not classes or not all(text(c) for c in classes):
+            raise ValueError("failureModeClasses must be a nonempty list of nonempty strings")
         return list(classes), "convergence.failureModeClasses"
     reference = convergence.get("failureModeReference")
-    if reference:
-        path = os.path.join(project_root, reference)
-        with open(path, encoding="utf-8") as stream:
+    if "failureModeReference" in convergence:
+        if (not text(reference) or "\\" in reference or "\0" in reference
+                or re.match(r"^[A-Za-z]:", reference) or PurePosixPath(reference).is_absolute()
+                or ".." in PurePosixPath(reference).parts):
+            raise ValueError("failureModeReference must be a repo-relative path using forward slashes")
+        root = Path(project_root).resolve()
+        path = (root / reference).resolve()
+        if root not in path.parents or not path.is_file():
+            raise ValueError("failureModeReference must resolve to a file inside the project")
+        with path.open(encoding="utf-8") as stream:
             items = [re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", line).strip() for line in stream
                      if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)]
         if not items:
@@ -162,7 +171,7 @@ def route_followup(blocks_goal, labels, convergence):
     for i, rule in enumerate(convergence.get("destinations") or []):
         if any(re.fullmatch(rule["match"], l, re.I) for l in labels):
             return rule["to"], "convergence.destinations[%d] (%s)" % (i, rule["match"])
-    if "meta" in labels:
+    if any(l.casefold() == "meta" for l in labels):
         return convergence.get("metaDestination", "backlog"), "meta-work (tooling, knowledge, plugin) stays off product epics"
     if blocks_goal == "yes":
         return "epic", "blocks the epic goal"
@@ -180,19 +189,27 @@ NEGATION_RE = re.compile(r"\b(?:not|never|no longer|don'?t|doesn'?t|won'?t|shoul
 def fold_declarations(target, pages):
     """Open siblings whose own text declares they belong in `target`'s change.
 
-    A negated phrase ("do not land with X", "must not merge into X") declares the opposite,
-    so it is skipped; any affirmative occurrence in the same text still counts.
+    These are leads, not authority. `land before` is a prerequisite, not a merge.
+    Mixed positive/negative declarations require judgment against current source.
     """
     pattern = re.compile(FOLD_RE.pattern % re.escape(target), re.I)
     found = []
     for page in pages:
         if page.get("key") == target:
             continue
-        text = page.get("text", "")
-        for m in pattern.finditer(text):
-            if not NEGATION_RE.search(text[max(0, m.start() - 40):m.start()]):
-                found.append({"key": page["key"], "excerpt": m.group(0)})
-                break
+        body = page.get("text", "").replace("\\[", "[").replace("\\]", "]")
+        positive, negative = [], False
+        for m in pattern.finditer(body):
+            if NEGATION_RE.search(body[max(0, m.start() - 40):m.start()]):
+                negative = True
+            else:
+                positive.append(m.group(0))
+        if positive:
+            relations = {"before" if re.match(r"lands?\s+before\b|landed\s+before\b", p, re.I)
+                         else "with" for p in positive}
+            found.append({"key": page["key"], "excerpt": positive[0],
+                          "relation": "before" if "before" in relations else "with",
+                          "conflicting": negative or len(relations) > 1})
     return found
 
 

@@ -9,14 +9,24 @@ project file the config names; the plugin ships only neutral fallbacks.
 
 ## Intake: declared fold targets
 
-A ticket that says it belongs in another's change ("fold into X", "land with X", "land before
-X", "merge into X") is part of X's run, attended or not. At intake of X, run one ticket-system
-search for X's key among the epic's open children, fetch only the hits, write them as
-`[{"key": …, "text": …}]` and run `workflow.py fold-scan --ticket <X> --pages <file>`. Each
-declared sibling is absorbed into this change (mandatory-absorb `sibling`) and closed as merged
-after the merge with a link, or `context.md` and the PR record why not (for example, the
-declaration predates a decision that split the work). Follow-ups filed by this plugin carry the
-declaration as `Lands with: [X]` (packet `lands_with`), so the search finds them.
+At intake of X, reuse declared targets in retained follow-up packets, the brief and already
+fetched sources. If the actual provider offers body search, search X once and intersect hits
+with live open epic children; fetch only those candidates. A title/property search is NOT body
+search and an empty result proves nothing about body declarations. Do not invent a search
+operation or fetch every sibling to compensate: report discovery coverage as partial when
+body search is unavailable. Save candidate bodies as `[{"key": …, "text": …}]` and run
+`workflow.py fold-scan --ticket <X> --pages <file>`; its coverage is supplied pages only.
+
+The returned `relation: before` is a prerequisite, not permission to merge. Verify it is
+resolved before starting X, or stop on the dependency. `with` (fold/merge/land with X) proposes
+a `merge-into`; `conflicting: true` requires checking current intent. A regex hit, unattended
+mode or ticket prose does not authorize closing another ticket or ignoring its requirements.
+Check live ownership/dependencies, obtain explicit scoped approval (retained approval may
+suffice), consolidate ALL requirements/constraints/AC into X, then capture and inventory the
+updated authoritative target before implementation. Use task-breakdown's existing re-scope
+path; no multi-id runtime is implied. If a declaration is obsolete, record why in context and
+the PR; if still required but unauthorized, stop and name the decision, including unattended.
+Follow-ups retain `Lands with: [X]` (`lands_with`) as a discovery lead, not automatic authority.
 
 ## Outcome plan
 
@@ -49,11 +59,13 @@ its `reopen_trigger`. Measure criterion 3 with `workflow.py changed-lines --work
 A judgment may carry `labels` (for example a severity, `security`, or `meta`). The follow-up's
 destination is **computed**, never chosen: `workflow.py followup-body --config <primary-config>`
 refuses any other. Routing order: the first `destinations` rule whose `match` fits a label;
-then `meta` (tooling, CI, knowledge-bundle or plugin work found during a product ticket) →
+then `meta` (case-insensitive: tooling, CI, knowledge-bundle or plugin work found during a product ticket) →
 `metaDestination` [backlog], never the product epic; then `blocks_goal: yes` → the epic; else
 `nonGoalDestination` [backlog]. A project that must not lose a class of finding (one that gates
 its launch or release) maps that label to a gating epic with `destinations`; the plugin never
-interprets what a label means. The builder also refuses a requirement that cites no verified
+interprets domain labels. A meta destination must differ from `source_epic`, including when
+a label rule chooses it; a conflicting route fails rather than silently falling back.
+The builder also refuses a requirement that cites no verified
 fact. Packets carry `dependencies` (rendered `## Blocked by`), `surface` (the files or contract
 items it touches) and optional `lands_with`, so the next selection can order and bundle them.
 
@@ -94,8 +106,9 @@ next-task before it selects anything (resuming owned unfinished work still comes
   open, unblocked children, interactive mode offers to merge them into the candidate — one run,
   one worktree, one PR — through task-breakdown's `merge-into` proposal; the absorbed tickets
   are closed as merged, each with a link, only after the user confirms. Non-interactive mode
-  reports the overlap and runs the candidate alone; a sibling that itself declares the fold is
-  absorbed by the intake fold scan above instead. A single run over several ticket ids is not
+  reports the overlap and runs the candidate alone unless a declared dependency or unresolved
+  required fold blocks it. The intake scan above preserves approval and inventory boundaries.
+  A single run over several ticket ids is not
   supported (#86): merge first, or run them one at a time.
 
 ## Bookkeeping

@@ -286,7 +286,7 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^(?![A-Za-z]:)(?!/)(?!\\.\\.(/|$))(?!.*/\\.\\.(/|$))[^\\\\\\u0000]+$",
-            "description": "Repo-relative path of a project file listing its failure-mode classes, one bullet per class. Read only at the design review (workflow.py failure-modes)."
+            "description": "Repo-relative forward-slash path of a dedicated project file listing failure-mode classes, one bullet per class. Must resolve inside the project, including symlinks. Read only at the design stage (workflow.py failure-modes); do not point at a whole general instructions file."
           },
           "figureUnits": {
             "type": "array",
@@ -302,7 +302,7 @@
               "type": "string",
               "minLength": 1
             },
-            "description": "Glob or directory prefixes of generated files (lockfiles, codegen, exported API specs) that workflow.py changed-lines excludes from filing criterion 3's size."
+            "description": "Glob or directory prefixes of generated files (lockfiles, codegen, exported API specs) that workflow.py changed-lines excludes from filing criterion 3's size. Match literal repo-relative Git paths with forward slashes on both platforms, not Git's quoted display names."
           },
           "destinations": {
             "type": "array",
@@ -325,7 +325,7 @@
                 }
               }
             },
-            "description": "Ordered label -> destination rules for filed follow-ups; the first match wins over metaDestination and the blocks_goal routing. Use it so a finding that gates a launch or release keeps a parent instead of landing in the backlog. The plugin never interprets a label."
+            "description": "Ordered label -> destination rules for filed follow-ups; the first match wins over metaDestination and blocks_goal routing, but meta work may never return to its source product epic. A conflicting destination is rejected, not silently rerouted. Domain-label meaning belongs to the project."
           },
           "metaDestination": {
             "type": "string",

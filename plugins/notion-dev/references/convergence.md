@@ -76,6 +76,24 @@ and reduced median total tokens/time. Keep <200K peak context and roughly <1h as
 not achieved measurements. If parent context still dominates, the next measured slice
 is knowledge retrieval and command/stage separation, not weaker completeness checks.
 
+## Genericity recheck (0.45.1)
+
+The 0.44-targeted audit was rechecked against 0.45.0, not reimplemented. Repairs cover
+contained project references, literal Git path accounting, off-epic meta routing, escaped
+fold declarations with explicit prerequisite/approval semantics, and a spec-change veto
+before closure (including the current resolution). Decomposition no longer splits on eight
+files or copies all context into each child. Existing extension points and gates remain.
+
+No config keys, review seats/rounds or base commits are added. Command entrypoints do not
+grow; stage references clarify existing checks. Fold discovery reuses known evidence and
+uses body search only when the actual adapter supports it. It never claims complete coverage
+from title search or compensates with an eager epic-body scan. Native dependency relations
+remain deliberately unused; `Blocked by` is the supported canonical representation.
+
+See `docs/audits/2026-09-29-notion-dev-genericity.md` in the source repository for the
+classification, client recommendations and measured instruction-byte deltas. Tests establish
+mechanisms, not live savings. Validate token/time and search coverage on subsequent real runs.
+
 ## Generic convergence (0.45.0)
 
 **What changed.** A genericity audit against both client projects (an HTTP service and a
@@ -83,12 +101,13 @@ contract system) moved every project-shaped rule of 0.44.0 behind a config key o
 failure-mode classes, figure units and spec citations, generated paths for filing criterion 3,
 label-based follow-up routing (so a launch-gating finding is not un-parented), meta-work off
 product epics, and a brief budget checked against the retrieve budget. Three generic efficiency
-gaps are closed: declared fold targets are absorbed at intake, follow-ups carry their surface and
+gaps are addressed: declared fold targets are checked at intake, follow-ups carry their surface and
 dependencies into the next `## Next`, and a spec or decision change triggers the re-scope pass.
 
 **Cost.** No review seat, round or base commit is added. `references/scope.md` grows ~3.1 KB and
 is loaded only at the stages that need it; the entry points are unchanged. The fold scan adds one
-ticket-system search and fetches only its hits; `failure-modes` and `changed-lines` are local
+capability-dependent body search and fetches only its hits (coverage caveat above);
+`failure-modes` and `changed-lines` are local
 commands. Native dependency relations are not adopted: the ticket-system reference keeps blocking
 order in the `## Blocked by` body section by design, and follow-up dependencies now reach the
 brief at the filing boundary instead.

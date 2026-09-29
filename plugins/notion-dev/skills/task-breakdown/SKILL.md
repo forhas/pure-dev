@@ -51,7 +51,7 @@ The skill is pure analysis. It does no I/O, reads no configuration, calls no ada
 
 ## Decision rules
 
-Default stance: **`single`**. Evidence is required to split. Splitting decisions lifted from BC-Gateway's Minimal-Sufficient-Structure checkpoint — the same heuristics that have been battle-tested in practice.
+Default stance: **`single`**. Evidence of independently deliverable outcomes is required to split.
 
 ### When to return `single`
 
@@ -66,7 +66,9 @@ Any one of these justifies a split:
 
 - Work naturally separates into **≥3 independently deliverable units** that could be reviewed/merged separately.
 - **≥2 units with explicit blocking dependencies** (unit B literally cannot start before unit A's output exists).
-- A single task would touch **>8 files** or become impossible to review as one PR.
+- Independent outcomes need separate review/release boundaries; file count alone never
+  establishes this. Coupled implementation, tests, generated files and docs stay together;
+  use stacked PRs under one ticket when only the review size requires it.
 - Different units affect **substantially different domains or components** and would be worked on by different contributors.
 
 ### Structural tagging — thresholds within mission
@@ -94,7 +96,9 @@ Each task's `body` must be self-contained — an implementer reading only that t
 
 1. Carving the input `## Requirements` into per-task requirements (each task gets its slice).
 2. Carving `## Acceptance Criteria` similarly — each task's AC checklist only covers that task's slice.
-3. Copying the full `## Context` into every task (context applies to all).
+3. Giving each task the relevant context and ALL constraints it must obey. Link shared
+   architecture/history by source and section; do not copy the full `## Context` into every
+   child. A link never replaces an actionable requirement or acceptance criterion.
 4. Distributing `## Open Questions` to the task(s) they affect; questions that span multiple tasks go on the earliest-in-dependency one.
 5. Preserving `## Source` verbatim on every task (same provenance).
 
@@ -113,7 +117,7 @@ Output:
 { kind: "single", title: "Write a unit test for the auth flow", body: <as-is>, type: "Improvement" }
 ```
 
-Reason: one coherent deliverable (a unit-test file), no blockers between happy paths, <8 files.
+Reason: one coherent deliverable with no independently shippable sub-parts.
 
 ### Example B — mission with Phase/Step/Deps
 
@@ -185,7 +189,10 @@ Output one proposal per open child, each with a one-line reason:
 ```
 
 Rules: group children by shared surface first (a follow-up's `## Surface` section names it);
-a child whose text says it folds into or lands with another is `merge-into` that one;
+a current, unambiguous fold/land-with declaration proposes `merge-into` that target;
+`land before` instead declares a prerequisite. Contradictory or stale text requires judgment,
+not automatic merging. Approved merges consolidate all requirements/constraints/criteria into
+the target before its new authoritative capture; declaration text is not approval;
 `merge-into` folds same-surface work (a sibling defect, a reworded message, a stale comment) into
 one ticket so it is one run and one PR; `rehome` moves non-goal work to its computed destination
 (`references/scope.md`: `convergence.destinations`, meta-work, `nonGoalDestination`); `drop` is only for a
