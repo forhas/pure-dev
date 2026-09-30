@@ -148,3 +148,21 @@ jobs:
         env:
           KNOWLEDGE_PY: python
         run: bash scripts/run-verifications.sh
+
+  tag-notion-release:
+    # Implicit success() plus needs: never publish from failed/skipped checks or PRs.
+    needs: [verify, verify-windows, verify-python-floor]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Tag the verified notion-dev version
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/tag-notion-release.py --sha "$RELEASE_SHA" --before "$RELEASE_BEFORE"
