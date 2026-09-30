@@ -29,6 +29,32 @@ Or from a local clone:
 
 Run `/reload-plugins` (or restart Claude Code) after installing.
 
+## notion-dev release tags
+
+After a version-bumping push to `main`, the existing verification workflow publishes
+an annotated `notion-dev-v<version>` tag only after Ubuntu, Windows Git Bash and
+Python 3.8 checks pass. The tag identifies the exact tested push SHA, not a later
+`main` tip. PR runs never publish tags; only the tagging job has write permission.
+
+Rerunning a successful release is safe: an existing tag at the same commit is a
+no-op; a conflicting tag fails and is never moved. A push with no notion-dev changes
+does not create a tag. Changed plugin files require a version bump; versions must
+increase. A batched push tags its final verified version, not intermediate commits.
+The helper requires available history and a normal ancestor-to-descendant push;
+missing history or a force-push boundary fails closed. Retry a failed tagging job
+using the original Actions run after correcting permissions/connectivity.
+
+Clients should use a full commit SHA to fetch code and a separate `PLUGIN_VERSION`
+label. Tags provide discoverability; they do not replace immutable SHA pins.
+Verify the fetched plugin manifest matches the expected version. No GitHub Release
+objects or automatic client upgrades are created by this workflow.
+
+The missing historical versions are not automatically backfilled. This automation
+starts with 0.45.2; 0.45.1 was restored at `0c06798` after its
+[merged-commit CI passed](https://github.com/forhas/pure-dev/actions/runs/36586450346).
+
+Workflow gating follows GitHub's [job dependencies and permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax).
+
 ## Repository layout
 
 ```
