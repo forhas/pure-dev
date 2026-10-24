@@ -128,7 +128,10 @@ def exchange(transcript, session, call_id):
             if not raw.strip():
                 continue
             row = json.loads(raw.decode("utf-8"))
-            if not isinstance(row, dict):
+            # Only user/assistant rows are conversation records. Host metadata rows,
+            # such as 2.1.306+ `api-request-blob` copies of each request's tool blocks,
+            # carry no timestamp; skipping them can only fail closed, never pass.
+            if not isinstance(row, dict) or row.get("type") not in ("user", "assistant"):
                 continue
             message = row.get("message", {})
             if not isinstance(message, dict):
