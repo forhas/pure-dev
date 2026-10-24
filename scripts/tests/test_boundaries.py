@@ -123,6 +123,25 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             host_capture.notion_fetch(self.log(response, offset=1), 'fixture-session', 'actual-1', before=self.clock.stamp()['wall'])
 
+    def test_host_request_mirror_rows_are_not_exchange_records(self):
+        # Claude Code 2.1.306+ also writes each API request's blocks as `api-request-blob`
+        # rows: no timestamp or uuid, and the result's copy lands before its user row.
+        self.new_schema(); self.config(); fetched = runtime.read_json(self.fetch())
+        path = self.log(fetched); call, result = (json.loads(r) for r in path.read_bytes().splitlines())
+        mirror = lambda row: {'type': 'api-request-blob', 'sessionId': row['sessionId'], 'hash': '0' * 64,
+                              'message': copy.deepcopy(row['message'])}
+        stale = mirror(result); stale['message']['content'][0]['content'] = 'request copy, not the record'
+        write = lambda rows: path.write_bytes(b''.join((json.dumps(r) + '\n').encode() for r in rows))
+        write([call, mirror(call), stale, result])
+        value = self.rt.capture_ticket(path, 'fixture-session', 'actual-1', self.repo / '.claude/notion-dev.config.json')
+        self.assertEqual(runtime.read_json(runtime.read_json(self.state)['ticket_source']['response']), fetched)
+        self.assertTrue(Path(value['source']).is_file())
+        write([mirror(call), mirror(result)])
+        with self.assertRaisesRegex(ValueError, 'completed tool exchange'): host_capture.exchange(path, 'fixture-session', 'actual-1')
+        result['type'] = 'assistant'
+        write([call, result])
+        with self.assertRaisesRegex(ValueError, 'record role'): host_capture.exchange(path, 'fixture-session', 'actual-1')
+
     def test_conflicting_or_partial_result_never_becomes_a_receipt(self):
         path = self.log(runtime.read_json(self.fetch()))
         rows = path.read_bytes().splitlines(keepends=True)
