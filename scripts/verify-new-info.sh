@@ -195,6 +195,10 @@ assert_present "record.md: a \`NEW-INFO:\` block, \`NEW-INFO: none\` when empty"
 assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
   fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'
 assert_present "record.md: each hand-off is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" 'closeout `blocked:` item'
+for f in ticket finalize; do
+  assert_has "legacy $f.md reports the \`NEW-INFO:\` block from \`references/record.md\`" "$ND/references/legacy/$f.md" \
+    '- **New info** — the `NEW-INFO:` block, exactly as `${CLAUDE_PLUGIN_ROOT}/references/record.md`'
+done
 
 # ---------------------------------------------------------------------------
 echo "== README and release =="
