@@ -131,9 +131,24 @@ class KnowledgeGoalTests(unittest.TestCase):
         outside = {**live_state(), "external_statuses": {"EX-9": "resolved"}}
         self.assertEqual(self.goal(brief=unknown, state=outside)["goal"], "open",
                          "a resolved dependency outside the epic is not a child goal item")
-        external = BRIEF.replace("- [EX-4] verdict recorded", "- external: customer confirms the fix — open")
-        self.assertEqual(self.goal(brief=external)["goal"], "open")
-        self.assertEqual(self.goal(brief=external.replace("— open", "— met"))["goal"], "met")
+        self.assertEqual(self.goal(brief=unknown.replace("- [EX-9] resolved\n", "- [EX-9] resolved\n"
+                                                         "- external: customer confirms the fix — met\n"))["goal"],
+                         "open", "a met external condition cannot stand in for an open ticket item")
+
+    def test_open_external_condition_never_holds_the_epic_open(self):
+        # Every named child resolved, a sign-off still outstanding: the epic's status is the
+        # implemented mapping, not a release status, so the goal is met and the epic closes.
+        external = BRIEF.replace("- [EX-4] verdict recorded\n", "- [EX-4] verdict recorded\n"
+                                 "- external: release approved by the requester — open\n")
+        result = self.goal(brief=external)
+        self.assertEqual(result["goal"], "met")
+        self.assertEqual(result["recommendation"], "close")
+        self.assertEqual(result["external_open"], ["release approved by the requester"])
+        self.assertEqual(self.goal(brief=external.replace("requester — open", "requester — met"))["external_open"], [])
+        only_external = BRIEF.replace("- [EX-2] resolved\n- [EX-3] resolved\n- [EX-4] verdict recorded\n",
+                                      "- external: release approved by the requester — open\n")
+        self.assertEqual(self.goal(brief=only_external)["goal"], "undefined",
+                         "a list naming no ticket keeps the every-child-resolved rule")
 
     def test_epic_without_done_when_keeps_the_all_children_rule(self):
         brief = BRIEF.replace("Done when:\n- [EX-2] resolved\n- [EX-3] resolved\n- [EX-4] verdict recorded\n", "")

@@ -2,10 +2,20 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.47.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.48.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Epic close on its tickets (0.48.0)
+
+An epic whose `Done when:` tickets are all resolved now moves to `Implemented` even while an
+`external:` line (a customer sign-off, a release, outside evidence) is still `open`. The status
+is the plugin's implemented mapping, never a release state, so an outside condition stays in the
+brief and the resolution entry (`external open: …`) without holding the epic in `In Progress`.
+Previously such an epic could never close: closure is only evaluated when a child resolves, and
+by then every child had. When the goal is met and no open child needs re-homing, the epic closes
+in non-interactive runs too, exactly as an epic without a `Done when:` list does.
 
 ## Cross-epic fact hand-off (0.47.0)
 
@@ -48,9 +58,11 @@ internal consumers. See [scope](references/scope.md). Savings stay unmeasured.
 
 ## Epic convergence (0.44.0)
 
-Small epics stop expanding. A brief's `## Goal` may carry a `Done when:` list; when it holds the
-epic is goal-complete (`knowledge.py epic-goal`), `## Next` stops recommending children and the
-open ones are offered as one user-confirmed re-home batch. Every filed follow-up states
+Small epics stop expanding. A brief's `## Goal` may carry a `Done when:` list; when its ticket
+items hold the epic is goal-complete (`knowledge.py epic-goal`), `## Next` stops recommending
+children and the open ones are offered as one user-confirmed re-home batch. An `external:`
+condition (a sign-off, a release) is recorded but never holds the epic short of `Implemented`:
+a merge is not a deployment. Every filed follow-up states
 `blocks_goal`; non-goal work goes to `convergence.nonGoalDestination` (default backlog), not the
 epic. `judge-findings` refuses filing a ticket's own gap, a sibling instance, docs of changed
 code or same-epic rework, and requires a real size threshold for "too large". Follow-ups

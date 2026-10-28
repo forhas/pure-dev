@@ -1745,10 +1745,15 @@ def done_when(lines):
 
 
 def goal_state(lines, state):
-    """met | open | undefined (no Done when list) | invalid. Unknown is never met."""
+    """met | open | undefined (no ticket item) | invalid. Unknown is never met.
+
+    Only ticket items gate: the epic's status is the plugin's implemented mapping, and a merge
+    is not a deployment, so an `external:` condition (a sign-off, a release, evidence from
+    outside) is reported in `external_open` and never holds the epic open. A list naming no
+    ticket is `undefined`, which keeps the every-child-resolved rule."""
     items, errors = done_when(lines)
     if items is None:
-        return {"goal": "undefined", "done_when": [], "errors": []}
+        return {"goal": "undefined", "done_when": [], "errors": [], "external_open": []}
     by_key = {c["key"]: c["status_class"] for c in state["children"]}
     for item in items:
         if item["kind"] == "ticket":
@@ -1760,8 +1765,11 @@ def goal_state(lines, state):
             item["satisfied"] = item["status"] == "resolved"
         else:
             item["satisfied"] = item["state"] == "met"
-    goal = "invalid" if errors else ("met" if all(i["satisfied"] for i in items) else "open")
-    return {"goal": goal, "done_when": items, "errors": errors}
+    tickets = [i for i in items if i["kind"] == "ticket"]
+    goal = ("invalid" if errors else "undefined" if not tickets else
+            "met" if all(i["satisfied"] for i in tickets) else "open")
+    return {"goal": goal, "done_when": items, "errors": errors,
+            "external_open": [i["condition"] for i in items if i["kind"] == "external" and not i["satisfied"]]}
 
 
 def rehome_candidates(state, goal):
