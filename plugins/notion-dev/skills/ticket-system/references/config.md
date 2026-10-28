@@ -33,13 +33,13 @@ done        → "Done"
 cancelled   → "Cancelled"
 ```
 
-The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation, on the ticket and — through `startEpic` — on its epic) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
+The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation, on the ticket and — through `startEpic` — on its epic; `epic-update` also calls `startEpic` at recording time to repair an open epic) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
 
 ### Resolved set
 
 The **resolved set** is the collection of live Notion option names produced by `statusMap.implemented`, `statusMap.done`, and `statusMap.cancelled`. A ticket counts as resolved when its status matches any member, case-insensitively.
 
-Used by exactly three things: the epic-close check (in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3 — the same check, run from both entry points), ticking the checkboxes in an epic's `## Tasks` section, and `startEpic`'s refusal to reopen a resolved epic.
+Used wherever a ticket's or epic's resolution is decided — among them the epic-close check (in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3 — the same check, run from both entry points), ticking the checkboxes in an epic's `## Tasks` section, and `startEpic`'s refusal to reopen a resolved epic.
 
 A missing `done` or `cancelled` key falls back to its default option name. If that option does not exist on the live DB it simply never matches — a status the plugin has not been told about is not resolved, so the epic does not auto-close. Wrong in the safe direction.
 
