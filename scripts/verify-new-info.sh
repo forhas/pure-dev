@@ -189,12 +189,17 @@ assert_has "signature registry has the \`partial:new-info\` row" "$SIG" '| `part
 echo "== ticket runs hand cross-epic facts to the user =="
 # ---------------------------------------------------------------------------
 REC=$ND/references/record.md; LR=$(total_lines "$REC")
-CF=$(find_line "$REC" 1 "$LR" '^\*\*Cross-epic facts\.\*\*'); CE=$(find_line "$REC" "$CF" "$LR" '^Release the lock\.')
-assert_present "record.md: never invoke \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" '^never invoke `/notion-dev:new-info`, and never write'
-assert_present "record.md: a \`NEW-INFO:\` block, \`NEW-INFO: none\` when empty" "$REC" "$CF" "$CE" 'one `NEW-INFO:` block, `NEW-INFO: none` when empty'
-assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
-  fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'
-assert_present "record.md: each hand-off is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" 'closeout `blocked:` item'
+CF=$(find_line "$REC" 1 "$LR" '^\*\*Cross-epic facts\.\*\*'); CE=""
+[ -n "$CF" ] && CE=$(find_line "$REC" "$CF" "$LR" '^Release the lock\.')
+if [ -n "$CF" ] && [ -n "$CE" ]; then
+  assert_present "record.md: never invoke \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" '^never invoke `/notion-dev:new-info`, and never write'
+  assert_present "record.md: a \`NEW-INFO:\` block, \`NEW-INFO: none\` when empty" "$REC" "$CF" "$CE" 'one `NEW-INFO:` block, `NEW-INFO: none` when empty'
+  assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
+    fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'
+  assert_present "record.md: each hand-off is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" 'closeout `blocked:` item'
+else
+  bad "record.md: could not locate the \`**Cross-epic facts.**\` section that new-info.md and the legacy reports cite"
+fi
 for f in ticket finalize; do
   assert_has "legacy $f.md reports the \`NEW-INFO:\` block from \`references/record.md\`" "$ND/references/legacy/$f.md" \
     '- **New info** — the `NEW-INFO:` block, exactly as `${CLAUDE_PLUGIN_ROOT}/references/record.md`'
