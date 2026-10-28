@@ -201,6 +201,7 @@ Read values from config: `git.baseBranch`. The branch-name parser in the preambl
 Mark the ticket as started — invoke `notion-dev:ticket-system`:
 
 - `updateStatus(id, "inProgress")` — the ticket now stays in "In Progress" through triage, planning, implementation, and PR review. The plugin does not flip it to a further state until Phase 8. Idempotent on resume (re-running on an existing worktree is safe).
+- `startEpic(id)` — moves the ticket's epic container to "In Progress" with its first started child. Idempotent; a `resolved` result or a failure is reported, never a stop.
 
 **Mark the brief — the `start` section.** When the ticket has an epic (`metadata.parentTaskProperty` non-empty) **and Phase 1.1's `read` did not report `BOOTSTRAP: true`**, from `$REPO_ROOT`:
 

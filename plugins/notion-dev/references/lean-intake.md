@@ -125,6 +125,8 @@ examples as needed; missing ignored config/services are environment gaps, not co
 Do not copy secrets into logs or commit runtime artifacts.
 
 Through ticket-system set `inProgress` and the started/branch record; use configured mappings.
+Then run `startEpic(id)` so the epic leaves Backlog with its first started child; report a
+`resolved` or failed result rather than stopping.
 For an epic, refresh its start brief under the existing `knowledge.py lock` start section,
 passing `LOCK_HELD: true`; release afterwards. Resolve interactive choices before taking locks.
 Use the lifecycle retrieval planner inline; do not dispatch another epic/dependency agent.

@@ -2,10 +2,17 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.45.3). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.46.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Epic start status (0.46.0)
+
+Starting a child ticket now also moves its Epic container to `In Progress` (ticket-system
+`startEpic`), so an epic no longer sits in `Backlog` while its children are being worked. A
+resolution that leaves the epic open repairs one an earlier start left behind. An epic already
+in the resolved set is never reopened; the run reports it instead.
 
 ## Genericity boundary repairs (0.45.1)
 
@@ -479,7 +486,7 @@ Repeat problems are deduplicated: the same issue collapses to one entry with an 
 - Optional: `Creation Date` (Date, or a `Created time` property) — set when a ticket is created.
 - Optional: `Parent task` (self-referential Relation) — links a ticket to its Epic container. Required for Epics; without it — or with a same-named column that is **not a self-referential Relation**, which behaves identically (this includes a Relation pointing at a *different* database: the right type, still unusable) — Epic grouping degrades to the `Epic` select tag alone.
 - Optional: `Is Epic` (Checkbox) — set automatically by `/notion-dev:create-task` (via `createEpic`) on the container page it creates; never set by hand. This is the **only** thing that makes a page an Epic — carrying an `Epic` select value, or having children, is not enough. Required for Epics; without it — or with a same-named column of any other type, which behaves identically — epics cannot be identified at all and Epic grouping degrades to the `Epic` select tag alone. It must be a **Checkbox**. `/notion-dev:init` reports Epic containers unavailable when no correctly-typed checkbox could be bound at all; if it binds a differently-named checkbox instead, **the marker slot resolves normally** and the mistyped `Is Epic` column is reported as a note. (Epic containers being available needs both slots — the marker *and* `Parent task` — so a resolved marker alone does not settle it.)
-- Status options: `Backlog`, `In Progress`, `Implemented`. (The plugin only ever sets `In Progress` and `Implemented`; add `Delivered` or other shipped states yourself if you run a release flow — the plugin doesn't manage them. It *reads* `Done` and `Cancelled` for the Epic-close check — see `statusMap` above.)
+- Status options: `Backlog`, `In Progress`, `Implemented`. (The plugin only ever sets `In Progress` — on a started ticket and on its Epic — and `Implemented`; add `Delivered` or other shipped states yourself if you run a release flow — the plugin doesn't manage them. It *reads* `Done` and `Cancelled` for the Epic-close check — see `statusMap` above.)
 - Type options: `Feature`, `Bug`, `Improvement`, `Research`.
 
 ## Epics

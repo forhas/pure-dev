@@ -23,7 +23,7 @@ shape details for uncommon callers live in `references/operations.md` (on demand
 | findEpics | `references/find-epics.md` |
 | getEpicContext | `references/epic-context.md` |
 | listEpicChildren | `references/list-children.md` |
-| updateTicket / updateStatus / setPullRequest / postComment / upsertSection / appendToSection / refreshAcceptanceCriteria | `references/write-ops.md` |
+| updateTicket / updateStatus / startEpic / setPullRequest / postComment / upsertSection / appendToSection / refreshAcceptanceCriteria | `references/write-ops.md` |
 | createTicket / createEpic / resolveAssignee / setDependencies / setParent / refreshEpicTasks / getSelectOptions / addSelectOption | `references/create-ops.md` |
 
 Read `references/query.md` before a data-source query (not needed for a direct page fetch).
