@@ -39,7 +39,7 @@ The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at
 
 The **resolved set** is the collection of live Notion option names produced by `statusMap.implemented`, `statusMap.done`, and `statusMap.cancelled`. A ticket counts as resolved when its status matches any member, case-insensitively.
 
-Used by exactly two things: the epic-close check (in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3 — the same check, run from both entry points), and ticking the checkboxes in an epic's `## Tasks` section.
+Used by exactly three things: the epic-close check (in `/notion-dev:ticket` Phase 8 and `/notion-dev:finalize` Phase 3 — the same check, run from both entry points), ticking the checkboxes in an epic's `## Tasks` section, and `startEpic`'s refusal to reopen a resolved epic.
 
 A missing `done` or `cancelled` key falls back to its default option name. If that option does not exist on the live DB it simply never matches — a status the plugin has not been told about is not resolved, so the epic does not auto-close. Wrong in the safe direction.
 
