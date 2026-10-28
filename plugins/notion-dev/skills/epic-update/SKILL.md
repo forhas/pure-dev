@@ -72,8 +72,8 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    When the approved path filed/deduped items, also include **Follow-ups filed** (goal-blocking
    children) and **Follow-ups filed outside the goal** (`blocks_goal: no`, with destination)
    with actual URLs; epic-goal's follow-up rate counts only the first. With a `Done when:` list
-   add **Goal** — `met` or `open: <unsatisfied ticket items>`, then `; external open:
-   <external_open>` when that list is non-empty.
+   add **Goal** — `met`, `open: <unsatisfied ticket items>`, or `undefined` (a list naming no
+   ticket), then `; external open: <external_open>` when that list is non-empty.
    If that path failed or its outcome is unknown, retain the packet identity and failure explicitly;
    never write a complete resolution or close the epic while a wanted filing is unresolved.
    Journal each provider mutation under the caller's operation when
