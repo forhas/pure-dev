@@ -25,6 +25,12 @@ assert_has "epic-update decides closure from the goal helper" \
   $ND/skills/epic-update/SKILL.md 'knowledge.py epic-goal --brief'
 assert_has "re-home needs the user's confirmation" \
   $ND/skills/epic-update/SKILL.md 'only after the user confirms'
+assert_has "an open external line is reported, not gating: only ticket items gate" \
+  $ND/skills/epic-update/SKILL.md 'Only ticket items gate it'
+assert_has "goal met with an empty rehome list closes in either mode" \
+  $ND/skills/epic-update/SKILL.md 'With an empty `rehome` list, close'
+assert_has "the resolution entry records external_open" \
+  $ND/skills/epic-update/SKILL.md '<external_open>'
 assert_has "the resolution entry separates non-goal follow-ups" \
   $ND/skills/epic-update/references/with-followups.md '**Follow-ups filed outside the goal** —'
 assert_has "approved follow-ups route non-goal work off the epic" \

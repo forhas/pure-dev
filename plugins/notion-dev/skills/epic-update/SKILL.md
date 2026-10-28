@@ -44,11 +44,15 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    epic-doc record persists that same thread in its existing commit. A
    `recommendation: rescope` vetoes closure and re-home, even with `goal: met` or all children
    resolved; carry the pending decision, never clear it in ordinary recording. Otherwise
-   `goal: met` means **goal-complete**: interactive runs propose closing the epic and
+   `goal: met` means **goal-complete**. Only ticket items gate it: an open `external:` line
+   (a sign-off, a release, outside evidence) is listed in `external_open`, recorded, and never
+   holds the epic open. With an empty `rehome` list, close exactly as the fallback does, in
+   either mode. With children to re-home, interactive runs propose closing the epic and
    the single re-home batch below; non-interactive runs do not close — they record `goal met`
    in the resolution entry, and `## Next` renders the goal-met form so next-task stops
    recommending this epic's children. `open`/`invalid` leave the epic open (report an
-   `invalid` list as an open thread to repair). `undefined` (no `Done when:` list) keeps the
+   `invalid` list as an open thread to repair). `undefined` (no `Done when:` list, or one
+   naming no ticket) keeps the
    fallback: close only when every child is in the configured resolved set. In every case the
    complete known review has no unfiled wanted follow-ups and existing log/history has no
    unknown or failed filing obligations. A merge is not a deployment: use the plugin's
@@ -68,7 +72,8 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    When the approved path filed/deduped items, also include **Follow-ups filed** (goal-blocking
    children) and **Follow-ups filed outside the goal** (`blocks_goal: no`, with destination)
    with actual URLs; epic-goal's follow-up rate counts only the first. With a `Done when:` list
-   add **Goal** — `met` or `open: <unsatisfied items>`.
+   add **Goal** — `met` or `open: <unsatisfied ticket items>`, then `; external open:
+   <external_open>` when that list is non-empty.
    If that path failed or its outcome is unknown, retain the packet identity and failure explicitly;
    never write a complete resolution or close the epic while a wanted filing is unresolved.
    Journal each provider mutation under the caller's operation when

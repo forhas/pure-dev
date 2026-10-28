@@ -77,7 +77,11 @@ The `Seeded from` line exists only on a brief distilled from a pre-existing hand
 **`Done when:` decides closure.** The optional list under `## Goal` names each child ticket with
 its required state (`resolved`, or `verdict recorded` for a build-or-drop decision — both read
 the live resolved set) or a named external condition marked `met`/`open` by a human.
-`knowledge.py epic-goal` evaluates it; an unknown ticket or an unparsed item is never met. When
+`knowledge.py epic-goal` evaluates it; an unknown ticket or an unparsed item is never met. Only
+the ticket items gate closure: the epic's status is the implemented mapping, and a merge is not
+a deployment, so an `external:` line records what still waits outside the plugin (a sign-off, a
+release) and never holds the epic open — `epic-goal` lists the open ones as `external_open`. A
+list naming no ticket gates nothing and keeps the every-child-resolved rule. When
 it holds the epic is **goal-complete** and the `## Next` body is, instead of a numbered list,
 the goal-met line and a `Re-home:` list of every other open child, one per line — a claimed one included, so
 it matches `epic-goal`'s close-time re-home batch:
