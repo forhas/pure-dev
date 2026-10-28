@@ -190,7 +190,7 @@ echo "== ticket runs hand cross-epic facts to the user =="
 # ---------------------------------------------------------------------------
 REC=$ND/references/record.md; LR=$(total_lines "$REC")
 CF=$(find_line "$REC" 1 "$LR" '^\*\*Cross-epic facts\.\*\*'); CE=$(find_line "$REC" "$CF" "$LR" '^Release the lock\.')
-assert_present "record.md: never invoke \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" '^invoke `/notion-dev:new-info` and never write'
+assert_present "record.md: never invoke \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" '^never invoke `/notion-dev:new-info`, and never write'
 assert_present "record.md: a \`NEW-INFO:\` block, \`NEW-INFO: none\` when empty" "$REC" "$CF" "$CE" 'one `NEW-INFO:` block, `NEW-INFO: none` when empty'
 assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
   fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'

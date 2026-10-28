@@ -242,9 +242,9 @@ with real plan-review metrics only if that review ran. Sweep unexpected issues o
 Runtime summary is the canonical operational measurement; do not ask another model to tally it.
 
 **Cross-epic facts.** A fact this run established that changes an epic other than this
-ticket's (the ticket's own epic is recorded above) is handed to the user, never routed: never
-invoke `/notion-dev:new-info` and never write another epic's brief or Notion page. Hand off only
-a fact with evidence; an inference without any stays in context.md. The final report carries
+ticket's (the ticket's own epic is recorded above) is handed to the user, never routed:
+never invoke `/notion-dev:new-info`, and never write another epic's brief or Notion page. Hand
+off only a fact with evidence; an inference without any stays in context.md. The final report carries
 one `NEW-INFO:` block, `NEW-INFO: none` when empty, otherwise per fact:
 
 ```
