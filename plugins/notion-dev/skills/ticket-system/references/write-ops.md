@@ -42,7 +42,8 @@ whenever a resolution leaves the epic open. Idempotent; the single owner of this
    resolved status; the caller reports it so the user decides whether to reopen it.
 4. Otherwise `updateStatus(<parent>, "inProgress")`, re-read the status, return `started`.
 
-A failure is reported with its cause and never stops the ticket run.
+A failure is reported with its cause and never stops the ticket run — except the project-scope
+hard abort either `fetchTicket` raises, which aborts here exactly as everywhere else.
 
 ## setPullRequest(id, url)
 
