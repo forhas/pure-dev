@@ -52,7 +52,8 @@ A missing report is not an empty FILED list and cannot authorize epic closure.
    fallback: close only when every child is in the configured resolved set. In every case the
    complete known review has no unfiled wanted follow-ups and existing log/history has no
    unknown or failed filing obligations. A merge is not a deployment: use the plugin's
-   implemented mapping, never a release status. Otherwise leave epic status unchanged and state why.
+   implemented mapping, never a release status. Otherwise do not close; state why, and run
+   ticket-system `startEpic(<ticket id>)` so an epic left in Backlog by an earlier start is repaired.
    **Re-home on close:** apply the same label/meta routing as filing to each `rehome` child,
    reusing its verified packet/classification. Unknown labels need an explicit destination
    decision, not a blanket backlog default. A route back to this epic prevents closure until

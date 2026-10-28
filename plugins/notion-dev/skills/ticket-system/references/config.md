@@ -33,7 +33,7 @@ done        → "Done"
 cancelled   → "Cancelled"
 ```
 
-The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
+The plugin actively **writes** only `inProgress` (set by `/notion-dev:ticket` at worktree creation, on the ticket and — through `startEpic` — on its epic) and `implemented` (set by `/notion-dev:finalize` post-merge). `done` and `cancelled` are **read-only**: they exist so the epic-close check knows which of the DB's Status options mean resolved. No plugin command ever transitions a ticket into them — that is deliberately out of scope, and release/deployment semantics belong to the host project.
 
 ### Resolved set
 

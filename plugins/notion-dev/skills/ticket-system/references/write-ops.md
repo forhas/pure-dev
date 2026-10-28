@@ -28,6 +28,22 @@ Read before the first write. `updateTicket`, `updateStatus`, `setPullRequest`, `
 2. `fetchTicket(id)` to get the `pageId`.
 3. Call `mcp__notion__notion-update-page` setting the `statusProperty` select to the resolved option.
 
+## startEpic(id)
+
+Moves the epic container of ticket `id` to `inProgress` once work under it has started. Called
+right after the ticket's own `updateStatus(id, "inProgress")`, and by `epic-update` as a repair
+whenever a resolution leaves the epic open. Idempotent; the single owner of this rule.
+
+1. `fetchTicket(id)`. Empty `metadata.parentTaskProperty` → return `no-epic`.
+2. `fetchTicket(<parent>)`. Not an epic container (its own parent non-empty, or its marker
+   `false`) → return `not-an-epic` and write nothing — never move an arbitrary parent ticket.
+3. Its live status equals `statusMap.inProgress` → return `unchanged`. Its live status is in the
+   resolved set → return `resolved` and write nothing: the plugin never moves an epic out of a
+   resolved status; the caller reports it so the user decides whether to reopen it.
+4. Otherwise `updateStatus(<parent>, "inProgress")`, re-read the status, return `started`.
+
+A failure is reported with its cause and never stops the ticket run.
+
 ## setPullRequest(id, url)
 
 1. `fetchTicket(id)` to resolve `pageId`.
