@@ -241,6 +241,22 @@ Append the existing ledger's outcome once per invocation (read prior event/sessi
 with real plan-review metrics only if that review ran. Sweep unexpected issues once.
 Runtime summary is the canonical operational measurement; do not ask another model to tally it.
 
+**Cross-epic facts.** A fact this run established that changes an epic other than this
+ticket's (the ticket's own epic is recorded above) is handed to the user, never routed:
+never invoke `/notion-dev:new-info`, and never write another epic's brief or Notion page. Hand
+off only a fact with evidence; an inference without any stays in context.md. The final report carries
+one `NEW-INFO:` block, `NEW-INFO: none` when empty, otherwise per fact:
+
+```
+- fact: <one sentence, exactly as it would be routed>
+  evidence: <command and output | file:line | external source>
+  epics: <KEY>-<n>[, …] | unknown
+  run: /notion-dev:new-info "<fact>" [--epic <KEY>-<n>]…
+```
+
+Omit `--epic` when epics is `unknown`. Each one is a closeout `blocked:` item awaiting the
+user's confirmation, unblocked by running its `run:` line.
+
 Release the lock. Caller performs workspace closeout over the finished report and owned
 artifacts. Report merge success separately from partial recording, preserving exact unknown/
 failed operations and recovery command. Only fully reconciled required record operations permit

@@ -2,10 +2,18 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.46.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.47.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Cross-epic fact hand-off (0.47.0)
+
+`/notion-dev:new-info` stays user-invoked: it writes to every affected epic and the bundle is
+read as true until superseded, so a fact a session inferred must not reach every brief
+unconfirmed. A ticket or finalize run now ends its report with a `NEW-INFO:` block instead —
+each fact it established about another epic, with its evidence and the exact
+`/notion-dev:new-info` command to run — and its closeout lists each one as awaiting you.
 
 ## Epic start status (0.46.0)
 

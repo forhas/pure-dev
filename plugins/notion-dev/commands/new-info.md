@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /notion-dev:new-info
 
-Takes one fact — "the customer deployed v1.4.2 on 2026-09-14" — reads every epic brief (`notion-dev:epic-doc`), decides per epic whether and how the fact changes it, applies exactly that change, commits it to the epic branch, tells the Notion epic and the tickets the fact unblocked, and reports what it did and what it skipped. A fact is something a person knows; nothing in the plugin has one to route, which is why this command is user-invoked only.
+Takes one fact — "the customer deployed v1.4.2 on 2026-09-14" — reads every epic brief (`notion-dev:epic-doc`), decides per epic whether and how the fact changes it, applies exactly that change, commits it to the epic branch, tells the Notion epic and the tickets the fact unblocked, and reports what it did and what it skipped. It is user-invoked only, though a ticket run does discover facts, for two reasons. First, its reach: it writes to every affected epic, not the one a ticket run is scoped to, by direct commit to the epic branch unless `--pr`, plus Notion notes and ticket comments. Second, provenance: later runs read the bundle as true until superseded, so a fact a session inferred mid-ticket would land in every brief unconfirmed. A ticket run hands a candidate fact to the user instead (`references/record.md`, "Cross-epic facts"); a person running this command is the confirmation.
 
 Args: `<information> [--epic <id>]… [--non-interactive] [--pr]`
 
