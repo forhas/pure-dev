@@ -2,10 +2,19 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.48.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.49.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Several facts per new-info (0.49.0)
+
+`/notion-dev:new-info` now takes several facts in one prompt. Claude Code expands only the
+command that opens a prompt, so a second `/notion-dev:new-info` line used to be swallowed into
+the first fact. Each such line now starts a new fact: the facts run in order as one run, each
+judged against the briefs the one before it changed, each with its own `--epic` scope, under one
+lock, one report and (with `--pr`) one pull request. Pasting several `NEW-INFO:` hand-off `run:`
+lines into one prompt therefore works as written.
 
 ## Epic close on its tickets (0.48.0)
 
@@ -383,7 +392,7 @@ Then:
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: intake/readiness → worktree → cohesive implementation → verify → PR → external + combined independent review → merge → journaled record. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
 | `/notion-dev:next-task <epic-id>` | Drive an epic from its markdown brief: read `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket, run `/notion-dev:ticket` on it, re-read, repeat. Flags: `--depth all|N` (default 1), `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. So it can chain into `/notion-dev:ticket`, that command is no longer marked user-only in its frontmatter; its body carries an invocation guard instead. |
-| `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). |
+| `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). Several facts in one prompt: start each further one on its own line with `/notion-dev:new-info` — they run in order as one run, each with its own `--epic` scope. |
 | `/notion-dev:knowledge capture <ticket-id> <merge-sha> \| migrate [--apply] \| curate` | Person-invoked knowledge-bundle maintenance. `capture` re-runs by hand the post-merge write a ticket run skipped or failed; `migrate` moves an existing client bundle onto the plugin's schema (prints the diff, `--apply` to write, then a removal checklist); `curate` walks near-duplicate concepts and supersedes the losers, one `AskUserQuestion` per cluster. Reading the bundle happens automatically inside `/notion-dev:ticket`, not through this command. |
 
 `--non-interactive` means two things, not one: the run never **asks** you anything, and it never

@@ -255,7 +255,8 @@ one `NEW-INFO:` block, `NEW-INFO: none` when empty, otherwise per fact:
 ```
 
 Omit `--epic` when epics is `unknown`. Each one is a closeout `blocked:` item awaiting the
-user's confirmation, unblocked by running its `run:` line.
+user's confirmation, unblocked by running its `run:` line. Several `run:` lines pasted into
+one prompt run as one `/notion-dev:new-info` invocation, in order.
 
 Release the lock. Caller performs workspace closeout over the finished report and owned
 artifacts. Report merge success separately from partial recording, preserving exact unknown/
