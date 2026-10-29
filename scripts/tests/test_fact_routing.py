@@ -215,6 +215,17 @@ class FactRoutingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "one accepted fact-check"):
             workflow.fact_route(str(self.state), "forged", "none", True, str(self.root / "route.json"))
 
+    def test_a_failed_check_gets_one_replacement(self):
+        # Discarding a valid but unwelcome verdict as invalid buys exactly one more attempt.
+        for attempt in range(2):
+            key = self.rt.prepare("fact-check", {"facts": str(self.facts_file())})["worker"]
+            self.rt.attach(key, "agent-" + str(attempt))
+            self.rt.publish(key, {"report": "checked", "facts": [check("F1", verdict="unsupported"), check("F2")]})
+            self.rt.consume(key)
+            self.rt.end_worker(key, "rejected", confirmed=True, invalid_result=True)
+        with self.assertRaisesRegex(ValueError, "attempt budget exhausted"):
+            self.rt.prepare("fact-check", {"facts": str(self.facts_file())})
+
     def test_one_route_per_run(self):
         key = self.checked([check("F1"), check("F2", source="human")])
         output, first = self.route(key)

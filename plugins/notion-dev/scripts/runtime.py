@@ -891,10 +891,13 @@ class Runtime:
             # Schema 3-4 runs carry contract version 3; an in-flight older run keeps its own
             # protocol and hands every fact off, so the gate is the schema, not the contract.
             require(role != "fact-check" or state["schema"] >= 5, "fact-check requires a schema-5 run")
-            # One accepted check per run: a second one would let a caller pick the verdict it likes.
+            # One accepted check per run, and one replacement for a failed one: otherwise a caller
+            # could discard verdicts it dislikes until it is handed one it likes.
             require(role != "fact-check" or not any(w["role"] == "fact-check" and w.get("accepted")
                                                     for w in state["workers"].values()),
                     "this run's facts were already checked; one accepted fact-check per run")
+            require(role != "fact-check" or sum(w["role"] == "fact-check" for w in state["workers"].values()) < 2,
+                    "fact-check attempt budget exhausted (one replacement); hand the facts off")
             require(role != "completeness" or state["schema"] < 5 or state.get("review_inputs"),
                     "schema 5 completeness requires bound typed review inputs; use workflow review-inputs/review-prepare")
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
@@ -979,8 +982,8 @@ class Runtime:
                 require(digest(saved) == source["sha256"], "input changed during preparation")
                 source["snapshot"] = str(saved)
             inventory_path = directory / "requirements.json"
-            # The fact checker's independence is its whole value: it gets the facts and
-            # nothing of this ticket, so a requirement asserting an outcome cannot steer it.
+            # The fact checker's independence is its whole value: its packet carries the facts
+            # and nothing of this ticket, so no requirement asserting an outcome is handed to it.
             atomic_json(inventory_path, None if facts is not None else state["requirements"])
             input_bytes = sum(Path(s["path"]).stat().st_size for s in snapshots.values())
             inventory = {"path": str(inventory_path), "sha256": digest(inventory_path)}
