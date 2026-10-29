@@ -51,8 +51,8 @@ source or citation outside the contract.
 one nudge, outlives its timeout, or its result is rejected and one replacement fails the
 same way — end it (`end-worker`), hand off **every** fact with reason
 `check unavailable — <cause>`, and record `partial:fact-routing` per `notion-dev:issue-log`.
-`prepare` refuses a third attempt, and any attempt once one is accepted, so a verdict cannot
-be shopped for.
+`prepare` refuses a third attempt, and any attempt once one is accepted: the one replacement a
+genuine failure needs is the only second opinion a run can get.
 Never check the facts yourself instead: you established them, so that verifies nothing.
 
 ## 3. Decide
