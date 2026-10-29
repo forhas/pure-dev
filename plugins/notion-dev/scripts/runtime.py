@@ -972,11 +972,14 @@ class Runtime:
                 require(digest(saved) == source["sha256"], "input changed during preparation")
                 source["snapshot"] = str(saved)
             inventory_path = directory / "requirements.json"
-            atomic_json(inventory_path, state["requirements"])
+            # The fact checker's independence is its whole value: it gets the facts and
+            # nothing of this ticket, so a requirement asserting an outcome cannot steer it.
+            atomic_json(inventory_path, None if facts is not None else state["requirements"])
             input_bytes = sum(Path(s["path"]).stat().st_size for s in snapshots.values())
-            packet = {"worker": key, "role": role, "slot": slot, "revision": current,
-                      "inputs": snapshots, "requirements": {"path": str(inventory_path),
-                      "sha256": digest(inventory_path)}}
+            inventory = {"path": str(inventory_path), "sha256": digest(inventory_path)}
+            packet = {"worker": key, "role": role, "slot": slot, "revision": current, "inputs": snapshots}
+            if facts is None:
+                packet["requirements"] = inventory
             if verification_ids:
                 packet["verification_evidence"] = {
                     "input": "verification_receipts",
@@ -1041,9 +1044,9 @@ class Runtime:
                       "files": snapshots, "revision": current, "result": None,
                       "terminated": False, "accepted": False,
                       "contract_version": contract_version,
-                      "requirements": state["requirements"], "slot": slot,
+                      "requirements": None if facts is not None else state["requirements"], "slot": slot,
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
-                      "inventory_snapshot": packet["requirements"], "previous": previous,
+                      "inventory_snapshot": inventory, "previous": previous,
                       "delta": packet.get("delta"), "correction": correction,
                       "delta_publication": packet.get("delta_publication"),
                       "correction_manifest": packet.get("correction_manifest"),

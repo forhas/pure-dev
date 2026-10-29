@@ -71,7 +71,20 @@ class FactRoutingTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in required], ["F1", "F2"])
         self.assertIn("read-only", packet["result_contract"]["fact_rules"])
         draft = json.loads(Path(packet["publication"]["submission"]).read_text(encoding="utf-8"))
+        self.assertNotIn("requirements", packet)
         self.assertEqual({(c["verdict"], c["source"]) for c in draft["facts"]}, {("unsupported", "human")})
+
+    def test_the_checker_gets_nothing_of_the_ticket(self):
+        inventory = {"source_sha256": "0" * 64, "reviewed_whole_ticket": True,
+                     "items": [{"id": "AC1", "kind": "acceptance", "text": "STO-184 is unblocked"}]}
+        with self.rt.transaction() as state:
+            state["requirements"] = inventory
+        prepared = self.rt.prepare("fact-check", {"facts": str(self.facts_file())})
+        directory = Path(prepared["packet"]).parent
+        self.assertNotIn("STO-184 is unblocked", Path(prepared["packet"]).read_text(encoding="utf-8"))
+        self.assertIsNone(json.loads((directory / "requirements.json").read_text(encoding="utf-8")))
+        with self.rt.transaction() as state:
+            self.assertIsNone(state["workers"][prepared["worker"]]["requirements"])
 
     def test_prepare_takes_only_a_valid_facts_input(self):
         with self.assertRaisesRegex(ValueError, "exactly one input"):
