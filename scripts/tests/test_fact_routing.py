@@ -105,6 +105,8 @@ class FactRoutingTests(unittest.TestCase):
                 state["schema"] = schema
             with self.assertRaisesRegex(ValueError, "schema-5"):
                 self.rt.prepare("fact-check", {"facts": str(self.facts_file())})
+        # A refused attempt writes nothing: no unregistered worker directory, no copied facts.
+        self.assertEqual(list(self.state.parent.glob("worker-*")), [])
 
     def test_publication_rejects_a_check_that_misses_or_reorders_facts(self):
         key = self.rt.prepare("fact-check", {"facts": str(self.facts_file())})["worker"]
@@ -206,6 +208,7 @@ class FactRoutingTests(unittest.TestCase):
         first = self.checked([check("F1"), check("F2", verdict="unsupported")])
         with self.assertRaisesRegex(ValueError, "one accepted fact-check per run"):
             self.rt.prepare("fact-check", {"facts": str(self.facts_file(name="again.json"))})
+        self.assertEqual([p.name for p in self.state.parent.glob("worker-*")], ["worker-" + first])
         # Even a second accepted check slipped into state cannot be routed from.
         with self.rt.transaction() as state:
             state["workers"]["forged"] = dict(state["workers"][first], id="forged")
