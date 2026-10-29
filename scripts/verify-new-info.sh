@@ -69,6 +69,30 @@ if [ -f "$NI" ]; then
       "$NI" "$P0" "$PR" 'pull --ff-only origin <epicBranch>'
     assert_present "preconditions: a non-epic id stops the run (\`is not an epic container\`)" \
       "$NI" 1 "$S0" 'is not an epic container'
+    # several facts per invocation: Claude Code expands only the prompt's opening command,
+    # so a second pasted /notion-dev:new-info line reaches this command as argument text.
+    assert_present "several facts: each line opening with \`/notion-dev:new-info\` (or \`/new-info\`) starts a new segment" \
+      "$NI" 1 "$S0" 'every line whose first token is `/notion-dev:new-info` \(or `/new-info`\) starts a new segment'
+    assert_present "several facts: a segment's \`--epic\` ids scope that fact alone (\`EPICS\` is per fact)" \
+      "$NI" 1 "$S0" 'its `--epic` ids scope that fact alone, so `EPICS` is per fact'
+    assert_present "several facts: \`--non-interactive\` and \`--pr\` in any segment apply to the whole run" \
+      "$NI" 1 "$S0" '`--non-interactive` and `--pr` in any segment apply to the whole run'
+    assert_present "several facts: \`## Scope\` and \`## Per epic\` run once per fact in \`FACTS\`, in order" \
+      "$NI" 1 "$S0" '`## Scope` and `## Per epic` run once for each fact in `FACTS`, in order'
+    assert_present "several facts: a segment with an empty \`<information>\` fails the whole run before anything is touched" \
+      "$NI" 1 "$S0" 'A segment whose `<information>` is empty fails the whole run with usage before anything is touched'
+    assert_present "several facts: one \`<run id>\` (one lock holder), one \`<noteBranch>\` and PR under \`--pr\`, one report and closeout" \
+      "$NI" 1 "$S0" 'one `<run id>` and therefore one lock holder, under `--pr` one `<noteBranch>` and one pull request, and one report and closeout'
+    assert_present "several facts: each fact has its own \`<short fact>\`; under \`--pr\` the \`<noteBranch>\` slug and PR title take the first fact's" \
+      "$NI" 1 "$S0" 'Derive `<short fact>`.*Each fact has its own; under `--pr` the run.s single `<noteBranch>` slug and PR title take the first fact.s'
+    assert_present "several facts: the epic guard checks every fact's \`EPICS\` before anything is touched" \
+      "$NI" 1 "$S0" "^\\*\\*Epic guard\\.\\*\\* Every id in every fact's \`EPICS\`"
+    assert_present "several facts: \"First epic\" in \`### Apply\` is the run's first Apply, across facts" \
+      "$NI" 1 "$S0" '"First epic" in `### Apply` means the run.s first Apply'
+    assert_present "several facts: a stop that ends the epic loop ends the remaining facts too (\`skipped — <the same reason>\`)" \
+      "$NI" 1 "$S0" 'ends the run.s remaining facts too.*`skipped — <the same reason>`'
+    assert_present "several facts: the \`--non-interactive\` run does not end its turn between facts" \
+      "$NI" 1 "$S0" '`--non-interactive`: never pause.*between facts'
     # scope
     assert_present "scope: briefs are listed from \`origin/<epicBranch>\`" \
       "$NI" "$S0" "$P0" 'ls-tree -r --name-only origin/<epicBranch> -- <knowledge\.dir>/epic/'
@@ -81,6 +105,12 @@ if [ -f "$NI" ]; then
     # per epic
     assert_present "per epic: reads through \`notion-dev:knowledge\` \`retrieve(<epic-id>)\`" \
       "$NI" "$P0" "$PR" 'notion-dev:knowledge. skill, operation .retrieve\(<epic-id>\)'
+    assert_present "scope: under \`--pr\`, a later fact lists \`<noteBranch>\` too, for a brief an earlier fact bootstrapped" \
+      "$NI" "$S0" "$P0" 'Under `--pr`, once `<noteBranch>` exists.*list `<noteBranch>` as well and take the union'
+    assert_present "read: a later fact under \`--pr\` takes \`EPIC_CONTEXT\` from \`<noteBranch>:<brief path>\`, never \`HEAD\`" \
+      "$NI" "$P0" "$PR" '^\*\*A later fact under `--pr` reads the note branch\.\*\*.*take `EPIC_CONTEXT` from `git -C \$REPO_ROOT show <noteBranch>:<brief path>` and set `BOOTSTRAP` false. Name the branch ref, never `HEAD`'
+    assert_present "read: the note-branch read applies only when \`origin/<epicBranch>..<noteBranch>\` touched the brief" \
+      "$NI" "$P0" "$PR" 'git -C \$REPO_ROOT log --format=%H origin/<epicBranch>\.\.<noteBranch> -- <brief path>` is non-empty'
     assert_present "per epic: proposes through \`note(<fact>, <epic-id>)\`" \
       "$NI" "$P0" "$PR" 'operation `note\(<fact>, <epic-id>\)`, passing'
     assert_present "per epic: applies through \`note --apply <epic-id>\`" \
@@ -116,6 +146,12 @@ if [ -f "$NI" ]; then
       "$NI" "$PR" "$RP" 'gh pr create --base <epicBranch> --body-file -'
     assert_present "pull-request path: drives the pull request through \`notion-dev:review-and-merge\`" \
       "$NI" "$PR" "$RP" '`notion-dev:review-and-merge <pr>'
+    assert_present "pull-request path: \`**Several facts on one epic.**\` gets one Notion entry and one comment per ticket" \
+      "$NI" "$PR" "$RP" '\*\*Several facts on one epic\.\*\*.*gets \*\*one\*\* Notion entry, not one per fact.*one comment'
+    assert_present "pull-request path: the PR body lists every fact, each with the epics it changed and their \`REASON\`" \
+      "$NI" "$PR" "$RP" 'the body listing every fact and, under each, every epic it changed with its `REASON`'
+    assert_present "pull-request path: with several facts the PR title carries \`(+<n> more)\`" \
+      "$NI" "$PR" "$RP" 'docs\(epic\): new info — <short fact>`.*` \(\+<n> more\)`'
     assert_present "pull-request path: returns to the epic branch with \`pull --ff-only\`" \
       "$NI" "$PR" "$RP" 'pull --ff-only origin <epicBranch>'
     # report
@@ -123,6 +159,8 @@ if [ -f "$NI" ]; then
       "$NI" 'postMergeHooks'
     assert_present "report: per-epic line reports the knowledge capture outcome (\`knowledge: <captured\`)" \
       "$NI" "$RP" "$L" 'knowledge: <captured'
+    assert_present "report: per-fact items under a \`Fact <i>/<n>: <short fact>\` heading" \
+      "$NI" "$RP" "$L" 'once per fact, in order, under a `Fact <i>/<n>: <short fact>` heading'
     assert_present "report: ends with the closeout workspace pass" \
       "$NI" "$RP" "$L" 'invoke the \*\*workspace pass\*\* of the .notion-dev:session-closeout'
     assert_present "report: the \`CLOSEOUT:\` block closes the report" \
@@ -197,6 +235,7 @@ if [ -n "$CF" ] && [ -n "$CE" ]; then
   assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
     fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'
   assert_present "record.md: each hand-off is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" 'closeout `blocked:` item'
+  assert_present "record.md: several \`run:\` lines pasted into one prompt run as one \`/notion-dev:new-info\` invocation" "$REC" "$CF" "$CE" '^one prompt run as one `/notion-dev:new-info` invocation'
 else
   bad "record.md: could not locate the \`**Cross-epic facts.**\` section that new-info.md and the legacy reports cite"
 fi
