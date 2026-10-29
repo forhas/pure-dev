@@ -202,6 +202,16 @@ class FactRoutingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not decided by fact-route"):
             workflow.route_view(str(copy_path))
 
+    def test_one_accepted_check_per_run(self):
+        first = self.checked([check("F1"), check("F2", verdict="unsupported")])
+        with self.assertRaisesRegex(ValueError, "one accepted fact-check per run"):
+            self.rt.prepare("fact-check", {"facts": str(self.facts_file(name="again.json"))})
+        # Even a second accepted check slipped into state cannot be routed from.
+        with self.rt.transaction() as state:
+            state["workers"]["forged"] = dict(state["workers"][first], id="forged")
+        with self.assertRaisesRegex(ValueError, "one accepted fact-check"):
+            workflow.fact_route(str(self.state), "forged", "none", True, str(self.root / "route.json"))
+
     def test_one_route_per_run(self):
         key = self.checked([check("F1"), check("F2", source="human")])
         output, first = self.route(key)

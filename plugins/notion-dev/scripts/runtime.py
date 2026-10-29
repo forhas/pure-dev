@@ -988,6 +988,10 @@ class Runtime:
             # Schema 3-4 runs carry contract version 3; an in-flight older run keeps its own
             # protocol and hands every fact off, so the gate is the schema, not the contract.
             require(role != "fact-check" or state["schema"] >= 5, "fact-check requires a schema-5 run")
+            # One accepted check per run: a second one would let a caller pick the verdict it likes.
+            require(role != "fact-check" or not any(w["role"] == "fact-check" and w.get("accepted")
+                                                    for w in state["workers"].values()),
+                    "this run's facts were already checked; one accepted fact-check per run")
             if facts is not None:
                 packet["facts"] = facts
             if contract_version:

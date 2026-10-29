@@ -1039,6 +1039,8 @@ def fact_route(state, worker, own_epic, interactive, output):
         require(checked["role"] == "fact-check", "fact-route takes a fact-check worker")
         require(checked.get("accepted") and not checked["terminated"],
                 "accept the fact-check result before routing; an unaccepted check routes nothing")
+        require([w["id"] for w in data["workers"].values() if w["role"] == "fact-check" and w.get("accepted")] == [worker],
+                "route only from the run's one accepted fact-check")
         decision = decide(checked["facts"], checked["result"], own_epic, interactive)
         route = {"version": 1, "state": str(path), "ticket": data["ticket"], "worker": worker,
                  "own_epic": own_epic, "interactive": interactive, **decision}
