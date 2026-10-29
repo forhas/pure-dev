@@ -79,6 +79,12 @@ if [ -f "$NI" ]; then
       "$NI" 1 "$S0" '`--non-interactive` and `--pr` in any segment apply to the whole run'
     assert_present "several facts: \`## Scope\` and \`## Per epic\` run once per fact in \`FACTS\`, in order" \
       "$NI" 1 "$S0" '`## Scope` and `## Per epic` run once for each fact in `FACTS`, in order'
+    assert_present "several facts: a segment with an empty \`<information>\` fails the whole run before anything is touched" \
+      "$NI" 1 "$S0" 'A segment whose `<information>` is empty fails the whole run with usage before anything is touched'
+    assert_present "several facts: one \`<run id>\` (one lock holder), one \`<noteBranch>\` and PR under \`--pr\`, one report and closeout" \
+      "$NI" 1 "$S0" 'one `<run id>` and therefore one lock holder, under `--pr` one `<noteBranch>` and one pull request, and one report and closeout'
+    assert_present "several facts: each fact has its own \`<short fact>\`; under \`--pr\` the \`<noteBranch>\` slug and PR title take the first fact's" \
+      "$NI" 1 "$S0" 'Derive `<short fact>`.*Each fact has its own; under `--pr` the run.s single `<noteBranch>` slug and PR title take the first fact.s'
     assert_present "several facts: the epic guard checks every fact's \`EPICS\` before anything is touched" \
       "$NI" 1 "$S0" "^\\*\\*Epic guard\\.\\*\\* Every id in every fact's \`EPICS\`"
     assert_present "several facts: \"First epic\" in \`### Apply\` is the run's first Apply, across facts" \
@@ -142,6 +148,8 @@ if [ -f "$NI" ]; then
       "$NI" "$PR" "$RP" '`notion-dev:review-and-merge <pr>'
     assert_present "pull-request path: \`**Several facts on one epic.**\` gets one Notion entry and one comment per ticket" \
       "$NI" "$PR" "$RP" '\*\*Several facts on one epic\.\*\*.*gets \*\*one\*\* Notion entry, not one per fact.*one comment'
+    assert_present "pull-request path: the PR body lists every fact, each with the epics it changed and their \`REASON\`" \
+      "$NI" "$PR" "$RP" 'the body listing every fact and, under each, every epic it changed with its `REASON`'
     assert_present "pull-request path: with several facts the PR title carries \`(+<n> more)\`" \
       "$NI" "$PR" "$RP" 'docs\(epic\): new info — <short fact>`.*` \(\+<n> more\)`'
     assert_present "pull-request path: returns to the epic branch with \`pull --ff-only\`" \
