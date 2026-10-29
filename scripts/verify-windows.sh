@@ -37,6 +37,7 @@ for f in commands/ticket.md commands/next-task.md commands/new-info.md commands/
   esac
   assert_present "$f: python3 stands for knowledge.python" "$ND/$f" 1 "$n" '`python3` in every `knowledge.py` line below stands for `knowledge.python`'
 done
+assert_has "references/fact-routing.md: \`python3\` stands for \`knowledge.python\`" "$ND/references/fact-routing.md" '`python3` below stands for `knowledge.python`'
 assert_has "knowledge.py: forces LF and UTF-8 on stdout and stderr" "$KPY" 'reconfigure(newline="\n", encoding="utf-8")'
 KPYL=$(total_lines "$KPY")
 KI0=$(find_line "$KPY" 1 "$KPYL" '^def iwe\(args, cwd, violations_exit=\(\)\):$')

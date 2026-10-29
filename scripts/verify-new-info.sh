@@ -69,6 +69,10 @@ if [ -f "$NI" ]; then
       "$NI" "$P0" "$PR" 'pull --ff-only origin <epicBranch>'
     assert_present "preconditions: a non-epic id stops the run (\`is not an epic container\`)" \
       "$NI" 1 "$S0" 'is not an epic container'
+    assert_present "new-info: a ticket run routes only through \`references/fact-routing.md\`" \
+      "$NI" 1 "$S0" 'routes a candidate fact only through `references/fact-routing\.md`'
+    assert_present "new-info: \`--route <file>\` must be the only argument" \
+      "$NI" 1 "$S0" '^- `--route <file>`: .*It must be the only argument'
     # several facts per invocation: Claude Code expands only the prompt's opening command,
     # so a second pasted /notion-dev:new-info line reaches this command as argument text.
     assert_present "several facts: each line opening with \`/notion-dev:new-info\` (or \`/new-info\`) starts a new segment" \
@@ -154,6 +158,19 @@ if [ -f "$NI" ]; then
       "$NI" "$PR" "$RP" 'docs\(epic\): new info — <short fact>`.*` \(\+<n> more\)`'
     assert_present "pull-request path: returns to the epic branch with \`pull --ff-only\`" \
       "$NI" "$PR" "$RP" 'pull --ff-only origin <epicBranch>'
+    # --route
+    RT=$(find_line "$NI" "$PR" "$L" '^## `--route`$')
+    if [ -n "$RT" ]; then
+      assert_present "--route: loads the facts only through \`route-view\`, stopping on a non-zero exit" \
+        "$NI" "$RT" "$RP" 'workflow\.py" route-view --route <file>`.*A non-zero exit stops the run before anything is touched'
+      assert_present "--route: \`gate: false\` takes the non-interactive branch, \`gate: true\` the interactive one with its \`Source: human\`" \
+        "$NI" "$RT" "$RP" 'An entry with `gate: false`.*non-interactive branch.*An entry with `gate: true`.*`Source: human — <citation>`'
+      assert_present "--route: the Notion entry carries a \`**Source:**\` line" "$NI" "$RT" "$RP" 'The `### Notion epic` entry gains a line after `\*\*Fact:\*\*`: `\*\*Source:\*\* routed from the <ticket> run'
+      assert_present "--route: no \`notion-dev:session-closeout\` of its own" "$NI" "$RT" "$RP" 'do not invoke `notion-dev:session-closeout`'
+      assert_present "gate: under \`--route\`, step 2 decides each fact's branch" "$NI" "$P0" "$PR" '^Under `--route`, `## \\`--route\\`` step 2 decides'
+    else
+      bad "new-info.md: could not locate the \`## --route\` heading"
+    fi
     # report
     assert_lacks "new-info.md never mentions \`postMergeHooks\` — capture is invoked directly per epic, not deferred to a hook" \
       "$NI" 'postMergeHooks'
@@ -230,11 +247,17 @@ REC=$ND/references/record.md; LR=$(total_lines "$REC")
 CF=$(find_line "$REC" 1 "$LR" '^\*\*Cross-epic facts\.\*\*'); CE=""
 [ -n "$CF" ] && CE=$(find_line "$REC" "$CF" "$LR" '^Release the lock\.')
 if [ -n "$CF" ] && [ -n "$CE" ]; then
-  assert_present "record.md: never invoke \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" '^never invoke `/notion-dev:new-info`, and never write'
+  assert_present "record.md: never invoke \`/notion-dev:new-info\` through the Skill tool" "$REC" "$CF" "$CE" '^never invoke `/notion-dev:new-info` through the Skill tool\.'
+  assert_present "record.md: the record routine never writes another epic's brief or Notion page" "$REC" "$CF" "$CE" '^write another epic.s brief or Notion page here, and$'
   assert_present "record.md: a \`NEW-INFO:\` block, \`NEW-INFO: none\` when empty" "$REC" "$CF" "$CE" 'one `NEW-INFO:` block, `NEW-INFO: none` when empty'
   assert_order "record.md: each hand-off carries fact, evidence, epics and a \`run:\` line for \`/notion-dev:new-info\`" "$REC" "$CF" "$CE" \
-    fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' run '^  run: /notion-dev:new-info "<fact>"'
-  assert_present "record.md: each hand-off is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" 'closeout `blocked:` item'
+    fact '^- fact: ' evidence '^  evidence: ' epics '^  epics: ' route '^  route: routed — <outcome> \| handed off — <reason>$' run '^  run: /notion-dev:new-info "<fact>"'
+  assert_present "record.md: \`run:\` appears only on a handed-off fact" "$REC" "$CF" "$CE" '^`run:` appears only on a handed-off fact'
+  assert_present "record.md: each handed-off fact is a closeout \`blocked:\` item" "$REC" "$CF" "$CE" '^handed-off fact is a closeout `blocked:` item'
+  assert_present "record.md: after the lock is released, the routing step reads \`references/fact-routing.md\` once" "$REC" "$CE" "$LR" \
+    '^`\$\{CLAUDE_PLUGIN_ROOT\}/references/fact-routing\.md` once and run it before the closeout'
+  assert_order "record.md: the lock is released before \`**Route the facts.**\`" "$REC" "$CF" "$LR" \
+    release '^Release the lock\.$' route '^\*\*Route the facts\.\*\* With the lock released'
   assert_present "record.md: several \`run:\` lines pasted into one prompt run as one \`/notion-dev:new-info\` invocation" "$REC" "$CF" "$CE" '^one prompt run as one `/notion-dev:new-info` invocation'
 else
   bad "record.md: could not locate the \`**Cross-epic facts.**\` section that new-info.md and the legacy reports cite"
@@ -242,7 +265,48 @@ fi
 for f in ticket finalize; do
   assert_has "legacy $f.md reports the \`NEW-INFO:\` block from \`references/record.md\`" "$ND/references/legacy/$f.md" \
     '- **New info** — the `NEW-INFO:` block, exactly as `${CLAUDE_PLUGIN_ROOT}/references/record.md`'
+  assert_has "legacy $f.md hands every fact off (\`the legacy flow does not route facts\`): fact-check needs a schema-5 runtime" \
+    "$ND/references/legacy/$f.md" '`handed off — the legacy flow does not route facts`'
 done
+
+# ---------------------------------------------------------------------------
+echo "== fact-routing.md: a routed fact is checked, decided by script, and bounded =="
+# ---------------------------------------------------------------------------
+FR=$ND/references/fact-routing.md
+if [ -f "$FR" ]; then
+  LF=$(total_lines "$FR")
+  F2=$(find_line "$FR" 1 "$LF" '^## 2\. Check them independently$')
+  F3=$(find_line "$FR" 1 "$LF" '^## 3\. Decide$')
+  F4=$(find_line "$FR" 1 "$LF" '^## 4\. Route$')
+  F5=$(find_line "$FR" 1 "$LF" '^## 5\. Report$')
+  if [ -n "$F2" ] && [ -n "$F3" ] && [ -n "$F4" ] && [ -n "$F5" ]; then
+    assert_present "fact-routing: the slash command keeps \`disable-model-invocation: true\`; never the Skill tool" \
+      "$FR" 1 "$F2" '^`disable-model-invocation: true`, so the Skill tool refuses it in every session'
+    assert_present "fact-routing: the check is a \`prepare --role fact-check --file facts=<facts.json>\` worker" \
+      "$FR" "$F2" "$F3" 'runtime\.py" --state "\$RUNTIME_STATE" prepare --role fact-check --file facts=<facts\.json>$'
+    assert_present "fact-routing: the checker is \`**read-only**\`" "$FR" "$F2" "$F3" '^\*\*read-only\*\*: `git` and `gh` reads'
+    assert_present "fact-routing: the checker gets nothing from the run (not context.md, not the plan, not this conversation)" \
+      "$FR" "$F2" "$F3" 'It gets nothing else from this run: not context\.md, not the plan, not this$'
+    assert_present "fact-routing: the result is \`accept\`ed before routing" "$FR" "$F2" "$F3" 'then read the result and `runtime\.py accept` it'
+    assert_present "fact-routing: an unfinished check hands off every fact as \`check unavailable — <cause>\`" \
+      "$FR" "$F2" "$F3" '`check unavailable — <cause>`, and record `partial:fact-routing`'
+    assert_present "fact-routing: the parent never checks the facts itself" "$FR" "$F2" "$F3" '^Never check the facts yourself instead'
+    assert_present "fact-routing: \`fact-route\` decides, with \`--own-epic\` and \`--non-interactive\`" \
+      "$FR" "$F3" "$F4" 'workflow\.py" fact-route --state "\$RUNTIME_STATE" --worker <id> --own-epic <.*> \[--non-interactive\]'
+    assert_present "fact-routing: at most \`**3**\` routed facts per run" "$FR" "$F3" "$F4" 'anything beyond \*\*3\*\* routed facts'
+    assert_present "fact-routing: a human-sourced fact routes only through the gate of an interactive run" \
+      "$FR" "$F3" "$F4" '^- \*\*Routed through the gate\*\*: a `human` fact in an interactive run'
+    assert_present "fact-routing: \`route-view\` refuses an edited \`route.json\`" "$FR" "$F3" "$F4" '^Never edit `route\.json`: `route-view` refuses'
+    assert_present "fact-routing: new-info runs inline with \`--route\` and nothing else" \
+      "$FR" "$F4" "$F5" 'arguments `--route <runtime dir>/route\.json` and nothing else'
+    assert_present "fact-routing: a handed-off fact keeps its \`run:\` line" "$FR" "$F5" "$LF" '^- `route: handed off — <reason>` — keeps its `run:` line'
+  else
+    bad "fact-routing.md: could not locate its numbered step headings"
+  fi
+else
+  bad "missing: $FR"
+fi
+assert_has "signature registry has the \`partial:fact-routing\` row" "$SIG" '| `partial:fact-routing` |'
 
 # ---------------------------------------------------------------------------
 echo "== README and release =="

@@ -23,6 +23,11 @@ if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_runtime_corrections.py; t
 else
   bad "terminal-sweep code verdicts without a prior completeness receipt"
 fi
+if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_fact_routing.py; then
+  ok "offline cross-epic fact check contract, routing decision and route binding"
+else
+  bad "offline cross-epic fact check contract, routing decision and route binding"
+fi
 if PYTHONDONTWRITEBYTECODE=1 $PYBIN scripts/tests/test_dependencies.py; then
   ok "live dependency diagnostics and local disablement"
 else

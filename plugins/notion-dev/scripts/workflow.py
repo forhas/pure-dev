@@ -1022,6 +1022,61 @@ def record_summary(state):
     return result
 
 
+def fact_route(state, worker, own_epic, interactive, output):
+    """Turn an accepted fact-check into the routing decision, and bind it to this run.
+
+    The decision is computed here from the checker's verdicts, never by the parent, and
+    its digest is recorded so `route-view` refuses a route file anyone edited afterwards.
+    """
+    from facts import EPIC_KEY, decide
+    from runtime import digest
+    require(EPIC_KEY.match(own_epic) or own_epic == "none", "--own-epic is the ticket's epic key, or none")
+    path = Path(state).resolve()
+    output = Path(output).resolve()
+    rt = Runtime(path)
+    with rt.transaction() as data:
+        checked = rt.worker(data, worker)
+        require(checked["role"] == "fact-check", "fact-route takes a fact-check worker")
+        require(checked.get("accepted") and not checked["terminated"],
+                "accept the fact-check result before routing; an unaccepted check routes nothing")
+        require([w["id"] for w in data["workers"].values() if w["role"] == "fact-check" and w.get("accepted")] == [worker],
+                "route only from the run's one accepted fact-check")
+        decision = decide(checked["facts"], checked["result"], own_epic, interactive)
+        route = {"version": 1, "state": str(path), "ticket": data["ticket"], "worker": worker,
+                 "own_epic": own_epic, "interactive": interactive, **decision}
+        previous = data.get("fact_route")
+        if previous:
+            # Only an exact replay is answered, and it rewrites nothing: a second call with a
+            # different --own-epic or interaction mode would otherwise re-decide checked facts.
+            require(previous["worker"] == worker and Path(previous["path"]) == output
+                    and output.is_file() and digest(output) == previous["sha256"] and read_json(output) == route,
+                    "this run already routed its facts; one route per run")
+            return {"passed": True, "route": str(output), "routed": len(decision["routed"]),
+                    "handed_off": len(decision["handed_off"])}
+        atomic_json(output, route)
+        data["fact_route"] = {"path": str(output), "sha256": digest(output), "worker": worker}
+        rt.event(data, "fact_route_decided", worker=worker, routed=len(decision["routed"]),
+                 handed_off=len(decision["handed_off"]))
+    return {"passed": True, "route": str(output), "routed": len(decision["routed"]),
+            "handed_off": len(decision["handed_off"])}
+
+
+def route_view(route_path):
+    """What /notion-dev:new-info --route may apply: exactly the recorded, unedited route."""
+    from runtime import digest
+    route_path = Path(route_path).resolve()
+    route = read_json(route_path)
+    require(isinstance(route, dict) and route.get("version") == 1 and route.get("state"),
+            "not a fact route")
+    with Runtime(Path(route["state"])).transaction() as data:
+        bound = data.get("fact_route")
+        require(bound and Path(bound["path"]) == route_path and bound["worker"] == route.get("worker"),
+                "this route was not decided by fact-route for its run")
+        require(bound["sha256"] == digest(route_path), "the route file changed after fact-route decided it")
+    return {"passed": True, "ticket": route["ticket"], "interactive": route["interactive"],
+            "routed": route["routed"], "handed_off": route["handed_off"]}
+
+
 def complete(state, marker_path, session):
     """Validate recording/ownership once, then set phase AND terminal state together."""
     path = Path(state).resolve()
@@ -1141,6 +1196,9 @@ def main():
     p.add_argument("--writes", required=True)
     p = commands.add_parser("record-outcome"); p.add_argument("--state", required=True); p.add_argument("--operation", required=True)
     p.add_argument("--outcome", required=True, choices=("confirmed", "failed", "unknown-outcome")); p.add_argument("--provider-id")
+    p = commands.add_parser("fact-route"); p.add_argument("--state", required=True); p.add_argument("--worker", required=True)
+    p.add_argument("--own-epic", required=True); p.add_argument("--output", required=True); p.add_argument("--non-interactive", action="store_true")
+    p = commands.add_parser("route-view"); p.add_argument("--route", required=True)
     p = commands.add_parser("complete"); p.add_argument("--state", required=True); p.add_argument("--marker", required=True)
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("record-summary"); p.add_argument("--state", required=True)
@@ -1230,6 +1288,9 @@ def main():
     elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
     elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)
     elif args.command == "complete": result = complete(args.state, args.marker, args.session)
+    elif args.command == "fact-route":
+        result = fact_route(args.state, args.worker, args.own_epic, not args.non_interactive, args.output)
+    elif args.command == "route-view": result = route_view(args.route)
     elif args.command == "record-input": result = record_input(args.state, args.operation, args.begin, args.field)
     else: result = record_summary(args.state)
     print(json.dumps(result, ensure_ascii=False))

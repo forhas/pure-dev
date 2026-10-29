@@ -170,6 +170,10 @@ def result_contract(role, items, version=RESULT_CONTRACT_VERSION):
             contract["recording_rules"] = "Preserve release obligations and accepted claim corrections as strings; technical_delta items carry fact/evidence. Explicit [] means none. These are the canonical post-merge facts, not another narrative."
     elif role == "record":
         contract["required"]["record"] = {field: "nonempty outcome, including skipped reason" for field in RECORD_FIELDS}
+    elif role == "fact-check":
+        from facts import RULES, contract as fact_contract
+        contract["required"].update(fact_contract(items))
+        contract["fact_rules"] = RULES
     contract["delivery"] = "Publish this object, repair rejected fields in the same worker, then return only its artifact reference. Never rerun completed work to repair a report."
     return contract
 
@@ -248,6 +252,9 @@ def validate_result(worker, result):
         fields = result.get("record")
         require(isinstance(fields, dict) and all(isinstance(fields.get(k), str) and fields[k].strip()
                 for k in RECORD_FIELDS), "record must contain all eight named outcome fields")
+    elif role == "fact-check":
+        from facts import validate
+        validate(worker["facts"], result)
 
 
 def render_result(worker, result):
@@ -255,7 +262,10 @@ def render_result(worker, result):
     rendered = dict(result)
     if not worker.get("contract_version"):
         return rendered
-    if worker["role"] == "record":
+    if worker["role"] == "fact-check":
+        from facts import render
+        rendered["report"] = render(worker["facts"], result)
+    elif worker["role"] == "record":
         rendered["report"] = "RECORD:\n" + "\n".join(k + ": " + result["record"][k] for k in RECORD_FIELDS)
     elif worker["role"] == "completeness":
         if worker.get("reused_correction"):
@@ -858,7 +868,12 @@ class Runtime:
 
     def prepare(self, role, files, worktree=None, timeout=900, previous=None, slot=None, remove_inputs=()):
         require(role in {"plan", "scout", "implementation", "branch-review", "local-review",
-                         "completeness", "record", "probe"}, "invalid worker role")
+                         "completeness", "record", "probe", "fact-check"}, "invalid worker role")
+        facts = None
+        if role == "fact-check":
+            from facts import read_facts
+            require(set(files) == {"facts"}, "fact-check takes exactly one input: facts=<facts.json>")
+            facts = read_facts(read_json(files["facts"]))
         require(slot is None or (role in {"implementation", "scout", "plan", "local-review", "branch-review"}
                                 and isinstance(slot, str) and slot.strip()),
                 "only build-flow workers may have a stable task/review slot")
@@ -873,6 +888,16 @@ class Runtime:
                 "review workers require a worktree revision")
         current = revision(worktree) if worktree else None
         with self.transaction() as state:
+            # Schema 3-4 runs carry contract version 3; an in-flight older run keeps its own
+            # protocol and hands every fact off, so the gate is the schema, not the contract.
+            require(role != "fact-check" or state["schema"] >= 5, "fact-check requires a schema-5 run")
+            # One accepted check per run, and one replacement for a failed one: otherwise a caller
+            # could discard verdicts it dislikes until it is handed one it likes.
+            require(role != "fact-check" or not any(w["role"] == "fact-check" and w.get("accepted")
+                                                    for w in state["workers"].values()),
+                    "this run's facts were already checked; one accepted fact-check per run")
+            require(role != "fact-check" or sum(w["role"] == "fact-check" for w in state["workers"].values()) < 2,
+                    "fact-check attempt budget exhausted (one replacement); hand the facts off")
             require(role != "completeness" or state["schema"] < 5 or state.get("review_inputs"),
                     "schema 5 completeness requires bound typed review inputs; use workflow review-inputs/review-prepare")
             require(role != "completeness" or not self.readiness(state), "completeness requires ready requirements")
@@ -957,18 +982,24 @@ class Runtime:
                 require(digest(saved) == source["sha256"], "input changed during preparation")
                 source["snapshot"] = str(saved)
             inventory_path = directory / "requirements.json"
-            atomic_json(inventory_path, state["requirements"])
+            # The fact checker's independence is its whole value: its packet carries the facts
+            # and nothing of this ticket, so no requirement asserting an outcome is handed to it.
+            atomic_json(inventory_path, None if facts is not None else state["requirements"])
             input_bytes = sum(Path(s["path"]).stat().st_size for s in snapshots.values())
-            packet = {"worker": key, "role": role, "slot": slot, "revision": current,
-                      "inputs": snapshots, "requirements": {"path": str(inventory_path),
-                      "sha256": digest(inventory_path)}}
+            inventory = {"path": str(inventory_path), "sha256": digest(inventory_path)}
+            packet = {"worker": key, "role": role, "slot": slot, "revision": current, "inputs": snapshots}
+            if facts is None:
+                packet["requirements"] = inventory
             if verification_ids:
                 packet["verification_evidence"] = {
                     "input": "verification_receipts",
                     "instruction": "Read the verification manifest for current logs and archived outputs. Cite outputs[].path, never the mutable outputs[].source. Use those archives in correction_review.depends_on. Re-run only for a concrete doubt; changed results require rechecking affected claims."}
             contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 5 else (3 if state["schema"] >= 3 else None)
+            if facts is not None:
+                packet["facts"] = facts
             if contract_version:
-                packet["result_contract"] = result_contract(role, (state["requirements"] or {}).get("items", []), contract_version)
+                packet["result_contract"] = result_contract(role, facts if facts is not None else
+                                                            (state["requirements"] or {}).get("items", []), contract_version)
             if baseline is not None:
                 delta_path = directory / "delta.json"
                 # `indent=None`: this one file is budgeted, and `bound_index` measured
@@ -1020,15 +1051,17 @@ class Runtime:
                       "files": snapshots, "revision": current, "result": None,
                       "terminated": False, "accepted": False,
                       "contract_version": contract_version,
-                      "requirements": state["requirements"], "slot": slot,
+                      "requirements": None if facts is not None else state["requirements"], "slot": slot,
                       "packet": str(packet_path), "packet_sha256": digest(packet_path),
-                      "inventory_snapshot": packet["requirements"], "previous": previous,
+                      "inventory_snapshot": inventory, "previous": previous,
                       "delta": packet.get("delta"), "correction": correction,
                       "delta_publication": packet.get("delta_publication"),
                       "correction_manifest": packet.get("correction_manifest"),
                       "reused_correction": reused["result"]["correction_review"] if reused else None,
                       "correction_dependencies": reused.get("correction_dependencies", []) if reused else []}
             worker["verification_ids"] = verification_ids
+            if facts is not None:
+                worker["facts"] = facts
             if previous:
                 grant = self.correction_grant(state, previous, current)
                 if grant and sum(bool(w.get("previous")) for w in state["workers"].values()) >= 2:
@@ -1071,6 +1104,9 @@ class Runtime:
                     else: draft[name].update(verdict="unverified", report="")
         elif packet["role"] == "record":
             draft = {"report": "", "record": {name: "" for name in RECORD_FIELDS}}
+        elif packet["role"] == "fact-check":
+            from facts import draft as fact_draft
+            draft = {"report": "", "facts": fact_draft(packet["facts"])}
         else:
             draft = {"report": ""}
         submission = directory / "submission.json"
