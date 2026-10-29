@@ -242,23 +242,33 @@ with real plan-review metrics only if that review ran. Sweep unexpected issues o
 Runtime summary is the canonical operational measurement; do not ask another model to tally it.
 
 **Cross-epic facts.** A fact this run established that changes an epic other than this
-ticket's (the ticket's own epic is recorded above) is handed to the user, never routed:
-never invoke `/notion-dev:new-info`, and never write another epic's brief or Notion page. Hand
-off only a fact with evidence; an inference without any stays in context.md. The final report carries
+ticket's (the ticket's own epic is recorded above) is never written by this routine: never
+write another epic's brief or Notion page here, and
+never invoke `/notion-dev:new-info` through the Skill tool. Collect only a fact with evidence;
+an inference without any stays in context.md. The final report carries
 one `NEW-INFO:` block, `NEW-INFO: none` when empty, otherwise per fact:
 
 ```
 - fact: <one sentence, exactly as it would be routed>
   evidence: <command and output | file:line | external source>
   epics: <KEY>-<n>[, …] | unknown
+  route: routed — <outcome> | handed off — <reason>
   run: /notion-dev:new-info "<fact>" [--epic <KEY>-<n>]…
 ```
 
-Omit `--epic` when epics is `unknown`. Each one is a closeout `blocked:` item awaiting the
-user's confirmation, unblocked by running its `run:` line. Several `run:` lines pasted into
+`run:` appears only on a handed-off fact; omit `--epic` when epics is `unknown`. Each
+handed-off fact is a closeout `blocked:` item awaiting the user's confirmation, unblocked by
+running its `run:` line. Several `run:` lines pasted into
 one prompt run as one `/notion-dev:new-info` invocation, in order.
 
-Release the lock. Caller performs workspace closeout over the finished report and owned
+Release the lock.
+
+**Route the facts.** With the lock released and `NEW-INFO:` non-empty, read
+`${CLAUDE_PLUGIN_ROOT}/references/fact-routing.md` once and run it before the closeout. It
+checks each fact independently, decides by `workflow.py fact-route`, routes what qualifies
+through `/notion-dev:new-info --route`, and fills in every `route:` line.
+
+Caller performs workspace closeout over the finished report and owned
 artifacts. Report merge success separately from partial recording, preserving exact unknown/
 failed operations and recovery command. Only fully reconciled required record operations permit
 `OUTCOME: resolved`; best-effort knowledge/brief failures remain explicit in their outcome fields,

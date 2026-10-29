@@ -2,10 +2,30 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.49.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.50.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Ticket runs route checked facts (0.50.0)
+
+A ticket run that establishes a fact about another epic no longer only hands it to you to
+paste. It writes the facts out and has a fresh, read-only worker check each one against its
+evidence, with nothing from the run's own reasoning: `supported`, `narrowed` or `unsupported`,
+and `reproducible` (git, a pull request, a file at a commit, a read-only command, Notion
+state) or `human` (a decision, commitment, approval or someone's statement).
+`workflow.py fact-route` then decides, by fixed rules, and binds the decision to the run so an
+edited route file is refused:
+
+- a reproducible fact the check supported is routed through `/notion-dev:new-info --route`
+  with no prompt;
+- a human-sourced fact is routed only in an interactive run, through new-info's per-epic
+  gate, which shows it with its source so you confirm it there;
+- anything unsupported, with unknown epics, human-sourced in a non-interactive run, or past
+  3 per run is handed off as before, with the reason.
+
+The slash command itself stays user-invoked: the ticket run's record step is the only
+automatic path, and every routed Notion note names its source.
 
 ## Several facts per new-info (0.49.0)
 
@@ -392,7 +412,7 @@ Then:
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: intake/readiness → worktree → cohesive implementation → verify → PR → external + combined independent review → merge → journaled record. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
 | `/notion-dev:next-task <epic-id>` | Drive an epic from its markdown brief: read `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket, run `/notion-dev:ticket` on it, re-read, repeat. Flags: `--depth all|N` (default 1), `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. So it can chain into `/notion-dev:ticket`, that command is no longer marked user-only in its frontmatter; its body carries an invocation guard instead. |
-| `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). Several facts in one prompt: start each further one on its own line with `/notion-dev:new-info` — they run in order as one run, each with its own `--epic` scope. |
+| `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). Several facts in one prompt: start each further one on its own line with `/notion-dev:new-info` — they run in order as one run, each with its own `--epic` scope. A ticket run routes the facts it established through `--route` after an independent check (see 0.50.0). |
 | `/notion-dev:knowledge capture <ticket-id> <merge-sha> \| migrate [--apply] \| curate` | Person-invoked knowledge-bundle maintenance. `capture` re-runs by hand the post-merge write a ticket run skipped or failed; `migrate` moves an existing client bundle onto the plugin's schema (prints the diff, `--apply` to write, then a removal checklist); `curate` walks near-duplicate concepts and supersedes the losers, one `AskUserQuestion` per cluster. Reading the bundle happens automatically inside `/notion-dev:ticket`, not through this command. |
 
 `--non-interactive` means two things, not one: the run never **asks** you anything, and it never
