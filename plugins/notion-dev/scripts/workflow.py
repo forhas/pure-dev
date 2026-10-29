@@ -1044,8 +1044,13 @@ def fact_route(state, worker, own_epic, interactive, output):
                  "own_epic": own_epic, "interactive": interactive, **decision}
         previous = data.get("fact_route")
         if previous:
-            require(previous["worker"] == worker and Path(previous["path"]) == output,
+            # Only an exact replay is answered, and it rewrites nothing: a second call with a
+            # different --own-epic or interaction mode would otherwise re-decide checked facts.
+            require(previous["worker"] == worker and Path(previous["path"]) == output
+                    and output.is_file() and digest(output) == previous["sha256"] and read_json(output) == route,
                     "this run already routed its facts; one route per run")
+            return {"passed": True, "route": str(output), "routed": len(decision["routed"]),
+                    "handed_off": len(decision["handed_off"])}
         atomic_json(output, route)
         data["fact_route"] = {"path": str(output), "sha256": digest(output), "worker": worker}
         rt.event(data, "fact_route_decided", worker=worker, routed=len(decision["routed"]),

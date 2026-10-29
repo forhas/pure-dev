@@ -188,10 +188,20 @@ class FactRoutingTests(unittest.TestCase):
             workflow.route_view(str(copy_path))
 
     def test_one_route_per_run(self):
-        key = self.checked([check("F1"), check("F2")])
-        self.route(key)
+        key = self.checked([check("F1"), check("F2", source="human")])
+        output, first = self.route(key)
         with self.assertRaisesRegex(ValueError, "one route per run"):
             self.route(key, name="second.json")
+        # The same worker and path cannot re-decide under different parameters.
+        for own_epic, interactive in (("STO-184", True), ("none", False)):
+            with self.assertRaisesRegex(ValueError, "one route per run"):
+                workflow.fact_route(str(self.state), key, own_epic, interactive, str(output))
+        self.assertEqual(json.loads(output.read_text(encoding="utf-8")), first)
+        # An exact replay is answered and rewrites nothing.
+        before = output.stat().st_mtime_ns
+        workflow.fact_route(str(self.state), key, "none", True, str(output))
+        self.assertEqual(output.stat().st_mtime_ns, before)
+        self.assertEqual(len(workflow.route_view(str(output))["routed"]), 2)
 
     def test_route_view_cli_fails_closed_on_an_edited_route(self):
         key = self.checked([check("F1"), check("F2")])
