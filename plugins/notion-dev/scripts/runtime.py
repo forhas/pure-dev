@@ -982,7 +982,9 @@ class Runtime:
                     "input": "verification_receipts",
                     "instruction": "Read the verification manifest for current logs and archived outputs. Cite outputs[].path, never the mutable outputs[].source. Use those archives in correction_review.depends_on. Re-run only for a concrete doubt; changed results require rechecking affected claims."}
             contract_version = RESULT_CONTRACT_VERSION if state["schema"] >= 5 else (3 if state["schema"] >= 3 else None)
-            require(role != "fact-check" or contract_version, "fact-check requires a schema-5 run")
+            # Schema 3-4 runs carry contract version 3; an in-flight older run keeps its own
+            # protocol and hands every fact off, so the gate is the schema, not the contract.
+            require(role != "fact-check" or state["schema"] >= 5, "fact-check requires a schema-5 run")
             if facts is not None:
                 packet["facts"] = facts
             if contract_version:

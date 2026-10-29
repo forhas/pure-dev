@@ -85,11 +85,13 @@ class FactRoutingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unique"):
             self.rt.prepare("fact-check", {"facts": str(self.facts_file(duplicate, "dup.json"))})
 
-    def test_a_legacy_schema_run_cannot_dispatch_a_fact_check(self):
-        with self.rt.transaction() as state:
-            state["schema"] = 2
-        with self.assertRaisesRegex(ValueError, "schema-5"):
-            self.rt.prepare("fact-check", {"facts": str(self.facts_file())})
+    def test_an_older_schema_run_cannot_dispatch_a_fact_check(self):
+        # Schemas 3 and 4 still carry a result contract, so the contract is not the gate.
+        for schema in (2, 3, 4):
+            with self.rt.transaction() as state:
+                state["schema"] = schema
+            with self.assertRaisesRegex(ValueError, "schema-5"):
+                self.rt.prepare("fact-check", {"facts": str(self.facts_file())})
 
     def test_publication_rejects_a_check_that_misses_or_reorders_facts(self):
         key = self.rt.prepare("fact-check", {"facts": str(self.facts_file())})["worker"]
