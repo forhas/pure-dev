@@ -89,16 +89,14 @@ assert_present "placement: a session launched inside runs cleanup from \`\$REPO_
 assert_present "preflight: dirt cleared in the primary runs inside \`knowledge.py lock take --section preflight\`" "$LI" 1 "$SP" '`knowledge.py lock take --section preflight`'
 T=plugins/notion-dev/commands/ticket.md
 TL=$(total_lines "$T")
-assert_order "ticket: \`ExitWorktree\` precedes reading \`references/record.md\`" "$T" 1 "$TL" \
-  exit '^After confirmed merge, `ExitWorktree` keep' \
-  record 'then read `\$\{CLAUDE_PLUGIN_ROOT\}/references/record.md`'
+assert_present "ticket: \`ExitWorktree\` precedes reading \`references/record.md\`" "$T" 1 "$TL" \
+  '^After confirmed merge, `ExitWorktree` keep, then read `\$\{CLAUDE_PLUGIN_ROOT\}/references/record.md`'
 assert_present "ticket: a failure stop runs \`ExitWorktree\` keep" "$T" 1 "$TL" '^On failure preserve.*; `ExitWorktree` keep\.'
 F=plugins/notion-dev/commands/finalize.md
 FL=$(total_lines "$F")
 assert_order "finalize: enter the PR worktree, then \`ExitWorktree\` before \`references/record.md\`" "$F" 1 "$FL" \
   enter "HEAD; enter it\$" \
-  exit '^6\. Either way `ExitWorktree` keep' \
-  record 'then read `references/record.md` and run that exact'
+  exit-then-record '^6\. Either way `ExitWorktree` keep, then read `references/record.md`'
 R=plugins/notion-dev/references/record.md
 assert_present "record cleanup: \`workflow.py remove-worktree --project \"\$REPO_ROOT\" --worktree \"\$WORKTREE\"\`" "$R" 1 "$(total_lines "$R")" '`workflow.py remove-worktree --project "\$REPO_ROOT" --worktree "\$WORKTREE"`'
 assert_has "remove-worktree refuses from inside the worktree" plugins/notion-dev/scripts/workflow.py 'this session is inside the worktree it is removing'
