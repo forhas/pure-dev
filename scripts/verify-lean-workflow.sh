@@ -69,4 +69,45 @@ assert_has "the lean contract is schema-gated, so legacy packets carry none" \
 assert_has "review audits have an explicit contract version" plugins/notion-dev/scripts/runtime.py 'RESULT_CONTRACT_VERSION = 5'
 assert_has "recording consumes frozen input" plugins/notion-dev/references/record.md 'record-input'
 assert_has "child identity is a published contract" plugins/notion-dev/references/record.md ':child:'
+
+# Session placement (0.51.0): a session enters its worktree after the claim's primary writes
+# and leaves it before anything writes the primary again; removal happens only from outside.
+LI=plugins/notion-dev/references/lean-intake.md
+LIL=$(total_lines "$LI")
+SP=$(find_line "$LI" 1 "$LIL" '^## Session placement')
+SB=$(find_line "$LI" 1 "$LIL" '^## Boundaries and stop')
+assert_order "placement: claim, then the start brief, then EnterWorktree on \`path: \"\$WORKTREE\"\`" "$LI" 1 "$SB" \
+  claim 'workflow.py" claim --project' \
+  brief 'refresh its start brief under the existing `knowledge.py lock` start section' \
+  enter '`EnterWorktree` with `path: "\$WORKTREE"`'
+assert_present "placement: fallback when \`EnterWorktree\` is unavailable keeps \`cd \"\$WORKTREE\" &&\`" "$LI" "$SP" "$SB" '^`EnterWorktree` unavailable or refused.*`cd "\$WORKTREE" &&`'
+assert_order "placement: leave with \`ExitWorktree\` and \`action: \"keep\"\`, before \`references/record.md\` and a stop" "$LI" "$SP" "$SB" \
+  leave 'with `ExitWorktree` and `action: "keep"`:$' \
+  record '^before `references/record.md` and before a stop writes the brief'
+assert_present "placement: never \`remove\`; cleanup uses \`workflow.py remove-worktree\`" "$LI" "$SP" "$SB" '^Never `remove`: cleanup deletes it with `workflow.py remove-worktree`'
+assert_present "placement: a session launched inside runs cleanup from \`\$REPO_ROOT\`" "$LI" "$SP" "$SB" 'cd "\$REPO_ROOT" && python3 \.\.\. remove-worktree'
+assert_present "preflight: dirt cleared in the primary runs inside \`knowledge.py lock take --section preflight\`" "$LI" 1 "$SP" '`knowledge.py lock take --section preflight`'
+T=plugins/notion-dev/commands/ticket.md
+TL=$(total_lines "$T")
+assert_present "ticket: a failure stop runs \`ExitWorktree\` keep" "$T" 1 "$TL" '^On failure preserve.*; `ExitWorktree` keep\.'
+F=plugins/notion-dev/commands/finalize.md
+FL=$(total_lines "$F")
+FO=$(find_line "$F" 1 "$FL" '^4\. \*\*OPEN:\*\*')
+FM=$(find_line "$F" 1 "$FL" '^5\. \*\*MERGED:\*\*')
+assert_order "finalize: the **OPEN:** step enters the PR worktree per lean-intake's Session placement" "$F" "$FO" "$FM" \
+  enter "HEAD; enter it\$" \
+  placement "^   per lean-intake's Session placement\."
+R=plugins/notion-dev/references/record.md
+R1=$(find_line "$R" 1 "$(total_lines "$R")" '^## 1\. ')
+assert_present "record: its intro, ahead of section 1, leaves with \`ExitWorktree\` and \`action: \"keep\"\`" "$R" 1 "$R1" '^`ExitWorktree` with `action: "keep"`'
+assert_present "record cleanup: \`workflow.py remove-worktree --project \"\$REPO_ROOT\" --worktree \"\$WORKTREE\"\`" "$R" 1 "$(total_lines "$R")" '`workflow.py remove-worktree --project "\$REPO_ROOT" --worktree "\$WORKTREE"`'
+assert_has "remove-worktree refuses from inside the worktree" plugins/notion-dev/scripts/workflow.py 'this session is inside the worktree it is removing'
+assert_has "remove-worktree's clean check sees through \`--ignore-submodules=none\`" plugins/notion-dev/scripts/workflow.py '"--untracked-files=all", "--ignore-submodules=none")'
+WF=plugins/notion-dev/scripts/workflow.py
+RW=$(find_line "$WF" 1 "$(total_lines "$WF")" '^def remove_worktree\(')
+RE=$(find_line "$WF" 1 "$(total_lines "$WF")" '^def resume_pr\(')
+assert_order "remove-worktree: the clean check, then the submodule ignored-file refusal, then the only \`--force\`" "$WF" "$RW" "$RE" \
+  clean '"--untracked-files=all", "--ignore-submodules=none"\)' \
+  ignored '^    require\(not ignored,' \
+  force '\*\(\["--force"\] if populated else \[\]\)'
 exit $(( fails > 0 ))

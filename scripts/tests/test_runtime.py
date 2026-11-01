@@ -54,6 +54,8 @@ class RuntimeTests(unittest.TestCase):
         self.repo = self.root / "repo with space"
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        # Fixture configs name `main` as the base; pin it rather than inherit init.defaultBranch.
+        self.run_git("symbolic-ref", "HEAD", "refs/heads/main")
         self.run_git("config", "user.email", "fixture@example.invalid")
         self.run_git("config", "user.name", "Fixture")
         self.code = self.repo / "code.txt"

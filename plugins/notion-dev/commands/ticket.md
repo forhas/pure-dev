@@ -71,7 +71,7 @@ Run the shared verifier, capturing full logs (including named tests), not piped 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" verify --project "$REPO_ROOT" --state "$RUNTIME_STATE" --worktree "$WORKTREE"
 ```
-It reuses applicable passing receipts; failed/stale checks execute. Declare ignored/generated
+It reuses applicable passing receipts (no `--reuse` flag); failed/stale checks execute. Declare ignored/generated
 verification inputs with repeated `--depends`; environment-sensitive checks without a complete
 dependency declaration must run through `runtime.py verify` without `--reuse`.
 On a failing check investigate/fix, respecting each configured step's `retries` limit (default 3);
@@ -80,7 +80,7 @@ the log path returned by the helper. No configured checks: establish appropriate
 the user (or from documented project commands when unambiguous), never report untested success.
 
 Declare generated evidence in `verify.steps[].outputs` or `--output STEP=PATH`; cite returned
-archives, not mutable reports. `workflow.py verify` already reuses receipts (no `--reuse` flag).
+archives, not mutable reports.
 Full/delta dispatch uses `workflow.py review-prepare` per review-and-merge.
 
 Push only the ticket branch. Open a PR against `git.prTargetBranch` or `git.baseBranch`.
@@ -120,8 +120,8 @@ Non-interactive continues authorized work without suppressing missing authority.
 `workflow.py guide --stage dispatch` for worker waits, delivery and cancellation; pending is unfinished,
 not failed. No duplicate waiters.
 
-On failure preserve the branch/worktree/PR and runtime. Update the owned marker to `stopped`
-with the actual cause before ending the turn. Name only artifacts whose existence was checked.
+On failure preserve the branch/worktree/PR and runtime; `ExitWorktree` keep. Update the owned
+marker to `stopped` with the actual cause before ending the turn. Name only artifacts whose existence was checked.
 Use `/notion-dev:finalize <pr>` for a PR already opened; otherwise resume this invocation.
 Record unexpected failures through issue-log once with evidence, not a new investigation loop.
 Never release a primary lock over a record writer that has not been confirmed stopped.

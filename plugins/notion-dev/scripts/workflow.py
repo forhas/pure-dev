@@ -100,6 +100,29 @@ def primary(project):
     return Path(lines[0][9:]).resolve()
 
 
+def same_path(a, b):
+    """Windows paths compare case-insensitively; resolve() alone does not fold case."""
+    return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+
+
+def windows_path(path):
+    """A drive letter (C:\\ or C:/) or a UNC/device prefix (\\\\server\\share, \\\\?\\C:\\)."""
+    return re.match(r"[A-Za-z]:[\\/]|\\\\", str(path)) is not None
+
+
+def require_same_platform(path, ticket):
+    """A worktree's git links name the platform that created it.
+
+    `git worktree add` from Git for Windows writes `gitdir: C:/...`; from WSL it writes
+    `/mnt/c/...`. Neither git can follow the other's link, so a run claimed on one side
+    cannot be resumed on the other even though both see the same checkout.
+    """
+    here = os.name == "nt"
+    require(windows_path(path) == here,
+            "run " + ticket + " was claimed from " + ("Windows" if windows_path(path) else "WSL/Linux") +
+            " and its worktree's git links only resolve there; resume it from that platform")
+
+
 def local_dir(root):
     path = root / ".claude/notion-dev"
     path.mkdir(parents=True, exist_ok=True)
@@ -131,6 +154,14 @@ def preflight(project, session, non_interactive=False):
         exempt = {".claude/notion-dev.config.json", ".mcp.json", ".claude/settings.local.json"}
         dirty = [row for row in status.split("\0") if row and row[3:] not in exempt]
         require(not dirty, "primary checkout is dirty; preserve changes and ask the user: " + repr(dirty))
+        bases = [b for b in (config.get("git", {}).get(k) for k in ("prTargetBranch", "baseBranch")) if b]
+        if bases:
+            current = git(root, "branch", "--show-current")
+            # Every session on this machine shares the primary; a branch left there shows
+            # up in every other tab. A locked notion-dev writer moves it only briefly.
+            require(current in bases, "primary checkout is on " + (current or "a detached HEAD") +
+                    ", not " + " or ".join(dict.fromkeys(bases)) + "; another session, a locked "
+                    "notion-dev writer or a person moved it -- ask the user, never switch it back yourself")
         return {"root": str(root), "marker": str(marker), "invocation": invocation,
                 "config": str(root / ".claude/notion-dev.config.json"),
                 "runtime": str(directory / "runtime" / invocation / "state.json"),
@@ -185,6 +216,7 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
             runtime_path = old["runtime_state"]
             require(not Runtime(runtime_path).summary()["end_to_end"]["unaccounted_workers"],
                     "resolve outstanding workers before taking over the run")
+            require_same_platform(old["worktree"], ticket)
             worktree, branch = Path(old["worktree"]), old["branch"]
         identity = read_json(runtime_path)
         require(identity["ticket"] == ticket, "runtime belongs to another ticket")
@@ -219,6 +251,52 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
             "runtime": str(runtime_path), "resumed": bool(old)}
 
 
+def remove_worktree(project, worktree):
+    """Delete a ticket worktree only from outside it, forcing only what git refuses when clean.
+
+    A session moved into the worktree (EnterWorktree) still has it as its working
+    directory until ExitWorktree. Removing it from there strands the shell: measured on
+    Linux, it falls back to $HOME. Windows is unmeasured; the directory is likely in use.
+    """
+    root = primary(project)
+    target = Path(worktree)
+    require(not same_path(target, root), "refusing to remove the primary checkout")
+    listed = [line[9:] for line in git(root, "worktree", "list", "--porcelain").splitlines()
+              if line.startswith("worktree ")]
+    require(any(same_path(target, path) for path in listed),
+            "not a registered worktree of this repository: " + str(target))
+    try:
+        here = Path.cwd()
+    except OSError:
+        here = None
+    require(here is not None, "this shell's working directory no longer exists; ExitWorktree (keep) first")
+    inside = same_path(here, target) or any(same_path(parent, target) for parent in here.resolve().parents)
+    require(not inside, "this session is inside the worktree it is removing; call ExitWorktree with "
+            "action keep (or run from the primary checkout) first, then rerun")
+    dirty = git(target, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+    require(not dirty, "worktree has uncommitted work; preserve it, never force-remove: " + dirty)
+    # git refuses any worktree holding a populated submodule, clean or not. The status above
+    # already proved this one clean, submodule content included, so only that case forces.
+    populated = [re.match(r".[0-9a-f]+ (.+?)(?: \(.*\))?$", line).group(1)
+                 for line in git(target, "submodule", "status", "--recursive").splitlines()
+                 if line and not line.startswith("-")]
+    # --force also deletes ignored files inside those submodules (a local .env, say), which a
+    # plain removal would never reach; leave that call to the user.
+    ignored = [path + ": " + row for path in populated
+               for row in git(target / path, "status", "--porcelain", "--ignored", "--untracked-files=all").splitlines()]
+    require(not ignored, "a submodule holds ignored files that removal would delete; preserve them, never force-remove: "
+            + "; ".join(ignored))
+    git(root, "worktree", "remove", *(["--force"] if populated else []), str(target))
+    container, container_removed = target.parent, False
+    if container.name == root.name + "-worktrees":
+        try:
+            container.rmdir()
+            container_removed = True
+        except OSError:
+            pass  # another ticket's worktree is still there
+    return {"removed": str(target), "container_removed": container_removed}
+
+
 def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch, merged=False):
     """Bind a verified PR to its original invocation, including post-cleanup recovery.
 
@@ -243,6 +321,8 @@ def resume_pr(project, preflight_marker, ticket, runtime_path, worktree, branch,
         if old:
             require(old.get("flow") == "lean" and Path(old["runtime_state"]).resolve() == runtime_path,
                     "resume must retain the original lean runtime")
+            if old.get("worktree") and not merged:
+                require_same_platform(old["worktree"], ticket)
             same_host = bool(pending.get("claude_session")) and old.get("claude_session") == pending["claude_session"]
             require(old.get("state") != "running" or same_host,
                     "another session owns this run; resolve ownership before resume")
@@ -1145,6 +1225,7 @@ def main():
     p.add_argument("--branch", required=True); p.add_argument("--run", required=True); p.add_argument("--message", required=True)
     p = commands.add_parser("guide"); p.add_argument("--stage", required=True,
         choices=("intake", "dispatch", "review", "merge", "record"))
+    p = commands.add_parser("remove-worktree"); p.add_argument("--project", required=True); p.add_argument("--worktree", required=True)
     p = commands.add_parser("resume-view"); p.add_argument("--state", required=True); p.add_argument("--worktree")
     p = commands.add_parser("review-inputs"); p.add_argument("--state", required=True); p.add_argument("--worktree", required=True)
     p.add_argument("--pr", required=True); p.add_argument("--source", action="append", default=[])
@@ -1208,6 +1289,7 @@ def main():
     elif args.command == "claim": result = claim(args.project, args.preflight, args.ticket, args.title, args.state, args.resume)
     elif args.command == "resume-pr": result = resume_pr(args.project, args.preflight, args.ticket, args.state, args.worktree, args.branch, args.merged)
     elif args.command == "verify": result = verify_config(args.state, args.project, args.worktree, args.depends, args.output)
+    elif args.command == "remove-worktree": result = remove_worktree(args.project, args.worktree)
     elif args.command == "resume-view": result = resume_view(args.state, args.worktree)
     elif args.command == "review-inputs":
         from review_inputs import prepare

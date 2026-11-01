@@ -179,6 +179,16 @@ assert_has "epic-goal hands git a forward-slash brief path" \
   plugins/notion-dev/scripts/knowledge.py 'rel = os.path.relpath(os.path.abspath(brief), os.path.abspath(repo)).replace(os.sep, "/")'
 assert_has "both platform suites execute the epic-convergence regressions" \
   scripts/verify-decomposition.sh "-p 'test_decomposition.py'"
+# Git for Windows writes worktree links as `C:/...`, WSL git as `/mnt/c/...`; neither follows
+# the other's, so a run resumes only from the platform that claimed it.
+assert_has "a run resumes only on the platform whose path form its worktree has" \
+  plugins/notion-dev/scripts/workflow.py 'require(windows_path(path) == here,'
+assert_has "worktree paths compare case-insensitively on Windows" \
+  plugins/notion-dev/scripts/workflow.py 'os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))'
+assert_has "the lean suite defines the cross-platform resume regression" \
+  scripts/tests/test_lean_workflow.py 'def test_a_run_claimed_on_the_other_platform_is_not_resumed_here'
+assert_has "both platform suites execute the lean workflow regressions" \
+  scripts/verify-lean-workflow.sh "-p 'test_lean_workflow.py'"
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

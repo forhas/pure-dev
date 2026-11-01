@@ -7,6 +7,8 @@ adopt ownership through finalize, confirm MERGED, then consume record-next. Do n
 implementation conversation or reset the journal. Keep canonical technical facts by reference.
 Execute epic brief refresh inline with the lifecycle planner, not a delegated dependency scan.
 `python3` denotes configured `knowledge.python`, on Windows Git Bash and Ubuntu/WSL2.
+It runs from the primary: a session that entered the ticket worktree first calls
+`ExitWorktree` with `action: "keep"` (lean-intake's Session placement).
 
 ## 1. Establish facts and authority before writes
 
@@ -202,11 +204,13 @@ with the corrected code/docs/PR claims; do not invent new rationale during recor
    readback. Unknown answers or historical failures use the existing recovery path.
 4. **cleanup:** first confirm MERGED and check the exact owned worktree/branch. Preserve a
    surviving PLAN/context artifact outside it. Do not force-remove dirty work or another
-   session's checkout. Remove the owned clean worktree, then the merged local ticket branch;
+   session's checkout. From outside it (after `ExitWorktree` keep), remove the owned clean
+   worktree with `workflow.py remove-worktree --project "$REPO_ROOT" --worktree "$WORKTREE"`,
+   then the merged local ticket branch;
    verify/delete only its authorized remote branch. From primary, checkout the actual base and
    pull --ff-only. If pull fails, inspect and report primary changes before doing anything else;
-   never stash/discard someone else's work. Remove only the empty worktrees container with rmdir,
-   never a recursive deletion of the parent. The run marker remains live through recording.
+   never stash/discard someone else's work. The helper removes only the empty worktrees container
+   (rmdir), never a recursive deletion of the parent. The run marker remains live through recording.
 5. **knowledge-delta:** the supplied delta is already the technical synthesis. Preserve it as
    the input to the configured knowledge hook; this step itself performs no duplicate capture.
    Empty or hook-not-configured is stated explicitly, not passed off as a capture.
