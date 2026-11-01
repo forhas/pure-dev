@@ -435,6 +435,17 @@ class LeanTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "uncommitted"):
             workflow.remove_worktree(self.repo, tree)
         (tree / "lib/dep/scratch.txt").unlink()
+        # --force would also delete an ignored file inside the submodule; refuse instead.
+        exclude = Path(subprocess.check_output(["git", "-C", str(tree / "lib/dep"), "rev-parse", "--git-path", "info/exclude"],
+                                               encoding="utf-8").strip())
+        exclude = exclude if exclude.is_absolute() else tree / "lib/dep" / exclude
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(".env\n", encoding="utf-8")
+        (tree / "lib/dep/.env").write_text("SECRET=local\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "ignored files"):
+            workflow.remove_worktree(self.repo, tree)
+        self.assertTrue((tree / "lib/dep/.env").is_file())
+        (tree / "lib/dep/.env").unlink()
         workflow.remove_worktree(self.repo, tree)
         self.assertFalse(tree.exists())
 

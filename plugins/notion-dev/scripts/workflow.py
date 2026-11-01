@@ -276,8 +276,15 @@ def remove_worktree(project, worktree):
     require(not dirty, "worktree has uncommitted work; preserve it, never force-remove: " + dirty)
     # git refuses any worktree holding a populated submodule, clean or not. The status above
     # already proved this one clean, submodule content included, so only that case forces.
-    populated = [line for line in git(target, "submodule", "status", "--recursive").splitlines()
+    populated = [re.match(r".[0-9a-f]+ (.+?)(?: \(.*\))?$", line).group(1)
+                 for line in git(target, "submodule", "status", "--recursive").splitlines()
                  if line and not line.startswith("-")]
+    # --force also deletes ignored files inside those submodules (a local .env, say), which a
+    # plain removal would never reach; leave that call to the user.
+    ignored = [path + ": " + row for path in populated
+               for row in git(target / path, "status", "--porcelain", "--ignored", "--untracked-files=all").splitlines()]
+    require(not ignored, "a submodule holds ignored files that removal would delete; preserve them, never force-remove: "
+            + "; ".join(ignored))
     git(root, "worktree", "remove", *(["--force"] if populated else []), str(target))
     container, container_removed = target.parent, False
     if container.name == root.name + "-worktrees":
