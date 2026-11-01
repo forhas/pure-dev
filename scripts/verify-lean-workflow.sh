@@ -99,5 +99,11 @@ assert_present "record: its intro, ahead of section 1, leaves with \`ExitWorktre
 assert_present "record cleanup: \`workflow.py remove-worktree --project \"\$REPO_ROOT\" --worktree \"\$WORKTREE\"\`" "$R" 1 "$(total_lines "$R")" '`workflow.py remove-worktree --project "\$REPO_ROOT" --worktree "\$WORKTREE"`'
 assert_has "remove-worktree refuses from inside the worktree" plugins/notion-dev/scripts/workflow.py 'this session is inside the worktree it is removing'
 assert_has "remove-worktree's clean check sees through \`--ignore-submodules=none\`" plugins/notion-dev/scripts/workflow.py '"--untracked-files=all", "--ignore-submodules=none")'
-assert_has "remove-worktree forces only a proven-clean worktree holding a populated submodule" plugins/notion-dev/scripts/workflow.py '*(["--force"] if populated else [])'
+WF=plugins/notion-dev/scripts/workflow.py
+RW=$(find_line "$WF" 1 "$(total_lines "$WF")" '^def remove_worktree\(')
+RE=$(find_line "$WF" 1 "$(total_lines "$WF")" '^def resume_pr\(')
+assert_order "remove-worktree: the clean check, then the submodule ignored-file refusal, then the only \`--force\`" "$WF" "$RW" "$RE" \
+  clean '"--untracked-files=all", "--ignore-submodules=none"\)' \
+  ignored '^    require\(not ignored,' \
+  force '\*\(\["--force"\] if populated else \[\]\)'
 exit $(( fails > 0 ))
