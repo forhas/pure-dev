@@ -595,7 +595,9 @@ worktree with a populated submodule.
 The primary stays on the configured base: preflight refuses to start a run while it is on any
 other branch, because that branch would be every other tab's branch too. One platform per run:
 a run claimed from Windows resumes from Windows and one claimed from WSL from WSL, since each
-git writes worktree links the other cannot follow.
+git writes worktree links the other cannot follow. Recording recovery for an already-merged PR
+(`resume-pr --merged`) is exempt, since binding it opens no worktree; if a worktree the other
+platform created still exists, its removal fails here and is finished from that platform.
 
 An Epic page carries four sections:
 
