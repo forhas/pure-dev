@@ -252,11 +252,11 @@ def claim(project, preflight_marker, ticket, title, runtime_path, resume=False):
 
 
 def remove_worktree(project, worktree):
-    """Delete a ticket worktree only from outside it, and never by force.
+    """Delete a ticket worktree only from outside it, forcing only what git refuses when clean.
 
     A session moved into the worktree (EnterWorktree) still has it as its working
-    directory until ExitWorktree. Removing it from there leaves every later command in a
-    deleted directory on Linux, and fails with the directory in use on Windows.
+    directory until ExitWorktree. Removing it from there strands the shell: measured on
+    Linux, it falls back to $HOME. Windows is unmeasured; the directory is likely in use.
     """
     root = primary(project)
     target = Path(worktree)

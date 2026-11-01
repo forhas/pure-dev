@@ -388,7 +388,7 @@ class LeanTests(unittest.TestCase):
         self.run_git("checkout", "-q", "main")
         self.assertIn("marker", workflow.preflight(self.repo, "host", True))
 
-    def test_remove_worktree_refuses_from_inside_and_never_forces(self):
+    def test_remove_worktree_refuses_from_inside_and_over_unsaved_work(self):
         self.config(); self.origin()
         pending = workflow.preflight(self.repo, "host", True)
         claimed = workflow.claim(self.repo, pending["marker"], "TEST-1", "A generic feature", self.state)
