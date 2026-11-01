@@ -17,7 +17,9 @@ Omit the flag for interactive runs. Save the returned `marker`, `runtime`, `invo
 `root`; the helper creates the ignored local directory and session-owned preflight marker
 before checking config/cleanliness. It preserves pre-existing changes. Missing session ID
 means no Stop-hook protection; say so. Missing config means run init, not invent defaults.
-Do not leave a running preflight marker on an abort: use `workflow.py marker --path <marker>
+A refused branch check means the primary is off its configured base: ask, never switch it back.
+Clearing dirt is the user's call; any commit or pull you then make in the primary runs inside
+`knowledge.py lock take --section preflight`, released after. Do not leave a running preflight marker on an abort: use `workflow.py marker --path <marker>
 --phase <phase> --status stopped --cause <actual-cause>` before ending the turn.
 
 Probe `gh auth status`, `jq --version`, Git origin and the configured interpreter. The lean
@@ -132,6 +134,22 @@ passing `LOCK_HELD: true`; release afterwards. Resolve interactive choices befor
 Use the lifecycle retrieval planner inline; do not dispatch another epic/dependency agent.
 If that advances the base, fetch and fast-forward a clean fresh ticket branch before coding.
 Never reset a resumed branch. A brief refresh failure is reported without claiming it succeeded.
+
+## Session placement
+
+After the claim's primary writes (status, `startEpic`, the start brief) and before coding, move
+this session into the claim's worktree: `EnterWorktree` with `path: "$WORKTREE"`. The tab then
+shows the ticket branch and every command defaults there. Inside, the harness refuses git aimed
+at the primary and compound git it cannot verify: run plain git from the worktree; primary state
+stays in `workflow.py`/`knowledge.py` helpers.
+`EnterWorktree` unavailable or refused → stay put and prefix worktree commands with `cd "$WORKTREE" &&`;
+say so once in the report.
+
+Leave before the primary is written again, with `ExitWorktree` and `action: "keep"`:
+before `references/record.md` and before a stop writes the brief.
+Never `remove`: cleanup deletes it with `workflow.py remove-worktree`, refused from inside it.
+A session launched inside the worktree has nothing to exit: run cleanup as
+`cd "$REPO_ROOT" && python3 ... remove-worktree`, then use absolute paths only.
 
 ## Boundaries and stop
 

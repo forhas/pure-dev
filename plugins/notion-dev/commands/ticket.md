@@ -14,7 +14,7 @@ select a ticket merely because this command is available.
 Explicit `--flow=superpowers` or `--flow=feature-dev`: read
 `${CLAUDE_PLUGIN_ROOT}/references/legacy/ticket.md` and execute that opt-in flow.
 A pre-0.36 marker/runtime resumes through that reference too; preserve its invocation and budgets.
-Do not read legacy workflows on a new lean run. Reject unknown flags/flows.
+Reject unknown flags/flows.
 
 ## 1. Intake and ownership
 
@@ -41,7 +41,7 @@ function/call-site/test/docs changes into separate worker tasks. The implementat
 correct test setup, helper choices and line ranges without asking permission to deviate from
 a proposed implementation; requirements and explicit user decisions still govern.
 
-Keep decision/reason/evidence/release obligations in context.md; summarize by reference.
+Keep reasons, evidence and release obligations in context.md; summarize by reference.
 Apply `references/scope.md` to the plan: sibling sweep, failure-mode classes, filing rules.
 
 **Design review when warranted:** unresolved architecture, financial/security invariants,
@@ -71,7 +71,7 @@ Run the shared verifier, capturing full logs (including named tests), not piped 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow.py" verify --project "$REPO_ROOT" --state "$RUNTIME_STATE" --worktree "$WORKTREE"
 ```
-It reuses applicable passing receipts; failed/stale checks execute. Declare ignored/generated
+It reuses applicable passing receipts (no `--reuse` flag); failed/stale checks execute. Declare ignored/generated
 verification inputs with repeated `--depends`; environment-sensitive checks without a complete
 dependency declaration must run through `runtime.py verify` without `--reuse`.
 On a failing check investigate/fix, respecting each configured step's `retries` limit (default 3);
@@ -80,7 +80,7 @@ the log path returned by the helper. No configured checks: establish appropriate
 the user (or from documented project commands when unambiguous), never report untested success.
 
 Declare generated evidence in `verify.steps[].outputs` or `--output STEP=PATH`; cite returned
-archives, not mutable reports. `workflow.py verify` already reuses receipts (no `--reuse` flag).
+archives, not mutable reports.
 Full/delta dispatch uses `workflow.py review-prepare` per review-and-merge.
 
 Push only the ticket branch. Open a PR against `git.prTargetBranch` or `git.baseBranch`.
@@ -104,8 +104,8 @@ Persist the returned structured result and review report; no re-summarization fo
 
 ## 5. Record and finish
 
-After confirmed merge, read `${CLAUDE_PLUGIN_ROOT}/references/record.md` and execute its shared
-journaled routine **inline**. It is also finalize's routine; do not dispatch a generic record
+After confirmed merge, `ExitWorktree` keep, then read `${CLAUDE_PLUGIN_ROOT}/references/record.md`
+and execute its shared journaled routine **inline**. It is also finalize's routine; do not dispatch a generic record
 agent or reload investigation history. Carry the technical knowledge delta already learned.
 
 Run the workspace pass of `notion-dev:session-closeout` over owned artifacts and the finished
@@ -120,8 +120,8 @@ Non-interactive continues authorized work without suppressing missing authority.
 `workflow.py guide --stage dispatch` for worker waits, delivery and cancellation; pending is unfinished,
 not failed. No duplicate waiters.
 
-On failure preserve the branch/worktree/PR and runtime. Update the owned marker to `stopped`
-with the actual cause before ending the turn. Name only artifacts whose existence was checked.
+On failure preserve the branch/worktree/PR and runtime; `ExitWorktree` keep. Update the owned
+marker to `stopped` with the actual cause before ending the turn. Name only artifacts whose existence was checked.
 Use `/notion-dev:finalize <pr>` for a PR already opened; otherwise resume this invocation.
 Record unexpected failures through issue-log once with evidence, not a new investigation loop.
 Never release a primary lock over a record writer that has not been confirmed stopped.

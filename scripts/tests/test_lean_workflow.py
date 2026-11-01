@@ -2,6 +2,7 @@
 from contextlib import ExitStack, nullcontext
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -371,6 +372,61 @@ class LeanTests(unittest.TestCase):
         pending = workflow.preflight(self.repo, "host", True)
         claimed = workflow.claim(self.repo, pending["marker"], "TEST-1", "TEST-1", self.state)
         self.assertTrue((Path(claimed["worktree"]) / "target-only.txt").is_file())
+
+    def origin(self):
+        self.run_git("branch", "-M", "main")
+        remote = self.root / "placement-origin.git"
+        subprocess.run(["git", "clone", "--bare", str(self.repo), str(remote)], check=True, capture_output=True)
+        self.run_git("remote", "add", "origin", str(remote))
+
+    def test_preflight_refuses_a_primary_left_off_the_base_branch(self):
+        """Every tab shares the primary: a branch left there is every other session's branch."""
+        self.config(); self.origin()
+        self.run_git("checkout", "-q", "-b", "stray-work")
+        with self.assertRaisesRegex(ValueError, "primary checkout is on stray-work, not main"):
+            workflow.preflight(self.repo, "host", True)
+        self.run_git("checkout", "-q", "main")
+        self.assertIn("marker", workflow.preflight(self.repo, "host", True))
+
+    def test_remove_worktree_refuses_from_inside_and_never_forces(self):
+        self.config(); self.origin()
+        pending = workflow.preflight(self.repo, "host", True)
+        claimed = workflow.claim(self.repo, pending["marker"], "TEST-1", "A generic feature", self.state)
+        tree = Path(claimed["worktree"])
+        before = Path.cwd()
+        try:
+            os.chdir(tree / "")
+            with self.assertRaisesRegex(ValueError, "ExitWorktree"):
+                workflow.remove_worktree(self.repo, tree)
+        finally:
+            os.chdir(before)
+        self.assertTrue(tree.is_dir())
+        with self.assertRaisesRegex(ValueError, "primary checkout"):
+            workflow.remove_worktree(self.repo, self.repo)
+        with self.assertRaisesRegex(ValueError, "not a registered worktree"):
+            workflow.remove_worktree(self.repo, self.root)
+        (tree / "unsaved.txt").write_text("work in progress\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "uncommitted"):
+            workflow.remove_worktree(self.repo, tree)
+        (tree / "unsaved.txt").unlink()
+        removed = workflow.remove_worktree(self.repo, tree)
+        self.assertFalse(tree.exists())
+        self.assertTrue(removed["container_removed"])
+        self.assertFalse(tree.parent.exists())
+
+    def test_a_run_claimed_on_the_other_platform_is_not_resumed_here(self):
+        self.config(); self.origin()
+        pending = workflow.preflight(self.repo, "first-host", True)
+        claimed = workflow.claim(self.repo, pending["marker"], "TEST-1", "A generic feature", self.state)
+        marker = runtime.read_json(claimed["marker"])
+        marker["state"] = "stopped"
+        marker["worktree"] = "/mnt/c/Users/someone/repo-worktrees/x" if os.name == "nt" else "C:\\Users\\someone\\repo-worktrees\\x"
+        runtime.atomic_json(claimed["marker"], marker)
+        other = workflow.preflight(self.repo, "second-host", True)
+        with self.assertRaisesRegex(ValueError, "resume it from that platform"):
+            workflow.claim(self.repo, other["marker"], "TEST-1", "A generic feature", self.state, True)
+        with self.assertRaisesRegex(ValueError, "resume it from that platform"):
+            workflow.resume_pr(self.repo, other["marker"], "TEST-1", self.state, claimed["worktree"], claimed["branch"])
 
     def test_claim_rejects_wrong_ticket_before_git_side_effects(self):
         self.config(); pending = workflow.preflight(self.repo, "host", True)

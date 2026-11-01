@@ -28,13 +28,15 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
    A MERGED PR can enter recording recovery without pretending unmet requirements are met.
 4. **OPEN:** use the actual PR worktree and branch. If missing, fetch and create a detached
    worktree, then `gh pr checkout <pr>` there; this supports fork PRs without assuming
-   `origin/<headRefName>` exists. Confirm it matches the PR's current HEAD.
+   `origin/<headRefName>` exists. Confirm it matches the PR's current HEAD; enter it
+   per lean-intake's Session placement.
    Recover retained context/evidence, register changed requirements honestly, and invoke
    `notion-dev:review-and-merge`. Never rebuild a completed plan.
 5. **MERGED:** skip review and merge entirely. Confirm merge SHA/base from GitHub. Recover the
    persisted structured review result and requirement evidence; if unavailable, inspect PR
    records and source. Missing verdicts remain unknown—do not tick AC from a merge alone.
-6. In either case read `references/record.md` and run that exact shared routine inline, using
+6. Either way `ExitWorktree` keep, then read `references/record.md` and run that exact
+   shared routine inline, using
    the existing journal to reconcile or skip completed operations. No copied cleanup/status
    implementation and no replacement record agent.
 7. Run the workspace closeout pass, report actual outcomes and evidence paths, then mark the

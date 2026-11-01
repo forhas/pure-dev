@@ -2,10 +2,18 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.50.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: pre-release (0.51.0). The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## Parallel tabs stay on their own branch (0.51.0)
+
+Several tabs can each run a ticket against one checkout. Each run now moves its session into
+its ticket worktree, so a tab shows and works on its own branch, and leaves it before
+recording, so the worktree is only ever deleted from outside. Preflight refuses a shared
+checkout that was left on a stray branch, and a run resumes only from the platform (Windows
+or WSL) that claimed it. See "Running two sessions on one epic" below.
 
 ## Ticket runs route checked facts (0.50.0)
 
@@ -576,6 +584,16 @@ equal (two minor bumps land as consecutive minors), and a manifest-version confl
 itself. A worktree carried over from 0.25.0 has no marker and resumes as before. A ticket left
 `In Progress` with no worktree here now aborts in non-interactive mode (`held elsewhere`)
 instead of proceeding. Same machine only.
+
+**Each session works inside its own worktree.** After the claim, a run moves its session into
+the ticket worktree (Claude Code's `EnterWorktree`), so each tab shows its own ticket branch
+and Claude Code itself refuses git aimed at the shared primary checkout. Before recording it
+returns (`ExitWorktree`, keep), and cleanup deletes the worktree with `workflow.py
+remove-worktree`, which refuses while the session is still inside it and never forces.
+The primary stays on the configured base: preflight refuses to start a run while it is on any
+other branch, because that branch would be every other tab's branch too. One platform per run:
+a run claimed from Windows resumes from Windows and one claimed from WSL from WSL, since each
+git writes worktree links the other cannot follow.
 
 An Epic page carries four sections:
 
