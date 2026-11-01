@@ -92,7 +92,11 @@ TL=$(total_lines "$T")
 assert_present "ticket: a failure stop runs \`ExitWorktree\` keep" "$T" 1 "$TL" '^On failure preserve.*; `ExitWorktree` keep\.'
 F=plugins/notion-dev/commands/finalize.md
 FL=$(total_lines "$F")
-assert_present "finalize: the OPEN path enters the PR worktree per Session placement" "$F" 1 "$FL" "HEAD; enter it\$"
+FO=$(find_line "$F" 1 "$FL" '^4\. \*\*OPEN:\*\*')
+FM=$(find_line "$F" 1 "$FL" '^5\. \*\*MERGED:\*\*')
+assert_order "finalize: the **OPEN:** step enters the PR worktree per lean-intake's Session placement" "$F" "$FO" "$FM" \
+  enter "HEAD; enter it\$" \
+  placement "^   per lean-intake's Session placement\."
 R=plugins/notion-dev/references/record.md
 R1=$(find_line "$R" 1 "$(total_lines "$R")" '^## 1\. ')
 assert_present "record: its intro, ahead of section 1, leaves with \`ExitWorktree\` and \`action: \"keep\"\`" "$R" 1 "$R1" '^`ExitWorktree` with `action: "keep"`'
