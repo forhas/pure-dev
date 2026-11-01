@@ -449,6 +449,12 @@ class LeanTests(unittest.TestCase):
         workflow.remove_worktree(self.repo, tree)
         self.assertFalse(tree.exists())
 
+    def test_windows_paths_include_unc_shares(self):
+        for path in ("C:\\Users\\x\\repo", "c:/Users/x/repo", "\\\\server\\share\\repo-worktrees\\t", "\\\\?\\C:\\repo"):
+            self.assertTrue(workflow.windows_path(path), path)
+        for path in ("/mnt/c/Users/x/repo", "/home/x/repo", "relative/C:/x"):
+            self.assertFalse(workflow.windows_path(path), path)
+
     def test_a_run_claimed_on_the_other_platform_is_not_resumed_here(self):
         self.config(); self.origin()
         pending = workflow.preflight(self.repo, "first-host", True)

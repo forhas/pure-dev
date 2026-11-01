@@ -106,7 +106,8 @@ def same_path(a, b):
 
 
 def windows_path(path):
-    return re.match(r"[A-Za-z]:[\\/]", str(path)) is not None
+    """A drive letter (C:\\ or C:/) or a UNC/device prefix (\\\\server\\share, \\\\?\\C:\\)."""
+    return re.match(r"[A-Za-z]:[\\/]|\\\\", str(path)) is not None
 
 
 def require_same_platform(path, ticket):
