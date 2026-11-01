@@ -7,6 +7,8 @@ adopt ownership through finalize, confirm MERGED, then consume record-next. Do n
 implementation conversation or reset the journal. Keep canonical technical facts by reference.
 Execute epic brief refresh inline with the lifecycle planner, not a delegated dependency scan.
 `python3` denotes configured `knowledge.python`, on Windows Git Bash and Ubuntu/WSL2.
+It runs from the primary: a session that entered the ticket worktree first calls
+`ExitWorktree` with `action: "keep"` (lean-intake's Session placement).
 
 ## 1. Establish facts and authority before writes
 

@@ -35,8 +35,7 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
 5. **MERGED:** skip review and merge entirely. Confirm merge SHA/base from GitHub. Recover the
    persisted structured review result and requirement evidence; if unavailable, inspect PR
    records and source. Missing verdicts remain unknown—do not tick AC from a merge alone.
-6. Either way `ExitWorktree` keep, then read `references/record.md` and run that exact
-   shared routine inline, using
+6. In either case read `references/record.md` and run that exact shared routine inline, using
    the existing journal to reconcile or skip completed operations. No copied cleanup/status
    implementation and no replacement record agent.
 7. Run the workspace closeout pass, report actual outcomes and evidence paths, then mark the

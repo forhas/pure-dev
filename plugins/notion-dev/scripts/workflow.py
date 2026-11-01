@@ -272,9 +272,13 @@ def remove_worktree(project, worktree):
     inside = same_path(here, target) or any(same_path(parent, target) for parent in here.resolve().parents)
     require(not inside, "this session is inside the worktree it is removing; call ExitWorktree with "
             "action keep (or run from the primary checkout) first, then rerun")
-    dirty = git(target, "status", "--porcelain", "--untracked-files=all")
+    dirty = git(target, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
     require(not dirty, "worktree has uncommitted work; preserve it, never force-remove: " + dirty)
-    git(root, "worktree", "remove", str(target))
+    # git refuses any worktree holding a populated submodule, clean or not. The status above
+    # already proved this one clean, submodule content included, so only that case forces.
+    populated = [line for line in git(target, "submodule", "status", "--recursive").splitlines()
+                 if line and not line.startswith("-")]
+    git(root, "worktree", "remove", *(["--force"] if populated else []), str(target))
     container, container_removed = target.parent, False
     if container.name == root.name + "-worktrees":
         try:

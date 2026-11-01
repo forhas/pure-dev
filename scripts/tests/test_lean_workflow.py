@@ -414,6 +414,30 @@ class LeanTests(unittest.TestCase):
         self.assertTrue(removed["container_removed"])
         self.assertFalse(tree.parent.exists())
 
+    def test_remove_worktree_handles_a_clean_populated_submodule(self):
+        """git refuses any worktree with a populated submodule; a clean one must still go."""
+        self.config()
+        dep = self.root / "dep"
+        subprocess.run(["git", "init", "-q", str(dep)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(dep), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                        "commit", "-q", "--allow-empty", "-m", "dep"], check=True, capture_output=True)
+        allow = ("-c", "protocol.file.allow=always")
+        self.run_git(*allow, "submodule", "add", "-q", dep.as_uri(), "lib/dep")
+        self.run_git("commit", "-q", "-m", "add submodule")
+        self.origin()
+        pending = workflow.preflight(self.repo, "host", True)
+        tree = Path(workflow.claim(self.repo, pending["marker"], "TEST-1", "A generic feature", self.state)["worktree"])
+        subprocess.run(["git", "-C", str(tree), *allow, "submodule", "update", "-q", "--init"],
+                       check=True, capture_output=True)
+        # A repo may hide submodule changes from status; the removal check must not.
+        self.run_git("config", "submodule.lib/dep.ignore", "all")
+        (tree / "lib/dep/scratch.txt").write_text("inside the submodule\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "uncommitted"):
+            workflow.remove_worktree(self.repo, tree)
+        (tree / "lib/dep/scratch.txt").unlink()
+        workflow.remove_worktree(self.repo, tree)
+        self.assertFalse(tree.exists())
+
     def test_a_run_claimed_on_the_other_platform_is_not_resumed_here(self):
         self.config(); self.origin()
         pending = workflow.preflight(self.repo, "first-host", True)

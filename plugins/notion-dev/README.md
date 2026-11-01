@@ -589,7 +589,9 @@ instead of proceeding. Same machine only.
 the ticket worktree (Claude Code's `EnterWorktree`), so each tab shows its own ticket branch
 and Claude Code itself refuses git aimed at the shared primary checkout. Before recording it
 returns (`ExitWorktree`, keep), and cleanup deletes the worktree with `workflow.py
-remove-worktree`, which refuses while the session is still inside it and never forces.
+remove-worktree`, which refuses while the session is still inside it or while it holds any
+uncommitted work (submodules included). It forces only the one case git always refuses, a clean
+worktree with a populated submodule.
 The primary stays on the configured base: preflight refuses to start a run while it is on any
 other branch, because that branch would be every other tab's branch too. One platform per run:
 a run claimed from Windows resumes from Windows and one claimed from WSL from WSL, since each

@@ -14,7 +14,7 @@ select a ticket merely because this command is available.
 Explicit `--flow=superpowers` or `--flow=feature-dev`: read
 `${CLAUDE_PLUGIN_ROOT}/references/legacy/ticket.md` and execute that opt-in flow.
 A pre-0.36 marker/runtime resumes through that reference too; preserve its invocation and budgets.
-Reject unknown flags/flows.
+Do not read legacy workflows on a new lean run. Reject unknown flags/flows.
 
 ## 1. Intake and ownership
 
@@ -41,7 +41,7 @@ function/call-site/test/docs changes into separate worker tasks. The implementat
 correct test setup, helper choices and line ranges without asking permission to deviate from
 a proposed implementation; requirements and explicit user decisions still govern.
 
-Keep reasons, evidence and release obligations in context.md; summarize by reference.
+Keep decision/reason/evidence/release obligations in context.md; summarize by reference.
 Apply `references/scope.md` to the plan: sibling sweep, failure-mode classes, filing rules.
 
 **Design review when warranted:** unresolved architecture, financial/security invariants,
@@ -104,8 +104,8 @@ Persist the returned structured result and review report; no re-summarization fo
 
 ## 5. Record and finish
 
-After confirmed merge, `ExitWorktree` keep, then read `${CLAUDE_PLUGIN_ROOT}/references/record.md`
-and execute its shared journaled routine **inline**. It is also finalize's routine; do not dispatch a generic record
+After confirmed merge, read `${CLAUDE_PLUGIN_ROOT}/references/record.md` and execute its shared
+journaled routine **inline**. It is also finalize's routine; do not dispatch a generic record
 agent or reload investigation history. Carry the technical knowledge delta already learned.
 
 Run the workspace pass of `notion-dev:session-closeout` over owned artifacts and the finished
