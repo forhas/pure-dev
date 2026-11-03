@@ -346,6 +346,69 @@ class OutcomeTests(ProjectBase):
         self.assertTrue(all(coordinator.workspace(self.project, "STO-7").values()))
 
 
+class RelayTests(ProjectBase):
+    PHRASE = "approve STO-7 review allowance: 2 findings, round 4"
+
+    def setUp(self):
+        super().setUp()
+        self.transcript = self.dir / "coordinator.jsonl"
+        self.transcript.write_text("", encoding="utf-8")
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        self.state = started["state"]
+        self.launched = coordinator.record_launch(self.state, "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        self.asked = time.time() - 5
+
+    def row(self, text, kind="user", session="a", when=None, **extra):
+        stamp = coordinator.stamp(when if when is not None else time.time()).replace("+00:00", "Z")
+        value = {"type": kind, "sessionId": session, "uuid": "u-" + str(len(self.transcript.read_text().splitlines())),
+                 "timestamp": stamp, "message": {"role": kind, "content": [{"type": "text", "text": text}]}, **extra}
+        with self.transcript.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps(value) + "\n")
+        return value["uuid"]
+
+    def relay(self):
+        return coordinator.relay(self.state, self.launched["session"], self.PHRASE, self.PHRASE,
+                                 self.transcript, "a", self.asked)
+
+    def test_relay_requires_a_real_user_turn(self):
+        self.row(self.PHRASE, kind="assistant")
+        self.row(self.PHRASE, isSidechain=True)
+        self.row(self.PHRASE, isMeta=True)
+        self.row(self.PHRASE, session="someone-else")
+        with self.assertRaisesRegex(Invalid, "no matching user answer"):
+            self.relay()
+        self.assertFalse([c for c in self.calls() if c[:2] == ["--bg", "--resume"]])
+        self.row(self.PHRASE)
+        self.assertEqual(self.relay()["session"], self.launched["session"])
+
+    def test_relay_ignores_answers_before_the_question(self):
+        self.row(self.PHRASE, when=self.asked - 60)
+        with self.assertRaisesRegex(Invalid, "no matching user answer"):
+            self.relay()
+
+    def test_relay_records_provenance_and_sends_exact_phrase(self):
+        uuid = self.row("  " + self.PHRASE + "\n")
+        self.relay()
+        resumed = [c for c in self.calls() if c[:2] == ["--bg", "--resume"]]
+        self.assertEqual(resumed, [["--bg", "--resume", self.launched["session"], self.PHRASE]])
+        relays = json.loads(Path(self.state).read_text(encoding="utf-8"))["launches"][0]["relays"]
+        self.assertEqual(relays[0]["user_message"], uuid)
+        self.assertEqual(relays[0]["phrase"], self.PHRASE)
+        self.assertEqual(json.loads(Path(self.state).read_text(encoding="utf-8"))["remediations"], {})
+
+    def test_relay_answer_must_be_in_this_coordinators_session(self):
+        self.row(self.PHRASE, session="b")
+        with self.assertRaisesRegex(Invalid, "coordinator"):
+            coordinator.relay(self.state, self.launched["session"], self.PHRASE, self.PHRASE, self.transcript, "b", self.asked)
+
+    def test_non_interactive_never_relays(self):
+        coordinator.finish(self.state, "stopped", "test")
+        state = coordinator.start(self.project, "STO-1", "a", True)["state"]
+        self.row(self.PHRASE)
+        with self.assertRaisesRegex(Invalid, "never relays"):
+            coordinator.relay(state, self.launched["session"], self.PHRASE, self.PHRASE, self.transcript, "a", self.asked)
+
+
 RESOLVED = """Ticket STO-7 resolved: PR #41 merged as 1a2b3c4.
 
 OUTCOME: resolved

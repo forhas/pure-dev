@@ -511,6 +511,72 @@ def workspace(project, ticket):
             "primary_clean": not dirty}
 
 
+# ---------------------------------------------------------------- approval relay
+
+def user_answer(transcript, session, expect, asked_at):
+    """The latest parent user row of `session`, typed after `asked_at`, reading exactly `expect`.
+
+    The same row rules as host_capture.user_approval: never an assistant, sidechain, meta,
+    compact-summary or tool-result row. An AskUserQuestion answer is a tool result, so the
+    coordinator asks in plain text and the user types the answer.
+    """
+    from host_capture import timestamp
+    found = None
+    with Path(transcript).open("rb") as stream:
+        for raw in stream:
+            if not raw.endswith(b"\n"):
+                break
+            try:
+                row = json.loads(raw)
+            except ValueError:
+                continue
+            if (row.get("type") != "user" or row.get("sessionId") != session or row.get("isSidechain")
+                    or row.get("isMeta") or row.get("isCompactSummary") or row.get("toolUseResult") is not None):
+                continue
+            message = row.get("message", {})
+            content = message.get("content")
+            if isinstance(content, list):
+                if not all(isinstance(c, dict) and c.get("type") == "text" for c in content):
+                    continue
+                content = "\n".join(c.get("text", "") for c in content)
+            if message.get("role") != "user" or not isinstance(content, str) or content.strip() != expect.strip():
+                continue
+            try:
+                when = timestamp(row["timestamp"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if when >= asked_at and isinstance(row.get("uuid"), str) and row["uuid"]:
+                found = {"uuid": row["uuid"], "text": content.strip(), "at": row["timestamp"]}
+    return found
+
+
+def relay(state_path, session, phrase, expect, transcript, coordinator_session, asked_at):
+    """Send the user's explicit approval, as the exact phrase, into the owning session (§A6a).
+
+    The phrase lands as a user message in the ticket's own session, which is what its approval
+    capture requires. A relay is not a remediation and does not spend the bound.
+    """
+    state = read_json(state_path)
+    require(not state.get("non_interactive"), "a --non-interactive coordinator never relays an approval; "
+            "stop with the cause and the session to attach to")
+    require(coordinator_session and coordinator_session == state.get("session"),
+            "the answer must come from this coordinator's own session (" + str(state.get("session")) + ")")
+    require(transcript and Path(transcript).is_file(), "the coordinator's transcript is unavailable "
+            "($NOTION_DEV_TRANSCRIPT); a relay needs the user's answer as a transcript row")
+    find_launch(state, session)
+    answer = user_answer(transcript, coordinator_session, expect, asked_at)
+    require(answer, "no matching user answer typed after the question; relay only what the user typed, never a "
+            "composed approval")
+    resume(state["root"], session, phrase)
+
+    def change(current):
+        find_launch(current, session)["relays"].append(
+            {"phrase": phrase, "user_message": answer["uuid"], "user_text": answer["text"],
+             "answered": answer["at"], "at": stamp()})
+    update(state_path, change)
+    return {"session": session, "relayed": phrase, "user_message": answer["uuid"]}
+
+
 # ---------------------------------------------------------------- reports
 
 CLOSEOUT_KEYS = ("TAILS-FOUND", "RESOLVED", "TRACKED", "BLOCKED", "PASSES")
