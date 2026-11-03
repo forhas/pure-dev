@@ -206,6 +206,8 @@ assert_has "the coordinator's stop-guard test runs Git Bash through \`bash_exe\`
   scripts/tests/test_coordinator.py '    from runtime import bash_exe'
 assert_has "the fake claude CLI writes UTF-8 like the real one, whatever the console code page" \
   scripts/tests/fake_claude.py 'stream.reconfigure(encoding="utf-8", newline="\n")'
+assert_has "the live probe launches from Python, so Git Bash cannot rewrite a /plugin:command prompt into a path" \
+  scripts/analysis/probe-background-sessions.sh 'launch() { tool launch "$1"; }'
 assert_has "the coordinator fixtures resolve the temp root, so no path is a short name" \
   scripts/tests/test_coordinator.py 'self.dir = Path(self.temp.name).resolve()'
 

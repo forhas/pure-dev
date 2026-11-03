@@ -85,8 +85,22 @@ def entry(short):
 def log(name):
     path = os.path.join(work, name + ".log")
     return [json.loads(l) for l in open(path, encoding="utf-8")] if os.path.exists(path) else []
+def bg(*args):
+    """`claude --bg …` started from Python, as run-epic starts it. From Git Bash a native
+    .exe gets every argument that begins with `/` rewritten into a Windows path, so a
+    `/plugin:command` prompt launched from bash arrives mangled; Python passes it intact."""
+    out = subprocess.run(command() + ["--bg", *args, "--plugin-dir", os.path.join(work, "plugin"),
+                                      "--settings", os.path.join(work, "settings.json")],
+                         capture_output=True, encoding="utf-8", errors="replace", timeout=90)
+    found = re.findall(r"(?:backgrounded · |claude logs )([0-9a-f]{8})",
+                       re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", out.stdout + out.stderr))
+    print(found[-1] if found else "")
 cmd = sys.argv[1]
-if cmd == "cmd":              # the resolved claude command, one argv element per line
+if cmd == "launch":           # launch <prompt>
+    bg(sys.argv[2])
+elif cmd == "resume":         # resume <sessionId> <prompt>
+    bg("--resume", sys.argv[2], sys.argv[3])
+elif cmd == "cmd":              # the resolved claude command, one argv element per line
     print("\n".join(command()))
 elif cmd == "id":
     found = re.findall(r"(?:backgrounded · |claude logs )([0-9a-f]{8})", sys.stdin.read())
@@ -174,7 +188,7 @@ CLAUDE=()
 while IFS= read -r part; do [ -n "$part" ] && CLAUDE+=("$part"); done < <(tool cmd)
 [ "${#CLAUDE[@]}" -gt 0 ] || { echo "FAIL claude could not be resolved the way coordinator.py does: $(tool cmd 2>&1 | tail -1)"; exit 1; }
 echo "claude runs as: ${CLAUDE[*]}"
-launch() { timeout 90 "${CLAUDE[@]}" --bg "$@" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id; }
+launch() { tool launch "$1"; }
 
 # 1. A gated plugin command starts in a background session and prints its short id.
 id=$(launch "/probe:gated $tok")
@@ -198,7 +212,7 @@ if "${CLAUDE[@]}" logs "$id" 2>&1 | strip | grep -q "GATED-RAN-$tok"; then pass 
 # 5. stop -> rm -> resume continues the SAME session (fact 10).
 tok2="PROBE-RELAY-$tok"
 [ "$(tool retire "$id")" = yes ] || fail "5 the stopped session did not exit and leave the list within 40 s"
-rid=$(timeout 90 "${CLAUDE[@]}" --bg --resume "$session" "$tok2" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id)
+rid=$(tool resume "$session" "$tok2")
 [ -n "$rid" ] && created="$created $rid"
 seen=$(tool wait "${rid:-none}" 180); session2=${seen##*|}
 sleep 3
