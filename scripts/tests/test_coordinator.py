@@ -346,5 +346,91 @@ class OutcomeTests(ProjectBase):
         self.assertTrue(all(coordinator.workspace(self.project, "STO-7").values()))
 
 
+RESOLVED = """Ticket STO-7 resolved: PR #41 merged as 1a2b3c4.
+
+OUTCOME: resolved
+KNOWLEDGE-DELTA: applied
+EPIC-BRIEF: unknown — notion-update timed out
+NEW-INFO: none
+
+CLOSEOUT:
+TAILS-FOUND: 3
+RESOLVED: 1
+TRACKED: 1
+BLOCKED: 1
+PASSES: 2
+- tracked: retry budget for the faucet client — https://www.notion.so/STO-9-0123456789abcdef0123456789abcdef
+- blocked: mainnet fee replay — no mainnet credential here; unblocked by an operator running scripts/replay.sh
+"""
+
+FACTS = """OUTCOME: resolved
+NEW-INFO:
+- fact: The error-code list ships with the next release, as committed to Talles.
+  evidence: email thread 'BTC-Gateway v3.4.12 is ready for deployment', 2026-10-28 16:07 UTC
+  epics: STO-184
+  route: handed off — human-sourced
+  run: /notion-dev:new-info "The error-code list ships with the next release, as committed to Talles." --epic STO-184
+- fact: STO-187 recorded the regtest CPFP evidence.
+  evidence: gh pr view 132: MERGED at 8d8aabb
+  epics: STO-184
+  route: routed — applied
+
+CLOSEOUT:
+TAILS-FOUND: 1
+RESOLVED: 0
+TRACKED: 0
+BLOCKED: 1
+PASSES: 1
+- blocked: confirm the error-code fact — awaiting the user's confirmation; unblocked by running its run: line
+"""
+
+
+class ReportTests(unittest.TestCase):
+    def test_report_view_parses_resolved_report(self):
+        view = coordinator.report_view(RESOLVED)
+        self.assertEqual(view["outcome"], "resolved")
+        self.assertEqual(view["closeout"], {"TAILS-FOUND": 3, "RESOLVED": 1, "TRACKED": 1, "BLOCKED": 1, "PASSES": 2})
+        self.assertEqual(view["tracked"], [{"item": "retry budget for the faucet client",
+                                            "url": "https://www.notion.so/STO-9-0123456789abcdef0123456789abcdef"}])
+        self.assertEqual(view["blocked"], [{"item": "mainnet fee replay", "cause": "no mainnet credential here",
+                                            "unblock": "an operator running scripts/replay.sh"}])
+        self.assertEqual(view["fields"]["EPIC-BRIEF"], "unknown — notion-update timed out")
+        self.assertEqual(view["facts"], [])
+        self.assertEqual(view["problems"], ["EPIC-BRIEF: unknown — notion-update timed out"])
+
+    def test_tracked_item_may_contain_a_dash(self):
+        view = coordinator.report_view("- tracked: fee cap — mainnet only - later — https://example.org/9\n")
+        self.assertEqual(view["tracked"], [{"item": "fee cap — mainnet only - later", "url": "https://example.org/9"}])
+
+    def test_report_view_extracts_handed_off_facts(self):
+        view = coordinator.report_view(FACTS)
+        self.assertEqual(len(view["facts"]), 2)
+        handed = view["facts"][0]
+        self.assertEqual(handed["route"], "handed off — human-sourced")
+        self.assertEqual(handed["epics"], "STO-184")
+        self.assertEqual(handed["run"], '/notion-dev:new-info "The error-code list ships with the next release, '
+                                        'as committed to Talles." --epic STO-184')
+        self.assertIsNone(view["facts"][1]["run"])
+        self.assertEqual(view["problems"], [])
+
+    def test_report_view_flags_inconsistencies(self):
+        text = RESOLVED.replace("TRACKED: 1", "TRACKED: 2").replace(
+            "- tracked: retry budget for the faucet client — https://www.notion.so/STO-9-0123456789abcdef0123456789abcdef",
+            "- tracked: retry budget for the faucet client\n- tracked: second item — https://example.org/2").replace(
+            "EPIC-BRIEF: unknown — notion-update timed out", "EPIC-BRIEF: applied")
+        problems = coordinator.report_view(text)["problems"]
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("without a URL", problems[0])
+        text = RESOLVED.replace("TRACKED: 1", "TRACKED: 2").replace("EPIC-BRIEF: unknown — notion-update timed out", "")
+        self.assertIn("TRACKED: 2", coordinator.report_view(text)["problems"][0])
+        text = RESOLVED.replace("; unblocked by an operator running scripts/replay.sh", "").replace(
+            "EPIC-BRIEF: unknown — notion-update timed out", "")
+        self.assertIn("unblocked by", coordinator.report_view(text)["problems"][0])
+        missing = coordinator.report_view("OUTCOME: resolved\n")
+        self.assertEqual(missing["closeout"], None)
+        self.assertIn("CLOSEOUT", missing["problems"][0])
+        self.assertIn("OUTCOME", coordinator.report_view("all good")["problems"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

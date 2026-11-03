@@ -511,6 +511,84 @@ def workspace(project, ticket):
             "primary_clean": not dirty}
 
 
+# ---------------------------------------------------------------- reports
+
+CLOSEOUT_KEYS = ("TAILS-FOUND", "RESOLVED", "TRACKED", "BLOCKED", "PASSES")
+FIELD = re.compile(r"^([A-Z][A-Z0-9-]+):[ \t]*(.*?)\s*$")
+SEPARATOR = re.compile(r"\s+[—-]\s+")   # the plugin writes an em dash; tolerate a hyphen
+
+
+def report_view(text):
+    """The open items a finished report declares, in the formats the plugin writes.
+
+    `OUTCOME:`; the session-closeout block and its `- tracked:` / `- blocked:` lines; record.md's
+    `NEW-INFO:` block. `problems` lists everything the coordinator must treat as an open item
+    on the report's own evidence: a missing OUTCOME or CLOSEOUT, a count that disagrees with
+    its lines, a tracked item without a URL, a blocked item without its unblocker, and any
+    outcome field (KNOWLEDGE-DELTA, EPIC-BRIEF, ...) reading failed or unknown.
+    """
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    view = {"outcome": None, "closeout": None, "tracked": [], "blocked": [], "facts": [],
+            "fields": {}, "problems": []}
+    counts, fact, in_facts = {}, None, False
+    for raw in lines:
+        line = raw.rstrip()
+        if in_facts:
+            if line.startswith("- fact:"):
+                fact = {"fact": line[len("- fact:"):].strip(), "evidence": None, "epics": None,
+                        "route": None, "run": None}
+                view["facts"].append(fact)
+                continue
+            if fact is not None and raw[:1] in {" ", "\t"} and ":" in line:
+                key, _, value = line.strip().partition(":")
+                if key in {"evidence", "epics", "route", "run"}:
+                    fact[key] = value.strip()
+                    continue
+            in_facts = False
+        field = FIELD.match(line)
+        if field:
+            key, value = field.groups()
+            if key == "OUTCOME":
+                view["outcome"] = value
+            elif key == "NEW-INFO":
+                in_facts, fact = value.lower() != "none", None
+            elif key == "CLOSEOUT":
+                view["closeout"] = {}
+            elif key in CLOSEOUT_KEYS and view["closeout"] is not None:
+                counts[key] = int(value) if value.isdigit() else value
+            else:
+                view["fields"][key] = value
+            continue
+        if line.startswith("- tracked:"):
+            body = line[len("- tracked:"):].strip()
+            linked = re.match(r"(.*?)\s+[—-]\s+([a-z][a-z0-9+.-]*://\S+)$", body)
+            item, url = linked.groups() if linked else (body, None)
+            view["tracked"].append({"item": item, "url": url})
+            if not url:
+                view["problems"].append("tracked item without a URL: " + body)
+        elif line.startswith("- blocked:"):
+            body = line[len("- blocked:"):].strip()
+            parts = SEPARATOR.split(body, maxsplit=1)
+            cause, sep, unblock = (parts[1] if len(parts) > 1 else "").partition("; unblocked by ")
+            view["blocked"].append({"item": parts[0], "cause": cause.strip(), "unblock": unblock.strip()})
+            if not sep or not cause.strip() or not unblock.strip():
+                view["problems"].append("blocked item without its external cause and `unblocked by`: " + body)
+    if view["outcome"] is None:
+        view["problems"].insert(0, "no OUTCOME line: the report is not a finished ticket report")
+    if view["closeout"] is None:
+        view["problems"].append("no CLOSEOUT block: the session-closeout never ran")
+    else:
+        view["closeout"] = {key: counts.get(key) for key in CLOSEOUT_KEYS}
+        for key, listed in (("TRACKED", view["tracked"]), ("BLOCKED", view["blocked"])):
+            if counts.get(key) != len(listed):
+                view["problems"].append("CLOSEOUT " + key + ": " + str(counts.get(key)) + " but " +
+                                        str(len(listed)) + " " + key.lower() + " line(s)")
+    for key, value in view["fields"].items():
+        if re.match(r"(failed|unknown)\b", value, re.I):
+            view["problems"].append(key + ": " + value)
+    return view
+
+
 def emit(result):
     print(json.dumps(result, ensure_ascii=False))
     return 0
