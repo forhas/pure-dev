@@ -771,6 +771,19 @@ def report_view(text):
         view["problems"].append("no CLOSEOUT block: the session-closeout never ran")
     else:
         view["closeout"] = {key: counts.get(key) for key in CLOSEOUT_KEYS}
+        # session-closeout's contract: every key present as a count, PASSES 1 or 2, and every
+        # tail found is resolved, tracked or blocked — there is no fourth state.
+        bad = [key for key in CLOSEOUT_KEYS if not isinstance(counts.get(key), int)]
+        for key in bad:
+            view["problems"].append("CLOSEOUT " + key + ": " + ("missing" if key not in counts else
+                                    "not a count: " + str(counts[key])))
+        if "PASSES" not in bad and counts["PASSES"] not in (1, 2):
+            view["problems"].append("CLOSEOUT PASSES: " + str(counts["PASSES"]) + " — the closeout runs once or twice")
+        if not {"TAILS-FOUND", "RESOLVED", "TRACKED", "BLOCKED"} & set(bad):
+            total = counts["RESOLVED"] + counts["TRACKED"] + counts["BLOCKED"]
+            if counts["TAILS-FOUND"] != total:
+                view["problems"].append("CLOSEOUT TAILS-FOUND: " + str(counts["TAILS-FOUND"]) + " but RESOLVED + "
+                                        "TRACKED + BLOCKED = " + str(total))
         for key, listed in (("TRACKED", view["tracked"]), ("BLOCKED", view["blocked"])):
             if counts.get(key) != len(listed):
                 view["problems"].append("CLOSEOUT " + key + ": " + str(counts.get(key)) + " but " +

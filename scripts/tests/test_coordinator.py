@@ -682,6 +682,16 @@ class ReportTests(unittest.TestCase):
         view = coordinator.report_view("- tracked: fee cap — mainnet only - later — https://example.org/9\n")
         self.assertEqual(view["tracked"], [{"item": "fee cap — mainnet only - later", "url": "https://example.org/9"}])
 
+    def test_an_incomplete_or_inconsistent_closeout_is_a_problem(self):
+        missing = coordinator.report_view(RESOLVED.replace("PASSES: 2\n", ""))["problems"]
+        self.assertTrue(any("PASSES" in p for p in missing), missing)
+        passes = coordinator.report_view(RESOLVED.replace("PASSES: 2", "PASSES: 3"))["problems"]
+        self.assertTrue(any("PASSES" in p for p in passes), passes)
+        total = coordinator.report_view(RESOLVED.replace("TAILS-FOUND: 3", "TAILS-FOUND: 5"))["problems"]
+        self.assertTrue(any("TAILS-FOUND" in p for p in total), total)
+        garbage = coordinator.report_view(RESOLVED.replace("RESOLVED: 1", "RESOLVED: some"))["problems"]
+        self.assertTrue(any("RESOLVED" in p for p in garbage), garbage)
+
     def test_report_view_extracts_handed_off_facts(self):
         view = coordinator.report_view(FACTS)
         self.assertEqual(len(view["facts"]), 2)
@@ -694,7 +704,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(view["problems"], [])
 
     def test_report_view_flags_inconsistencies(self):
-        text = RESOLVED.replace("TRACKED: 1", "TRACKED: 2").replace(
+        text = RESOLVED.replace("TRACKED: 1", "TRACKED: 2").replace("TAILS-FOUND: 3", "TAILS-FOUND: 4").replace(
             "- tracked: retry budget for the faucet client — https://www.notion.so/STO-9-0123456789abcdef0123456789abcdef",
             "- tracked: retry budget for the faucet client\n- tracked: second item — https://example.org/2").replace(
             "EPIC-BRIEF: unknown — notion-update timed out", "EPIC-BRIEF: applied")
@@ -702,7 +712,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len(problems), 1, problems)
         self.assertIn("without a URL", problems[0])
         text = RESOLVED.replace("TRACKED: 1", "TRACKED: 2").replace("EPIC-BRIEF: unknown — notion-update timed out", "")
-        self.assertIn("TRACKED: 2", coordinator.report_view(text)["problems"][0])
+        self.assertTrue(any("TRACKED: 2 but 1" in p for p in coordinator.report_view(text)["problems"]))
         text = RESOLVED.replace("; unblocked by an operator running scripts/replay.sh", "").replace(
             "EPIC-BRIEF: unknown — notion-update timed out", "")
         self.assertIn("unblocked by", coordinator.report_view(text)["problems"][0])
