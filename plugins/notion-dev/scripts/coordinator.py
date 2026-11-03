@@ -639,11 +639,13 @@ def user_answer(transcript, session, expect, asked_at):
     return found
 
 
-def relay(state_path, session, phrase, expect, transcript, coordinator_session, asked_at):
+def relay(state_path, session, phrase, transcript, coordinator_session, asked_at):
     """Send the user's explicit approval, as the exact phrase, into the owning session (§A6a).
 
     The phrase lands as a user message in the ticket's own session, which is what its approval
-    capture requires. A relay is not a remediation and does not spend the bound.
+    capture requires. Only a phrase the user typed, verbatim, is ever sent: the answer is matched
+    against the phrase itself, so nothing the user did not type can cross into the ticket. A
+    relay is not a remediation and does not spend the bound.
     """
     state = read_json(state_path)
     require(not state.get("non_interactive"), "a --non-interactive coordinator never relays an approval; "
@@ -654,7 +656,7 @@ def relay(state_path, session, phrase, expect, transcript, coordinator_session, 
     require(transcript and Path(transcript).is_file(), "the coordinator's transcript is unavailable "
             "($NOTION_DEV_TRANSCRIPT); a relay needs the user's answer as a transcript row")
     find_launch(state, session)
-    answer = user_answer(transcript, coordinator_session, expect, asked_at)
+    answer = user_answer(transcript, coordinator_session, phrase, asked_at)
     require(answer, "no matching user answer typed after the question; relay only what the user typed, never a "
             "composed approval")
     since = stamp()
@@ -769,7 +771,7 @@ def main():
     p = commands.add_parser("remediate"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
     p.add_argument("--prompt", required=True)
     p = commands.add_parser("relay"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
-    p.add_argument("--phrase", required=True); p.add_argument("--expect", required=True)
+    p.add_argument("--phrase", required=True)
     p.add_argument("--asked-at", type=float, required=True)
     p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT", ""))
     p.add_argument("--coordinator-session", default=session)
@@ -799,7 +801,7 @@ def main():
     if args.command == "remediate":
         return emit(remediate(args.state, args.session, args.prompt))
     if args.command == "relay":
-        return emit(relay(args.state, args.session, args.phrase, args.expect, args.transcript,
+        return emit(relay(args.state, args.session, args.phrase, args.transcript,
                           args.coordinator_session, args.asked_at))
     if args.command == "judge":
         return emit(judge(args.state, args.session, args.verdict, args.note, args.fact))

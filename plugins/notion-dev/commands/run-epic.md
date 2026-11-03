@@ -158,7 +158,7 @@ attach to. Otherwise:
    turn; the ticket session is stopped and waits for nothing else.
 3. On the reply, relay at once — the approval's time window is bound to the request:
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" relay --state "$STATE" --session <session> --phrase "<phrase>" --expect "<phrase>" --asked-at <ASKED>
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" relay --state "$STATE" --session <session> --phrase "<phrase>" --asked-at <ASKED>
    ```
    It sends the phrase only if the user's own message, typed after `ASKED`, reads exactly that,
    and records which message it was. Never compose, reword or re-send an approval the user did

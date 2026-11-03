@@ -479,7 +479,7 @@ class RelayTests(ProjectBase):
         return value["uuid"]
 
     def relay(self):
-        return coordinator.relay(self.state, self.launched["session"], self.PHRASE, self.PHRASE,
+        return coordinator.relay(self.state, self.launched["session"], self.PHRASE,
                                  self.transcript, "a", self.asked)
 
     def test_relay_requires_a_real_user_turn(self):
@@ -492,6 +492,12 @@ class RelayTests(ProjectBase):
         self.assertFalse([c for c in self.calls() if c[:2] == ["--bg", "--resume"]])
         self.row(self.PHRASE)
         self.assertEqual(self.relay()["session"], self.launched["session"])
+
+    def test_relay_sends_only_the_phrase_the_user_typed(self):
+        self.row("yes")                      # a yes is not the phrase: nothing may be sent for it
+        with self.assertRaisesRegex(Invalid, "no matching user answer"):
+            self.relay()
+        self.assertFalse([c for c in self.calls() if c[:2] == ["--bg", "--resume"]])
 
     def test_relay_ignores_answers_before_the_question(self):
         self.row(self.PHRASE, when=self.asked - 60)
@@ -511,14 +517,14 @@ class RelayTests(ProjectBase):
     def test_relay_answer_must_be_in_this_coordinators_session(self):
         self.row(self.PHRASE, session="b")
         with self.assertRaisesRegex(Invalid, "coordinator"):
-            coordinator.relay(self.state, self.launched["session"], self.PHRASE, self.PHRASE, self.transcript, "b", self.asked)
+            coordinator.relay(self.state, self.launched["session"], self.PHRASE, self.transcript, "b", self.asked)
 
     def test_non_interactive_never_relays(self):
         coordinator.finish(self.state, "stopped", "test")
         state = coordinator.start(self.project, "STO-1", "a", True)["state"]
         self.row(self.PHRASE)
         with self.assertRaisesRegex(Invalid, "never relays"):
-            coordinator.relay(state, self.launched["session"], self.PHRASE, self.PHRASE, self.transcript, "a", self.asked)
+            coordinator.relay(state, self.launched["session"], self.PHRASE, self.transcript, "a", self.asked)
 
 
 class CliTests(ProjectBase):
