@@ -200,6 +200,10 @@ assert_has "coordinator.py reads a Windows process's liveness from its exit code
   plugins/notion-dev/scripts/coordinator.py 'kernel.GetExitCodeProcess(handle, ctypes.byref(code))'
 assert_has "coordinator.py refuses a claude.cmd/.bat shim, which cmd.exe would re-parse" \
   plugins/notion-dev/scripts/coordinator.py 'require(not found.lower().endswith((".cmd", ".bat")),'
+assert_has "the coordinator's stop-guard test runs Git Bash through \`bash_exe\`, never System32's WSL stub" \
+  scripts/tests/test_coordinator.py '    from runtime import bash_exe'
+assert_has "the fake claude CLI writes UTF-8 like the real one, whatever the console code page" \
+  scripts/tests/fake_claude.py 'stream.reconfigure(encoding="utf-8", newline="\n")'
 assert_has "the coordinator fixtures resolve the temp root, so no path is a short name" \
   scripts/tests/test_coordinator.py 'self.dir = Path(self.temp.name).resolve()'
 

@@ -152,7 +152,9 @@ GUARD = ROOT / "plugins/notion-dev/hooks/stop-guard.sh"
 
 
 def bash():
-    return os.environ.get("BASH_EXE") or "bash"
+    # Never the bare name: on Windows it resolves to System32's WSL stub, not Git Bash.
+    from runtime import bash_exe
+    return bash_exe()
 
 
 class ProjectBase(CoordinatorBase):

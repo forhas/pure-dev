@@ -18,6 +18,11 @@ import os
 import sys
 import uuid
 
+# The real CLI writes UTF-8 (its status lines carry `●`); a Windows console default of
+# cp1252 would make this fake crash where the CLI does not.
+for stream in (sys.stdout, sys.stderr):
+    stream.reconfigure(encoding="utf-8", newline="\n")
+
 path = os.environ["NOTION_DEV_FAKE_WORLD"]
 with open(path, encoding="utf-8") as stream:
     world = json.load(stream)
