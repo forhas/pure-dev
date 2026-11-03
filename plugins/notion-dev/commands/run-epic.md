@@ -50,7 +50,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" start --project . --epic 
 It fails with an actionable message when `claude` is missing or too old. Save `state` as
 `STATE`. A refusal names the coordinator already running this epic: report it and stop — one
 coordinator per epic per machine. `resumed: true` means an earlier run of this epic is being
-continued: for each session in `open`, start at step 3.2 (wait on it, never relaunch it).
+continued: for each session in `open`, start at step 3.2 (wait on it, never relaunch it); each
+entry in `pending_facts` is a yes the user already gave, so launch it as §6b does once those
+sessions are judged — never ask again.
 
 ## 3. One ticket
 
@@ -171,12 +173,21 @@ A report's `facts` entry whose `route` is `handed off` awaits the user's confirm
 interactive: list each in the final report with its `run:` line. Otherwise the question holds
 nothing up: launch the next ticket first (or, when none follows, ask before §7), then show the
 fact, its `evidence` (its source) and its `epics`, ask yes or no in plain text, say the ticket
-keeps running, and end your turn. On the answer, go straight back to waiting (step 3.2). On yes,
-launch its `run:` line in a fresh session once the running ticket has been judged, before the
-ticket after it:
+keeps running, and end your turn. On yes, record it at once, before anything else, so a restart
+cannot lose it (`start` returns it under `pending_facts` until it is launched):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" launch --state "$STATE" --kind new-info --parent <session> --prompt "$(cat <<'RUN'
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" judge --state "$STATE" --session <session> --verdict accepted --fact "<fact>" --run "$(cat <<'RUN'
+<its run: line, verbatim>
+RUN
+)"
+```
+
+Then go straight back to waiting (step 3.2), and launch it in a fresh session once the running
+ticket has been judged, before the ticket after it:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" launch --state "$STATE" --kind new-info --parent <session> --fact "<fact>" --prompt "$(cat <<'RUN'
 <its run: line, verbatim> --non-interactive
 RUN
 )"

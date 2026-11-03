@@ -287,6 +287,17 @@ def open_launches(state):
     return [l["session"] for l in state["launches"] if l.get("verdict") is None]
 
 
+def pending_facts(state):
+    """Facts the user accepted whose new-info session was never launched (§A6b).
+
+    The yes is recorded before the coordinator goes back to waiting, so a restart, compaction
+    or adoption in between still launches it rather than losing the user's confirmation.
+    """
+    return [{"session": l["session"], "fact": f["fact"], "run": f.get("run")}
+            for l in state["launches"] for f in l.get("facts", [])
+            if f.get("verdict") == "accepted" and not f.get("launched")]
+
+
 def start(project, epic, session, non_interactive):
     """Begin or resume this epic's coordinator run; one live coordinator per epic per machine.
 
@@ -341,7 +352,7 @@ def start(project, epic, session, non_interactive):
                                   "non_interactive": non_interactive, "claude_session": session,
                                   "heartbeat": stamp(), "state_path": str(state_path)})
     return {"state": str(state_path), "marker": str(marker_path), "resumed": resumed,
-            "open": open_launches(state), "adopted_from": adopted}
+            "open": open_launches(state), "pending_facts": pending_facts(state), "adopted_from": adopted}
 
 
 def heartbeat(state, caller=None, terminal=None):
@@ -391,7 +402,7 @@ def spend(state, key):
     state["remediations"][key] = used + 1
 
 
-def record_launch(state_path, kind, prompt, ticket, parent):
+def record_launch(state_path, kind, prompt, ticket, parent, fact=None):
     """Launch one background session and record it before anything waits on it (§A3.1)."""
     require(kind in KINDS, "launch kind must be one of " + ", ".join(sorted(KINDS)))
     state = read_json(state_path)
@@ -408,6 +419,10 @@ def record_launch(state_path, kind, prompt, ticket, parent):
     def change(current):
         if kind == "followup":
             spend(current, bound_key(current, find_launch(current, parent)))
+        if fact:                        # the accepted fact this new-info session routes
+            for entry in find_launch(current, parent).get("facts", []):
+                if entry["fact"] == fact and entry["verdict"] == "accepted" and not entry.get("launched"):
+                    entry["launched"] = record["session"]
         current["launches"].append(record)
     update(state_path, change)
     return record
@@ -431,14 +446,15 @@ def remediate(state_path, session, prompt):
     return update(state_path, change)
 
 
-def judge(state_path, session, verdict, note, fact=None):
+def judge(state_path, session, verdict, note, fact=None, run=None):
     """Record the coordinator's verdict on a launch, or with `fact` its decision on a handed-off fact."""
     require(verdict in VERDICTS, "verdict must be one of " + ", ".join(sorted(VERDICTS)))
 
     def change(state):
         launch = find_launch(state, session)
         if fact:
-            launch.setdefault("facts", []).append({"fact": fact, "verdict": verdict, "note": note, "at": stamp()})
+            launch.setdefault("facts", []).append({"fact": fact, "verdict": verdict, "note": note, "run": run,
+                                                   "launched": None, "at": stamp()})
             return
         launch["verdict"] = verdict
         launch["notes"].append({"verdict": verdict, "note": note, "at": stamp()})
@@ -809,6 +825,7 @@ def main():
     p.add_argument("--session", default=session); p.add_argument("--non-interactive", action="store_true")
     p = commands.add_parser("launch"); p.add_argument("--state", required=True); p.add_argument("--prompt", required=True)
     p.add_argument("--kind", required=True, choices=sorted(KINDS)); p.add_argument("--ticket"); p.add_argument("--parent")
+    p.add_argument("--fact", help="new-info: the accepted fact this launch routes")
     p = commands.add_parser("wait"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
     p.add_argument("--seconds", type=int, default=540); p.add_argument("--interval", type=int, default=15)
     p = commands.add_parser("report-view"); p.add_argument("--report", required=True)
@@ -823,6 +840,7 @@ def main():
     p = commands.add_parser("judge"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
     p.add_argument("--verdict", required=True, choices=sorted(VERDICTS)); p.add_argument("--note", default="")
     p.add_argument("--fact", help="record a decision on this handed-off fact instead of the launch's verdict")
+    p.add_argument("--run", help="with --fact and --verdict accepted: the fact's run: line, launched later")
     p = commands.add_parser("retire"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
     p = commands.add_parser("finish"); p.add_argument("--state", required=True)
     p.add_argument("--status", required=True, choices=["complete", "stopped"]); p.add_argument("--cause")
@@ -834,7 +852,7 @@ def main():
     if args.command == "start":
         return emit(start(args.project, args.epic, args.session, args.non_interactive))
     if args.command == "launch":
-        return emit(record_launch(args.state, args.kind, args.prompt, args.ticket, args.parent))
+        return emit(record_launch(args.state, args.kind, args.prompt, args.ticket, args.parent, args.fact))
     if args.command == "wait":
         result = wait(args.state, args.session, args.seconds, args.interval)
         emit(result)
@@ -849,7 +867,7 @@ def main():
         return emit(relay(args.state, args.session, args.phrase, args.transcript,
                           args.coordinator_session, args.asked_at))
     if args.command == "judge":
-        return emit(judge(args.state, args.session, args.verdict, args.note, args.fact))
+        return emit(judge(args.state, args.session, args.verdict, args.note, args.fact, args.run))
     if args.command == "retire":
         return emit(retire(args.state, args.session))
     return emit(finish(args.state, args.status, args.cause))

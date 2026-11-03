@@ -328,8 +328,19 @@ class StateTests(ProjectBase):
         coordinator.judge(started["state"], launched["session"], "declined", "user said no", fact="The list ships next.")
         launch = json.loads(Path(started["state"]).read_text(encoding="utf-8"))["launches"][0]
         self.assertEqual(launch["verdict"], "accepted")
-        self.assertEqual(launch["facts"], [{"fact": "The list ships next.", "verdict": "declined",
-                                            "note": "user said no", "at": launch["facts"][0]["at"]}])
+        self.assertEqual(launch["facts"], [{"fact": "The list ships next.", "verdict": "declined", "note": "user said no",
+                                            "run": None, "launched": None, "at": launch["facts"][0]["at"]}])
+
+    def test_an_accepted_fact_survives_a_restart_until_its_launch(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        ticket = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        run = '/notion-dev:new-info "The list ships next." --epic STO-1'
+        coordinator.judge(started["state"], ticket["session"], "accepted", "user said yes", fact="The list ships next.", run=run)
+        again = coordinator.start(self.project, "STO-1", "a", False)
+        self.assertEqual(again["pending_facts"], [{"session": ticket["session"], "fact": "The list ships next.", "run": run}])
+        coordinator.record_launch(started["state"], "new-info", run + " --non-interactive", None, ticket["session"],
+                                  fact="The list ships next.")
+        self.assertEqual(coordinator.start(self.project, "STO-1", "a", False)["pending_facts"], [])
 
     def test_judge_rejects_unknown_verdicts_and_sessions(self):
         started = coordinator.start(self.project, "STO-1", "a", False)

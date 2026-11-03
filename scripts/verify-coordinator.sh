@@ -42,13 +42,17 @@ assert_has "a remediation resumes the ticket's own session through \`remediate\`
 assert_has "an approval reaches the ticket only through \`relay\`" "$RE" 'coordinator.py" relay --state "$STATE" --session <session> --phrase'
 assert_has "a \`--non-interactive\` coordinator never relays" "$RE" '`--non-interactive` coordinator never relays'
 assert_has "the approval is asked in plain text, not AskUserQuestion" "$RE" 'plain text — not AskUserQuestion'
-assert_has "a confirmed fact launches in a fresh session through a quoted heredoc" "$RE" "--kind new-info --parent <session> --prompt \"\$(cat <<'RUN'"
+assert_has "a confirmed fact launches in a fresh session through a quoted heredoc" "$RE" "--fact \"<fact>\" --prompt \"\$(cat <<'RUN'"
 assert_has "the confirmed fact's \`run:\` line runs \`--non-interactive\`" "$RE" '<its run: line, verbatim> --non-interactive'
 assert_has "a refusal is exit 2 with an \`error\`, never retried blindly" "$RE" 'Exit 2 is a refusal with an `error`'
 assert_has "a coordinator that \`no longer owns\` its run stops at once" "$RE" '`no longer owns` means another session adopted'
 assert_has "a \`resume forked\` refusal is retried once after 10 seconds" "$RE" '`resume forked` means the session had not'
 assert_has "recording outcomes come from \`record-result.json\`, not the report" "$RE" '`record-result.json` beside its runtime'
 assert_has "a declined fact is recorded with \`--fact\`" "$RE" '--verdict declined --fact'
+assert_has "an accepted fact is recorded with its \`run:\` line before the coordinator waits" "$RE" '--verdict accepted --fact "<fact>" --run'
+assert_has "a resumed run launches every \`pending_facts\` entry without asking again" "$RE" 'entry in `pending_facts` is a yes the user already gave'
+assert_has "the new-info launch names the accepted fact it routes (\`--fact\`)" "$RE" '--kind new-info --parent <session> --fact "<fact>" --prompt'
+
 assert_has "the run ends with the \`notion-dev:session-closeout\` workspace pass" "$RE" 'workspace pass of `notion-dev:session-closeout`'
 assert_present "run-epic forbids launching with \`claude -p\`" "$RE" 1 "$L" '^with `claude -p`, and never pass'
 assert_present "run-epic forbids \`--dangerously-skip-permissions\`" "$RE" 1 "$L" 'never pass a permission-bypass flag \(`--dangerously-skip-permissions`,$'
