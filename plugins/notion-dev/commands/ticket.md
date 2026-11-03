@@ -8,7 +8,7 @@ argument-hint: "[<ticket>] [--non-interactive] [--flow=lean|superpowers|feature-
 Default flow: **lean**. This command's owner investigates and implements the whole cohesive
 change. Do not invoke flow-triage, writing-plans or subagent-driven-development by default.
 A ticket's risk controls investigation/review depth, not the number of tiny implementation tasks.
-Invoke only at the user's request or through an authorized next-task run; never autonomously
+Invoke only at the user's request or through an authorized next-task or run-epic run; never autonomously
 select a ticket merely because this command is available.
 
 Explicit `--flow=superpowers` or `--flow=feature-dev`: read
@@ -113,6 +113,8 @@ draft. Report ticket/PR/merge, requirement and test evidence, Notion/knowledge/e
 release obligations and runtime path. Mark the owned run `complete` only after recording and
 closeout using `workflow.py complete --state "$RUNTIME_STATE" --marker "$RUN_MARKER"`;
 keep evidence outside disposable worktrees. `OUTCOME: resolved` is valid only then.
+Before `complete`, and before ending a stopped turn, save the report with
+`workflow.py save-report --project "$REPO_ROOT" --from -` (report on stdin).
 
 ## Failure and waiting
 

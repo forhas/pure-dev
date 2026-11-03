@@ -388,6 +388,30 @@ class LeanTests(unittest.TestCase):
         self.run_git("checkout", "-q", "main")
         self.assertIn("marker", workflow.preflight(self.repo, "host", True))
 
+    def test_save_report_lands_in_primary_from_a_worktree(self):
+        tree = self.root / "report-tree"
+        self.run_git("worktree", "add", "-q", str(tree), "-b", "ticket/TEST-1-report")
+        saved = workflow.save_report(tree, "abc-123", "OUTCOME: resolved\n")
+        self.assertEqual(saved, (self.repo / ".claude/notion-dev/reports/abc-123.md").resolve())
+        self.assertEqual(saved.read_text(encoding="utf-8"), "OUTCOME: resolved\n")
+
+    def test_save_report_is_lf_and_overwrites(self):
+        saved = workflow.save_report(self.repo, "abc/123", "OUTCOME: stopped\r\ncause: x\r\n")
+        self.assertEqual(saved.name, "abc_123.md")
+        self.assertEqual(saved.read_bytes(), b"OUTCOME: stopped\ncause: x\n")
+        workflow.save_report(self.repo, "abc/123", "OUTCOME: resolved\n")
+        self.assertEqual(saved.read_bytes(), b"OUTCOME: resolved\n")
+
+    def test_save_report_needs_a_session(self):
+        with self.assertRaisesRegex(ValueError, "NOTION_DEV_SESSION_ID"):
+            workflow.save_report(self.repo, "", "OUTCOME: resolved\n")
+        script = ROOT / "plugins/notion-dev/scripts/workflow.py"
+        done = subprocess.run([sys.executable, str(script), "save-report", "--project", str(self.repo),
+                               "--session", "cli-1", "--from", "-"], input="OUTCOME: resolved\n",
+                              capture_output=True, encoding="utf-8")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(json.loads(done.stdout)["report"]).read_text(encoding="utf-8"), "OUTCOME: resolved\n")
+
     def test_remove_worktree_refuses_from_inside_and_over_unsaved_work(self):
         self.config(); self.origin()
         pending = workflow.preflight(self.repo, "host", True)
@@ -726,7 +750,7 @@ class LeanTests(unittest.TestCase):
         # default, and prove each check rejects its own missing mechanism in a copy.
         contracts = {
             "commands/ticket.md": ["workflow.py\" verify", "references/record.md", "combined"],
-            "commands/next-task.md": ["OUTCOME: resolved", "## Blocked by", "A stop/failure stops this loop too"],
+            "commands/next-task.md": ["OUTCOME: resolved", "## Blocked by", "A stop/failure ends this run", "save-report"],
             "commands/finalize.md": ["resume-pr", "--merged", "Missing verdicts remain unknown", "references/record.md"],
             "references/lean-intake.md": ["requirements` and `ready", "live status and ownership", "knowledge.py lock", "Never reset a resumed branch"],
             "skills/review-and-merge/SKILL.md": ["--match-head-commit", "merge-gate", "code_review", "correction-needed", "ALL GraphQL thread pages", "required checks pass", "review-findings.md", "reviewer-recovery.md"],

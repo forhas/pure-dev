@@ -2,10 +2,47 @@
 
 Claude Code plugin that installs a standardized development workflow: `create-task` → `ticket` → `finalize`, with Notion-backed tickets and pluggable input sources.
 
-**Status**: pre-release (0.51.0). The default ticket pipeline is now **lean**: one cohesive
+**Status**: 1.0.0. The default ticket pipeline is now **lean**: one cohesive
 implementation owner, one combined independent code/completeness review, configured external
 review, and one shared journaled recording routine. Windows-native Git Bash and Ubuntu/WSL2
 remain supported; Python 3.8+ and configured `knowledge.python` remain the floor.
+
+## One fresh session per ticket: `run-epic` (1.0.0)
+
+**Breaking:** `/notion-dev:next-task` resolves exactly one ticket. `--depth` is gone — running
+several tickets in one session exhausted its context window, and a model cannot compact its own
+session — and passing it stops with a pointer to the replacement.
+
+`/notion-dev:run-epic <epic>` drives a whole epic instead. It is a coordinator session that
+launches every ticket as `/notion-dev:next-task <epic> --non-interactive` in its **own fresh
+background session** (`claude --bg`), so each ticket starts with an empty context and you can
+watch any of them live with `claude attach <id>`. Between tickets the coordinator holds each
+outcome to one standard — merged, CI green on the base, Notion done, every follow-up filed,
+every recording outcome landed, the workspace clean — checked from its source rather than from
+the report. An open item goes back to the ticket's own session (resumed under its own id, at
+most twice per ticket); a defect in the work just shipped gets its follow-up ticket before the
+next one. It never edits code, Notion or tracked files itself, never passes a permission-bypass
+flag, and never launches with `claude -p`. On Windows an npm `claude.cmd` shim is never run through
+cmd.exe (which would re-parse every prompt): the coordinator reads the shim and runs the
+`claude.exe` (or `node cli.js`) it names, with the arguments untouched; a shim it cannot read is
+refused with install guidance.
+
+Interactive by default: when a ticket stops for an approval, the coordinator shows you the
+request and relays the phrase you type into that ticket's session, recording which of your
+messages it came from; a fact a ticket handed off for confirmation is shown with its source,
+and your yes launches `new-info` for it. `--non-interactive` never asks: an escalation ends the
+run with its cause and `/notion-dev:run-epic <epic>`, which resumes the run from its state.
+`next-task`, `ticket`, `finalize` and `new-info` now also save their finished report under
+`.claude/notion-dev/reports/` (`workflow.py save-report`), which is what the coordinator reads.
+
+`--parallel` (several compatible tickets at once, merged one at a time) is not available yet.
+Its merge queue depends on the rebase-at-the-merge-gate procedure that "Running two sessions on
+one epic" below still describes: that procedure was reduced to "safe stabilization" in the 0.36
+lean rewrite, and restoring it is part of the parallel mode's plan.
+
+The background-session behaviour this rests on was measured on Claude Code 2.1.317 by
+`scripts/analysis/probe-background-sessions.sh` in the plugin's repository — 8 of 8 checks under
+WSL 2, and 8 of 8 from Git Bash on Windows (Claude Code 2.1.306, npm install).
 
 ## Parallel tabs stay on their own branch (0.51.0)
 
@@ -32,8 +69,8 @@ edited route file is refused:
 - anything unsupported, with unknown epics, human-sourced in a non-interactive run, or past
   3 per run is handed off as before, with the reason.
 
-The slash command itself stays user-invoked: the ticket run's record step is the only
-automatic path, and every routed Notion note names its source.
+The slash command itself stays user-invoked, or a `run-epic` launch on the user's explicit yes:
+the ticket run's record step is the only automatic path, and every routed Notion note names its source.
 
 ## Several facts per new-info (0.49.0)
 
@@ -56,7 +93,7 @@ in non-interactive runs too, exactly as an epic without a `Done when:` list does
 
 ## Cross-epic fact hand-off (0.47.0)
 
-`/notion-dev:new-info` stays user-invoked: it writes to every affected epic and the bundle is
+`/notion-dev:new-info` stays user-invoked (or a `run-epic` launch on the user's explicit yes): it writes to every affected epic and the bundle is
 read as true until superseded, so a fact a session inferred must not reach every brief
 unconfirmed. A ticket or finalize run now ends its report with a `NEW-INFO:` block instead —
 each fact it established about another epic, with its evidence and the exact
@@ -419,7 +456,8 @@ Then:
 | `/notion-dev:create-task` | Produce a well-formed ticket from a prompt, an existing ticket, or a Notion page. Runs a depth-calibrated interview (`notion-dev:ticket-interviewer`) when requirements need refinement, then decides via `notion-dev:task-breakdown` whether the result is one ticket or a multi-task mission (Epic / Phase / Step / Depends-on). Flags: `--non-interactive` (answers its own interview via a fresh subagent grounded in `--context-file`), `--context-file=<path>`, `--epic=<name>`, `--parent=<id>`, `--assignee=<id>`. |
 | `/notion-dev:ticket <ticket-id>` | Full implementation cycle, end to end through merge: intake/readiness → worktree → cohesive implementation → verify → PR → external + combined independent review → merge → journaled record. Also accepts the Notion page id/URL. |
 | `/notion-dev:finalize <pr-number>` | Standalone resume/review entry point for an already-open ticket PR: review loop (Codex or local fallback) → merge → update ticket → clean up → post-merge hooks. |
-| `/notion-dev:next-task <epic-id>` | Drive an epic from its markdown brief: read `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket, run `/notion-dev:ticket` on it, re-read, repeat. Flags: `--depth all|N` (default 1), `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. So it can chain into `/notion-dev:ticket`, that command is no longer marked user-only in its frontmatter; its body carries an invocation guard instead. |
+| `/notion-dev:run-epic <epic-id>` | Drive a whole epic: each ticket runs as `/notion-dev:next-task` in its own fresh background session (`claude attach <id>` to watch), and the coordinator judges every outcome — merge, CI, Notion status, follow-ups, recording, workspace — before the next. Flags: `--serial` (default; `--parallel` is not available yet), `--non-interactive`, `| guidance`. See 1.0.0. |
+| `/notion-dev:next-task <epic-id>` | Resolve the next ticket of an epic from its markdown brief: read `<knowledge.dir>/epic/<KEY>-<n>-<slug>.md`, pick the recommended next unblocked ticket and run `/notion-dev:ticket` on it — exactly one ticket (`--depth` was removed in 1.0.0; use `run-epic`). Flags: `--non-interactive`, `--flow=…`. Bootstraps the brief on first use — from an existing `docs/*<KEY>-<n>*.md` plan when one exists (which it then removes), else from the Notion epic. So it can chain into `/notion-dev:ticket`, that command is no longer marked user-only in its frontmatter; its body carries an invocation guard instead. |
 | `/notion-dev:new-info <information>` | Route one new fact ("the customer deployed v1.4.2") to every epic brief it affects: judges each brief, shows the proposed diff per epic (Apply / Skip / Revise), commits it straight to the epic branch, appends a dated entry to the Notion epic's `Notes`, and comments on the tickets a cleared thread unblocked. Never edits a ticket's requirements. The same fact reaches the knowledge bundle through `capture --fact`. Flags: `--epic <id>` (repeatable), `--non-interactive`, `--pr` (land through one reviewed pull request instead). Several facts in one prompt: start each further one on its own line with `/notion-dev:new-info` — they run in order as one run, each with its own `--epic` scope. A ticket run routes the facts it established through `--route` after an independent check (see 0.50.0). |
 | `/notion-dev:knowledge capture <ticket-id> <merge-sha> \| migrate [--apply] \| curate` | Person-invoked knowledge-bundle maintenance. `capture` re-runs by hand the post-merge write a ticket run skipped or failed; `migrate` moves an existing client bundle onto the plugin's schema (prints the diff, `--apply` to write, then a removal checklist); `curate` walks near-duplicate concepts and supersedes the losers, one `AskUserQuestion` per cluster. Reading the bundle happens automatically inside `/notion-dev:ticket`, not through this command. |
 
@@ -573,7 +611,7 @@ checkout takes a directory lock at `.claude/notion-dev/locks/primary/` (self-ign
 lock older than 60 minutes is broken and reported. Run reports list any wait.
 
 **Running two sessions on one epic.** Open a second terminal in the same checkout and run
-`/notion-dev:next-task <epic> --depth N` in each. Each session claims its ticket by creating
+`/notion-dev:next-task <epic>` in each. Each session claims its ticket by creating
 the worktree, records a run marker under `.claude/notion-dev/runs/`, and moves the ticket to
 the brief's `In progress:` line; the other session's next read excludes it. A ticket already
 `In Progress` with no worktree here is reported as held elsewhere; a worktree whose marker says
@@ -658,7 +696,7 @@ No v1 refactor required to adopt phase 2.
 ├── .claude-plugin/
 │   ├── plugin.json           # plugin manifest
 │   └── marketplace.json      # self-contained single-plugin marketplace
-├── commands/                 # slash commands (init, create-task, ticket, finalize, next-task, new-info, knowledge)
+├── commands/                 # slash commands (init, create-task, ticket, finalize, next-task, run-epic, new-info, knowledge)
 ├── references/               # command reference files — deliberately NOT under commands/, where every .md registers as a slash command
 │   └── record.md             # shared inline journaled recording for ticket/finalize
 ├── skills/
@@ -676,6 +714,7 @@ No v1 refactor required to adopt phase 2.
 │   ├── session-closeout/     # zero-tails gate before any final report (used by ticket, finalize)
 │   └── issue-log/            # durable, redacted runtime deviation log (used by all four commands, ticket-system)
 ├── scripts/
+│   ├── coordinator.py        # run-epic's background sessions, state, waits, report parsing and approval relay
 │   └── knowledge.py          # bundle shape validator, migrator, and touched-concept finder (used by the knowledge skill)
 ├── schema/
 │   └── notion-dev.config.schema.json

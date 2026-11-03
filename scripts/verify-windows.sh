@@ -189,6 +189,27 @@ assert_has "the lean suite defines the cross-platform resume regression" \
   scripts/tests/test_lean_workflow.py 'def test_a_run_claimed_on_the_other_platform_is_not_resumed_here'
 assert_has "both platform suites execute the lean workflow regressions" \
   scripts/verify-lean-workflow.sh "-p 'test_lean_workflow.py'"
+# run-epic's coordinator drives `claude --bg` sessions from Git Bash too: it decodes the CLI as
+# UTF-8, asks Windows for a stopped session's exit code (os.kill(pid, 0) TERMINATES there), and
+# its fixtures resolve the 8.3 short temp name like every other suite.
+assert_has "both platform suites execute the coordinator regressions" \
+  scripts/verify-coordinator.sh "-p 'test_coordinator.py'"
+assert_has "coordinator.py decodes the claude CLI's output as UTF-8" \
+  plugins/notion-dev/scripts/coordinator.py 'capture_output=True, encoding="utf-8", errors="replace"'
+assert_has "coordinator.py reads a Windows process's liveness from its exit code, never os.kill" \
+  plugins/notion-dev/scripts/coordinator.py 'kernel.GetExitCodeProcess(handle, ctypes.byref(code))'
+assert_has "coordinator.py never runs a claude.cmd/.bat shim through cmd.exe: it runs the shim's target" \
+  plugins/notion-dev/scripts/coordinator.py '        return shim_target(found)'
+assert_has "the live probe resolves claude through coordinator.py, never the bare name Windows Python cannot find" \
+  scripts/analysis/probe-background-sessions.sh '    return coordinator.claude_command()      # exactly what run-epic will run'
+assert_has "the coordinator's stop-guard test runs Git Bash through \`bash_exe\`, never System32's WSL stub" \
+  scripts/tests/test_coordinator.py '    from runtime import bash_exe'
+assert_has "the fake claude CLI writes UTF-8 like the real one, whatever the console code page" \
+  scripts/tests/fake_claude.py 'stream.reconfigure(encoding="utf-8", newline="\n")'
+assert_has "the live probe launches from Python, so Git Bash cannot rewrite a /plugin:command prompt into a path" \
+  scripts/analysis/probe-background-sessions.sh 'launch() { tool launch "$1"; }'
+assert_has "the coordinator fixtures resolve the temp root, so no path is a short name" \
+  scripts/tests/test_coordinator.py 'self.dir = Path(self.temp.name).resolve()'
 
 if [ "$fails" -gt 0 ]; then echo "verify-windows: $fails FAIL"; exit 1; fi
 echo "verify-windows: all PASS"

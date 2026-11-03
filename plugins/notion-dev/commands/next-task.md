@@ -1,13 +1,14 @@
 ---
 description: Select the next unblocked ticket from an epic and run the lean ticket workflow.
-argument-hint: "<epic-id> [--depth=N|all] [--non-interactive] [--flow=lean|superpowers|feature-dev] [| guidance]"
+argument-hint: "<epic-id> [--non-interactive] [--flow=lean|superpowers|feature-dev] [| guidance]"
 disable-model-invocation: true
 ---
 
 # /notion-dev:next-task
 
-Parse depth first: absent means 1; otherwise a positive integer or `all`. Reject invalid
-values before writes. Pass non-interactive, explicit flow and user guidance to ticket.
+Resolves exactly one ticket. `--depth` given → stop before any write: "`--depth` was removed
+in 1.0.0; use `/notion-dev:run-epic <epic>`".
+Pass non-interactive, explicit flow and user guidance to ticket.
 Default flow is lean. Never load the build frameworks merely to choose a ticket.
 
 Use the primary checkout's config and configured `knowledge.python` (`python3` in examples).
@@ -35,25 +36,21 @@ the configured epic-marker checkbox true. A non-epic argument is a stop.
    mode selects the first valid child in the established epic order. If none, report complete
    or blocked with evidence; do not invent a ticket or override dependencies.
 
-## Delegate and repeat
+## Delegate
 
 For the chosen ticket invoke knowledge `retrieve(<epic-id>, <ticket-title>, <ticket-key>)` once.
 Pass schedule's same-boundary metadata/root revision for reuse; do not repeat its epic fetch.
 Invoke `/notion-dev:ticket <key> [flags] | selected from <brief-path>: <reason>` via Skill.
 Pass the saved ticket/context references, not copied histories. Ticket rechecks live ownership
-and requirement freshness before writes. Each ticket owns its own runtime invocation; resumes
-keep the old invocation and budgets.
+and requirement freshness before writes.
 
-Track `DONE` only from `OUTCOME: resolved`; never increment `DONE` for pending workers,
+Report `OUTCOME: resolved` only from the ticket's own `OUTCOME: resolved`; never for pending workers,
 a launch acknowledgement, an unmerged PR, failed recording, or an incomplete closeout.
-`claimed-elsewhere` refreshes ownership and selection without counting a resolution.
-A stop/failure stops this loop too. Do not pick another ticket over unfinished owned work.
+`claimed-elsewhere` refreshes ownership and selection once, then delegates the next valid child.
+A stop/failure ends this run; never pick another ticket over unfinished owned work. A
+runtime-authorized wait/yield is unfinished work, not an end.
 
-After a resolution schedule from the updated brief/live children once; reuse it for the next iteration.
-Pass the full selected ticket and targeted context to intake, not the whole epic bundle before selection.
-No new implementation owner inherits the previous ticket's conversation: supply source/context
-references only if delegation is justified. No request to continue between tickets within the
-requested depth; a runtime-authorized wait/yield is still unfinished work, not abandonment.
-
-Report resolved ticket/PR pairs, runtime paths, skipped ownership/dependency reasons and why the
-loop stopped. Do not reconstruct each ticket's long report.
+Report ticket/PR, runtime path, skipped ownership/dependency reasons, and the ticket's
+`OUTCOME:` line, `NEW-INFO:` and CLOSEOUT blocks verbatim, every line, not its long report. Last step of
+every outcome (resolved, stopped, none selected, epic complete): save it with
+`workflow.py save-report --project . --from -` (report on stdin).
