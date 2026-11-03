@@ -29,7 +29,7 @@ class CoordinatorBase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="notion-coordinator-")
         self.addCleanup(self.temp.cleanup)
-        self.dir = Path(self.temp.name)
+        self.dir = Path(self.temp.name).resolve()   # Windows hands tempfile the 8.3 short name
         self.world_path = self.dir / "world.json"
         self.world({})
         env = patch.dict(os.environ, {"NOTION_DEV_CLAUDE_FAKE": str(FAKE),

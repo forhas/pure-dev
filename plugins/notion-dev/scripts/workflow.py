@@ -1193,6 +1193,38 @@ def complete(state, marker_path, session):
     return {"passed": True, "phase": "complete", "state": "complete", "record": summary}
 
 
+def save_report(project, session, text):
+    """Persist a command's finished report for /notion-dev:run-epic (decision 10).
+
+    Written to the PRIMARY checkout's ignored reports directory, keyed by the host session,
+    from wherever the command runs (a ticket worktree included); LF, UTF-8, atomic, and a
+    later turn of the same session overwrites it.
+    """
+    import tempfile
+    from coordinator import report_path       # lazy: coordinator imports this module
+    require(session, "NOTION_DEV_SESSION_ID missing; the SessionStart hook publishes it -- pass --session")
+    path = report_path(primary(project), session)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = text.replace("\r\n", "\n")
+    fd, temporary = tempfile.mkstemp(prefix=".report-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(body)
+        for attempt in range(5):               # a Windows reader can briefly hold the file
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                import time
+                time.sleep(0.05)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -1280,6 +1312,9 @@ def main():
     p = commands.add_parser("fact-route"); p.add_argument("--state", required=True); p.add_argument("--worker", required=True)
     p.add_argument("--own-epic", required=True); p.add_argument("--output", required=True); p.add_argument("--non-interactive", action="store_true")
     p = commands.add_parser("route-view"); p.add_argument("--route", required=True)
+    p = commands.add_parser("save-report", help="persist the finished report for run-epic")
+    p.add_argument("--project", required=True); p.add_argument("--from", dest="source", required=True)
+    p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("complete"); p.add_argument("--state", required=True); p.add_argument("--marker", required=True)
     p.add_argument("--session", default=os.environ.get("NOTION_DEV_SESSION_ID", ""))
     p = commands.add_parser("record-summary"); p.add_argument("--state", required=True)
@@ -1370,6 +1405,9 @@ def main():
     elif args.command == "record-children": result = record_children(args.state, args.parent, args.writes)
     elif args.command == "record-outcome": result = record_outcome(args.state, args.operation, args.outcome, args.provider_id)
     elif args.command == "complete": result = complete(args.state, args.marker, args.session)
+    elif args.command == "save-report":
+        text = sys.stdin.read() if args.source == "-" else Path(args.source).read_text(encoding="utf-8")
+        result = {"report": str(save_report(args.project, args.session, text))}
     elif args.command == "fact-route":
         result = fact_route(args.state, args.worker, args.own_epic, not args.non_interactive, args.output)
     elif args.command == "route-view": result = route_view(args.route)
