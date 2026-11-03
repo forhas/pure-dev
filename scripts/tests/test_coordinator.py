@@ -115,9 +115,38 @@ class SessionLayerTests(CoordinatorBase):
         with self.assertRaisesRegex(Invalid, "claude agents --json"):
             coordinator.agents()
 
-    def test_a_cmd_shim_is_refused(self):
+    NPM_SHIM = ('@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\n'
+                'CALL :find_dp0\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n')
+
+    def shim(self, body, target=None, name="claude.cmd"):
+        npm = self.dir / "npm"
+        npm.mkdir(exist_ok=True)
+        (npm / name).write_text(body, encoding="utf-8")
+        if target:
+            exe = npm.joinpath(*target.split("/"))
+            exe.parent.mkdir(parents=True, exist_ok=True)
+            exe.write_bytes(b"")
+            return str(exe.resolve())
+        return None
+
+    def test_an_npm_shim_runs_its_native_claude_exe_without_cmd(self):
         os.environ.pop("NOTION_DEV_CLAUDE_FAKE")
-        for shim in ("C:/npm/claude.cmd", "C:/npm/claude.BAT"):
+        exe = self.shim(self.NPM_SHIM, "node_modules/@anthropic-ai/claude-code/bin/claude.exe", "claude.CMD")
+        with patch.object(coordinator.shutil, "which", return_value=str(self.dir / "npm" / "claude.CMD")):
+            self.assertEqual(coordinator.claude_command(), [exe])
+
+    def test_a_node_shim_runs_node_on_its_script(self):
+        os.environ.pop("NOTION_DEV_CLAUDE_FAKE")
+        script = self.shim(self.NPM_SHIM.replace("bin\\claude.exe", "cli.js").replace('"%dp0%', '"%_prog%"  "%dp0%'),
+                           "node_modules/@anthropic-ai/claude-code/cli.js")
+        which = lambda name: {"claude": str(self.dir / "npm" / "claude.cmd"), "node": "C:/nodejs/node.exe"}.get(name)
+        with patch.object(coordinator.shutil, "which", side_effect=which):
+            self.assertEqual(coordinator.claude_command(), ["C:/nodejs/node.exe", script])
+
+    def test_an_unreadable_shim_is_refused(self):
+        os.environ.pop("NOTION_DEV_CLAUDE_FAKE")
+        self.shim("@ECHO off\r\ncall something-else %*\r\n")
+        for shim in (str(self.dir / "npm" / "claude.cmd"), str(self.dir / "npm" / "missing.bat")):
             with patch.object(coordinator.shutil, "which", return_value=shim):
                 with self.assertRaisesRegex(Invalid, "cmd.exe"):
                     coordinator.claude_command()

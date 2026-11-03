@@ -198,8 +198,10 @@ assert_has "coordinator.py decodes the claude CLI's output as UTF-8" \
   plugins/notion-dev/scripts/coordinator.py 'capture_output=True, encoding="utf-8", errors="replace"'
 assert_has "coordinator.py reads a Windows process's liveness from its exit code, never os.kill" \
   plugins/notion-dev/scripts/coordinator.py 'kernel.GetExitCodeProcess(handle, ctypes.byref(code))'
-assert_has "coordinator.py refuses a claude.cmd/.bat shim, which cmd.exe would re-parse" \
-  plugins/notion-dev/scripts/coordinator.py 'require(not found.lower().endswith((".cmd", ".bat")),'
+assert_has "coordinator.py never runs a claude.cmd/.bat shim through cmd.exe: it runs the shim's target" \
+  plugins/notion-dev/scripts/coordinator.py '        return shim_target(found)'
+assert_has "the live probe resolves claude through coordinator.py, never the bare name Windows Python cannot find" \
+  scripts/analysis/probe-background-sessions.sh '    return coordinator.claude_command()      # exactly what run-epic will run'
 assert_has "the coordinator's stop-guard test runs Git Bash through \`bash_exe\`, never System32's WSL stub" \
   scripts/tests/test_coordinator.py '    from runtime import bash_exe'
 assert_has "the fake claude CLI writes UTF-8 like the real one, whatever the console code page" \

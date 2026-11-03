@@ -53,13 +53,38 @@ def claude_command():
     found = shutil.which("claude")
     require(found, "claude is not on PATH; run-epic launches each ticket with `claude --bg` "
             "(Claude Code 2.1.317 or later)")
-    # An npm shim runs through cmd.exe, which re-parses the prompt: `&`, `|`, `^` or `%` in a
-    # ticket's guidance or a fact's text would run as commands. Only a real executable is safe.
-    require(not found.lower().endswith((".cmd", ".bat")),
-            "claude resolves to " + found + ", a script cmd.exe would re-parse each prompt through; "
-            "install the native Claude Code (claude.exe, https://code.claude.com/docs/en/setup) "
-            "and put it first on PATH")
+    if found.lower().endswith((".cmd", ".bat")):
+        return shim_target(found)
     return [found]
+
+
+def shim_target(shim):
+    """The program behind an npm `claude.cmd` shim, run directly instead of through cmd.exe.
+
+    cmd.exe re-parses every argument of a .cmd it runs, so `&`, `|`, `^` or `%` in a ticket's
+    guidance or a fact's text would execute as commands. An npm shim only forwards `%*` to
+    the program it names (`"%dp0%\\node_modules\\...\\bin\\claude.exe"` for current Claude
+    Code, a `cli.js` under node for older ones), so run that program with the arguments
+    untouched. A shim this cannot read is refused rather than run through cmd.exe.
+    """
+    refuse = ("claude resolves to " + shim + ", a script cmd.exe would re-parse each prompt through, "
+              "and its target could not be read; install the native Claude Code "
+              "(https://code.claude.com/docs/en/setup) and put it first on PATH")
+    try:
+        text = Path(shim).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        raise Invalid(refuse)
+    targets = re.findall(r'"%dp0%\\([^"%]+)"', text)
+    require(targets, refuse)
+    target = Path(shim).parent.joinpath(*targets[-1].split("\\")).resolve()
+    require(target.is_file(), refuse)
+    if target.suffix.lower() == ".exe":
+        return [str(target)]
+    require(target.suffix.lower() in {".js", ".cjs", ".mjs"}, refuse)
+    local = Path(shim).parent / "node.exe"
+    node = str(local) if local.is_file() else shutil.which("node")
+    require(node, refuse)
+    return [node, str(target)]
 
 
 def claude(*args, cwd=None, timeout=120):

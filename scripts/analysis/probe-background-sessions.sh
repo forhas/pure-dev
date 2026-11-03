@@ -17,7 +17,14 @@ cd "$target" || exit 2
 if [ -z "${PYBIN:-}" ]; then
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then PYBIN=python3; else PYBIN=python; fi
 fi
-command -v claude >/dev/null 2>&1 || { echo "FAIL claude is not on PATH" ; exit 1; }
+# `claude` is resolved by coordinator.py's own claude_command(), never by the bare name:
+# Windows Python finds a bare name only as a real .exe, and an npm install provides a
+# claude.cmd shim (plus an extensionless sh script that only Git Bash can run).
+here=$(cd "$(dirname "$0")" && pwd)
+PROBE_PLUGIN_SCRIPTS="$here/../../plugins/notion-dev/scripts"
+command -v cygpath >/dev/null 2>&1 && PROBE_PLUGIN_SCRIPTS=$(cygpath -m "$PROBE_PLUGIN_SCRIPTS")
+[ -f "$PROBE_PLUGIN_SCRIPTS/coordinator.py" ] || { echo "FAIL coordinator.py not found at $PROBE_PLUGIN_SCRIPTS" ; exit 1; }
+export PROBE_PLUGIN_SCRIPTS
 
 mkdir -p .claude/notion-dev
 [ -f .claude/notion-dev/.gitignore ] || printf '*\n' > .claude/notion-dev/.gitignore
@@ -29,7 +36,7 @@ fails=0
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 cleanup() {
-  for id in $created; do claude stop "$id" >/dev/null 2>&1; claude rm "$id" >/dev/null 2>&1; done
+  for id in $created; do "${CLAUDE[@]}" stop "$id" >/dev/null 2>&1; "${CLAUDE[@]}" rm "$id" >/dev/null 2>&1; done
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -64,9 +71,14 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), sys.argv[1] +
 EOF
 cat > "$work/tool.py" <<'EOF'
 import json, os, re, subprocess, sys, time
+sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 work = os.path.dirname(os.path.abspath(__file__))
+def command():
+    sys.path.insert(0, os.environ["PROBE_PLUGIN_SCRIPTS"])
+    import coordinator
+    return coordinator.claude_command()      # exactly what run-epic will run
 def agents():
-    out = subprocess.run(["claude", "agents", "--json", "--all"], capture_output=True, encoding="utf-8").stdout
+    out = subprocess.run(command() + ["agents", "--json", "--all"], capture_output=True, encoding="utf-8").stdout
     return json.loads(out)
 def entry(short):
     return next((a for a in agents() if a.get("id") == short), None)
@@ -74,7 +86,9 @@ def log(name):
     path = os.path.join(work, name + ".log")
     return [json.loads(l) for l in open(path, encoding="utf-8")] if os.path.exists(path) else []
 cmd = sys.argv[1]
-if cmd == "id":
+if cmd == "cmd":              # the resolved claude command, one argv element per line
+    print("\n".join(command()))
+elif cmd == "id":
     found = re.findall(r"(?:backgrounded · |claude logs )([0-9a-f]{8})", sys.stdin.read())
     print(found[-1] if found else "")
 elif cmd == "wait":           # wait <short> <seconds>: every distinct state/status pair seen, then the sessionId
@@ -110,10 +124,10 @@ elif cmd == "retire":         # retire <short>: stop, wait for the process to EX
         return True
     short = sys.argv[2]
     pid = (entry(short) or {}).get("pid")
-    subprocess.run(["claude", "stop", short], capture_output=True)
+    subprocess.run(command() + ["stop", short], capture_output=True)
     deadline = time.monotonic() + 30
     while pid and alive(pid) and time.monotonic() < deadline: time.sleep(0.25)
-    subprocess.run(["claude", "rm", short], capture_output=True)
+    subprocess.run(command() + ["rm", short], capture_output=True)
     deadline = time.monotonic() + 10
     while entry(short) and time.monotonic() < deadline: time.sleep(0.5)
     print("no" if (pid and alive(pid)) or entry(short) else "yes")
@@ -156,7 +170,11 @@ cat > "$work/settings.json" <<EOF
 EOF
 tool() { $PYBIN "$work/tool.py" "$@"; }
 strip() { sed 's/\x1b\[[0-9;]*[A-Za-z]//g'; }
-launch() { timeout 90 claude --bg "$@" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id; }
+CLAUDE=()
+while IFS= read -r part; do [ -n "$part" ] && CLAUDE+=("$part"); done < <(tool cmd)
+[ "${#CLAUDE[@]}" -gt 0 ] || { echo "FAIL claude could not be resolved the way coordinator.py does: $(tool cmd 2>&1 | tail -1)"; exit 1; }
+echo "claude runs as: ${CLAUDE[*]}"
+launch() { timeout 90 "${CLAUDE[@]}" --bg "$@" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id; }
 
 # 1. A gated plugin command starts in a background session and prints its short id.
 id=$(launch "/probe:gated $tok")
@@ -175,12 +193,12 @@ if [ "$(tool hooked start "$session")" = yes ] && [ "$(tool hooked stop "$sessio
 else fail "3 SessionStart/Stop hooks did not log $session"; fi
 
 # 4. The gated command really ran (a model cannot invoke it; only the prompt can).
-if claude logs "$id" 2>&1 | strip | grep -q "GATED-RAN-$tok"; then pass "4 the gated command ran"; else fail "4 GATED-RAN-$tok missing from claude logs"; fi
+if "${CLAUDE[@]}" logs "$id" 2>&1 | strip | grep -q "GATED-RAN-$tok"; then pass "4 the gated command ran"; else fail "4 GATED-RAN-$tok missing from claude logs"; fi
 
 # 5. stop -> rm -> resume continues the SAME session (fact 10).
 tok2="PROBE-RELAY-$tok"
 [ "$(tool retire "$id")" = yes ] || fail "5 the stopped session did not exit and leave the list within 40 s"
-rid=$(timeout 90 claude --bg --resume "$session" "$tok2" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id)
+rid=$(timeout 90 "${CLAUDE[@]}" --bg --resume "$session" "$tok2" --plugin-dir "$work/plugin" --settings "$work/settings.json" 2>&1 | strip | tool id)
 [ -n "$rid" ] && created="$created $rid"
 seen=$(tool wait "${rid:-none}" 180); session2=${seen##*|}
 sleep 3
