@@ -71,7 +71,7 @@ continued: for each session in `open`, start at step 3.2 (wait on it, never rela
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" report-view --report <report>
    ```
-   and keep the returned `run_marker` (absent when next-task selected nothing).
+   and keep the `run_marker` that `wait` returned (absent when next-task selected nothing).
 4. **Judge** it against §5, and **act** on every open item through §6.
 5. **Record and retire** once nothing is left open:
    ```bash
