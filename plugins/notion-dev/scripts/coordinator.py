@@ -17,6 +17,7 @@ scripts/analysis/probe-background-sessions.sh. Two of them shape the code below:
   process to exit, and `resume()` refuses any id other than the original.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -28,12 +29,17 @@ import time
 
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from runtime import Invalid, require
+from runtime import Invalid, atomic_json, read_json, require, state_lock
 
 # Bounds for the CLI's asynchronous edges, seconds. Module-level so tests can shorten them.
 EXIT_WAIT = 30      # stopped process -> exited (fact 13 measured ~1 s)
 LIST_WAIT = 10      # rm -> gone from the list
 APPEAR_WAIT = 15    # printed id -> listed with its sessionId
+
+STALE_MINUTES = 120  # = hooks/stop-guard.sh STALE_MINUTES: an older marker is abandoned
+REMEDIATION_BOUND = 2
+VERDICTS = {"accepted", "remediate", "escalate", "declined"}
+KINDS = {"next-task", "followup", "new-info"}
 
 SHORT_ID = re.compile(r"(?:backgrounded · |claude logs )([0-9a-f]{8})")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -175,6 +181,222 @@ def resume(cwd, session, prompt):
     found = settle_entry(short)
     require(found and found.get("sessionId") == session, "resumed session " + short + " is not listed")
     return {"id": short, "session": session}
+
+
+# ---------------------------------------------------------------- state and marker
+
+def stamp(seconds=None):
+    return datetime.fromtimestamp(time.time() if seconds is None else seconds, timezone.utc).isoformat()
+
+
+def age_minutes(value):
+    try:
+        then = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return float("inf")
+    return (datetime.now(timezone.utc) - then).total_seconds() / 60
+
+
+def safe(value):
+    return re.sub(r"[^A-Za-z0-9._-]", "_", value)
+
+
+def paths(root, epic):
+    from workflow import local_dir
+    directory = local_dir(Path(root))
+    (directory / "runs").mkdir(exist_ok=True)
+    return directory / "runs" / ("coordinator-" + epic + ".json"), directory / "coordinator"
+
+
+def session_live(session):
+    """Whether a session is listed by the CLI and, when the entry names a pid, still running."""
+    found = entry(session)
+    if found is None:
+        return False
+    return alive(found.get("pid")) if found.get("pid") else found.get("status") in {"busy", "idle"}
+
+
+def open_launches(state):
+    return [l["session"] for l in state["launches"] if l.get("verdict") is None]
+
+
+def start(project, epic, session, non_interactive):
+    """Begin or resume this epic's coordinator run; one live coordinator per epic per machine.
+
+    The marker carries the stop guard's five keys, so a --non-interactive coordinator is held
+    to its run exactly like a ticket. A marker that is running, fresh and owned by another
+    session that is still listed refuses the start; a stale one, or one whose session ended,
+    is adopted with its unfinished state.
+    """
+    from workflow import primary
+    require(re.fullmatch(r"[A-Za-z0-9_-]+", epic or ""), "epic must be a ticket key such as STO-67")
+    require(session, "NOTION_DEV_SESSION_ID missing; the SessionStart hook publishes it")
+    root = primary(project)
+    marker_path, states = paths(root, epic)
+    with state_lock(marker_path.with_suffix(".claim.lock"), 5):
+        marker = read_json(marker_path) if marker_path.is_file() else None
+        adopted = None
+        state_path = None
+        if marker and marker.get("state") == "running" and marker.get("claude_session") != session:
+            owner = marker.get("claude_session")
+            fresh = age_minutes(marker.get("heartbeat")) < STALE_MINUTES
+            if fresh:
+                # The other session's absence proves it ended only where the list shows
+                # this one: a CLI that does not list the host's session proves nothing.
+                require(session_live(session) and not session_live(owner),
+                        "coordinator-" + epic + " is live in session " + str(owner) + " (heartbeat " +
+                        str(marker.get("heartbeat")) + "); attach to that session, or, if it has ended, remove " +
+                        str(marker_path) + " and re-invoke")
+            adopted = owner
+        if marker and marker.get("state_path") and Path(marker["state_path"]).is_file():
+            candidate = read_json(marker["state_path"])
+            if candidate.get("status") != "complete":
+                state_path = Path(marker["state_path"])
+        if state_path is None and states.is_dir():
+            unfinished = sorted(p for p in states.glob(safe(epic) + "-*.json")
+                                if read_json(p).get("status") != "complete")
+            state_path = unfinished[-1] if unfinished else None
+        resumed = state_path is not None
+        if resumed:
+            state = read_json(state_path)
+            if adopted:
+                state.setdefault("adopted", []).append({"from": adopted, "by": session, "at": stamp()})
+            state.update(status="running", cause=None, non_interactive=non_interactive, session=session)
+        else:
+            invocation = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + os.urandom(4).hex()
+            state_path = states / (safe(epic) + "-" + invocation + ".json")
+            state = {"epic": epic, "root": str(root), "mode": "serial", "non_interactive": non_interactive,
+                     "invocation": invocation, "session": session, "started": stamp(), "launches": [],
+                     "remediations": {}, "status": "running", "cause": None}
+        atomic_json(state_path, state)
+        atomic_json(marker_path, {"run": "coordinator-" + epic, "phase": "iterate", "state": "running",
+                                  "non_interactive": non_interactive, "claude_session": session,
+                                  "heartbeat": stamp(), "state_path": str(state_path)})
+    return {"state": str(state_path), "marker": str(marker_path), "resumed": resumed,
+            "open": open_launches(state), "adopted_from": adopted}
+
+
+def heartbeat(state, terminal=None):
+    """Rewrite the marker (its mtime is the stop guard's heartbeat); refuse a lost run."""
+    marker_path, _ = paths(state["root"], state["epic"])
+    with state_lock(marker_path.with_suffix(".claim.lock"), 5):
+        marker = read_json(marker_path)
+        require(marker.get("claude_session") == state["session"],
+                "coordinator-" + state["epic"] + " was adopted by session " + str(marker.get("claude_session")) +
+                "; this session no longer owns the run")
+        marker["heartbeat"] = stamp()
+        if terminal:
+            marker.update(state=terminal, phase=terminal)
+        atomic_json(marker_path, marker)
+
+
+def update(state_path, change):
+    """Apply `change(state)` under the state lock, write it, and refresh the heartbeat."""
+    state_path = Path(state_path)
+    with state_lock(state_path.with_suffix(".lock"), 5):
+        state = read_json(state_path)
+        result = change(state)
+        atomic_json(state_path, state)
+    heartbeat(state)
+    return result
+
+
+def find_launch(state, session):
+    found = next((l for l in state["launches"] if l["session"] == session), None)
+    require(found, str(session) + " is not a launch of this coordinator run")
+    return found
+
+
+def bound_key(state, launch):
+    """Remediations are counted per ticket; a follow-up counts toward the ticket it came from."""
+    if launch.get("kind") == "followup" and launch.get("parent"):
+        launch = find_launch(state, launch["parent"])
+    return launch.get("ticket") or launch["session"]
+
+
+def spend(state, key):
+    used = state["remediations"].get(key, 0)
+    require(used < REMEDIATION_BOUND, "remediation bound reached for " + key + " (" + str(REMEDIATION_BOUND) +
+            " per ticket); escalate to the user instead of launching again")
+    state["remediations"][key] = used + 1
+
+
+def record_launch(state_path, kind, prompt, ticket, parent):
+    """Launch one background session and record it before anything waits on it (§A3.1)."""
+    require(kind in KINDS, "launch kind must be one of " + ", ".join(sorted(KINDS)))
+    state = read_json(state_path)
+    if kind == "followup":
+        require(parent, "a follow-up launch names the session it came from")
+        spend(state, bound_key(state, find_launch(state, parent)))
+    launched = launch(state["root"], prompt)
+    record = {"id": launched["id"], "session": launched["session"], "kind": kind, "prompt": prompt,
+              "ticket": ticket, "parent": parent, "launched": stamp(), "verdict": None, "notes": [],
+              "relays": [], "remediations": [], "retired": False}
+
+    def change(current):
+        if kind == "followup":
+            spend(current, bound_key(current, find_launch(current, parent)))
+        current["launches"].append(record)
+    update(state_path, change)
+    return record
+
+
+def remediate(state_path, session, prompt):
+    """Send an instruction back to the ticket's own session (decision 12), within the bound."""
+    state = read_json(state_path)
+    target = find_launch(state, session)
+    spend(state, bound_key(state, target))           # refuse before resuming anything
+    resume(state["root"], session, prompt)
+
+    def change(current):
+        launch = find_launch(current, session)
+        spend(current, bound_key(current, launch))
+        launch["remediations"].append({"prompt": prompt, "at": stamp()})
+        launch.update(verdict=None, retired=False)
+        return {"session": session, "remediations": current["remediations"][bound_key(current, launch)]}
+    return update(state_path, change)
+
+
+def judge(state_path, session, verdict, note):
+    require(verdict in VERDICTS, "verdict must be one of " + ", ".join(sorted(VERDICTS)))
+
+    def change(state):
+        launch = find_launch(state, session)
+        launch["verdict"] = verdict
+        launch["notes"].append({"verdict": verdict, "note": note, "at": stamp()})
+    update(state_path, change)
+    return {"session": session, "verdict": verdict}
+
+
+def retire(state_path, session):
+    """Stop the session after its judgment; it stays listed so the user can still resume it."""
+    state = read_json(state_path)
+    launch = find_launch(state, session)
+    if short_entry(launch["id"]):
+        stop(launch["id"])
+
+    def change(current):
+        find_launch(current, session)["retired"] = True
+    update(state_path, change)
+    return {"session": session, "retired": True}
+
+
+def finish(state_path, status, cause):
+    """End the run: remove every retired session, write the terminal status to state and marker."""
+    require(status in {"complete", "stopped"}, "finish status is complete or stopped")
+    state = read_json(state_path)
+    removed = []
+    for launch in state["launches"]:
+        if launch.get("retired") and short_entry(launch["id"]):
+            remove(launch["id"])
+            removed.append(launch["id"])
+    kept = [l["id"] for l in state["launches"] if not l.get("retired")]
+    with state_lock(Path(state_path).with_suffix(".lock"), 5):
+        state = read_json(state_path)
+        state.update(status=status, cause=cause, finished=stamp())
+        atomic_json(state_path, state)
+    heartbeat(state, terminal=status)
+    return {"status": status, "cause": cause, "removed": removed, "kept": kept}
 
 
 def emit(result):

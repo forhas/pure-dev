@@ -117,5 +117,128 @@ class SessionLayerTests(CoordinatorBase):
             self.assertFalse(BYPASS & set(call), call)
 
 
+GUARD = ROOT / "plugins/notion-dev/hooks/stop-guard.sh"
+
+
+def bash():
+    return os.environ.get("BASH_EXE") or "bash"
+
+
+class StateTests(CoordinatorBase):
+    def setUp(self):
+        super().setUp()
+        self.project = self.dir / "project"
+        self.project.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.project)], check=True)
+        self.host("a")
+
+    def host(self, *sessions):
+        """The coordinator sessions `claude agents` lists as live (this test process's pid)."""
+        world = self.world()
+        world["sessions"] = [s for s in world.get("sessions", []) if s.get("kind") != "interactive"] + [
+            {"kind": "interactive", "sessionId": s, "status": "busy", "pid": os.getpid()} for s in sessions]
+        self.world(world)
+
+    def guard(self, session):
+        env = {k: v for k, v in os.environ.items() if k not in {"NOTION_DEV_PRIMARY_ROOT", "CLAUDE_PROJECT_DIR"}}
+        done = subprocess.run([bash(), str(GUARD)], input=json.dumps({"session_id": session, "cwd": str(self.project)}),
+                              capture_output=True, encoding="utf-8", cwd=str(self.project), env=env)
+        return done.stdout
+
+    def test_start_creates_state_and_guardable_marker(self):
+        started = coordinator.start(self.project, "STO-1", "a", True)
+        marker = json.loads(Path(started["marker"]).read_text(encoding="utf-8"))
+        self.assertEqual(set(marker), {"run", "phase", "state", "non_interactive", "claude_session",
+                                       "heartbeat", "state_path"})
+        self.assertEqual(Path(started["marker"]).name, "coordinator-STO-1.json")
+        self.assertEqual(marker["state"], "running")
+        state = json.loads(Path(started["state"]).read_text(encoding="utf-8"))
+        self.assertEqual(Path(state["root"]).resolve(), self.project.resolve())
+        self.assertIn('"decision":"block"', self.guard("a"))
+        coordinator.finish(started["state"], "complete", None)
+        started = coordinator.start(self.project, "STO-3", "a", False)
+        self.assertNotIn('"decision":"block"', self.guard("a"))
+
+    def test_exclusivity_is_per_epic(self):
+        coordinator.start(self.project, "STO-1", "a", False)
+        self.host("a", "b")
+        with self.assertRaisesRegex(Invalid, "coordinator-STO-1"):
+            coordinator.start(self.project, "STO-1", "b", False)
+        self.assertFalse(coordinator.start(self.project, "STO-2", "b", False)["resumed"])
+
+    def test_stale_marker_is_adopted(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        self.host("a", "b")
+        path = Path(started["marker"])
+        marker = json.loads(path.read_text(encoding="utf-8"))
+        marker["heartbeat"] = coordinator.stamp(time.time() - 121 * 60)
+        path.write_text(json.dumps(marker), encoding="utf-8")
+        adopted = coordinator.start(self.project, "STO-1", "b", False)
+        self.assertEqual(adopted["adopted_from"], "a")
+        self.assertTrue(adopted["resumed"])
+
+    def test_ended_coordinator_session_is_adopted(self):
+        coordinator.start(self.project, "STO-1", "a", False)
+        self.host("b")                      # "a" is no longer listed: its session ended
+        self.assertEqual(coordinator.start(self.project, "STO-1", "b", False)["adopted_from"], "a")
+
+    def test_unlisted_host_cannot_prove_the_other_ended(self):
+        coordinator.start(self.project, "STO-1", "a", False)
+        self.host()                         # neither listed: the list proves nothing
+        with self.assertRaisesRegex(Invalid, "coordinator-STO-1"):
+            coordinator.start(self.project, "STO-1", "b", False)
+
+    def test_start_resumes_unfinished_state(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1 --non-interactive", None, None)
+        again = coordinator.start(self.project, "STO-1", "a", False)
+        self.assertTrue(again["resumed"])
+        self.assertEqual(again["state"], started["state"])
+        self.assertEqual(again["open"], [launched["session"]])
+        self.assertEqual(len([c for c in self.calls() if c[:1] == ["--bg"]]), 1)
+
+    def test_remediation_bound_is_two_per_ticket(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        coordinator.remediate(started["state"], launched["session"], "run /notion-dev:finalize 12")
+        coordinator.remediate(started["state"], launched["session"], "resolve or record the tail")
+        with self.assertRaisesRegex(Invalid, "escalate"):
+            coordinator.remediate(started["state"], launched["session"], "third")
+        self.assertEqual(len([c for c in self.calls() if c[:2] == ["--bg", "--resume"]]), 2)
+
+    def test_followup_launch_counts_toward_the_parent_ticket(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        coordinator.record_launch(started["state"], "followup", "/notion-dev:ticket STO-9 --non-interactive", "STO-9", launched["session"])
+        coordinator.record_launch(started["state"], "followup", "/notion-dev:ticket STO-10 --non-interactive", "STO-10", launched["session"])
+        with self.assertRaisesRegex(Invalid, "escalate"):
+            coordinator.remediate(started["state"], launched["session"], "third")
+
+    def test_finish_removes_retired_sessions_and_terminates_marker(self):
+        started = coordinator.start(self.project, "STO-1", "a", True)
+        one = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        two = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-8", None)
+        coordinator.judge(started["state"], one["session"], "accepted", "all six checks pass")
+        coordinator.retire(started["state"], one["session"])
+        coordinator.retire(started["state"], two["session"])
+        coordinator.finish(started["state"], "complete", None)
+        removed = [c[1] for c in self.calls() if c[0] == "rm"]
+        self.assertEqual(sorted(removed), sorted([one["id"], two["id"]]))
+        marker = json.loads(Path(started["marker"]).read_text(encoding="utf-8"))
+        self.assertEqual(marker["state"], "complete")
+        self.assertNotIn('"decision":"block"', self.guard("a"))
+        state = json.loads(Path(started["state"]).read_text(encoding="utf-8"))
+        self.assertEqual(state["launches"][0]["verdict"], "accepted")
+        self.assertEqual(state["status"], "complete")
+
+    def test_judge_rejects_unknown_verdicts_and_sessions(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None)
+        with self.assertRaisesRegex(Invalid, "verdict"):
+            coordinator.judge(started["state"], launched["session"], "fine", "")
+        with self.assertRaisesRegex(Invalid, "not a launch"):
+            coordinator.judge(started["state"], "nope", "accepted", "")
+
+
 if __name__ == "__main__":
     unittest.main()
