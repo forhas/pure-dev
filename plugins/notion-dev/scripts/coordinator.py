@@ -357,15 +357,19 @@ def remediate(state_path, session, prompt):
     return update(state_path, change)
 
 
-def judge(state_path, session, verdict, note):
+def judge(state_path, session, verdict, note, fact=None):
+    """Record the coordinator's verdict on a launch, or with `fact` its decision on a handed-off fact."""
     require(verdict in VERDICTS, "verdict must be one of " + ", ".join(sorted(VERDICTS)))
 
     def change(state):
         launch = find_launch(state, session)
+        if fact:
+            launch.setdefault("facts", []).append({"fact": fact, "verdict": verdict, "note": note, "at": stamp()})
+            return
         launch["verdict"] = verdict
         launch["notes"].append({"verdict": verdict, "note": note, "at": stamp()})
     update(state_path, change)
-    return {"session": session, "verdict": verdict}
+    return {"session": session, "verdict": verdict, "fact": fact}
 
 
 def retire(state_path, session):
@@ -661,13 +665,59 @@ def emit(result):
 
 
 def main():
+    session = os.environ.get("NOTION_DEV_SESSION_ID", "")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    p = commands.add_parser("agents")
+    commands.add_parser("agents", help="the CLI's background-session list")
+    commands.add_parser("now", help="epoch seconds, for relay --asked-at")
+    p = commands.add_parser("start"); p.add_argument("--project", default="."); p.add_argument("--epic", required=True)
+    p.add_argument("--session", default=session); p.add_argument("--non-interactive", action="store_true")
+    p = commands.add_parser("launch"); p.add_argument("--state", required=True); p.add_argument("--prompt", required=True)
+    p.add_argument("--kind", required=True, choices=sorted(KINDS)); p.add_argument("--ticket"); p.add_argument("--parent")
+    p = commands.add_parser("wait"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
+    p.add_argument("--seconds", type=int, default=540); p.add_argument("--interval", type=int, default=15)
+    p = commands.add_parser("report-view"); p.add_argument("--report", required=True)
+    p = commands.add_parser("workspace"); p.add_argument("--project", default="."); p.add_argument("--ticket", required=True)
+    p = commands.add_parser("remediate"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
+    p.add_argument("--prompt", required=True)
+    p = commands.add_parser("relay"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
+    p.add_argument("--phrase", required=True); p.add_argument("--expect", required=True)
+    p.add_argument("--asked-at", type=float, required=True)
+    p.add_argument("--transcript", default=os.environ.get("NOTION_DEV_TRANSCRIPT", ""))
+    p.add_argument("--coordinator-session", default=session)
+    p = commands.add_parser("judge"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
+    p.add_argument("--verdict", required=True, choices=sorted(VERDICTS)); p.add_argument("--note", default="")
+    p.add_argument("--fact", help="record a decision on this handed-off fact instead of the launch's verdict")
+    p = commands.add_parser("retire"); p.add_argument("--state", required=True); p.add_argument("--session", required=True)
+    p = commands.add_parser("finish"); p.add_argument("--state", required=True)
+    p.add_argument("--status", required=True, choices=["complete", "stopped"]); p.add_argument("--cause")
     args = parser.parse_args()
     if args.command == "agents":
         return emit({"agents": agents()})
-    return 2
+    if args.command == "now":
+        return emit({"epoch": time.time()})
+    if args.command == "start":
+        return emit(start(args.project, args.epic, args.session, args.non_interactive))
+    if args.command == "launch":
+        return emit(record_launch(args.state, args.kind, args.prompt, args.ticket, args.parent))
+    if args.command == "wait":
+        result = wait(args.state, args.session, args.seconds, args.interval)
+        emit(result)
+        return 0 if result["settled"] else 1
+    if args.command == "report-view":
+        return emit(report_view(Path(args.report).read_text(encoding="utf-8")))
+    if args.command == "workspace":
+        return emit(workspace(args.project, args.ticket))
+    if args.command == "remediate":
+        return emit(remediate(args.state, args.session, args.prompt))
+    if args.command == "relay":
+        return emit(relay(args.state, args.session, args.phrase, args.expect, args.transcript,
+                          args.coordinator_session, args.asked_at))
+    if args.command == "judge":
+        return emit(judge(args.state, args.session, args.verdict, args.note, args.fact))
+    if args.command == "retire":
+        return emit(retire(args.state, args.session))
+    return emit(finish(args.state, args.status, args.cause))
 
 
 if __name__ == "__main__":

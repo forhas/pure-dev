@@ -750,7 +750,7 @@ class LeanTests(unittest.TestCase):
         # default, and prove each check rejects its own missing mechanism in a copy.
         contracts = {
             "commands/ticket.md": ["workflow.py\" verify", "references/record.md", "combined"],
-            "commands/next-task.md": ["OUTCOME: resolved", "## Blocked by", "A stop/failure stops this loop too"],
+            "commands/next-task.md": ["OUTCOME: resolved", "## Blocked by", "A stop/failure ends this run", "save-report"],
             "commands/finalize.md": ["resume-pr", "--merged", "Missing verdicts remain unknown", "references/record.md"],
             "references/lean-intake.md": ["requirements` and `ready", "live status and ownership", "knowledge.py lock", "Never reset a resumed branch"],
             "skills/review-and-merge/SKILL.md": ["--match-head-commit", "merge-gate", "code_review", "correction-needed", "ALL GraphQL thread pages", "required checks pass", "review-findings.md", "reviewer-recovery.md"],

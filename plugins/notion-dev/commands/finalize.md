@@ -7,7 +7,7 @@ argument-hint: "[<pr-number>] [--non-interactive]"
 
 This is a resume entrypoint, not a second implementation of ticket/review/record.
 It does not change requirements, skip review, or authorize deployment.
-Invoke only at the user's request or as recovery within an authorized ticket/next-task run.
+Invoke only at the user's request or as recovery within an authorized ticket/next-task/run-epic run.
 
 1. Resolve the primary checkout (first `git worktree list --porcelain` entry), load its config,
    and use configured `knowledge.python` for `python3` examples. Probe `gh auth status`.
@@ -41,7 +41,8 @@ Invoke only at the user's request or as recovery within an authorized ticket/nex
 7. Run the workspace closeout pass, report actual outcomes and evidence paths, then mark the
    owned marker complete through `workflow.py complete --state "$RUNTIME_STATE" --marker "$RUN_MARKER"`.
    On failure preserve work, mark stopped with cause, and report the
-   exact resume path. No requirement to create a disposable test project.
+   exact resume path. No requirement to create a disposable test project. Either way, first save the
+   report with `workflow.py save-report --project "$REPO_ROOT" --from -` (report on stdin).
 
 Before invoking review in step 4 or recording in step 6, bind the verified PR using:
 ```bash

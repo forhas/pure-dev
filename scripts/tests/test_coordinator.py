@@ -233,6 +233,16 @@ class StateTests(ProjectBase):
         self.assertEqual(state["launches"][0]["verdict"], "accepted")
         self.assertEqual(state["status"], "complete")
 
+    def test_a_fact_decision_leaves_the_ticket_verdict_alone(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        coordinator.judge(started["state"], launched["session"], "accepted", "six checks pass")
+        coordinator.judge(started["state"], launched["session"], "declined", "user said no", fact="The list ships next.")
+        launch = json.loads(Path(started["state"]).read_text(encoding="utf-8"))["launches"][0]
+        self.assertEqual(launch["verdict"], "accepted")
+        self.assertEqual(launch["facts"], [{"fact": "The list ships next.", "verdict": "declined",
+                                            "note": "user said no", "at": launch["facts"][0]["at"]}])
+
     def test_judge_rejects_unknown_verdicts_and_sessions(self):
         started = coordinator.start(self.project, "STO-1", "a", False)
         launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None)
@@ -407,6 +417,44 @@ class RelayTests(ProjectBase):
         self.row(self.PHRASE)
         with self.assertRaisesRegex(Invalid, "never relays"):
             coordinator.relay(state, self.launched["session"], self.PHRASE, self.PHRASE, self.transcript, "a", self.asked)
+
+
+class CliTests(ProjectBase):
+    SCRIPT = ROOT / "plugins/notion-dev/scripts/coordinator.py"
+
+    def cli(self, *args, code=0):
+        env = {**os.environ, "NOTION_DEV_SESSION_ID": "a"}
+        done = subprocess.run([sys.executable, str(self.SCRIPT), *args], capture_output=True, encoding="utf-8",
+                              cwd=str(self.project), env=env)
+        self.assertEqual(done.returncode, code, done.stdout + done.stderr)
+        return json.loads(done.stdout or done.stderr)
+
+    def test_cli_drives_one_iteration(self):
+        started = self.cli("start", "--project", ".", "--epic", "STO-1", "--non-interactive")
+        state = started["state"]
+        launched = self.cli("launch", "--state", state, "--kind", "next-task",
+                            "--prompt", "/notion-dev:next-task STO-1 --non-interactive")
+        self.cli("wait", "--state", state, "--session", launched["session"], "--seconds", "0", "--interval", "0")
+        report = coordinator.report_path(self.project, launched["session"])
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(RESOLVED, encoding="utf-8")
+        waited = self.cli("wait", "--state", state, "--session", launched["session"], "--seconds", "5", "--interval", "0")
+        self.assertEqual(waited["outcome"], "done")
+        view = self.cli("report-view", "--report", waited["report"])
+        self.assertEqual(view["outcome"], "resolved")
+        self.cli("judge", "--state", state, "--session", launched["session"], "--verdict", "accepted", "--note", "ok")
+        self.cli("retire", "--state", state, "--session", launched["session"])
+        self.assertEqual(self.cli("finish", "--state", state, "--status", "complete")["status"], "complete")
+        self.assertIn("error", self.cli("judge", "--state", state, "--session", "x", "--verdict", "accepted",
+                                        "--note", "", code=2))
+        self.assertGreater(self.cli("now")["epoch"], 1.7e9)
+
+    def test_cli_wait_exits_one_while_pending(self):
+        world = self.world(); world["settle_after"] = 1000; self.world(world)
+        state = self.cli("start", "--project", ".", "--epic", "STO-1")["state"]
+        launched = self.cli("launch", "--state", state, "--kind", "next-task", "--prompt", "/notion-dev:next-task STO-1")
+        pending = self.cli("wait", "--state", state, "--session", launched["session"], "--seconds", "0", code=1)
+        self.assertEqual(pending["outcome"], "working")
 
 
 RESOLVED = """Ticket STO-7 resolved: PR #41 merged as 1a2b3c4.
