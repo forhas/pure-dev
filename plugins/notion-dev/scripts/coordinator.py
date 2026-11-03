@@ -163,9 +163,16 @@ def stop(short_id):
 
 
 def remove(short_id):
-    claude("rm", short_id)
+    """Remove a session from the list, and fail unless it is actually gone.
+
+    A session still listed would make a later resume fork (fact 10) and a finished run
+    report a removal that never happened.
+    """
+    done = claude("rm", short_id)
     deadline = time.monotonic() + LIST_WAIT
-    while short_entry(short_id) and time.monotonic() < deadline:
+    while short_entry(short_id):
+        require(time.monotonic() < deadline, "session " + short_id + " is still listed after `claude rm` (exit " +
+                str(done.returncode) + "): " + ANSI.sub("", (done.stderr or done.stdout).strip())[-200:])
         time.sleep(0.5)
 
 

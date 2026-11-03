@@ -75,7 +75,7 @@ class SessionLayerTests(CoordinatorBase):
 
     def test_resume_that_forks_is_refused(self):
         launched = coordinator.launch(self.dir, "/notion-dev:next-task STO-1")
-        world = self.world(); world["rm_noop"] = True; self.world(world)
+        world = self.world(); world["fork_resume"] = True; self.world(world)
         with self.assertRaisesRegex(Invalid, "forked"):
             coordinator.resume(self.dir, launched["session"], "continue")
         fork = [c for c in self.calls() if c[:2] == ["--bg", "--resume"]]
@@ -86,6 +86,15 @@ class SessionLayerTests(CoordinatorBase):
         for short in forked_id:
             self.assertIn(short, stopped)
             self.assertIn(short, removed)
+
+    def test_a_session_still_listed_after_rm_is_an_error(self):
+        launched = coordinator.launch(self.dir, "/notion-dev:next-task STO-1")
+        world = self.world(); world["rm_noop"] = True; self.world(world)
+        with self.assertRaisesRegex(Invalid, "still listed"):
+            coordinator.remove(launched["id"])
+        with self.assertRaisesRegex(Invalid, "still listed"):
+            coordinator.resume(self.dir, launched["session"], "continue")
+        self.assertFalse([c for c in self.calls() if c[:2] == ["--bg", "--resume"]])
 
     def test_stop_waits_for_the_process_to_exit(self):
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1.2)"])

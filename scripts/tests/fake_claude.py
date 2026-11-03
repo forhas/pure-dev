@@ -7,7 +7,8 @@ Driven by a JSON world file named by $NOTION_DEV_FAKE_WORLD:
   settle_after  `agents` calls before a new session goes busy -> idle (default 1)
   settled_state the `state` a settled session reads (default "working": a session
                 started with a slash command never reads "done" — spec fact 12)
-  rm_noop       true: `rm` leaves the entry listed, so a resume forks
+  rm_noop       true: `rm` leaves the entry listed
+  fork_resume   true: `--bg --resume` always starts a copy under a new id
   agents_garbage true: `agents --json` prints non-JSON (an older CLI)
   resume_starting_polls  a resumed entry lists no status for that many `agents` calls
   unlisted      true: `--bg` prints an id that never appears in the list
@@ -68,7 +69,7 @@ if argv[:1] == ["agents"]:
     print(json.dumps([{k: v for k, v in s.items() if not k.startswith("_")} for s in sessions]))
 elif argv[:2] == ["--bg", "--resume"]:
     full = argv[2]
-    if any(s.get("sessionId") == full for s in sessions):
+    if world.get("fork_resume") or any(s.get("sessionId") == full for s in sessions):
         full = uuid.uuid4().hex[:8] + full[8:]          # still listed: a forked copy
     entry = new_session(full)
     if world.get("resume_starting_polls"):
