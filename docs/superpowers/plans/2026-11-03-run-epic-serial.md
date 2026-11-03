@@ -49,8 +49,9 @@
   5. `claude stop`, `claude rm`, then `claude --bg --resume <sessionId> "<tok2>"` → SessionStart `source` is `resume` with the same `sessionId`;
   6. the session transcript (path from the Stop hook input's `transcript_path`) has a row with `type: "user"`, that `sessionId`, no `isSidechain`, whose text is exactly `<tok2>` (python one-liner via `${PYBIN:-python3}`);
   7. a background session told to launch one background subagent (`sleep 60`) and end its turn reads `working` until it replies the wake token, then `done`.
+  8. (added during execution) a session at a permission prompt reads `blocked`; with 2 the settle signal became `status: idle` (spec facts 12–13).
   It stops and removes every session it created, also on failure.
-- [ ] **Step 2: Run on Linux.** `bash scripts/analysis/probe-background-sessions.sh "$PWD"` from the repo root. Expected: 7 PASS, exit 0. A FAIL on 5–7 stops the plan and goes back to the user (facts 10–11 or the relay premise changed).
+- [ ] **Step 2: Run on Linux.** `bash scripts/analysis/probe-background-sessions.sh "$PWD"` from the repo root. Expected: 8 PASS (7 as first planned), exit 0. A FAIL on 5–8 stops the plan and goes back to the user (facts 10–11 or the relay premise changed).
 - [ ] **Step 3: Commit.** `git add scripts/analysis/probe-background-sessions.sh && git commit -m "test(notion-dev): live probe for background-session behaviour run-epic relies on"`
 
 ### Task 2: Session layer in `coordinator.py`
@@ -233,4 +234,4 @@
 - [ ] **Step 2: Run** `bash scripts/verify-coordinator.sh` → PASS; mutation-prove the new assertions as in Task 8 step 6.
 - [ ] **Step 3: Run the full suite** `bash scripts/run-verifications.sh` → overall success line.
 - [ ] **Step 4: Commit.** `git commit -am "docs(notion-dev): run-epic policy paths, README and 1.0.0"`
-- [ ] **Step 5: G1 hand-off.** Give the user the Windows command, to run in Git Bash from the BTC-Gateway checkout: `bash <pure-dev>/scripts/analysis/probe-background-sessions.sh "$PWD"` (the script lives in this repo; they pass its path). The PR may open and go through review meanwhile; **merge waits for 7 PASS on Windows** (decision 15). Any FAIL comes back to the user with the spec's alternative (`wt.exe new-tab`), never a silent fallback.
+- [ ] **Step 5: G1 hand-off.** Give the user the Windows command, to run in Git Bash from the BTC-Gateway checkout: `bash <pure-dev>/scripts/analysis/probe-background-sessions.sh "$PWD"` (the script lives in this repo; they pass its path). The PR may open and go through review meanwhile; **merge waits for 8 PASS on Windows** (decision 15). Any FAIL comes back to the user with the spec's alternative (`wt.exe new-tab`), never a silent fallback.
