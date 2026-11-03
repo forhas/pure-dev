@@ -446,6 +446,14 @@ class OutcomeTests(ProjectBase):
         recording = coordinator.wait(state, launched["session"], seconds=5, interval=0)["recording"]
         self.assertEqual((recording["passed"], recording["unresolved"]), (True, ["knowledge-delta"]))
 
+    def test_a_new_info_session_is_done_with_its_report_and_no_run_marker(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        ticket = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", "STO-7", None)
+        fact = coordinator.record_launch(started["state"], "new-info", '/notion-dev:new-info "x" --non-interactive', None, ticket["session"])
+        self.assertEqual(coordinator.wait(started["state"], fact["session"], seconds=5, interval=0)["outcome"], "handback")
+        self.report(fact["session"], "OUTCOME: resolved\n")
+        self.assertEqual(coordinator.wait(started["state"], fact["session"], seconds=5, interval=0)["outcome"], "done")
+
     def test_wait_records_the_ticket_key_and_keeps_the_count(self):
         state, launched = self.started()
         coordinator.remediate(state, launched["session"], "continue")

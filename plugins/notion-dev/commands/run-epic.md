@@ -182,8 +182,11 @@ RUN
 )"
 ```
 
-The user's yes is the confirmation `new-info` asks for, which is why it runs non-interactive;
-judge its report like any other (its applied and skipped epics are in it). On no:
+The user's yes is the confirmation `new-info` asks for, which is why it runs non-interactive.
+It is not a ticket, so §5 does not apply: wait on it (step 3.2) and parse its saved report with
+`report-view`. Accept it when its `OUTCOME:` reads `resolved`, `problems` is empty, and every epic
+line reads `updated`, `created+updated`, `closed` or `skipped — <reason>`. Otherwise remediate the
+same session ("continue this new-info run to its report") within the bound, then escalate. On no:
 `coordinator.py" judge --state "$STATE" --session <session> --verdict declined --fact "<fact>"`.
 
 ## 7. End

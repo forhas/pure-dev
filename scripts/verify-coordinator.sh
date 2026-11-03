@@ -68,6 +68,10 @@ assert_has "next-task carries the ticket's \`OUTCOME:\` line and \`NEW-INFO:\` a
 for f in ticket finalize; do
   assert_has "$f saves its report with \`save-report\`" "$ND/commands/$f.md" 'workflow.py save-report --project "$REPO_ROOT" --from -'
 done
+assert_has "new-info saves its report with \`save-report\`" "$ND/commands/new-info.md" 'save the finished report with `workflow.py save-report --project "$REPO_ROOT" --from -`'
+assert_has "new-info under \`--route\` leaves the ticket's report alone" "$ND/commands/new-info.md" 'Under `--route` the calling ticket run saves its own report'
+assert_has "new-info states one \`OUTCOME:\` line for the run" "$ND/commands/new-info.md" "- \`OUTCOME: resolved\` when every epic of every fact reads"
+assert_has "run-epic judges a new-info session by its own contract, not §5" "$RE" 'It is not a ticket, so §5 does not apply'
 assert_has "ticket may run inside a \`run-epic\` run" "$ND/commands/ticket.md" 'authorized next-task or run-epic run'
 assert_has "finalize may run inside a \`run-epic\` run" "$ND/commands/finalize.md" 'authorized ticket/next-task/run-epic run'
 

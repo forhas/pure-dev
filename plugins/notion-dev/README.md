@@ -32,7 +32,7 @@ request and relays the phrase you type into that ticket's session, recording whi
 messages it came from; a fact a ticket handed off for confirmation is shown with its source,
 and your yes launches `new-info` for it. `--non-interactive` never asks: an escalation ends the
 run with its cause and `/notion-dev:run-epic <epic>`, which resumes the run from its state.
-`next-task`, `ticket` and `finalize` now also save their finished report under
+`next-task`, `ticket`, `finalize` and `new-info` now also save their finished report under
 `.claude/notion-dev/reports/` (`workflow.py save-report`), which is what the coordinator reads.
 
 `--parallel` (several compatible tickets at once, merged one at a time) is not available yet.
