@@ -51,6 +51,6 @@ A stop/failure ends this run; never pick another ticket over unfinished owned wo
 runtime-authorized wait/yield is unfinished work, not an end.
 
 Report ticket/PR, runtime path, skipped ownership/dependency reasons, and the ticket's
-`OUTCOME:` line, `NEW-INFO:` and CLOSEOUT blocks verbatim, not its long report. Last step of
+`OUTCOME:` line, `NEW-INFO:` and CLOSEOUT blocks verbatim, every line, not its long report. Last step of
 every outcome (resolved, stopped, none selected, epic complete): save it with
 `workflow.py save-report --project . --from -` (report on stdin).

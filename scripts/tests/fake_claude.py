@@ -9,6 +9,8 @@ Driven by a JSON world file named by $NOTION_DEV_FAKE_WORLD:
                 started with a slash command never reads "done" — spec fact 12)
   rm_noop       true: `rm` leaves the entry listed, so a resume forks
   agents_garbage true: `agents --json` prints non-JSON (an older CLI)
+  resume_starting_polls  a resumed entry lists no status for that many `agents` calls
+  unlisted      true: `--bg` prints an id that never appears in the list
 """
 import json
 import os
@@ -53,6 +55,11 @@ if argv[:1] == ["agents"]:
         print("oops")
         sys.exit(0)
     for entry in sessions:
+        if entry.get("_starting"):
+            entry["_starting"] -= 1
+            if not entry["_starting"]:
+                entry["status"] = "busy"
+            continue
         if entry.get("status") == "busy":
             entry["_polls"] = entry.get("_polls", 0) + 1
             if entry["_polls"] >= world.get("settle_after", 1):
@@ -64,10 +71,18 @@ elif argv[:2] == ["--bg", "--resume"]:
     if any(s.get("sessionId") == full for s in sessions):
         full = uuid.uuid4().hex[:8] + full[8:]          # still listed: a forked copy
     entry = new_session(full)
+    if world.get("resume_starting_polls"):
+        entry["_starting"] = world["resume_starting_polls"]
+        entry.pop("status")
     save()
     backgrounded(entry["id"])
 elif argv[:1] == ["--bg"]:
-    entry = new_session(str(uuid.uuid4()))
+    full = str(uuid.uuid4())
+    if world.get("unlisted"):
+        save()
+        backgrounded(full[:8])
+        sys.exit(0)
+    entry = new_session(full)
     save()
     backgrounded(entry["id"])
 elif argv[:1] == ["stop"]:

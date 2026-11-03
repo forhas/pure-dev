@@ -23,6 +23,11 @@ is `blocked`, and only the user answers it.
 `python3` below stands for the configured `knowledge.python` executable (`python` or `py -3` on
 Windows). Commands run from the primary checkout through Git Bash on Windows, unchanged.
 
+Every `coordinator.py` call prints JSON. Exit 2 is a refusal with an `error`: read it and act
+on it, never retry blindly. `no longer owns` means another session adopted this epic's run:
+stop at once and tell the user which session has it. `resume forked` means the session had not
+yet left the list: wait 10 seconds and repeat the same call once; a second refusal escalates.
+
 ## 1. Arguments
 
 `--serial` is the default and the only mode: `--parallel` stops with "`--parallel` is not
@@ -61,7 +66,8 @@ continued: for each session in `open`, start at step 3.2 (wait on it, never rela
    Exit 1 means still working: run it again at once. Never end your turn while a session is
    working (one exception: an interactive §6b question, whose answer resumes you), never run
    the wait in the background, and never run two waiters.
-3. **Read the outcome** — `outcome` in the table of §4. For `done`, parse the saved report:
+3. **Read the outcome** — `outcome` in the table of §4; keep its `recording` (§5.5). For `done`,
+   parse the saved report:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" report-view --report <report>
    ```
@@ -100,8 +106,10 @@ Check each from its source, never from the report's own claims:
    GitHub) — check existence, never second-guess the destination it was filed to. Every
    `blocked:` names an **external** cause and its unblocker; an internal cause (long, tedious,
    unreviewed, out of budget, a round cap) is an open item.
-5. Recording outcomes (Notion, knowledge delta, epic brief): any `failed` or `unknown` is an open
-   item (`report-view` lists it under `problems`).
+5. Recording outcomes, from the run's own record (`wait`'s `recording`, read from
+   `record-result.json` beside its runtime), not from the report: `passed` false or null, or
+   any operation in `unresolved` (best-effort ones included), is an open item; so is a
+   `failed`/`unknown` field that `report-view` lists under `problems`.
 6. ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" workspace --project . --ticket <ticket-key>
    ```
@@ -168,7 +176,10 @@ launch its `run:` line in a fresh session once the running ticket has been judge
 ticket after it:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" launch --state "$STATE" --kind new-info --parent <session> --prompt '<its run: line> --non-interactive'
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/coordinator.py" launch --state "$STATE" --kind new-info --parent <session> --prompt "$(cat <<'RUN'
+<its run: line, verbatim> --non-interactive
+RUN
+)"
 ```
 
 The user's yes is the confirmation `new-info` asks for, which is why it runs non-interactive;

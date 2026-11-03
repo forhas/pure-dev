@@ -42,7 +42,12 @@ assert_has "a remediation resumes the ticket's own session through \`remediate\`
 assert_has "an approval reaches the ticket only through \`relay\`" "$RE" 'coordinator.py" relay --state "$STATE" --session <session> --phrase'
 assert_has "a \`--non-interactive\` coordinator never relays" "$RE" '`--non-interactive` coordinator never relays'
 assert_has "the approval is asked in plain text, not AskUserQuestion" "$RE" 'plain text — not AskUserQuestion'
-assert_has "a confirmed fact runs \`new-info\` \`--non-interactive\` in a fresh session" "$RE" "--kind new-info --parent <session> --prompt '<its run: line> --non-interactive'"
+assert_has "a confirmed fact launches in a fresh session through a quoted heredoc" "$RE" "--kind new-info --parent <session> --prompt \"\$(cat <<'RUN'"
+assert_has "the confirmed fact's \`run:\` line runs \`--non-interactive\`" "$RE" '<its run: line, verbatim> --non-interactive'
+assert_has "a refusal is exit 2 with an \`error\`, never retried blindly" "$RE" 'Exit 2 is a refusal with an `error`'
+assert_has "a coordinator that \`no longer owns\` its run stops at once" "$RE" '`no longer owns` means another session adopted'
+assert_has "a \`resume forked\` refusal is retried once after 10 seconds" "$RE" '`resume forked` means the session had not'
+assert_has "recording outcomes come from \`record-result.json\`, not the report" "$RE" '`record-result.json` beside its runtime'
 assert_has "a declined fact is recorded with \`--fact\`" "$RE" '--verdict declined --fact'
 assert_has "the run ends with the \`notion-dev:session-closeout\` workspace pass" "$RE" 'workspace pass of `notion-dev:session-closeout`'
 assert_present "run-epic forbids launching with \`claude -p\`" "$RE" 1 "$L" '^with `claude -p`, and never pass'
@@ -59,7 +64,7 @@ assert_lacks "next-task no longer takes \`--depth=N\`" "$NT" '--depth=N'
 assert_has "next-task stops a \`--depth\` caller before any write" "$NT" '`--depth` given → stop before any write'
 assert_has "next-task names the replacement \`/notion-dev:run-epic\`" "$NT" 'use `/notion-dev:run-epic <epic>`'
 assert_has "next-task saves its report with \`save-report\`" "$NT" 'workflow.py save-report --project . --from -'
-assert_has "next-task carries the ticket's \`OUTCOME:\` line and \`NEW-INFO:\` and CLOSEOUT blocks" "$NT" '`OUTCOME:` line, `NEW-INFO:` and CLOSEOUT blocks verbatim'
+assert_has "next-task carries the ticket's \`OUTCOME:\` line and \`NEW-INFO:\` and CLOSEOUT blocks, every line" "$NT" '`OUTCOME:` line, `NEW-INFO:` and CLOSEOUT blocks verbatim, every line'
 for f in ticket finalize; do
   assert_has "$f saves its report with \`save-report\`" "$ND/commands/$f.md" 'workflow.py save-report --project "$REPO_ROOT" --from -'
 done

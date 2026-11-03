@@ -100,7 +100,8 @@ Measured 2026-11-03 on Claude Code 2.1.317, WSL 2 Ubuntu, unless marked.
     slash-command session: busy for the worker's 60 s, then idle after the wake). So the settle
     signal is `status: idle` (or a terminal `state`), never `state: done` alone. Entries can
     also lack `status`/`pid` for the first seconds after launch, and the host's own interactive
-    session is listed without an `id`.
+    session is listed without an `id`. A session at a permission prompt reads `state: blocked`,
+    `status: waiting`, `waitingFor: "permission prompt"` (measured on a slash-command session).
 13. **`claude stop` returns before the session's process exits** (the supervisor logs it
     `settled (killed)` up to ~1 s later). A `--resume` inside that window forks (fact 10)
     even after `claude rm` succeeded — reproduced four times out of four on slash-command

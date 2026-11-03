@@ -53,6 +53,12 @@ def claude_command():
     found = shutil.which("claude")
     require(found, "claude is not on PATH; run-epic launches each ticket with `claude --bg` "
             "(Claude Code 2.1.317 or later)")
+    # An npm shim runs through cmd.exe, which re-parses the prompt: `&`, `|`, `^` or `%` in a
+    # ticket's guidance or a fact's text would run as commands. Only a real executable is safe.
+    require(not found.lower().endswith((".cmd", ".bat")),
+            "claude resolves to " + found + ", a script cmd.exe would re-parse each prompt through; "
+            "install the native Claude Code (claude.exe, https://code.claude.com/docs/en/setup) "
+            "and put it first on PATH")
     return [found]
 
 
@@ -136,8 +142,11 @@ def launch(cwd, prompt):
     require(short, "`claude --bg` printed no session id (exit " + str(done.returncode) + "): " +
             ANSI.sub("", (done.stderr or done.stdout).strip())[-300:])
     found = settle_entry(short)
-    require(found and found.get("sessionId", "").startswith(short),
-            "background session " + short + " is not listed by `claude agents --json --all`")
+    if not (found and found.get("sessionId", "").startswith(short)):
+        stop(short)                     # never leave an unrecorded session running
+        remove(short)
+        raise Invalid("background session " + short + " is not listed by `claude agents --json --all` "
+                      "(stopped and removed it)")
     return {"id": short, "session": found["sessionId"]}
 
 
@@ -174,6 +183,9 @@ def resume(cwd, session, prompt):
     got = printed_id(done.stdout + "\n" + done.stderr)
     require(got, "`claude --bg --resume` printed no session id (exit " + str(done.returncode) + ")")
     if got != short:
+        # The copy holds the whole run's context and started on the prompt; it runs for the
+        # second this takes. Its run ownership checks key on the original id, so it cannot
+        # complete the original run in that window.
         stop(got)
         remove(got)
         raise Invalid("resume forked " + session + " into a copy " + got + " (removed); the "
@@ -216,6 +228,29 @@ def session_live(session):
     return alive(found.get("pid")) if found.get("pid") else found.get("status") in {"busy", "idle"}
 
 
+def caller_session(caller=None):
+    """The session making this call: explicit, or the host's $NOTION_DEV_SESSION_ID."""
+    value = caller or os.environ.get("NOTION_DEV_SESSION_ID", "")
+    require(value, "NOTION_DEV_SESSION_ID missing; the SessionStart hook publishes it")
+    return value
+
+
+def own(state, caller=None):
+    """Refuse a coordinator session that no longer owns this run, before any side effect.
+
+    Adoption rewrites the marker and the state for the new owner; the old session, resumed
+    later (an answer to a question it asked hours ago), must stop rather than drive the epic
+    alongside it.
+    """
+    caller = caller_session(caller)
+    marker_path, _ = paths(state["root"], state["epic"])
+    marker = read_json(marker_path) if marker_path.is_file() else {}
+    require(marker.get("claude_session") == caller and state.get("session") == caller,
+            "session " + caller + " no longer owns coordinator-" + state["epic"] + " (now " +
+            str(marker.get("claude_session")) + "); stop here")
+    return caller
+
+
 def open_launches(state):
     return [l["session"] for l in state["launches"] if l.get("verdict") is None]
 
@@ -232,6 +267,7 @@ def start(project, epic, session, non_interactive):
     require(re.fullmatch(r"[A-Za-z0-9_-]+", epic or ""), "epic must be a ticket key such as STO-67")
     require(session, "NOTION_DEV_SESSION_ID missing; the SessionStart hook publishes it")
     root = primary(project)
+    agents()                            # claude present and new enough, before anything is written
     marker_path, states = paths(root, epic)
     with state_lock(marker_path.with_suffix(".claim.lock"), 5):
         marker = read_json(marker_path) if marker_path.is_file() else None
@@ -276,28 +312,30 @@ def start(project, epic, session, non_interactive):
             "open": open_launches(state), "adopted_from": adopted}
 
 
-def heartbeat(state, terminal=None):
+def heartbeat(state, caller=None, terminal=None):
     """Rewrite the marker (its mtime is the stop guard's heartbeat); refuse a lost run."""
+    caller = caller_session(caller)
     marker_path, _ = paths(state["root"], state["epic"])
     with state_lock(marker_path.with_suffix(".claim.lock"), 5):
         marker = read_json(marker_path)
-        require(marker.get("claude_session") == state["session"],
-                "coordinator-" + state["epic"] + " was adopted by session " + str(marker.get("claude_session")) +
-                "; this session no longer owns the run")
+        require(marker.get("claude_session") == caller,
+                "session " + caller + " no longer owns coordinator-" + state["epic"] + " (now " +
+                str(marker.get("claude_session")) + "); stop here")
         marker["heartbeat"] = stamp()
         if terminal:
             marker.update(state=terminal, phase=terminal)
         atomic_json(marker_path, marker)
 
 
-def update(state_path, change):
-    """Apply `change(state)` under the state lock, write it, and refresh the heartbeat."""
+def update(state_path, change, caller=None):
+    """Apply `change(state)` under the state lock as its owner, write it, refresh the heartbeat."""
     state_path = Path(state_path)
     with state_lock(state_path.with_suffix(".lock"), 5):
         state = read_json(state_path)
+        own(state, caller)
         result = change(state)
         atomic_json(state_path, state)
-    heartbeat(state)
+    heartbeat(state, caller)
     return result
 
 
@@ -325,12 +363,14 @@ def record_launch(state_path, kind, prompt, ticket, parent):
     """Launch one background session and record it before anything waits on it (§A3.1)."""
     require(kind in KINDS, "launch kind must be one of " + ", ".join(sorted(KINDS)))
     state = read_json(state_path)
+    own(state)
     if kind == "followup":
         require(parent, "a follow-up launch names the session it came from")
         spend(state, bound_key(state, find_launch(state, parent)))
     launched = launch(state["root"], prompt)
+    now = stamp()
     record = {"id": launched["id"], "session": launched["session"], "kind": kind, "prompt": prompt,
-              "ticket": ticket, "parent": parent, "launched": stamp(), "verdict": None, "notes": [],
+              "ticket": ticket, "parent": parent, "launched": now, "since": now, "verdict": None, "notes": [],
               "relays": [], "remediations": [], "retired": False}
 
     def change(current):
@@ -344,15 +384,17 @@ def record_launch(state_path, kind, prompt, ticket, parent):
 def remediate(state_path, session, prompt):
     """Send an instruction back to the ticket's own session (decision 12), within the bound."""
     state = read_json(state_path)
+    own(state)
     target = find_launch(state, session)
     spend(state, bound_key(state, target))           # refuse before resuming anything
+    since = stamp()
     resume(state["root"], session, prompt)
 
     def change(current):
         launch = find_launch(current, session)
         spend(current, bound_key(current, launch))
-        launch["remediations"].append({"prompt": prompt, "at": stamp()})
-        launch.update(verdict=None, retired=False)
+        launch["remediations"].append({"prompt": prompt, "at": since})
+        launch.update(verdict=None, retired=False, since=since)
         return {"session": session, "remediations": current["remediations"][bound_key(current, launch)]}
     return update(state_path, change)
 
@@ -375,6 +417,7 @@ def judge(state_path, session, verdict, note, fact=None):
 def retire(state_path, session):
     """Stop the session after its judgment; it stays listed so the user can still resume it."""
     state = read_json(state_path)
+    own(state)
     launch = find_launch(state, session)
     if short_entry(launch["id"]):
         stop(launch["id"])
@@ -389,6 +432,7 @@ def finish(state_path, status, cause):
     """End the run: remove every retired session, write the terminal status to state and marker."""
     require(status in {"complete", "stopped"}, "finish status is complete or stopped")
     state = read_json(state_path)
+    own(state)
     removed = []
     for launch in state["launches"]:
         if launch.get("retired") and short_entry(launch["id"]):
@@ -397,6 +441,7 @@ def finish(state_path, status, cause):
     kept = [l["id"] for l in state["launches"] if not l.get("retired")]
     with state_lock(Path(state_path).with_suffix(".lock"), 5):
         state = read_json(state_path)
+        own(state)
         state.update(status=status, cause=cause, finished=stamp())
         atomic_json(state_path, state)
     heartbeat(state, terminal=status)
@@ -443,6 +488,8 @@ def agent_state(found, launched):
         return "missing"
     if found.get("state") in {"blocked", "failed", "stopped"}:
         return found["state"]
+    if found.get("status") == "waiting":     # a permission prompt or dialog (measured: waitingFor says which)
+        return "blocked"
     if found.get("status") in {"busy", "idle"}:
         return found["status"]
     if found.get("state") == "done":
@@ -450,40 +497,78 @@ def agent_state(found, launched):
     return "starting" if age_minutes(launched) * 60 < STARTUP_SECONDS else "exited"
 
 
+def epoch(value):
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def recording(marker):
+    """§A5.5 from the run's own record, not the report: the `record-result.json` that
+    `workflow.py record-summary` wrote next to the runtime. `passed: None` means no record."""
+    runtime_state = (marker or {}).get("runtime_state")
+    if not runtime_state:
+        return {"passed": None, "unresolved": [], "source": None}
+    source = Path(runtime_state).parent / "record-result.json"
+    try:
+        result = read_json(source)
+    except (OSError, ValueError):
+        return {"passed": None, "unresolved": [], "source": str(source)}
+    return {"passed": result.get("passed"), "unresolved": result.get("unresolved", []),
+            "record": result.get("record", {}), "source": str(source)}
+
+
 def wait(state_path, session, seconds=540, interval=15):
     """Poll until the session settles or `seconds` pass; keeps the coordinator's marker fresh.
 
     One bounded slice per call, so the coordinator stays in the foreground and never ends its
-    turn while a ticket works (anti-goal). A settled session counts as `done` only with its
-    saved report and a run marker that is not still `running` (§A4, Review Focus 4).
+    turn while a ticket works (anti-goal). A settled session counts as `done` only with a report
+    saved since its latest launch or resume, and a run marker that is not still `running`
+    (§A4, Review Focus 4). The startup grace also counts from that latest launch or resume.
     """
     state = read_json(state_path)
+    caller = own(state)
     launch = find_launch(state, session)
+    since = launch.get("since") or launch["launched"]
     deadline = time.monotonic() + seconds
     while True:
-        heartbeat(state)
-        word = agent_state(entry(session), launch["launched"])
-        if word not in {"busy", "starting"} or time.monotonic() >= deadline:
+        heartbeat(state, caller)
+        word = agent_state(entry(session), since)
+        left = deadline - time.monotonic()
+        if word not in {"busy", "starting"} or left <= 0:
             break
-        time.sleep(interval)
+        time.sleep(min(interval, left))
     report = report_path(state["root"], session)
     marker = run_marker(state["root"], session)
+    fresh = report.is_file() and report.stat().st_mtime >= epoch(since) - 1
     settled = word not in {"busy", "starting"}
-    finished = report.is_file() and (marker is None or marker.get("state") != "running")
+    finished = fresh and (marker is None or marker.get("state") != "running")
     if not settled:
         outcome = "working"
     elif word == "blocked":
         outcome = "blocked"
     elif finished:
         outcome = "done"
-    elif word in {"idle"}:
+    elif word == "idle":
         outcome = "handback"
     elif word == "failed":
         outcome = "failed"
     else:
         outcome = "stopped"
+    if marker and not launch.get("ticket") and marker.get("run"):
+        ticket = marker["run"]
+
+        def change(current):
+            found = find_launch(current, session)
+            moved = current["remediations"].pop(found["session"], 0)
+            if moved:
+                current["remediations"][ticket] = current["remediations"].get(ticket, 0) + moved
+            found["ticket"] = ticket
+        update(state_path, change, caller)
     return {"settled": settled, "agent_state": word, "outcome": outcome,
-            "report": str(report) if report.is_file() else None, "run_marker": marker}
+            "report": str(report) if fresh else None, "run_marker": marker,
+            "recording": recording(marker)}
 
 
 def workspace(project, ticket):
@@ -565,19 +650,22 @@ def relay(state_path, session, phrase, expect, transcript, coordinator_session, 
             "stop with the cause and the session to attach to")
     require(coordinator_session and coordinator_session == state.get("session"),
             "the answer must come from this coordinator's own session (" + str(state.get("session")) + ")")
+    own(state, coordinator_session)
     require(transcript and Path(transcript).is_file(), "the coordinator's transcript is unavailable "
             "($NOTION_DEV_TRANSCRIPT); a relay needs the user's answer as a transcript row")
     find_launch(state, session)
     answer = user_answer(transcript, coordinator_session, expect, asked_at)
     require(answer, "no matching user answer typed after the question; relay only what the user typed, never a "
             "composed approval")
+    since = stamp()
     resume(state["root"], session, phrase)
 
     def change(current):
+        find_launch(current, session)["since"] = since
         find_launch(current, session)["relays"].append(
             {"phrase": phrase, "user_message": answer["uuid"], "user_text": answer["text"],
              "answered": answer["at"], "at": stamp()})
-    update(state_path, change)
+    update(state_path, change, coordinator_session)
     return {"session": session, "relayed": phrase, "user_message": answer["uuid"]}
 
 

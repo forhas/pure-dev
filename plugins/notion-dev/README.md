@@ -22,7 +22,9 @@ every recording outcome landed, the workspace clean — checked from its source 
 the report. An open item goes back to the ticket's own session (resumed under its own id, at
 most twice per ticket); a defect in the work just shipped gets its follow-up ticket before the
 next one. It never edits code, Notion or tracked files itself, never passes a permission-bypass
-flag, and never launches with `claude -p`.
+flag, and never launches with `claude -p`. On Windows it needs the native `claude.exe` on PATH:
+an npm `claude.cmd` shim runs every prompt through cmd.exe, which would re-parse it, so the
+coordinator refuses it with that guidance.
 
 Interactive by default: when a ticket stops for an approval, the coordinator shows you the
 request and relays the phrase you type into that ticket's session, recording which of your

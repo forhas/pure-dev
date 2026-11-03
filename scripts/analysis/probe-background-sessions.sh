@@ -6,7 +6,7 @@
 #
 # <trusted-dir> is a folder Claude Code already trusts (a client checkout you work in);
 # `claude --bg` refuses any other. Prints one `PASS|FAIL <check>` line per check and exits
-# non-zero on any FAIL. It starts real sessions, so it spends a little usage and needs a
+# non-zero on any FAIL (8 checks). It starts real sessions, so it spends a little usage and needs a
 # logged-in CLI; that is why it is not part of scripts/run-verifications.sh. Every session
 # it starts is stopped and removed on exit, also on failure. Runs unchanged from WSL and
 # from Git Bash on Windows (PYBIN defaults to python3, then python).
@@ -48,6 +48,13 @@ description: probe command that yields on a background worker
 disable-model-invocation: true
 ---
 Use the Agent tool to launch ONE general-purpose subagent with run_in_background true whose task is: run the shell command `sleep 60` and then reply DONE. Right after launching it, end your turn with the single word WAITING. When you are later notified that the subagent finished, reply with exactly: WOKE-$ARGUMENTS
+EOF
+cat > "$work/plugin/commands/ask.md" <<'EOF'
+---
+description: probe command that hits a permission prompt
+disable-model-invocation: true
+---
+Run exactly the shell command `echo PROBE-ASK $ARGUMENTS` with the Bash tool, then reply DONE.
 EOF
 cat > "$work/hook.py" <<'EOF'
 import json, os, sys
@@ -117,6 +124,18 @@ elif cmd == "hooked":         # hooked <event> <session> [source]
 elif cmd == "transcript":     # transcript <session>
     rows = [r for r in log("stop") if r.get("session_id") == sys.argv[2]]
     print(rows[-1].get("transcript_path", "") if rows else "")
+elif cmd == "said":           # said <session> <text>: an assistant row of that session contains the text
+    rows = [r for r in log("stop") if r.get("session_id") == sys.argv[2]]
+    path = rows[-1].get("transcript_path", "") if rows else ""
+    found = False
+    if path and os.path.exists(path):
+        for line in open(path, encoding="utf-8"):
+            r = json.loads(line)
+            content = r.get("message", {}).get("content", "") if r.get("type") == "assistant" else ""
+            if isinstance(content, list):
+                content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
+            found = found or (r.get("sessionId") == sys.argv[2] and sys.argv[3] in str(content))
+    print("yes" if found else "no")
 elif cmd == "user-row":       # user-row <transcript> <session> <text>
     def text(c):
         if isinstance(c, str): return c
@@ -131,7 +150,7 @@ elif cmd == "user-row":       # user-row <transcript> <session> <text>
 EOF
 hook() { printf '\\"%s\\" \\"%s/hook.py\\" %s' "$PYBIN" "$work" "$1"; }
 cat > "$work/settings.json" <<EOF
-{"permissions": {"allow": ["Bash(sleep 60)", "Bash(sleep:*)"]},
+{"permissions": {"allow": ["Bash(sleep 60)", "Bash(sleep:*)"], "ask": ["Bash(echo PROBE-ASK:*)"]},
  "hooks": {"SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": "$(hook start)"}]}],
            "Stop": [{"matcher": "*", "hooks": [{"type": "command", "command": "$(hook stop)"}]}]}}
 EOF
@@ -179,11 +198,20 @@ else fail "6 no user row '$tok2' for $session in '${transcript:-no transcript}'"
 #    (fact 11): idle before the wake would make the coordinator judge a run still in progress.
 yid=$(launch "/probe:yield $tok")
 [ -n "$yid" ] && created="$created $yid"
-seen=$(tool wait "${yid:-none}" 420); states=${seen%%|*}
+seen=$(tool wait "${yid:-none}" 420); states=${seen%%|*}; ysession=${seen##*|}
+# Read the transcript the moment idle shows: the wake must already be in it, or idle came early.
+woke=$(tool said "$ysession" "WOKE-$tok")
 case " $states" in *"/busy "*"/idle") yield_ok=yes ;; *) yield_ok=no ;; esac
-if [ "$yield_ok" = yes ] && claude logs "$yid" 2>&1 | strip | grep -q "WOKE-$tok"; then
+if [ "$yield_ok" = yes ] && [ "$woke" = yes ]; then
   pass "7 a yielding session stays busy until it wakes itself"
 else fail "7 yield state/status '$states' (expected busy until WOKE-$tok, then idle)"; fi
 
-[ "$fails" -eq 0 ] && echo "all 7 checks passed" || echo "$fails check(s) failed"
+# 8. A slash-command session at a permission prompt reads blocked (state blocked, status waiting),
+#    so the coordinator surfaces it instead of waiting on a `working` that never ends.
+bid=$(launch "/probe:ask $tok")
+[ -n "$bid" ] && created="$created $bid"
+seen=$(tool wait "${bid:-none}" 180); states=${seen%%|*}
+case " $states" in *" blocked/waiting") pass "8 a permission prompt reads blocked/waiting" ;; *) fail "8 permission prompt state/status '$states' (expected to end blocked/waiting)" ;; esac
+
+[ "$fails" -eq 0 ] && echo "all 8 checks passed" || echo "$fails check(s) failed"
 [ "$fails" -eq 0 ]

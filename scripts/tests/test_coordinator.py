@@ -33,7 +33,8 @@ class CoordinatorBase(unittest.TestCase):
         self.world_path = self.dir / "world.json"
         self.world({})
         env = patch.dict(os.environ, {"NOTION_DEV_CLAUDE_FAKE": str(FAKE),
-                                      "NOTION_DEV_FAKE_WORLD": str(self.world_path)})
+                                      "NOTION_DEV_FAKE_WORLD": str(self.world_path),
+                                      "NOTION_DEV_SESSION_ID": "a"})
         env.start()
         self.addCleanup(env.stop)
         waits = patch.multiple(coordinator, LIST_WAIT=0.2, APPEAR_WAIT=0.2)
@@ -104,6 +105,27 @@ class SessionLayerTests(CoordinatorBase):
         self.world({"agents_garbage": True})
         with self.assertRaisesRegex(Invalid, "claude agents --json"):
             coordinator.agents()
+
+    def test_a_cmd_shim_is_refused(self):
+        os.environ.pop("NOTION_DEV_CLAUDE_FAKE")
+        for shim in ("C:/npm/claude.cmd", "C:/npm/claude.BAT"):
+            with patch.object(coordinator.shutil, "which", return_value=shim):
+                with self.assertRaisesRegex(Invalid, "cmd.exe"):
+                    coordinator.claude_command()
+
+    def test_an_unlisted_launch_is_stopped_and_removed(self):
+        self.world({"unlisted": True})
+        with self.assertRaisesRegex(Invalid, "not listed"):
+            coordinator.launch(self.dir, "/notion-dev:next-task STO-1")
+        short = [c for c in self.calls() if c[0] == "--bg"]
+        self.assertTrue(short)
+        self.assertTrue([c for c in self.calls() if c[0] == "stop"] and [c for c in self.calls() if c[0] == "rm"])
+
+    def test_a_waiting_status_is_blocked(self):
+        found = {"state": "working", "status": "waiting", "waitingFor": "permission prompt"}
+        self.assertEqual(coordinator.agent_state(found, coordinator.stamp()), "blocked")
+        found = {"state": "blocked", "status": "waiting"}
+        self.assertEqual(coordinator.agent_state(found, coordinator.stamp()), "blocked")
 
     def test_agents_tolerates_entries_without_an_id(self):
         self.world({"sessions": [{"kind": "interactive", "sessionId": "58b815db-host", "status": "busy"}]})
@@ -183,6 +205,32 @@ class StateTests(ProjectBase):
         coordinator.start(self.project, "STO-1", "a", False)
         self.host("b")                      # "a" is no longer listed: its session ended
         self.assertEqual(coordinator.start(self.project, "STO-1", "b", False)["adopted_from"], "a")
+
+    def test_start_checks_claude_before_writing_anything(self):
+        world = self.world(); world["agents_garbage"] = True; self.world(world)
+        with self.assertRaisesRegex(Invalid, "claude agents --json"):
+            coordinator.start(self.project, "STO-1", "a", True)
+        self.assertFalse((self.project / ".claude/notion-dev/runs/coordinator-STO-1.json").exists())
+
+    def test_an_adopted_run_refuses_its_old_owner(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None)
+        self.host("b")
+        with patch.dict(os.environ, {"NOTION_DEV_SESSION_ID": "b"}):
+            coordinator.start(self.project, "STO-1", "b", False)
+        launches = len([c for c in self.calls() if c[:1] == ["--bg"]])
+        for act in (lambda: coordinator.judge(started["state"], launched["session"], "accepted", ""),
+                    lambda: coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None),
+                    lambda: coordinator.remediate(started["state"], launched["session"], "x"),
+                    lambda: coordinator.retire(started["state"], launched["session"]),
+                    lambda: coordinator.wait(started["state"], launched["session"], seconds=0, interval=0),
+                    lambda: coordinator.finish(started["state"], "complete", None)):
+            with self.assertRaisesRegex(Invalid, "no longer owns"):
+                act()
+        self.assertEqual(len([c for c in self.calls() if c[:1] == ["--bg"]]), launches)
+        self.assertFalse([c for c in self.calls() if c[0] in {"stop", "rm"}])
+        marker = json.loads((self.project / ".claude/notion-dev/runs/coordinator-STO-1.json").read_text(encoding="utf-8"))
+        self.assertEqual((marker["claude_session"], marker["state"]), ("b", "running"))
 
     def test_unlisted_host_cannot_prove_the_other_ended(self):
         coordinator.start(self.project, "STO-1", "a", False)
@@ -318,6 +366,60 @@ class OutcomeTests(ProjectBase):
         self.report(launched["session"])
         self.ticket_marker(launched["session"], "complete")
         self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "done")
+
+    def test_a_just_resumed_session_is_starting_not_exited(self):
+        state, launched = self.started()
+        coordinator.wait(state, launched["session"], seconds=5, interval=0)
+        world = self.world(); world["resume_starting_polls"] = 3; self.world(world)
+        state_doc = json.loads(Path(state).read_text(encoding="utf-8"))
+        state_doc["launches"][0]["launched"] = coordinator.stamp(time.time() - 3600)
+        Path(state).write_text(json.dumps(state_doc), encoding="utf-8")
+        coordinator.remediate(state, launched["session"], "continue this run from its runtime")
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "working")
+
+    def test_a_report_from_before_the_resume_does_not_count(self):
+        state, launched = self.started()
+        self.report(launched["session"])
+        self.ticket_marker(launched["session"], "complete")
+        old = time.time() - 600
+        os.utime(coordinator.report_path(self.project, launched["session"]), (old, old))
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "handback")
+        os.utime(coordinator.report_path(self.project, launched["session"]), None)
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=5, interval=0)["outcome"], "done")
+        coordinator.remediate(state, launched["session"], "resolve or record the tail")
+        old = time.time() - 5
+        os.utime(coordinator.report_path(self.project, launched["session"]), (old, old))
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=5, interval=0)["outcome"], "handback")
+
+    def test_recording_outcomes_come_from_the_runtime_record(self):
+        state, launched = self.started()
+        self.report(launched["session"])
+        runtime_dir = self.dir / "runtime" / "inv-1"
+        runtime_dir.mkdir(parents=True)
+        coordinator.atomic_json(self.runs() / "STO-7.json", {
+            "run": "STO-7", "phase": "complete", "state": "complete", "non_interactive": True,
+            "claude_session": launched["session"], "runtime_state": str(runtime_dir / "state.json")})
+        missing = coordinator.wait(state, launched["session"], seconds=5, interval=0)["recording"]
+        self.assertEqual(missing["passed"], None)
+        coordinator.atomic_json(runtime_dir / "record-result.json", {
+            "passed": True, "unresolved": ["knowledge-delta"], "record": {"EPIC-DOC-RECORD": "failed"}})
+        recording = coordinator.wait(state, launched["session"], seconds=5, interval=0)["recording"]
+        self.assertEqual((recording["passed"], recording["unresolved"]), (True, ["knowledge-delta"]))
+
+    def test_wait_records_the_ticket_key_and_keeps_the_count(self):
+        state, launched = self.started()
+        coordinator.remediate(state, launched["session"], "continue")
+        self.ticket_marker(launched["session"], "running")
+        coordinator.wait(state, launched["session"], seconds=5, interval=0)
+        doc = json.loads(Path(state).read_text(encoding="utf-8"))
+        self.assertEqual(doc["launches"][0]["ticket"], "STO-7")
+        self.assertEqual(doc["remediations"], {"STO-7": 1})
+
+    def test_wait_never_sleeps_past_its_slice(self):
+        state, launched = self.started(settle_after=1000)
+        began = time.monotonic()
+        coordinator.wait(state, launched["session"], seconds=1, interval=30)
+        self.assertLess(time.monotonic() - began, 10)
 
     def test_wait_refreshes_the_coordinator_heartbeat(self):
         state, launched = self.started(settle_after=1000)
