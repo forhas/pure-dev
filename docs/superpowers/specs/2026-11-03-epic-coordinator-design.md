@@ -255,10 +255,12 @@ it still owns the marker and runtime and needs no takeover — with a specific i
 - Interactive coordinator only; `--non-interactive` lists them in the final report with the
   command to run.
 - As a report names a fact "awaiting the user's confirmation", the coordinator shows it with its
-  source and asks. On a yes it launches a fresh background session running
-  `/notion-dev:new-info` for that fact, and relays the user's answer into `new-info`'s own
-  confirmation gate the same way as §A6a. On a no, the fact is dropped and recorded as declined
-  in the coordinator state.
+  source and asks. On a yes it launches a fresh background session running that fact's `run:`
+  line with `--non-interactive`: the user's yes, given to the coordinator with the source shown,
+  is the confirmation. (Amended during Part A: `new-info`'s own Apply/Skip gate is an
+  AskUserQuestion, and a background session's question can only be answered by attaching to it,
+  so it cannot be relayed.) Its report shows what was applied and skipped. On a no, the fact is
+  dropped and recorded as declined in the coordinator state.
 - `new-info`'s "user-invoked" statement (`commands/new-info.md` intro, 0.47.0), the two README
   sentences that say it "stays user-invoked", and `fact-routing.md`'s policy gain "or a
   `run-epic` launch on the user's explicit yes"; the user's yes relayed at the gate is the

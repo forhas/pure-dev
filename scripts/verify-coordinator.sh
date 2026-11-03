@@ -66,6 +66,13 @@ done
 assert_has "ticket may run inside a \`run-epic\` run" "$ND/commands/ticket.md" 'authorized next-task or run-epic run'
 assert_has "finalize may run inside a \`run-epic\` run" "$ND/commands/finalize.md" 'authorized ticket/next-task/run-epic run'
 
+echo "== policy paths that admit run-epic =="
+assert_has "review-accounting admits a \`run-epic\` relay of the typed phrase" "$ND/references/review-accounting.md" 'other sanctioned path is a `run-epic` relay'
+assert_has "new-info: a \`run-epic\` launch on the user's explicit yes" "$ND/commands/new-info.md" "or a \`run-epic\` launch on the user's explicit yes"
+assert_has "fact-routing: the other path is a \`run-epic\` launch" "$ND/references/fact-routing.md" 'the other is a `run-epic` launch'
+assert_has "README documents \`/notion-dev:run-epic\`" "$ND/README.md" '| `/notion-dev:run-epic <epic-id>` |'
+assert_lacks "README no longer offers \`--depth\` on next-task" "$ND/README.md" 'next-task <epic> --depth'
+
 echo
 if [ "$fails" -eq 0 ]; then echo "verify-coordinator: all checks passed"; else echo "verify-coordinator: $fails check(s) failed"; fi
 [ "$fails" -eq 0 ]

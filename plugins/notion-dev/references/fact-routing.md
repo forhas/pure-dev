@@ -2,7 +2,8 @@
 
 Read by `references/record.md`'s **Route the facts** step, once, when the run's `NEW-INFO:`
 block is non-empty and the primary lock is released. This is the **only** path by which a
-model routes a fact through `/notion-dev:new-info`. The slash command keeps
+model routes a fact through `/notion-dev:new-info` on its own; the other is a `run-epic` launch
+on the user's explicit yes, which starts the command as a fresh session's prompt. The slash command keeps
 `disable-model-invocation: true`, so the Skill tool refuses it in every session; never try
 it, and never read `commands/new-info.md` to route a fact from anywhere but step 4 below.
 
