@@ -124,7 +124,7 @@ def bash():
     return os.environ.get("BASH_EXE") or "bash"
 
 
-class StateTests(CoordinatorBase):
+class ProjectBase(CoordinatorBase):
     def setUp(self):
         super().setUp()
         self.project = self.dir / "project"
@@ -145,6 +145,8 @@ class StateTests(CoordinatorBase):
                               capture_output=True, encoding="utf-8", cwd=str(self.project), env=env)
         return done.stdout
 
+
+class StateTests(ProjectBase):
     def test_start_creates_state_and_guardable_marker(self):
         started = coordinator.start(self.project, "STO-1", "a", True)
         marker = json.loads(Path(started["marker"]).read_text(encoding="utf-8"))
@@ -238,6 +240,110 @@ class StateTests(CoordinatorBase):
             coordinator.judge(started["state"], launched["session"], "fine", "")
         with self.assertRaisesRegex(Invalid, "not a launch"):
             coordinator.judge(started["state"], "nope", "accepted", "")
+
+
+class OutcomeTests(ProjectBase):
+    def started(self, **world):
+        current = self.world(); current.update(world); self.world(current)
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None)
+        return started["state"], launched
+
+    def runs(self):
+        return self.project / ".claude/notion-dev/runs"
+
+    def report(self, session, text="OUTCOME: resolved\n"):
+        path = coordinator.report_path(self.project, session)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def ticket_marker(self, session, state, name="STO-7.json"):
+        coordinator.atomic_json(self.runs() / name, {"run": "STO-7", "phase": "record", "state": state,
+                                                     "non_interactive": True, "claude_session": session})
+
+    def test_wait_returns_pending_then_settles(self):
+        state, launched = self.started(settle_after=3)
+        first = coordinator.wait(state, launched["session"], seconds=0, interval=0)
+        self.assertFalse(first["settled"])
+        self.assertEqual(first["outcome"], "working")
+        later = coordinator.wait(state, launched["session"], seconds=5, interval=0)
+        self.assertTrue(later["settled"])
+        self.assertEqual(later["agent_state"], "idle")
+
+    def test_done_without_report_is_handback(self):
+        state, launched = self.started()
+        session = launched["session"]
+        self.assertEqual(coordinator.wait(state, session, seconds=5, interval=0)["outcome"], "handback")
+        self.report(session)
+        self.ticket_marker(session, "running")
+        self.assertEqual(coordinator.wait(state, session, seconds=5, interval=0)["outcome"], "handback")
+        self.ticket_marker(session, "complete")
+        settled = coordinator.wait(state, session, seconds=5, interval=0)
+        self.assertEqual(settled["outcome"], "done")
+        self.assertEqual(settled["run_marker"]["state"], "complete")
+        self.assertTrue(settled["report"].endswith(".md"))
+
+    def test_a_busy_session_is_never_judged(self):
+        state, launched = self.started(settle_after=1000)
+        self.report(launched["session"])
+        self.ticket_marker(launched["session"], "complete")
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "working")
+
+    def test_blocked_is_reported_not_waited_through(self):
+        state, launched = self.started(settle_after=1000)
+        world = self.world()
+        next(s for s in world["sessions"] if s.get("id") == launched["id"]).update(state="blocked")
+        self.world(world)
+        began = time.monotonic()
+        result = coordinator.wait(state, launched["session"], seconds=30, interval=0)
+        self.assertLess(time.monotonic() - began, 10)
+        self.assertEqual(result["outcome"], "blocked")
+
+    def test_an_exited_session_with_its_report_is_done(self):
+        state, launched = self.started()
+        world = self.world()
+        world["sessions"] = [s for s in world["sessions"] if s.get("id") != launched["id"]]
+        self.world(world)
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "stopped")
+        self.report(launched["session"])
+        self.ticket_marker(launched["session"], "complete")
+        self.assertEqual(coordinator.wait(state, launched["session"], seconds=0, interval=0)["outcome"], "done")
+
+    def test_wait_refreshes_the_coordinator_heartbeat(self):
+        state, launched = self.started(settle_after=1000)
+        marker = self.runs() / "coordinator-STO-1.json"
+        os.utime(marker, (1, 1))
+        coordinator.wait(state, launched["session"], seconds=0, interval=0)
+        self.assertGreater(marker.stat().st_mtime, 1000)
+
+    def test_run_marker_ignores_preflight_and_coordinator_markers(self):
+        self.runs().mkdir(parents=True, exist_ok=True)
+        for name in ("preflight-x-1.json", "coordinator-STO-9.json", "STO-7.json"):
+            self.ticket_marker("s-1", "running", name)
+        found = coordinator.run_marker(self.project, "s-1")
+        self.assertEqual(Path(found["path"]).name, "STO-7.json")
+        self.assertIsNone(coordinator.run_marker(self.project, "s-2"))
+
+    def test_workspace_flags_leftovers(self):
+        git = lambda *a: subprocess.run(["git", "-C", str(self.project), *a], check=True, capture_output=True)
+        git("-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+        git("branch", "-M", "main")
+        (self.project / ".claude").mkdir(exist_ok=True)
+        (self.project / ".claude/notion-dev.config.json").write_text(json.dumps({"git": {"baseBranch": "main"}}), encoding="utf-8")
+        git("branch", "ticket/STO-7-fix-it")
+        tree = self.dir / "project-worktrees" / "STO-7"
+        git("worktree", "add", "-q", str(tree), "ticket/STO-7-fix-it")
+        view = coordinator.workspace(self.project, "STO-7")
+        self.assertEqual((view["worktree_gone"], view["branch_gone"]), (False, False))
+        self.assertTrue(view["primary_on_base"] and view["primary_clean"])
+        git("worktree", "remove", str(tree))
+        git("branch", "-D", "ticket/STO-7-fix-it")
+        (self.project / "stray.txt").write_text("x", encoding="utf-8")
+        view = coordinator.workspace(self.project, "STO-7")
+        self.assertTrue(view["worktree_gone"] and view["branch_gone"] and view["primary_on_base"])
+        self.assertFalse(view["primary_clean"])
+        (self.project / "stray.txt").unlink()
+        self.assertTrue(all(coordinator.workspace(self.project, "STO-7").values()))
 
 
 if __name__ == "__main__":

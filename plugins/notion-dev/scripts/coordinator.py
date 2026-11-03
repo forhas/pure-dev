@@ -399,6 +399,118 @@ def finish(state_path, status, cause):
     return {"status": status, "cause": cause, "removed": removed, "kept": kept}
 
 
+# ---------------------------------------------------------------- waiting and outcomes
+
+STARTUP_SECONDS = 120   # a just-launched entry lists no status or pid for a few seconds
+EXEMPT = {".claude/notion-dev.config.json", ".mcp.json", ".claude/settings.local.json"}  # = workflow.preflight
+
+
+def report_path(root, session):
+    """Where next-task, ticket and finalize save their finished report (decision 10)."""
+    from workflow import local_dir
+    return local_dir(Path(root)) / "reports" / (safe(session) + ".md")
+
+
+def run_marker(root, session):
+    """The ticket run marker this session owns, never a preflight or coordinator marker."""
+    from workflow import local_dir
+    found = []
+    for path in (local_dir(Path(root)) / "runs").glob("*.json"):
+        if path.name.startswith(("preflight-", "coordinator-")):
+            continue
+        try:
+            marker = read_json(path)
+        except (OSError, ValueError):
+            continue
+        if isinstance(marker, dict) and marker.get("claude_session") == session:
+            found.append((path.stat().st_mtime, path, marker))
+    if not found:
+        return None
+    _, path, marker = max(found, key=lambda item: item[0])
+    return {**marker, "path": str(path)}
+
+
+def agent_state(found, launched):
+    """One word for the entry: busy | idle | blocked | failed | stopped | exited | missing | starting.
+
+    `status` is the settle signal; `state` alone never is (fact 12).
+    """
+    if found is None:
+        return "missing"
+    if found.get("state") in {"blocked", "failed", "stopped"}:
+        return found["state"]
+    if found.get("status") in {"busy", "idle"}:
+        return found["status"]
+    if found.get("state") == "done":
+        return "idle"
+    return "starting" if age_minutes(launched) * 60 < STARTUP_SECONDS else "exited"
+
+
+def wait(state_path, session, seconds=540, interval=15):
+    """Poll until the session settles or `seconds` pass; keeps the coordinator's marker fresh.
+
+    One bounded slice per call, so the coordinator stays in the foreground and never ends its
+    turn while a ticket works (anti-goal). A settled session counts as `done` only with its
+    saved report and a run marker that is not still `running` (§A4, Review Focus 4).
+    """
+    state = read_json(state_path)
+    launch = find_launch(state, session)
+    deadline = time.monotonic() + seconds
+    while True:
+        heartbeat(state)
+        word = agent_state(entry(session), launch["launched"])
+        if word not in {"busy", "starting"} or time.monotonic() >= deadline:
+            break
+        time.sleep(interval)
+    report = report_path(state["root"], session)
+    marker = run_marker(state["root"], session)
+    settled = word not in {"busy", "starting"}
+    finished = report.is_file() and (marker is None or marker.get("state") != "running")
+    if not settled:
+        outcome = "working"
+    elif word == "blocked":
+        outcome = "blocked"
+    elif finished:
+        outcome = "done"
+    elif word in {"idle"}:
+        outcome = "handback"
+    elif word == "failed":
+        outcome = "failed"
+    else:
+        outcome = "stopped"
+    return {"settled": settled, "agent_state": word, "outcome": outcome,
+            "report": str(report) if report.is_file() else None, "run_marker": marker}
+
+
+def workspace(project, ticket):
+    """§A5.6 from git itself: the ticket's worktree and branch are gone, the primary is clean on its base."""
+    from workflow import primary
+    from runtime import git
+    root = primary(project)
+    prefix = "ticket/" + ticket + "-"
+    branches = git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines()
+    trees, current = [], {}
+    for line in git(root, "worktree", "list", "--porcelain").splitlines() + [""]:
+        if line.startswith("worktree "):
+            current = {"path": line[9:]}
+        elif line.startswith("branch "):
+            current["branch"] = line[len("branch refs/heads/"):]
+        elif not line and current:
+            trees.append(current)
+            current = {}
+    owned = lambda name: name == "ticket/" + ticket or name.startswith(prefix)
+    config_path = root / ".claude/notion-dev.config.json"
+    config = read_json(config_path) if config_path.is_file() else {}
+    bases = [b for b in (config.get("git", {}).get(k) for k in ("prTargetBranch", "baseBranch")) if b]
+    status = subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all", "-z"],
+                                     encoding="utf-8")
+    dirty = [row for row in status.split("\0") if row and row[3:] not in EXEMPT]
+    return {"worktree_gone": not any(owned(t.get("branch", "")) for t in trees[1:]),
+            "branch_gone": not any(owned(b) for b in branches),
+            "primary_on_base": bool(bases) and git(root, "branch", "--show-current") in bases,
+            "primary_clean": not dirty}
+
+
 def emit(result):
     print(json.dumps(result, ensure_ascii=False))
     return 0
