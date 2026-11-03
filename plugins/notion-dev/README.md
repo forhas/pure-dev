@@ -40,7 +40,7 @@ one epic" below still describes: that procedure was reduced to "safe stabilizati
 lean rewrite, and restoring it is part of the parallel mode's plan.
 
 The background-session behaviour this rests on was measured on Claude Code 2.1.317 by
-`scripts/analysis/probe-background-sessions.sh` in the plugin's repository — 7 of 7 checks under
+`scripts/analysis/probe-background-sessions.sh` in the plugin's repository — 8 of 8 checks under
 WSL 2, and the same probe from Git Bash on Windows gates this release's merge.
 
 ## Parallel tabs stay on their own branch (0.51.0)
