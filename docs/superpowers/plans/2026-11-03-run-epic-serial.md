@@ -178,9 +178,9 @@
 
 **Interfaces:**
 - Consumes: `remediate()` is **not** used (a relay is not a remediation and does not spend the bound); uses `resume()` directly.
-- Produces `relay(state_path, session, phrase: str, expect: str, transcript: Path, coordinator_session: str, asked_at: float) -> dict` and CLI `coordinator.py relay --state --session --phrase --expect --asked-at <epoch> [--transcript $NOTION_DEV_TRANSCRIPT] [--coordinator-session $NOTION_DEV_SESSION_ID]`:
+- Produces `relay(state_path, session, phrase: str, transcript: Path, coordinator_session: str, asked_at: float) -> dict` and CLI `coordinator.py relay --state --session --phrase --asked-at <epoch> [--transcript $NOTION_DEV_TRANSCRIPT] [--coordinator-session $NOTION_DEV_SESSION_ID]`:
   - refuses when the state is `non_interactive` (`Invalid` containing `never relays`);
-  - finds, in the coordinator's own transcript, the **latest** row with `type: "user"`, `sessionId == coordinator_session`, no `isSidechain`/`isMeta`/`isCompactSummary`/`toolUseResult`, timestamp ≥ `asked_at`, whose text (string or text blocks joined) stripped equals `expect` stripped — the same row rules as `host_capture.user_approval`; none → `Invalid("no matching user answer …")`;
+  - finds, in the coordinator's own transcript, the **latest** row with `type: "user"`, `sessionId == coordinator_session`, no `isSidechain`/`isMeta`/`isCompactSummary`/`toolUseResult`, timestamp ≥ `asked_at`, whose text (string or text blocks joined) stripped equals `phrase` stripped (the first draft also took an `expect`; review removed it so only the typed phrase is ever sent) — the same row rules as `host_capture.user_approval`; none → `Invalid("no matching user answer …")`;
   - then `resume(cwd, session, phrase)` and appends `{"phrase", "user_message": <uuid>, "user_text", "at"}` to that launch's `relays`.
 
 - [ ] **Step 1: Failing tests:** `test_relay_requires_a_real_user_turn` (an assistant row and a sidechain user row with the text do not count; a parent user row does), `test_relay_ignores_answers_before_the_question` (row before `asked_at` → refused), `test_relay_records_provenance_and_sends_exact_phrase` (fake records `--resume <uuid> <phrase>` with the phrase byte-identical; state `relays[0]["user_message"]` is the row's uuid), `test_non_interactive_never_relays`.
