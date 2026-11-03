@@ -454,6 +454,19 @@ class OutcomeTests(ProjectBase):
         self.report(fact["session"], "OUTCOME: resolved\n")
         self.assertEqual(coordinator.wait(started["state"], fact["session"], seconds=5, interval=0)["outcome"], "done")
 
+    def test_a_report_saved_while_launch_was_still_settling_counts(self):
+        started = coordinator.start(self.project, "STO-1", "a", False)
+        real = coordinator.launch
+
+        def slow_launch(cwd, prompt):        # the session finishes before launch() returns
+            launched = real(cwd, prompt)
+            self.report(launched["session"], "OUTCOME: resolved\n")
+            time.sleep(2.5)
+            return launched
+        with patch.object(coordinator, "launch", side_effect=slow_launch):
+            launched = coordinator.record_launch(started["state"], "next-task", "/notion-dev:next-task STO-1", None, None)
+        self.assertEqual(coordinator.wait(started["state"], launched["session"], seconds=5, interval=0)["outcome"], "done")
+
     def test_wait_records_the_ticket_key_and_keeps_the_count(self):
         state, launched = self.started()
         coordinator.remediate(state, launched["session"], "continue")

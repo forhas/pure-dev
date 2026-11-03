@@ -399,8 +399,8 @@ def record_launch(state_path, kind, prompt, ticket, parent):
     if kind == "followup":
         require(parent, "a follow-up launch names the session it came from")
         spend(state, bound_key(state, find_launch(state, parent)))
-    launched = launch(state["root"], prompt)
-    now = stamp()
+    now = stamp()                       # before the spawn, as the resume paths do: a fast session
+    launched = launch(state["root"], prompt)   # may save its report before launch() returns
     record = {"id": launched["id"], "session": launched["session"], "kind": kind, "prompt": prompt,
               "ticket": ticket, "parent": parent, "launched": now, "since": now, "verdict": None, "notes": [],
               "relays": [], "remediations": [], "retired": False}
