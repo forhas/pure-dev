@@ -1,6 +1,6 @@
 # Epic coordinator — fresh-context ticket sessions, judged between tickets
 
-Status: design, awaiting approval. Part A (serial) is planned and built first; Part B (parallel)
+Status: approved 2026-11-03; facts 12–13 added from the Task 1 probe. Part A (serial) is planned and built first; Part B (parallel)
 is planned only after Part A has been field-tested on the client projects.
 
 ## Intent
@@ -92,6 +92,20 @@ Measured 2026-11-03 on Claude Code 2.1.317, WSL 2 Ubuntu, unless marked.
     launched a background worker and ended its turn stayed `working`/`busy` for the worker's
     whole run, woke on its completion notification, replied, and only then read `done`.
     So `done` with a `running` marker is a genuine hand-back, not a yield.
+12. **`state` does not settle for a session started with a slash command; `status` does.**
+    (Measured by `scripts/analysis/probe-background-sessions.sh`, Task 1 of the Part A plan.)
+    A `claude --bg "/plugin:command …"` session whose turn has ended reads `state: working`,
+    `status: idle` indefinitely; a plain-prompt session reads `done`/`idle`. `status` is `busy`
+    for the whole turn **including a yield on a background worker** (fact 11 re-measured on a
+    slash-command session: busy for the worker's 60 s, then idle after the wake). So the settle
+    signal is `status: idle` (or a terminal `state`), never `state: done` alone. Entries can
+    also lack `status`/`pid` for the first seconds after launch, and the host's own interactive
+    session is listed without an `id`.
+13. **`claude stop` returns before the session's process exits** (the supervisor logs it
+    `settled (killed)` up to ~1 s later). A `--resume` inside that window forks (fact 10)
+    even after `claude rm` succeeded — reproduced four times out of four on slash-command
+    sessions. Resuming under the same ID therefore needs: stop → wait until the entry's `pid`
+    has exited → rm → resume, and a check that the printed id is the original.
 
 ## Decisions
 
@@ -156,7 +170,7 @@ Measured 2026-11-03 on Claude Code 2.1.317, WSL 2 Ubuntu, unless marked.
    `claude --bg "/notion-dev:next-task <epic> --non-interactive [| guidance]"`.
    Parse the printed short id; resolve `sessionId` from `claude agents --json --all`. Record the
    launch in coordinator state (§A7) **before** waiting.
-2. **Wait** until the session's `state` leaves `working`. Through a helper (e.g.
+2. **Wait** until the session settles: `status: idle` or a terminal `state` (fact 12). Through a helper (e.g.
    `workflow.py session-wait --id <short> --seconds <n>`) that polls `claude agents --json --all`
    and returns the entry. The coordinator must not end its turn while a session is `working`
    (anti-goal); how it stays alive across hours is left to the builder (bounded foreground
@@ -173,10 +187,10 @@ Measured 2026-11-03 on Claude Code 2.1.317, WSL 2 Ubuntu, unless marked.
 
 | state | meaning | coordinator action |
 |---|---|---|
-| `working` | running | keep waiting |
-| `done` + marker `complete` | ticket finished | judge §A5 |
-| `done` + marker `running` | the session handed back mid-run (fact 11) | resume the **same** session (stop → rm → `claude --bg --resume <sessionId> "<instruction>"`, fact 10); counts toward the §A6 bound |
-| `done` + marker `stopped` | ticket stopped with a cause | §A6 failure handling |
+| `busy` | running, including a yield (facts 11–12) | keep waiting |
+| settled + marker `complete` | ticket finished | judge §A5 |
+| settled + marker `running`, or no report | the session handed back mid-run (fact 11) | resume the **same** session (stop → process exit → rm → `claude --bg --resume <sessionId> "<instruction>"`, facts 10, 13); counts toward the §A6 bound |
+| settled + marker `stopped` | ticket stopped with a cause | §A6 failure handling |
 | `blocked` | permission prompt / dialog | tell the user `claude attach <id>`; keep waiting (interactive) or stop (non-interactive) |
 | `failed` / `stopped` | process ended | resume the same session, as for a hand-back |
 
