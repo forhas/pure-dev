@@ -42,7 +42,7 @@ lean rewrite, and restoring it is part of the parallel mode's plan.
 
 The background-session behaviour this rests on was measured on Claude Code 2.1.317 by
 `scripts/analysis/probe-background-sessions.sh` in the plugin's repository — 8 of 8 checks under
-WSL 2, and the same probe from Git Bash on Windows gates this release's merge.
+WSL 2, and 8 of 8 from Git Bash on Windows (Claude Code 2.1.306, npm install).
 
 ## Parallel tabs stay on their own branch (0.51.0)
 

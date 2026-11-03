@@ -75,8 +75,12 @@ Measured 2026-11-03 on Claude Code 2.1.317, WSL 2 Ubuntu, unless marked.
    "takes precedence over your claude.ai login" (docs: in `-p` "the key is always used when
    present"); the `--bg` session's status line showed `Claude Max`. Background sessions use the
    supervisor's stored credentials.
-8. **Unverified: native Windows.** Background sessions on Windows are not explicitly documented
-   (the version history has Windows fixes for the supervisor). Gate G1 below.
+8. **Native Windows: verified (G1, 2026-11-03).** The probe passed 8 of 8 from Git Bash on the
+   user's machine (Claude Code 2.1.306, npm install whose `claude.cmd` forwards to a bundled
+   `bin/claude.exe`, which the coordinator runs directly). Two Windows traps it surfaced: Windows
+   Python finds a bare `claude` only as a real `.exe`, and Git Bash rewrites a native program's
+   arguments that begin with `/` into paths, so a `/plugin:command` prompt must be launched from
+   Python, as the coordinator does, never from bash.
 9. **Finding — merge-gate drift.** quick-dev's review-and-merge rebases a PR at the merge gate
    when the base moved (with version re-bump); notion-dev 0.26.0 (#47) had the same. The lean
    rewrite (0.36.0, #72) reduced it to "Base movement triggers safe stabilization", while
